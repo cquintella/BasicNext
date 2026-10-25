@@ -1,5 +1,5 @@
 .\" groff man page for the Basic Next interpreter executable (0.6 line).
-.TH BNI 1 "October 21, 2026" "bni 0.6.5" "Basic Next"
+.TH BNI 1 "October 25, 2026" "bni 0.6.8" "Basic Next"
 .SH NAME
 bni \- Basic Next checker, interpreter, and editor protocols
 .SH SYNOPSIS
@@ -138,6 +138,17 @@ when the sandbox is active. Repeatable.
 .TP
 .B --trace
 Report the interpreter entry point.
+.TP
+.BI --trace-events " file"
+Emit an NDJSON stream of execution events to
+.IR file .
+Only valid with
+.BR run .
+.TP
+.BI --profile " table|json"
+Emit execution profile statistics as a formatted table or as a JSON summary.
+Only valid with
+.BR run .
 .TP
 .BI --warnings " errors"
 Promote all warning diagnostics to errors.

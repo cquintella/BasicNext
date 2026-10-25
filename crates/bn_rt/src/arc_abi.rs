@@ -152,7 +152,7 @@ pub extern "C" fn bn_rt_arc_finish_destroy(id: u64) -> i32 {
 /// holds — through its `STATIC` fields or a cycle — ceases to exist with no
 /// `DESTRUCTOR`, and its memory is freed, as `bni` drops the copy's core.
 /// The worker's own core comes back afterwards.
-pub(crate) fn run_in_fresh_core<R>(task: impl FnOnce() -> R) -> R {
+pub fn run_in_fresh_core<R>(task: impl FnOnce() -> R) -> R {
     let outer = CORE.replace(new_core());
     let result = task();
     let finished = CORE.replace(outer);
@@ -222,7 +222,7 @@ pub extern "C" fn bn_rt_arc_info(id: u64) {
 
 /// Checks whether `id` names a currently live object or region in this thread's ARC core.
 #[must_use]
-pub(crate) fn is_object_alive(id: u64) -> bool {
+pub fn is_object_alive(id: u64) -> bool {
     if id == 0 {
         return false;
     }
@@ -231,7 +231,7 @@ pub(crate) fn is_object_alive(id: u64) -> bool {
 
 /// Reports a `USE_AFTER_RELEASE` failure and terminates the process when a native
 /// wrapper attempts to access a region whose last strong reference was released.
-pub(crate) fn abort_use_after_release() -> ! {
+pub fn abort_use_after_release() -> ! {
     record_failure(RuntimeFailure {
         code: "USE_AFTER_RELEASE",
         facts: vec![(

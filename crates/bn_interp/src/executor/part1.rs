@@ -15,6 +15,16 @@ impl Executor<'_, '_> {
                 function.span,
             ));
         }
+        let args = if self.emitter.is_some() {
+            function
+                .parameters
+                .iter()
+                .zip(&arguments)
+                .map(|(param, val)| (format!("symbol#{}", param.value()), format!("{val:?}")))
+                .collect()
+        } else {
+            Vec::new()
+        };
         let mut symbols = function
             .parameters
             .iter()
@@ -28,6 +38,14 @@ impl Executor<'_, '_> {
             weak_symbols: function.weak_symbols.clone(),
             ..OwnershipFrame::default()
         });
+        if let Some(emitter) = self.emitter.as_deref_mut() {
+            emitter.emit(&Event::FunctionEntry {
+                function: function.name.clone(),
+                depth: self.call_depth,
+                span: function.span,
+                args,
+            });
+        }
         let mut block = function.entry;
         let mut previous_block = None;
         loop {
@@ -35,6 +53,14 @@ impl Executor<'_, '_> {
             for (index, instruction) in current.instructions.iter().enumerate() {
                 if let Some(hook) = self.debug_hook.as_deref_mut() {
                     hook(&function.name, instruction.span());
+                }
+                if let Some(emitter) = self.emitter.as_deref_mut() {
+                    emitter.check_line_change(instruction.span(), self.call_depth);
+                    emitter.emit(&Event::Statement {
+                        stmt_kind: instruction_kind_name(instruction).to_string(),
+                        depth: self.call_depth,
+                        span: instruction.span(),
+                    });
                 }
                 let view = self
                     .debug_control
@@ -116,11 +142,27 @@ impl Executor<'_, '_> {
                         .map(|result| value(&values, result, function.span).cloned())
                         .transpose()?;
                     self.ownership_frames.pop();
+                    if let Some(emitter) = self.emitter.as_deref_mut() {
+                        emitter.emit(&Event::FunctionReturn {
+                            function: function.name.clone(),
+                            depth: self.call_depth,
+                            span: function.span,
+                            return_value: returned.as_ref().map(|v| format!("{v:?}")),
+                        });
+                    }
                     return Ok(Flow::Return(returned));
                 }
                 Terminator::Stop { code } => {
                     let code = integer(value(&values, *code, function.span)?, function.span)?.0;
                     self.ownership_frames.pop();
+                    if let Some(emitter) = self.emitter.as_deref_mut() {
+                        emitter.emit(&Event::FunctionReturn {
+                            function: function.name.clone(),
+                            depth: self.call_depth,
+                            span: function.span,
+                            return_value: Some(format!("Stop({code})")),
+                        });
+                    }
                     return Ok(Flow::Stop(code));
                 }
             }
@@ -165,4 +207,45 @@ fn is_stop_check(instruction: &Instruction) -> bool {
             ..
         } if name == bn_ir::names::STOPPING
     )
+}
+
+fn instruction_kind_name(instruction: &Instruction) -> &'static str {
+    match instruction {
+        Instruction::Constant { .. } => "Constant",
+        Instruction::Default { .. } => "Default",
+        Instruction::Phi { .. } => "Phi",
+        Instruction::Load { .. } => "Load",
+        Instruction::Retain { .. } => "Retain",
+        Instruction::Take { .. } => "Take",
+        Instruction::TakeMember { .. } => "TakeMember",
+        Instruction::EndBinding { .. } => "EndBinding",
+        Instruction::Store { .. } => "Store",
+        Instruction::Copy { .. } => "Copy",
+        Instruction::Unary { .. } => "Unary",
+        Instruction::Binary { .. } => "Binary",
+        Instruction::Cast { .. } => "Cast",
+        Instruction::Call { .. } => "Call",
+        Instruction::DispatchSubmit { .. } => "DispatchSubmit",
+        Instruction::DispatchAwait { .. } => "DispatchAwait",
+        Instruction::Input { .. } => "Input",
+        Instruction::Vector { .. } => "Vector",
+        Instruction::Index { .. } => "Index",
+        Instruction::Member { .. } => "Member",
+        Instruction::SetIndex { .. } => "SetIndex",
+        Instruction::SetMemberIndex { .. } => "SetMemberIndex",
+        Instruction::SetFieldIndex { .. } => "SetFieldIndex",
+        Instruction::SetStaticIndex { .. } => "SetStaticIndex",
+        Instruction::Length { .. } => "Length",
+        Instruction::SizeOf { .. } => "SizeOf",
+        Instruction::Print { .. } => "Print",
+        Instruction::ClearScreen { .. } => "ClearScreen",
+        Instruction::Beep { .. } => "Beep",
+        Instruction::Allocate { .. } => "Allocate",
+        Instruction::Release { .. } => "Release",
+        Instruction::SetMember { .. } => "SetMember",
+        Instruction::SetField { .. } => "SetField",
+        Instruction::EnsureClass { .. } => "EnsureClass",
+        Instruction::LoadStatic { .. } => "LoadStatic",
+        Instruction::StoreStatic { .. } => "StoreStatic",
+    }
 }

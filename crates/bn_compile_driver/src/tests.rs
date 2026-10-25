@@ -44,26 +44,42 @@ fn compiler_configuration_selects_clang() {
 
 #[test]
 fn native_runtime_linking_adds_platform_system_libraries() {
-    #[cfg(target_os = "linux")]
-    assert_eq!(crate::artifact::native_runtime_link_args(), ["-lm"]);
-
-    #[cfg(windows)]
+    assert_eq!(
+        crate::artifact::native_runtime_link_args_for_os("linux"),
+        ["-lm"]
+    );
     assert!(
-        crate::artifact::native_runtime_link_args().contains(&"-lntdll"),
+        crate::artifact::native_runtime_link_args_for_os("windows").contains(&"-lntdll"),
         "bn_rt.lib needs the Windows system libraries rustc reports"
     );
-
-    #[cfg(not(any(target_os = "linux", windows)))]
-    assert!(crate::artifact::native_runtime_link_args().is_empty());
+    assert!(crate::artifact::native_runtime_link_args_for_os("macos").is_empty());
+    assert_eq!(
+        crate::artifact::native_runtime_link_args(),
+        crate::artifact::native_runtime_link_args_for_os(std::env::consts::OS)
+    );
 }
 
 #[test]
 fn native_programs_use_the_dynamic_crt_and_legacy_stdio_only_on_windows() {
-    #[cfg(windows)]
-    assert!(crate::artifact::native_program_link_args().contains(&"-llegacy_stdio_definitions"));
-
-    #[cfg(not(windows))]
-    assert!(crate::artifact::native_program_link_args().is_empty());
+    assert!(
+        crate::artifact::native_program_link_args_for_os("windows")
+            .contains(&"-llegacy_stdio_definitions")
+    );
+    assert!(crate::artifact::native_program_link_args_for_os("macos").is_empty());
+    assert!(crate::artifact::native_program_link_args_for_os("linux").is_empty());
+    assert_eq!(
+        crate::artifact::dead_code_link_args_for_os("macos"),
+        ["-Wl,-dead_strip"]
+    );
+    assert_eq!(
+        crate::artifact::dead_code_link_args_for_os("linux"),
+        ["-Wl,--gc-sections"]
+    );
+    assert!(crate::artifact::dead_code_link_args_for_os("windows").is_empty());
+    assert_eq!(
+        crate::artifact::native_program_link_args(),
+        crate::artifact::native_program_link_args_for_os(std::env::consts::OS)
+    );
 }
 
 #[test]

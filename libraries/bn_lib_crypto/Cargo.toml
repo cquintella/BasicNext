@@ -1,0 +1,23 @@
+[package]
+name = "bn_lib_crypto"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.97"
+description = "Basic Next BNCrypto library provider"
+license.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+bn_catalog = { path = "../../crates/bn_catalog" }
+bn_diag = { path = "../../crates/bn_diag" }
+bn_interp = { path = "../../crates/bn_interp" }
+bn_stdlib = { path = "../bn_stdlib" }
+bn_source = { path = "../../crates/bn_source" }
+bn_types = { path = "../../crates/bn_types" }
+bn_value = { path = "../../crates/bn_value" }

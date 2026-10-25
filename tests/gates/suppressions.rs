@@ -150,4 +150,22 @@ fn every_suppression_is_listed_with_its_reason() {
         "production mutex lock must recover via PoisonError::into_inner instead of .lock().unwrap/expect:\n{}",
         poison_panics.join("\n")
     );
+
+    // Cross-platform test determinism gate (bucket 0.6.7c): forbid inline `cfg!(target_os`
+    // or `if std::mem::size_of::<` test branch bifurcations in FFI and compile-driver tests.
+    for test_file in [
+        "libraries/bn_stdlib/src/ffi_tests.rs",
+        "crates/bn_compile_driver/src/tests.rs",
+        "tests/ffi.rs",
+    ] {
+        let text = fs::read_to_string(test_file).expect("read test file");
+        for (line_no, line) in text.lines().enumerate() {
+            let trimmed = line.trim();
+            assert!(
+                !trimmed.contains("cfg!(target_os") && !trimmed.contains("if std::mem::size_of::<"),
+                "{test_file}:{} contains a host-dependent test branch (`{trimmed}`); parameterize by OS/width so all branches execute on every host",
+                line_no + 1
+            );
+        }
+    }
 }

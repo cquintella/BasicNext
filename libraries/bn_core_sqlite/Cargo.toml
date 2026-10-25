@@ -1,0 +1,20 @@
+[package]
+name = "bn_core_sqlite"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.98"
+description = "Basic Next SQLite domain core: thread-safe connection registry, execution, query and error mapping"
+license.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+bn_catalog = { path = "../../crates/bn_catalog" }
+bn_core_copy = { path = "../../crates/bn_core_copy" } # the connection table of one module copy
+bn_types = { path = "../../crates/bn_types" }
+rusqlite = { version = "0.33", features = ["bundled"] }

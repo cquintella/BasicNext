@@ -20,60 +20,71 @@ use bn_cli::{
 
 use crate::{
     options::BuildOptions,
-    toolchain::{configured_bn_rt_lib, configured_bn_web_lib, configured_clang},
+    toolchain::{
+        configured_bn_rt_lib, configured_bn_stdlib_lib, configured_bn_web_lib, configured_clang,
+    },
 };
+
+fn uses_bn_stdlib(llvm: &str) -> bool {
+    [
+        "@bn_rt_crypto_",
+        "@bn_rt_sqlite_",
+        "@bn_rt_ffi_",
+        "@bn_rt_json_",
+        "@bn_rt_dataframe_",
+        "@bn_rt_dispatch_",
+        "@bn_rt_log_",
+        "@bn_rt_math_",
+        "@bn_web_",
+    ]
+    .iter()
+    .any(|prefix| llvm.contains(prefix))
+}
 
 /// Flags for every native executable. On Windows the emitted IR carries no
 /// target triple (clang would warn), links against the dynamic CRT that
 /// `bn_rt.lib` is built for, and gets `printf` from
 /// `legacy_stdio_definitions` (the UCRT defines it inline in its headers).
-pub(crate) fn native_program_link_args() -> &'static [&'static str] {
-    #[cfg(windows)]
-    {
+pub(crate) fn native_program_link_args_for_os(target_os: &str) -> &'static [&'static str] {
+    if target_os == "windows" {
         &[
             "-Wno-override-module",
             "-fms-runtime-lib=dll",
             "-llegacy_stdio_definitions",
         ]
-    }
-
-    #[cfg(not(windows))]
-    {
+    } else {
         &[]
     }
+}
+
+pub(crate) fn native_program_link_args() -> &'static [&'static str] {
+    native_program_link_args_for_os(std::env::consts::OS)
 }
 
 /// Link-time removal of runtime code the program never reaches (bucket
 /// 0.6.5 E, D2: a program links only what it uses, so the runtime archive can
 /// hold `BNWeb` without growing other programs). The MSVC linker already
 /// applies `/OPT:REF` by default.
-pub(crate) fn dead_code_link_args() -> &'static [&'static str] {
-    #[cfg(target_os = "macos")]
-    {
+pub(crate) fn dead_code_link_args_for_os(target_os: &str) -> &'static [&'static str] {
+    if target_os == "macos" {
         &["-Wl,-dead_strip"]
-    }
-
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
+    } else if target_os == "windows" {
+        &[]
+    } else {
         &["-Wl,--gc-sections"]
     }
+}
 
-    #[cfg(not(unix))]
-    {
-        &[]
-    }
+pub(crate) fn dead_code_link_args() -> &'static [&'static str] {
+    dead_code_link_args_for_os(std::env::consts::OS)
 }
 
 /// System libraries the `bn_rt` static library needs, as reported by
 /// `rustc --print native-static-libs` for each target.
-pub(crate) fn native_runtime_link_args() -> &'static [&'static str] {
-    #[cfg(target_os = "linux")]
-    {
+pub(crate) fn native_runtime_link_args_for_os(target_os: &str) -> &'static [&'static str] {
+    if target_os == "linux" {
         &["-lm"]
-    }
-
-    #[cfg(windows)]
-    {
+    } else if target_os == "windows" {
         &[
             "-lbcrypt",
             "-ladvapi32",
@@ -83,12 +94,13 @@ pub(crate) fn native_runtime_link_args() -> &'static [&'static str] {
             "-lws2_32",
             "-ldbghelp",
         ]
-    }
-
-    #[cfg(not(any(target_os = "linux", windows)))]
-    {
+    } else {
         &[]
     }
+}
+
+pub(crate) fn native_runtime_link_args() -> &'static [&'static str] {
+    native_runtime_link_args_for_os(std::env::consts::OS)
 }
 
 /// Writes `bytes` to a file that must not exist yet (`create_new`: no
@@ -247,8 +259,13 @@ pub(crate) fn emit_build_output(
         command_args.extend(native_program_link_args().iter().map(ToString::to_string));
         command_args.extend(debug_flag.map(ToString::to_string));
         command_args.extend(cpu_flag.map(ToString::to_string));
-        if llvm.contains("@bn_rt_") {
-            let bn_rt = match configured_bn_rt_lib() {
+        if llvm.contains("@bn_rt_") || uses_bn_stdlib(&llvm) {
+            let runtime_archive = if uses_bn_stdlib(&llvm) {
+                configured_bn_stdlib_lib()
+            } else {
+                configured_bn_rt_lib()
+            };
+            let bn_rt = match runtime_archive {
                 Ok(path) => path,
                 Err(message) => {
                     eprintln!(

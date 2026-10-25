@@ -253,17 +253,16 @@ if ((BUILD)); then
   command -v cargo >/dev/null 2>&1 || { echo "error: cargo (Rust 1.97+) is required to build; use --no-build to install prebuilt binaries" >&2; exit 1; }
   log "==> Building release binaries (cargo build --release --workspace --bins)"
   cargo build --release --workspace --bins
-  log "==> Building native runtime (cargo build -p bn_rt --release)"
-  cargo build -p bn_rt --release
+  log "==> Building native runtime (cargo build -p bn_rt -p bn_stdlib --release)"
+  cargo build -p bn_rt -p bn_stdlib --release
 fi
 
 bni_bin="$repo_root/target/release/bni"
 bnc_bin="$repo_root/target/release/bnc"
-bn_bin="$repo_root/target/release/bn"
 bn_rt_lib="$repo_root/target/release/libbn_rt.a"
-# 0.6 layout: bni + bnc. 0.5 layout (older tags): bn + bnc, bn being the
-# interpreter itself.
-if [[ -x "$bni_bin" ]]; then
+bn_stdlib_lib="$repo_root/target/release/libbn_stdlib.a"
+# 0.6 layout: bni + bnc. 0.5 layout (older tags without crates/bni): bn + bnc.
+if [[ -d "$repo_root/crates/bni" || -x "$bni_bin" ]]; then
   layout=0.6; interpreter="bni"; binaries="bni bnc"
 else
   layout=0.5; interpreter="bn"; binaries="bn bnc"
@@ -313,6 +312,10 @@ done
 # $PREFIX/lib/libbn_rt.a when bnc lives in $PREFIX/bin (bn_compile_driver::toolchain).
 $SUDO install -m 0644 "$bn_rt_lib" "$libdir/libbn_rt.a"
 record "$libdir/libbn_rt.a"
+if [[ -f "$bn_stdlib_lib" ]]; then
+  $SUDO install -m 0644 "$bn_stdlib_lib" "$libdir/libbn_stdlib.a"
+  record "$libdir/libbn_stdlib.a"
+fi
 
 # Standard library modules (arch-independent .bn source).
 for mod in "$repo_root/modules/bn/"*.bn; do

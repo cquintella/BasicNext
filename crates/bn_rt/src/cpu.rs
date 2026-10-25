@@ -96,7 +96,7 @@ unsafe fn vmax_i32_avx2(values: &[i32]) -> i32 {
 /// Finds the minimum element in a 32-bit signed integer slice using
 /// hardware-accelerated SIMD instructions when available on the host CPU.
 #[must_use]
-pub(crate) fn vmin_i32(values: &[i32]) -> Option<i32> {
+pub fn vmin_i32(values: &[i32]) -> Option<i32> {
     if values.is_empty() {
         return None;
     }
@@ -116,7 +116,7 @@ pub(crate) fn vmin_i32(values: &[i32]) -> Option<i32> {
 /// Finds the maximum element in a 32-bit signed integer slice using
 /// hardware-accelerated SIMD instructions when available on the host CPU.
 #[must_use]
-pub(crate) fn vmax_i32(values: &[i32]) -> Option<i32> {
+pub fn vmax_i32(values: &[i32]) -> Option<i32> {
     if values.is_empty() {
         return None;
     }

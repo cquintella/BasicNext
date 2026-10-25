@@ -19,27 +19,45 @@ use support::{TestDir, bni, compile_native, run, workspace_root};
 
 const PROCESS_TIMEOUT: Duration = Duration::from_secs(30);
 
-fn build_c_library(source: &Path, out_dir: &Path, base_name: &str) -> PathBuf {
-    let lib_name = if cfg!(target_os = "windows") {
+fn shared_library_filename_for_os(base_name: &str, target_os: &str) -> String {
+    if target_os == "windows" {
         format!("{base_name}.dll")
-    } else if cfg!(target_os = "macos") {
+    } else if target_os == "macos" {
         format!("lib{base_name}.dylib")
     } else {
         format!("lib{base_name}.so")
-    };
+    }
+}
+
+fn shared_library_compiler_flags_for_os(target_os: &str) -> &'static [&'static str] {
+    if target_os == "windows" {
+        &["-shared", "-o"]
+    } else if target_os == "macos" {
+        &["-dynamiclib", "-o"]
+    } else {
+        &["-shared", "-fPIC", "-o"]
+    }
+}
+
+fn system_c_library_name_for_os(target_os: &str) -> &'static str {
+    if target_os == "windows" {
+        "ucrtbase"
+    } else if target_os == "macos" {
+        "libSystem.B.dylib"
+    } else {
+        "libc.so.6"
+    }
+}
+
+fn build_c_library(source: &Path, out_dir: &Path, base_name: &str) -> PathBuf {
+    let lib_name = shared_library_filename_for_os(base_name, env::consts::OS);
     let out_path = out_dir.join(&lib_name);
 
     let cc = env::var("CC").unwrap_or_else(|_| "clang".to_string());
     let mut cmd = Command::new(&cc);
-    if cfg!(target_os = "windows") {
-        cmd.args(["-shared", "-o"]).arg(&out_path).arg(source);
-    } else if cfg!(target_os = "macos") {
-        cmd.args(["-dynamiclib", "-o"]).arg(&out_path).arg(source);
-    } else {
-        cmd.args(["-shared", "-fPIC", "-o"])
-            .arg(&out_path)
-            .arg(source);
-    }
+    cmd.args(shared_library_compiler_flags_for_os(env::consts::OS))
+        .arg(&out_path)
+        .arg(source);
 
     let status = cmd.status().unwrap_or_else(|err| {
         panic!("failed to run C compiler {cc}: {err}");
@@ -171,14 +189,11 @@ END FUNCTION
 
 #[test]
 fn s6_g_system_library_smoke() {
+    assert_eq!(system_c_library_name_for_os("windows"), "ucrtbase");
+    assert_eq!(system_c_library_name_for_os("macos"), "libSystem.B.dylib");
+    assert_eq!(system_c_library_name_for_os("linux"), "libc.so.6");
     let temp_dir = TestDir::new("bnffi-sys-smoke").expect("create test dir");
-    let libc_name = if cfg!(target_os = "windows") {
-        "ucrtbase"
-    } else if cfg!(target_os = "macos") {
-        "libSystem.B.dylib"
-    } else {
-        "libc.so.6"
-    };
+    let libc_name = system_c_library_name_for_os(env::consts::OS);
     let bn_source = temp_dir.join("test_strlen_smoke.bn");
     let src = format!(
         "\
@@ -431,30 +446,63 @@ END FUNCTION
     assert_eq!(String::from_utf8_lossy(&out_b.stdout).trim(), "20");
 }
 
+fn expected_c_long_bound_line(c_long_bytes: usize) -> &'static str {
+    if c_long_bytes == 4 {
+        "BOUND: VALUE_OUT_OF_RANGE"
+    } else {
+        "BOUND: VAL: 2147483649"
+    }
+}
+
 #[test]
 fn iss09_c_long_platform_width_parity() {
+    assert_eq!(expected_c_long_bound_line(4), "BOUND: VALUE_OUT_OF_RANGE");
+    assert_eq!(expected_c_long_bound_line(8), "BOUND: VAL: 2147483649");
+
     let root = workspace_root();
     let temp_dir = TestDir::new("bnffi-clong").expect("create test dir");
     let c_source = root.join("tests/ffi/bnffi_test.c");
     build_c_library(&c_source, temp_dir.path(), "bnffi_test");
 
+    // Executes both the in-range (`VAL:`) path and the symbolic error (`Error.Code`)
+    // formatting path on every OS, plus the 32-bit/64-bit `C.Long` boundary call.
     let prog_src = "\
 IMPORT BNFfi AS C
+
+FUNCTION ReportCall(prefix AS STRING, ok AS VOID OR Error, res AS C.Long) AS VOID
+    IF ok IS Error THEN
+        IF ok.Code = C.VALUE_OUT_OF_RANGE THEN
+            PRINT prefix, \"VALUE_OUT_OF_RANGE\"
+        ELSE
+            IF ok.Code = C.SYMBOL_NOT_FOUND THEN
+                PRINT prefix, \"SYMBOL_NOT_FOUND\"
+            ELSE
+                PRINT prefix, \"OTHER_CODE:\", ok.Code
+            END IF
+        END IF
+    ELSE
+        PRINT prefix, \"VAL:\", res.Value()
+    END IF
+END FUNCTION
+
 FUNCTION Start() AS VOID
+    LET ok_args AS C.Args = NEW C.Args()
+    ok_args.Add(NEW C.Long(100))
+    ok_args.Add(NEW C.Long(23))
+    LET ok_res AS C.Long = NEW C.Long(0)
+    LET ok1 AS VOID OR Error = C.Call(\"bnffi_test\", \"test_long\", ok_args, ok_res)
+    ReportCall(\"IN_RANGE:\", ok1, ok_res)
+
+    LET err_res AS C.Long = NEW C.Long(0)
+    LET ok2 AS VOID OR Error = C.Call(\"bnffi_test\", \"missing_symbol_xyz\", ok_args, err_res)
+    ReportCall(\"ERR_PATH:\", ok2, err_res)
+
     LET args AS C.Args = NEW C.Args()
     args.Add(NEW C.Long(2147483648))
     args.Add(NEW C.Long(1))
     LET res AS C.Long = NEW C.Long(0)
-    LET ok AS VOID OR Error = C.Call(\"bnffi_test\", \"test_long\", args, res)
-    IF ok IS Error THEN
-        IF ok.Code = C.VALUE_OUT_OF_RANGE THEN
-            PRINT \"VALUE_OUT_OF_RANGE\"
-        ELSE
-            PRINT \"CODE:\", ok.Code
-        END IF
-    ELSE
-        PRINT \"VAL:\", res.Value()
-    END IF
+    LET ok3 AS VOID OR Error = C.Call(\"bnffi_test\", \"test_long\", args, res)
+    ReportCall(\"BOUND:\", ok3, res)
 END FUNCTION
 ";
     let prog_path = temp_dir.join("clong_width.bn");
@@ -467,7 +515,11 @@ END FUNCTION
         .arg(temp_dir.path())
         .arg(&prog_path);
     let bni_out = run(&mut bni_cmd, None, PROCESS_TIMEOUT).expect("run bni");
-    assert!(bni_out.status.success());
+    assert!(
+        bni_out.status.success(),
+        "bni failed: {}",
+        String::from_utf8_lossy(&bni_out.stderr)
+    );
 
     let native_bin = compile_native(&prog_path, &temp_dir);
     let mut native_cmd = Command::new(&native_bin);
@@ -478,11 +530,15 @@ END FUNCTION
     let bni_stdout = String::from_utf8_lossy(&bni_out.stdout);
     let bnc_stdout = String::from_utf8_lossy(&bnc_out.stdout);
     assert_eq!(bni_stdout, bnc_stdout);
-    if std::mem::size_of::<std::os::raw::c_long>() == 4 {
-        assert_eq!(bni_stdout.trim(), "VALUE_OUT_OF_RANGE");
-    } else {
-        assert_eq!(bni_stdout.trim(), "VAL: 2147483649");
-    }
+    let lines: Vec<&str> = bni_stdout.lines().map(str::trim).collect();
+    assert_eq!(
+        lines,
+        vec![
+            "IN_RANGE: VAL: 123",
+            "ERR_PATH: SYMBOL_NOT_FOUND",
+            expected_c_long_bound_line(std::mem::size_of::<std::os::raw::c_long>()),
+        ]
+    );
 }
 
 #[test]

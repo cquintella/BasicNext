@@ -14,5 +14,6 @@ workspace = true
 bn_frontend = { path = "../bn_frontend" }
 bn_interp = { path = "../bn_interp" }
 bn_interpret_driver = { path = "../bn_interpret_driver" }
+bn_runtime_instrumentation = { path = "../bn_runtime_instrumentation" }
 bn_source = { path = "../bn_source" }
 serde_json = "1.0"

@@ -141,7 +141,7 @@ pub extern "C" fn bn_rt_str_release(ptr: *const c_char) -> i32 {
 /// The returned pointer is the payload. Its count starts at 1.
 #[allow(unsafe_code)]
 #[allow(clippy::cast_ptr_alignment)]
-pub(crate) fn c_string_from_bytes(bytes: &[u8]) -> *mut c_char {
+pub fn c_string_from_bytes(bytes: &[u8]) -> *mut c_char {
     let len = bytes.len();
     let total_alloc = HEADER_SIZE
         .checked_add(len)
@@ -195,7 +195,7 @@ pub extern "C" fn bn_rt_cstr_copy(ptr: *const c_char) -> *mut c_char {
 /// The payload bytes of a STRING. The length is the header's, so a NUL inside
 /// the value is data.
 #[allow(unsafe_code)]
-pub(crate) fn slice_from_raw<'a>(ptr: *const c_char) -> Option<&'a [u8]> {
+pub fn slice_from_raw<'a>(ptr: *const c_char) -> Option<&'a [u8]> {
     let header = header_mut(ptr.cast_mut())?;
     let count = usize::try_from(header.len).ok()?;
     // SAFETY: G7-D1. The header's `len` is the number of payload bytes this
@@ -204,7 +204,7 @@ pub(crate) fn slice_from_raw<'a>(ptr: *const c_char) -> Option<&'a [u8]> {
 }
 
 /// The payload as an owned `String`, including a U+0000 when `len` says it is there.
-pub(crate) fn string_text(ptr: *const c_char) -> Option<String> {
+pub fn string_text(ptr: *const c_char) -> Option<String> {
     let bytes = slice_from_raw(ptr)?;
     String::from_utf8(bytes.to_vec()).ok()
 }

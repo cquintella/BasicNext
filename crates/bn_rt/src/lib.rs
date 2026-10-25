@@ -1,6 +1,9 @@
 #![allow(clippy::not_unsafe_ptr_arg_deref)] // C ABI exports validate nullable out-pointers.
 #![allow(clippy::single_match_else)]
 #![allow(clippy::cast_precision_loss)]
+#![allow(clippy::missing_panics_doc)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::must_use_candidate)]
 // Random conversion intentionally uses the 53-bit mantissa.
 // C ABI branches keep success/error writes symmetric.
 
@@ -21,82 +24,38 @@ use std::{
 };
 
 pub mod arc;
-mod arc_abi;
+pub mod arc_abi;
 pub mod civil;
 mod clock;
 mod console;
-pub(crate) mod cpu;
-pub mod crypto;
-mod crypto_abi;
-pub mod crypto_error;
-pub mod data_error;
-mod dataframe;
-mod dataframe_abi;
-mod dispatch_abi;
-pub mod dispatch_error;
-pub mod dispatch_sync;
-mod dispatch_sync_abi;
+pub mod cpu;
 pub mod env;
-mod error_abi;
+pub mod error_abi;
 mod exec;
 pub mod file;
-mod file_abi;
+pub mod file_abi;
 mod file_error;
-#[cfg(feature = "json")]
-pub(crate) mod json_abi;
-mod log_abi;
-mod math;
-mod math_abi;
 mod stack_abi;
 #[cfg(feature = "net")]
 pub use bn_core_net as net;
-#[cfg(feature = "ffi")]
-pub mod ffi;
-#[cfg(feature = "ffi")]
-pub(crate) mod ffi_abi;
-#[cfg(feature = "ffi")]
-pub(crate) mod ffi_loader;
-#[cfg(all(test, feature = "ffi"))]
-mod ffi_tests;
 #[cfg(feature = "net")]
 mod net_abi;
-mod policy;
+pub mod policy;
 pub mod secure_fs;
-#[cfg(feature = "sqlite")]
-pub(crate) mod sqlite_abi;
-#[cfg(feature = "sqlite")]
-pub(crate) mod sqlite_error;
-mod stats;
 pub mod string;
 mod terminal;
-mod text_abi;
-mod trap_abi;
+pub mod text_abi;
+pub mod trap_abi;
 mod vector_abi;
-pub mod web_error;
 
-pub use bn_core_log::{Level as LogLevel, Record as LogRecord};
-pub use log_abi::*;
 pub use stack_abi::bn_rt_stack_check;
-pub use stats::{Reduction, reduce};
 pub use vector_abi::{Row, bn_rt_vector_nest};
 
 pub use console::{ConsoleError, beep, cls, num_cols, num_rows, print_at};
-pub use dataframe::{
-    ConvertedCell, DataFrameColumn, DataFrameJoin, DataFrameJoinConfig, DataFrameResource,
-    DataProvider, StandardDataProvider, add_dataframe_column, append_columns, append_rows,
-    column_name, conversion_failed, convert_cell, convert_dataframe_column, copy_dataframe_column,
-    copy_integer_element, dataframe_reduce_column, frame_from_csv_rows, get_dataframe_cell,
-    join_dataframes, select_dataframe, set_column_label, slice_dataframe, transpose_dataframe,
-    zscore_column,
-};
-pub use dataframe_abi::*;
-pub use dispatch_abi::*;
-pub use dispatch_sync_abi::*;
 pub use error_abi::{
     bn_rt_error_code, bn_rt_error_field, bn_rt_error_print, bn_rt_error_take, bn_rt_error_wrap,
-    take_error_report,
+    set_error, set_error_report, take_error_report,
 };
-pub(crate) use error_abi::{set_error, set_error_report};
 pub use exec::*;
 pub use file_abi::*;
 #[cfg(feature = "net")]
@@ -144,7 +103,7 @@ impl Write for LibcStdout {
 }
 
 #[allow(unsafe_code)] // C ABI: write(1) after flushing libc stdout used by LLVM printf.
-fn libc_write_stdout(buf: &[u8]) -> io::Result<()> {
+pub fn libc_write_stdout(buf: &[u8]) -> io::Result<()> {
     if buf.is_empty() {
         return Ok(());
     }
@@ -191,7 +150,7 @@ fn libc_write_stdout(buf: &[u8]) -> io::Result<()> {
 }
 
 #[allow(unsafe_code)] // C ABI: flush libc stdout so PRINT and Console share order.
-fn libc_fflush() -> io::Result<()> {
+pub fn libc_fflush() -> io::Result<()> {
     // A null stream flushes all open output streams and avoids platform-specific
     // `stdout` symbols (`__stdoutp` on Darwin, unavailable on some libc targets).
     // SAFETY: the slice is borrowed for this call; fflush of a null stream flushes the C library's open output streams.
@@ -204,7 +163,7 @@ fn libc_fflush() -> io::Result<()> {
 }
 
 #[allow(unsafe_code)] // C ABI: read a Basic Next STRING pointer using header length (G7-D1).
-pub(crate) fn c_str<'a>(ptr: *const c_char) -> Option<&'a str> {
+pub fn c_str<'a>(ptr: *const c_char) -> Option<&'a str> {
     if ptr.is_null() {
         return None;
     }
@@ -244,7 +203,7 @@ pub extern "C" fn bn_rt_clock_timer() -> i64 {
     monotonic_ns()
 }
 
-static COMPILED_RANDOM_STATE: AtomicU64 = AtomicU64::new(1);
+static COMPILED_RANDOM_STATE: AtomicU64 = AtomicU64::new(0);
 
 #[allow(unsafe_code)] // C ABI export for LLVM-emitted HOST.Random.Seed.
 #[unsafe(no_mangle)]
@@ -265,6 +224,16 @@ pub extern "C" fn bn_rt_random_next() -> f64 {
         return f64::NAN;
     }
     let mut current = COMPILED_RANDOM_STATE.load(Ordering::Relaxed);
+    if current == 0 {
+        let initial = (monotonic_ns().cast_unsigned() ^ u64::from(std::process::id())).max(1);
+        if let Err(observed) =
+            COMPILED_RANDOM_STATE.compare_exchange(0, initial, Ordering::Relaxed, Ordering::Relaxed)
+        {
+            current = observed;
+        } else {
+            current = initial;
+        }
+    }
     loop {
         let mut next = current;
         next ^= next >> 12;
@@ -358,8 +327,6 @@ pub extern "C" fn bn_rt_console_num_cols() -> i32 {
     }
 }
 
-pub use math_abi::*;
-
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_print_date(days: i32) {
@@ -370,44 +337,6 @@ pub extern "C" fn bn_rt_print_date(days: i32) {
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_print_time(millis: i32) {
     let _ = LibcStdout.write_all(civil::format_time(u32::try_from(millis).unwrap_or(0)).as_bytes());
-}
-
-#[allow(unsafe_code)] // C ABI: the column name is a borrowed NUL-terminated STRING.
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_dataframe_add_integer_start(
-    frame: u64,
-    name: *const c_char,
-    length: u32,
-) -> i32 {
-    let Some(name) = c_str(name) else {
-        return -1;
-    };
-    dataframe_abi::add_integer_column_storage(frame, name, length)
-        .and_then(|index| {
-            i32::try_from(index).map_err(|_| dataframe_abi::BN_DATAFRAME_CONTRACT_ERROR)
-        })
-        .unwrap_or_else(|status| -i32::try_from(status).unwrap_or(1))
-}
-
-#[allow(unsafe_code)] // C ABI export; all arguments are scalar values.
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_dataframe_set_integer_cell(
-    frame: u64,
-    column: i32,
-    row: u32,
-    value: i64,
-) -> u32 {
-    let Ok(column) = u32::try_from(column) else {
-        return dataframe_abi::BN_DATAFRAME_INVALID_ARGUMENT;
-    };
-    dataframe_abi::set_integer_cell_storage(frame, column, row, value)
-}
-
-#[allow(unsafe_code)] // C ABI export; returned storage is released by the LLVM caller.
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_dataframe_column_name_owned(frame: u64, index: u32) -> *mut c_char {
-    dataframe_abi::column_name_storage(frame, index)
-        .map_or(std::ptr::null_mut(), |name| c_string(&name))
 }
 
 #[allow(unsafe_code)] // C ABI export for LLVM-emitted HOST.Console.NumRows.
@@ -427,7 +356,7 @@ pub extern "C" fn bn_rt_console_num_rows() -> i32 {
 }
 
 #[allow(unsafe_code)] // C ABI: allocate a NUL-terminated copy for LLVM strings.
-pub(crate) fn c_string(text: &str) -> *mut c_char {
+pub fn c_string(text: &str) -> *mut c_char {
     string::c_string_from_bytes(text.as_bytes())
 }
 

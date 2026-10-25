@@ -1,0 +1,24 @@
+[package]
+name = "bn_lib_math"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.97"
+description = "Basic Next BNMath library provider"
+license.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+bn_core_math = { path = "../bn_core_math" }
+bn_core_text = { path = "../../crates/bn_core_text" }
+bn_diag = { path = "../../crates/bn_diag" }
+bn_interp = { path = "../../crates/bn_interp" }
+bn_runtime = { path = "../../crates/bn_runtime" }
+bn_source = { path = "../../crates/bn_source" }
+bn_types = { path = "../../crates/bn_types" }
+bn_value = { path = "../../crates/bn_value" }

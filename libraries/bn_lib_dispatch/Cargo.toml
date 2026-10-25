@@ -1,0 +1,25 @@
+[package]
+name = "bn_lib_dispatch"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.97"
+description = "Basic Next BNDispatch library provider: queues, tickets, sync primitives"
+license.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+bn_diag = { path = "../../crates/bn_diag" }
+bn_interp = { path = "../../crates/bn_interp" }
+bn_source = { path = "../../crates/bn_source" }
+bn_types = { path = "../../crates/bn_types" }
+bn_value = { path = "../../crates/bn_value" }
+bn_limits = { path = "../../crates/bn_limits" }
+bn_core_dispatch = { path = "../bn_core_dispatch" }
+bn_stdlib = { path = "../bn_stdlib" }
+ring = "0.17.14"

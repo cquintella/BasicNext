@@ -5,10 +5,15 @@
 
 IMPORT HOST.Random AS R
 
+FUNCTION NextSample() AS FLOAT
+    RETURN R.Random()
+END FUNCTION
+
 FUNCTION Start() AS VOID
+    LET unseeded AS FLOAT = NextSample()
     R.Seed(42)
-    LET first AS FLOAT = R.Random()
+    LET first AS FLOAT = NextSample()
     LET second AS FLOAT = R.Random()
     R.Seed(42)
-    PRINT R.Random() = first, R.Random() = second, first >= 0.0, first < 1.0
+    PRINT R.Random() = first, NextSample() = second, first >= 0.0 AND first < 1.0, unseeded >= 0.0 AND unseeded < 1.0
 END FUNCTION

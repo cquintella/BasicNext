@@ -657,24 +657,12 @@ fn llvm_declared_runtime_symbols() -> BTreeSet<String> {
     symbols_after_marker(&source, "\"bn_rt_", '"')
 }
 
-fn runtime_exported_symbols() -> BTreeSet<String> {
-    let archive = std::env::var_os("BN_RT_LIB").map_or_else(
-        || {
-            // Static library naming differs per toolchain: libbn_rt.a / bn_rt.lib.
-            let name = if cfg!(windows) {
-                "bn_rt.lib"
-            } else {
-                "libbn_rt.a"
-            };
-            workspace_root().join("target/debug").join(name)
-        },
-        PathBuf::from,
-    );
+fn archive_exported_symbols(archive: &Path) -> BTreeSet<String> {
     let nm = find_executable("llvm-nm")
         .or_else(|| find_executable("nm"))
         .expect("llvm-nm or nm is required for the ABI export gate");
     let output = execute(Command::new(nm).arg("-g").arg(archive), None);
-    assert_success(&output, "inspect bn_rt archive");
+    assert_success(&output, "inspect runtime archive");
     String::from_utf8_lossy(&output.stdout)
         .lines()
         .filter_map(|line| {
@@ -687,6 +675,53 @@ fn runtime_exported_symbols() -> BTreeSet<String> {
             })
         })
         .collect()
+}
+
+fn runtime_exported_symbols() -> BTreeSet<String> {
+    let rt_archive = std::env::var_os("BN_RT_LIB").map_or_else(
+        || {
+            let name = if cfg!(windows) {
+                "bn_rt.lib"
+            } else {
+                "libbn_rt.a"
+            };
+            workspace_root().join("target/debug").join(name)
+        },
+        PathBuf::from,
+    );
+    let stdlib_archive = std::env::var_os("BN_STDLIB_LIB").map_or_else(
+        || {
+            let name = if cfg!(windows) {
+                "bn_stdlib.lib"
+            } else {
+                "libbn_stdlib.a"
+            };
+            workspace_root().join("target/debug").join(name)
+        },
+        PathBuf::from,
+    );
+    let mut symbols = archive_exported_symbols(&rt_archive);
+    for symbol in &symbols {
+        for forbidden_prefix in [
+            "bn_rt_crypto_",
+            "bn_rt_sqlite_",
+            "bn_rt_ffi_",
+            "bn_rt_json_",
+            "bn_rt_dataframe_",
+            "bn_rt_dispatch_",
+            "bn_rt_log_",
+            "bn_rt_math_",
+        ] {
+            assert!(
+                !symbol.starts_with(forbidden_prefix),
+                "core libbn_rt.a must not export BN* library symbol `{symbol}`"
+            );
+        }
+    }
+    if stdlib_archive.is_file() {
+        symbols.extend(archive_exported_symbols(&stdlib_archive));
+    }
+    symbols
 }
 
 fn abi_documented_symbols() -> BTreeSet<String> {

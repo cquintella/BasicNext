@@ -1,9 +1,9 @@
 [workspace]
-members = ["crates/bn_catalog", "crates/bn_core_copy", "crates/bn_core_dispatch", "crates/bn_core_log", "crates/bn_core_net", "crates/bn_core_sqlite", "crates/bn_core_json", "libraries/bn_web", "crates/bn_core_math", "crates/bn_core_text", "crates/bn_rt", "crates/bn_source", "crates/bn_types", "crates/bn_diag", "crates/bn_ir", "crates/bn_frontend", "crates/bn_runtime", "crates/bn_value", "crates/bn_llvm", "crates/bn_interp", "crates/bn_host_env", "crates/bn_host_exec", "crates/bn_limits", "crates/bn_lib_math", "crates/bn_lib_json", "crates/bn_lib_log", "crates/bn_lib_data", "crates/bn_host_fs", "crates/bn_host_net", "crates/bn_lib_dispatch", "libraries/bn_lib_web", "crates/bn_lib_crypto", "crates/bn_lib_sqlite", "crates/bn_lib_ffi", "crates/bn_cli", "crates/bn_interpret_driver", "crates/bn_lsp", "crates/bn_dap", "crates/bn_compile_driver", "crates/bnc", "crates/bni"]
+members = ["crates/bn_catalog", "crates/bn_core_copy", "libraries/bn_core_dispatch", "libraries/bn_core_log", "crates/bn_core_net", "libraries/bn_core_sqlite", "libraries/bn_core_json", "libraries/bn_web", "libraries/bn_core_math", "crates/bn_core_text", "crates/bn_rt", "libraries/bn_stdlib", "crates/bn_source", "crates/bn_types", "crates/bn_diag", "crates/bn_ir", "crates/bn_frontend", "crates/bn_runtime", "crates/bn_runtime_instrumentation", "crates/bn_value", "crates/bn_llvm", "crates/bn_interp", "crates/bn_host_env", "crates/bn_host_exec", "crates/bn_limits", "libraries/bn_lib_math", "libraries/bn_lib_json", "libraries/bn_lib_log", "libraries/bn_lib_data", "crates/bn_host_fs", "crates/bn_host_net", "libraries/bn_lib_dispatch", "libraries/bn_lib_web", "libraries/bn_lib_crypto", "libraries/bn_lib_sqlite", "libraries/bn_lib_ffi", "crates/bn_cli", "crates/bn_interpret_driver", "crates/bn_lsp", "crates/bn_dap", "crates/bn_compile_driver", "crates/bnc", "crates/bni"]
 resolver = "3"
 
 [workspace.package]
-version = "0.6.7"
+version = "0.6.8"
 edition = "2024"
 rust-version = "1.98"
 license = "MPL-2.0"
@@ -45,6 +45,7 @@ bn_lib_web = { path = "libraries/bn_lib_web" } # tests/runtime.rs drives the web
 bn_llvm = { path = "crates/bn_llvm" }
 bn_lsp = { path = "crates/bn_lsp" }
 bn_runtime = { path = "crates/bn_runtime" }
+bn_runtime_instrumentation = { path = "crates/bn_runtime_instrumentation" }
 bn_source = { path = "crates/bn_source" }
 bn_types = { path = "crates/bn_types" }
 bn_value = { path = "crates/bn_value" }

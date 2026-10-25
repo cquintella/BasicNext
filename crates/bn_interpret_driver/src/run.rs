@@ -16,7 +16,7 @@ use bn_cli::{
 };
 use bn_diag::{DiagId, Level};
 use bn_frontend::token::Token;
-use bn_interp::execute_validated_with_host;
+use bn_interp::execute_validated_with_host_emitter;
 use bn_source::SourceFile;
 
 use crate::{
@@ -138,13 +138,57 @@ pub fn run_loaded(
         }
     };
     let stdin = io::stdin();
+    let (mut emitter, profiler_stats) = {
+        let needs_emitter = interpreter.trace_events.is_some() || interpreter.profile.is_some();
+        if needs_emitter {
+            let mut em = bn_runtime_instrumentation::EventEmitter::new();
+            if let Some(trace_path) = &interpreter.trace_events {
+                let path = if trace_path.as_os_str() == "auto" || trace_path.as_os_str().is_empty()
+                {
+                    let mut p = std::path::PathBuf::from(&options.path);
+                    p.set_extension("trace.ndjson");
+                    p
+                } else {
+                    trace_path.clone()
+                };
+                match bn_runtime_instrumentation::TracerConsumer::to_file(&path, &options.path) {
+                    Ok(consumer) => em.add_consumer(Box::new(consumer)),
+                    Err(err) => eprintln!(
+                        "{}",
+                        bn_catalog::fill(
+                            "cli",
+                            "msg.trace_failed",
+                            &[("path", &path.display()), ("error", &err)],
+                        )
+                    ),
+                }
+            }
+            let profiler_stats = if interpreter.profile.is_some() {
+                let profiler = bn_runtime_instrumentation::ProfilerConsumer::new();
+                let stats = profiler.shared_stats();
+                em.add_consumer(Box::new(profiler));
+                Some(stats)
+            } else {
+                None
+            };
+            (Some(em), profiler_stats)
+        } else {
+            (None, None)
+        }
+    };
     if options.output_format == OutputFormat::Json {
         let mut output = Vec::new();
         let mut input = JupyterInput {
             input: stdin.lock(),
             notify: interpreter.jupyter_stdin,
         };
-        let result = execute_validated_with_host(module, &mut input, &mut output, &host);
+        let result = execute_validated_with_host_emitter(
+            module,
+            &mut input,
+            &mut output,
+            &host,
+            emitter.as_mut(),
+        );
         let mut diagnostics = frontend
             .warnings
             .iter()
@@ -203,6 +247,19 @@ pub fn run_loaded(
             "diagnostics": diagnostics,
         });
         println!("{envelope}");
+        if let (Some(format), Some(stats)) = (interpreter.profile, &profiler_stats) {
+            let stats_map = stats
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            match format {
+                crate::options::ProfileFormat::Table => {
+                    eprintln!("{}", bn_runtime_instrumentation::render_table(&stats_map));
+                }
+                crate::options::ProfileFormat::Json => {
+                    eprintln!("{}", bn_runtime_instrumentation::render_json(&stats_map));
+                }
+            }
+        }
         ExitCode::from(exit_code)
     } else {
         let stdout = io::stdout();
@@ -210,7 +267,13 @@ pub fn run_loaded(
             input: stdin.lock(),
             notify: interpreter.jupyter_stdin,
         };
-        match execute_validated_with_host(module, &mut input, &mut stdout.lock(), &host) {
+        let code = match execute_validated_with_host_emitter(
+            module,
+            &mut input,
+            &mut stdout.lock(),
+            &host,
+            emitter.as_mut(),
+        ) {
             Ok(code) => ExitCode::from(code),
             Err(diagnostic) => {
                 eprintln!(
@@ -223,7 +286,21 @@ pub fn run_loaded(
                     language_error()
                 }
             }
+        };
+        if let (Some(format), Some(stats)) = (interpreter.profile, &profiler_stats) {
+            let stats_map = stats
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            match format {
+                crate::options::ProfileFormat::Table => {
+                    eprintln!("{}", bn_runtime_instrumentation::render_table(&stats_map));
+                }
+                crate::options::ProfileFormat::Json => {
+                    println!("{}", bn_runtime_instrumentation::render_json(&stats_map));
+                }
+            }
         }
+        code
     }
 }
 

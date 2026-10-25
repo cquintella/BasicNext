@@ -1,0 +1,960 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+//! `BNData` — an external library module served through the provider seam.
+//! Owns the `DataFrame` table; CSV parsing goes through the host's
+//! `DataProvider`, files through the public `HOST.FileSystem` members, and
+//! copy-out writes into caller regions through [`CoreContext::memory_mut`].
+
+#![allow(
+    clippy::too_many_lines, // One arm per DataFrame member, as the library contract lists them.
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss // Numeric column conversions follow the BNData contract (was executor/part9,12,13).
+)]
+
+mod dataframe;
+
+use std::{collections::HashMap, sync::Arc};
+
+use bn_diag::Diagnostic;
+use bn_source::Span;
+use bn_value::{Value, shared_string};
+
+use crate::dataframe::{
+    DataFrameJoin, DataFrameJoinConfig, add_dataframe_column, append_columns, append_rows,
+    column_name, convert_dataframe_column, copy_dataframe_column, dataframe_reduce_column,
+    get_dataframe_cell, join_dataframes, select_dataframe, set_column_label, transpose_dataframe,
+    zscore_column,
+};
+use bn_interp::provider::{CoreContext, Provider};
+use bn_interp::{
+    collect_indices_pub as collect_indices, equals_pub as equals,
+    integer_from_count_pub as integer_from_count, integer_pub as integer,
+    is_not_available_pub as is_not_available, name_not_found, render_pub as render,
+    require_arity_pub as require_arity, runtime_error_pub as runtime_error, type_mismatch,
+};
+use bn_stdlib::Reduction;
+pub use bn_stdlib::{DataProvider as CsvProvider, StandardDataProvider, data_error::DataFailure};
+use bn_types::{FloatType, IntegerType};
+
+type DataFrameResource = crate::dataframe::DataFrameResource<Value>;
+
+pub const NAME: &str = "BNData";
+
+pub struct DataProvider {
+    frames: HashMap<u64, DataFrameResource>,
+    holders: HashMap<u64, usize>,
+    next: u64,
+    csv: Arc<dyn CsvProvider>,
+}
+
+impl std::fmt::Debug for DataProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DataProvider")
+            .field("frames", &self.frames)
+            .field("holders", &self.holders)
+            .field("next", &self.next)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Default for DataProvider {
+    fn default() -> Self {
+        Self::with_csv_provider(Arc::new(StandardDataProvider))
+    }
+}
+
+impl DataProvider {
+    #[must_use]
+    pub fn with_csv_provider(csv: Arc<dyn CsvProvider>) -> Self {
+        Self {
+            frames: HashMap::new(),
+            holders: HashMap::new(),
+            next: 1,
+            csv,
+        }
+    }
+}
+
+impl Provider for DataProvider {
+    fn call(
+        &mut self,
+        core: &mut dyn CoreContext,
+        member: &str,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        let name = format!("BNData.{member}");
+        if matches!(member.rsplit('.').next(), Some("CONSTRUCTOR" | "$fields")) {
+            return Ok(Value::Null);
+        }
+        if member.contains("DataFrame.") {
+            return self.dataframe_call(core, &name, &arguments, span);
+        }
+        if member.ends_with("ReadCSV") || member.ends_with("WriteCSV") {
+            return self.data_call(core, &name, &arguments, span);
+        }
+        Err(name_not_found(&name, "BNData member", span))
+    }
+
+    fn allocate(&mut self, class: &str, _span: Span) -> Option<Result<Value, Diagnostic>> {
+        (class.rsplit('.').next() == Some("DataFrame")).then(|| {
+            let id = self.next;
+            self.next += 1;
+            self.frames.insert(
+                id,
+                DataFrameResource {
+                    columns: Vec::new(),
+                },
+            );
+            self.holders.insert(id, 1);
+            Ok(Value::DataFrame(id))
+        })
+    }
+
+    fn retain(&mut self, value: &Value, span: Span) -> Option<Result<(), Diagnostic>> {
+        let Value::DataFrame(id) = value else {
+            return None;
+        };
+        Some(match self.holders.get_mut(id) {
+            Some(holders) => {
+                *holders += 1;
+                Ok(())
+            }
+            None => Err(runtime_error(
+                bn_diag::DiagId::USE_AFTER_RELEASE,
+                bn_catalog::text("data", "msg.dataframe_handle_was_already_deleted"),
+                span,
+            )),
+        })
+    }
+
+    fn release(&mut self, value: &Value, span: Span) -> Option<Result<(), Diagnostic>> {
+        let Value::DataFrame(id) = value else {
+            return None;
+        };
+        Some(if let Some(holders) = self.holders.get_mut(id) {
+            *holders -= 1;
+            if *holders == 0 {
+                self.holders.remove(id);
+                self.frames.remove(id);
+            }
+            Ok(())
+        } else {
+            Err(runtime_error(
+                bn_diag::DiagId::DOUBLE_RELEASE,
+                bn_catalog::text("data", "msg.dataframe_handle_was_already_deleted"),
+                span,
+            ))
+        })
+    }
+
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
+    }
+}
+
+impl DataProvider {
+    pub fn insert_frame(&mut self, frame: DataFrameResource) -> u64 {
+        let id = self.next;
+        self.next += 1;
+        self.frames.insert(id, frame);
+        self.holders.insert(id, 1);
+        id
+    }
+
+    fn data_call(
+        &mut self,
+        core: &mut dyn CoreContext,
+        name: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        match name.rsplit('.').next().unwrap_or_default() {
+            "ReadCSV" => {
+                require_arity(name, arguments, 3, span)?;
+                let Value::Boolean(has_header) = arguments[1] else {
+                    return Err(type_mismatch(
+                        "BOOLEAN",
+                        "non-BOOLEAN value",
+                        "FS.File.ReadCSV header flag",
+                        span,
+                    ));
+                };
+                let Value::String(separator) = &arguments[2] else {
+                    return Err(type_mismatch(
+                        "STRING",
+                        "non-STRING value",
+                        "FS.File.ReadCSV separator",
+                        span,
+                    ));
+                };
+                let separator = separator.chars().collect::<Vec<_>>();
+                if separator.len() != 1
+                    || separator[0] == '"'
+                    || separator[0] == '\n'
+                    || separator[0] == '\r'
+                {
+                    return Ok(failed(
+                        name,
+                        &DataFailure::InvalidSeparator(separator.into_iter().collect()),
+                    ));
+                }
+                let text =
+                    match core.call_function("FS.File.ReadAll", arguments[..1].to_vec(), span)? {
+                        Value::String(text) => text,
+                        Value::Error { message, .. } => {
+                            return Ok(failed(name, &DataFailure::IoFailed(message.to_string())));
+                        }
+                        _ => {
+                            return Ok(failed(
+                                name,
+                                &DataFailure::IoFailed("CSV read failed".into()),
+                            ));
+                        }
+                    };
+                let rows = match self.csv.read_csv(&text, separator[0]) {
+                    Ok(rows) => rows,
+                    Err(failure) => {
+                        return Ok(failed(name, &failure));
+                    }
+                };
+                let frame = match bn_stdlib::frame_from_csv_rows(rows, has_header, |value| {
+                    Value::String(shared_string(value))
+                }) {
+                    Ok(frame) => frame,
+                    Err(failure) => {
+                        return Ok(failed(name, &failure));
+                    }
+                };
+                let id = self.insert_frame(frame);
+                Ok(Value::DataFrame(id))
+            }
+            "WriteCSV" => {
+                require_arity(name, arguments, 4, span)?;
+                let Value::File(_) = arguments[0] else {
+                    return Err(type_mismatch(
+                        "FS.File",
+                        "non-FS.File value",
+                        "FS.File.WriteCSV file",
+                        span,
+                    ));
+                };
+                let Value::DataFrame(id) = arguments[1] else {
+                    return Err(type_mismatch(
+                        "DataFrame",
+                        "non-DataFrame value",
+                        "FS.File.WriteCSV data",
+                        span,
+                    ));
+                };
+                let Value::Boolean(write_header) = arguments[2] else {
+                    return Err(type_mismatch(
+                        "BOOLEAN",
+                        "non-BOOLEAN value",
+                        "FS.File.WriteCSV header flag",
+                        span,
+                    ));
+                };
+                let Value::String(separator) = &arguments[3] else {
+                    return Err(type_mismatch(
+                        "STRING",
+                        "non-STRING value",
+                        "FS.File.WriteCSV separator",
+                        span,
+                    ));
+                };
+                let separator = separator.chars().collect::<Vec<_>>();
+                if separator.len() != 1
+                    || separator[0] == '"'
+                    || separator[0] == '\n'
+                    || separator[0] == '\r'
+                {
+                    return Ok(failed(
+                        name,
+                        &DataFailure::InvalidSeparator(separator.into_iter().collect()),
+                    ));
+                }
+                let quote = |value: &Value| {
+                    let text = render(value);
+                    if text.contains([separator[0], '"', '\n', '\r']) {
+                        format!("\"{}\"", text.replace('"', "\"\""))
+                    } else {
+                        text
+                    }
+                };
+                let lines = {
+                    let frame = self.frames.get(&id).ok_or_else(|| {
+                        runtime_error(
+                            bn_diag::DiagId::USE_AFTER_RELEASE,
+                            "DataFrame handle is invalid",
+                            span,
+                        )
+                    })?;
+                    let mut lines = Vec::new();
+                    if write_header {
+                        lines.push(
+                            frame
+                                .columns
+                                .iter()
+                                .map(|column| {
+                                    quote(&Value::String(shared_string(column.name.as_str())))
+                                })
+                                .collect::<Vec<_>>()
+                                .join(&separator[0].to_string()),
+                        );
+                    }
+                    let rows = frame
+                        .columns
+                        .first()
+                        .map_or(0, |column| column.values.len());
+                    lines.extend((0..rows).map(|row| {
+                        frame
+                            .columns
+                            .iter()
+                            .map(|column| quote(&column.values[row]))
+                            .collect::<Vec<_>>()
+                            .join(&separator[0].to_string())
+                    }));
+                    lines
+                };
+                let body = if lines.is_empty() {
+                    String::new()
+                } else {
+                    let mut body = lines.join("\n");
+                    body.push('\n');
+                    body
+                };
+                match core.call_function(
+                    "FS.File.Write",
+                    vec![arguments[0].clone(), Value::String(shared_string(body))],
+                    span,
+                )? {
+                    Value::Error { message, .. } => {
+                        Ok(failed(name, &DataFailure::IoFailed(message.to_string())))
+                    }
+                    _ => Ok(Value::Null),
+                }
+            }
+            _ => Err(name_not_found(name, "BNData function", span)),
+        }
+    }
+
+    fn dataframe_call(
+        &mut self,
+        core: &mut dyn CoreContext,
+        name: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        let Value::DataFrame(id) = arguments.first().cloned().ok_or_else(|| {
+            type_mismatch("DataFrame", "missing receiver", "DataFrame method", span)
+        })?
+        else {
+            return Err(type_mismatch(
+                "DataFrame",
+                "non-DataFrame value",
+                "DataFrame method",
+                span,
+            ));
+        };
+        let method = name.rsplit('.').next().unwrap_or_default();
+        if let Some(kind) = match method {
+            "Join" => Some(DataFrameJoin::Inner),
+            "LeftJoin" => Some(DataFrameJoin::Left),
+            "RightJoin" => Some(DataFrameJoin::Right),
+            "FullJoin" => Some(DataFrameJoin::Full),
+            _ => None,
+        } {
+            return self.dataframe_join(core, name, id, arguments, span, kind);
+        }
+        if method == "AppendRows" || method == "AppendColumns" {
+            return self.dataframe_append(core, name, method, id, arguments, span);
+        }
+        if matches!(
+            method,
+            "AddIntegerColumn" | "AddFloatColumn" | "AddStringColumn" | "AddBooleanColumn"
+        ) {
+            return self.dataframe_add_column(core, name, method, id, arguments, span);
+        }
+        if matches!(method, "RowCount" | "ColumnCount") {
+            return self.dataframe_count(core, name, method, id, arguments, span);
+        }
+        let frame = self.frames.get_mut(&id).ok_or_else(|| {
+            runtime_error(
+                bn_diag::DiagId::USE_AFTER_RELEASE,
+                "DataFrame handle is invalid",
+                span,
+            )
+        })?;
+        match method {
+            "ColumnName" => {
+                require_arity(name, arguments, 2, span)?;
+                let (index, _) = integer(&arguments[1], span)?;
+                let column = i64::try_from(index).unwrap_or(i64::MAX);
+                let Ok(index_usize) = usize::try_from(index) else {
+                    return Ok(failed(
+                        name,
+                        &DataFailure::ColumnIndexOutOfRange {
+                            column,
+                            count: frame.columns.len(),
+                        },
+                    ));
+                };
+                match column_name(frame, index_usize) {
+                    Ok(col_name) => Ok(Value::String(shared_string(col_name))),
+                    Err(_) => Ok(failed(
+                        name,
+                        &DataFailure::ColumnIndexOutOfRange {
+                            column,
+                            count: frame.columns.len(),
+                        },
+                    )),
+                }
+            }
+            "SetLabel" => {
+                require_arity(method, arguments, 3, span)?;
+                let Value::String(old_label) = &arguments[1] else {
+                    return Err(type_mismatch(
+                        "STRING",
+                        "non-STRING value",
+                        "DataFrame.SetLabel old label",
+                        span,
+                    ));
+                };
+                let Value::String(new_label) = &arguments[2] else {
+                    return Err(type_mismatch(
+                        "STRING",
+                        "non-STRING value",
+                        "DataFrame.SetLabel new label",
+                        span,
+                    ));
+                };
+                match set_column_label(frame, old_label, new_label) {
+                    Ok(()) => Ok(Value::Null),
+                    Err(failure) => Ok(failed(name, &failure)),
+                }
+            }
+            "Transpose" => {
+                require_arity(name, arguments, 1, span)?;
+                let transposed =
+                    transpose_dataframe(frame, render, |value| Value::String(shared_string(value)));
+                let new_id = self.insert_frame(transposed);
+                Ok(Value::DataFrame(new_id))
+            }
+            "GetString" | "GetInteger" | "GetFloat" | "GetBoolean" => {
+                require_arity(name, arguments, 3, span)?;
+                let (row, _) = integer(&arguments[1], span)?;
+                let Value::String(column_name) = &arguments[2] else {
+                    return Err(type_mismatch(
+                        "STRING",
+                        "non-STRING value",
+                        "DataFrame column name",
+                        span,
+                    ));
+                };
+                let Ok(row) = usize::try_from(row) else {
+                    return Ok(failed(
+                        name,
+                        &DataFailure::RowIndexOutOfRange {
+                            row: row as i64,
+                            count: frame.columns.first().map_or(0, |c| c.values.len()),
+                        },
+                    ));
+                };
+                let value = match get_dataframe_cell(frame, column_name, row) {
+                    Ok(value) => value.clone(),
+                    Err(failure) => return Ok(failed(name, &failure)),
+                };
+                match method {
+                    "GetString" if matches!(value, Value::String(_) | Value::NotAvailable) => {
+                        Ok(value)
+                    }
+                    "GetInteger" if matches!(value, Value::Integer(_, _) | Value::NotAvailable) => {
+                        Ok(value)
+                    }
+                    "GetFloat" if matches!(value, Value::Float(_, _) | Value::NotAvailable) => {
+                        Ok(value)
+                    }
+                    "GetBoolean" if matches!(value, Value::Boolean(_) | Value::NotAvailable) => {
+                        Ok(value)
+                    }
+                    _ => Ok(failed(
+                        name,
+                        &DataFailure::TypeMismatch {
+                            expected: match method {
+                                "GetString" => "STRING",
+                                "GetInteger" => "INTEGER",
+                                "GetFloat" => "FLOAT",
+                                _ => "BOOLEAN",
+                            },
+                            column: column_name.to_string(),
+                        },
+                    )),
+                }
+            }
+            "ConvertToInteger" | "ConvertToFloat" => {
+                require_arity(name, arguments, 2, span)?;
+                let Value::String(column_name) = &arguments[1] else {
+                    return Err(type_mismatch(
+                        "STRING",
+                        "non-STRING value",
+                        "DataFrame column name",
+                        span,
+                    ));
+                };
+                let to_integer = method == "ConvertToInteger";
+                let converter = |value: &Value| {
+                    let Value::String(text) = value else {
+                        return Err(bn_stdlib::conversion_failed(column_name));
+                    };
+                    Ok(
+                        match bn_stdlib::convert_cell(text, to_integer, column_name)? {
+                            bn_stdlib::ConvertedCell::Integer(number) => {
+                                Value::Integer(i128::from(number), IntegerType::Int32)
+                            }
+                            bn_stdlib::ConvertedCell::Float(number) => {
+                                Value::Float(number, FloatType::Float64)
+                            }
+                            bn_stdlib::ConvertedCell::NotAvailable => Value::NotAvailable,
+                        },
+                    )
+                };
+                match convert_dataframe_column(frame, column_name, converter) {
+                    Ok(()) => Ok(Value::Null),
+                    Err(failure) => Ok(failed(name, &failure)),
+                }
+            }
+            "ZScore" => {
+                require_arity(name, arguments, 2, span)?;
+                let Value::String(column_name) = &arguments[1] else {
+                    return Err(type_mismatch(
+                        "STRING",
+                        "non-STRING value",
+                        "DataFrame column name",
+                        span,
+                    ));
+                };
+                let frame = self.frames.get(&id).ok_or_else(|| {
+                    runtime_error(
+                        bn_diag::DiagId::USE_AFTER_RELEASE,
+                        "DataFrame handle is invalid",
+                        span,
+                    )
+                })?;
+                let to_f64 = |val: &Value| match val {
+                    Value::Integer(number, _) => Some(*number as f64),
+                    Value::Float(number, _) => Some(*number),
+                    _ => None,
+                };
+                let from_f64 = |val: f64| Value::Float(val, FloatType::Float64);
+                let zscored =
+                    match zscore_column(frame, column_name, to_f64, from_f64, &Value::NotAvailable)
+                    {
+                        Ok(frame) => frame,
+                        Err(failure) => return Ok(failed(name, &failure)),
+                    };
+                let new_id = self.insert_frame(zscored);
+                Ok(Value::DataFrame(new_id))
+            }
+            "Mean" | "Median" | "Quartile1" | "Quartile3" | "Mode" | "Stdev" | "Variance"
+            | "Range" | "Min" | "Max" => {
+                require_arity(name, arguments, 2, span)?;
+                let Value::String(column_name) = &arguments[1] else {
+                    return Err(type_mismatch(
+                        "STRING",
+                        "non-STRING value",
+                        "DataFrame column name",
+                        span,
+                    ));
+                };
+                let to_f64 = |val: &Value| match val {
+                    Value::Integer(number, _) => Ok(Some(*number as f64)),
+                    Value::Float(number, _) => Ok(Some(*number)),
+                    Value::NotAvailable => Ok(None),
+                    _ => Err(DataFailure::NonNumericColumn(column_name.to_string())),
+                };
+                match dataframe_reduce_column(frame, column_name, method, to_f64) {
+                    Ok(Reduction::Float(val)) => Ok(Value::Float(val, FloatType::Float64)),
+                    Ok(Reduction::Na) => Ok(Value::NotAvailable),
+                    Err(failure) => Ok(failed(name, &failure)),
+                }
+            }
+            "CopyIntegerColumn" | "CopyFloatColumn" => {
+                require_arity(name, arguments, 3, span)?;
+                let Value::String(column_name) = &arguments[1] else {
+                    return Err(type_mismatch(
+                        "STRING",
+                        "non-STRING value",
+                        "DataFrame column name",
+                        span,
+                    ));
+                };
+                let Value::Pointer { handle, .. } = arguments[2] else {
+                    return Err(type_mismatch(
+                        "pointer",
+                        "non-pointer value",
+                        "DataFrame column copy",
+                        span,
+                    ));
+                };
+                let target_len = core.memory().len(handle, span)?;
+                let adapter = |value: &Value| match (method, value) {
+                    ("CopyIntegerColumn", Value::Integer(number, _)) => {
+                        let ok_i32 = bn_stdlib::copy_integer_element(*number)?;
+                        Ok(Value::Integer(i128::from(ok_i32), IntegerType::Int32))
+                    }
+                    ("CopyFloatColumn", Value::Float(number, _)) => {
+                        Ok(Value::Float(*number, FloatType::Float64))
+                    }
+                    _ => Err(DataFailure::TypeMismatch {
+                        expected: if method == "CopyIntegerColumn" {
+                            "INTEGER"
+                        } else {
+                            "FLOAT"
+                        },
+                        column: column_name.to_string(),
+                    }),
+                };
+                let values = match copy_dataframe_column(frame, column_name, target_len, adapter) {
+                    Ok(values) => values,
+                    Err(failure) => return Ok(failed(name, &failure)),
+                };
+                for (index, stored) in values.into_iter().enumerate() {
+                    *core.memory_mut().get_mut(handle, index, span)? = stored;
+                }
+                Ok(Value::Null)
+            }
+            "Select" | "Slice" => self.dataframe_select_slice(core, method, id, arguments, span),
+            _ => Err(name_not_found(method, "DataFrame method", span)),
+        }
+    }
+
+    fn dataframe_select_slice(
+        &mut self,
+        core: &mut dyn CoreContext,
+        method: &str,
+        id: u64,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        let frame = self.frames.get(&id).ok_or_else(|| {
+            runtime_error(
+                bn_diag::DiagId::USE_AFTER_RELEASE,
+                "DataFrame handle is invalid",
+                span,
+            )
+        })?;
+        let selected = if method == "Select" {
+            require_arity(method, arguments, 3, span)?;
+            let row_indices = signed_indices(collect_indices(&arguments[1], core.memory(), span)?);
+            let column_indices =
+                signed_indices(collect_indices(&arguments[2], core.memory(), span)?);
+            select_dataframe(frame, &row_indices, &column_indices)
+        } else {
+            require_arity(method, arguments, 5, span)?;
+            let (start_row, _) = integer(&arguments[1], span)?;
+            let (row_count, _) = integer(&arguments[2], span)?;
+            let (start_col, _) = integer(&arguments[3], span)?;
+            let (col_count, _) = integer(&arguments[4], span)?;
+            let [start_row, row_count, start_col, col_count] =
+                [start_row, row_count, start_col, col_count].map(saturating_i64);
+            bn_stdlib::slice_dataframe(frame, start_row, row_count, start_col, col_count)
+        };
+        let selected = match selected {
+            Ok(frame) => frame,
+            Err(failure) => return Ok(failed(&format!("BNData.DataFrame.{method}"), &failure)),
+        };
+        let new_id = self.insert_frame(selected);
+        Ok(Value::DataFrame(new_id))
+    }
+
+    fn dataframe_join(
+        &mut self,
+        _core: &mut dyn CoreContext,
+        name: &str,
+        id: u64,
+        arguments: &[Value],
+        span: Span,
+        kind: DataFrameJoin,
+    ) -> Result<Value, Diagnostic> {
+        require_arity(name, arguments, 4, span)?;
+        let Value::DataFrame(other_id) = arguments[1] else {
+            return Err(type_mismatch(
+                "DataFrame",
+                "non-DataFrame value",
+                "join",
+                span,
+            ));
+        };
+        let Value::String(left_label) = &arguments[2] else {
+            return Err(type_mismatch(
+                "STRING",
+                "non-STRING value",
+                "join left key",
+                span,
+            ));
+        };
+        let Value::String(right_label) = &arguments[3] else {
+            return Err(type_mismatch(
+                "STRING",
+                "non-STRING value",
+                "join right key",
+                span,
+            ));
+        };
+        let left = self.frames.get(&id).ok_or_else(|| {
+            runtime_error(
+                bn_diag::DiagId::USE_AFTER_RELEASE,
+                "DataFrame handle is invalid",
+                span,
+            )
+        })?;
+        let right = self.frames.get(&other_id).ok_or_else(|| {
+            runtime_error(
+                bn_diag::DiagId::USE_AFTER_RELEASE,
+                "DataFrame handle is invalid",
+                span,
+            )
+        })?;
+        let not_available = Value::NotAvailable;
+        let frame = match join_dataframes(
+            left,
+            right,
+            &DataFrameJoinConfig {
+                left_label,
+                right_label,
+                kind,
+                equals,
+                is_not_available,
+                not_available: &not_available,
+            },
+        ) {
+            Ok(frame) => frame,
+            Err(failure) => {
+                return Ok(failed(name, &failure));
+            }
+        };
+        let new_id = self.insert_frame(frame);
+        Ok(Value::DataFrame(new_id))
+    }
+
+    fn dataframe_append(
+        &mut self,
+        _core: &mut dyn CoreContext,
+        name: &str,
+        method: &str,
+        id: u64,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        require_arity(name, arguments, 2, span)?;
+        let Value::DataFrame(other_id) = arguments[1] else {
+            return Err(type_mismatch(
+                "DataFrame",
+                "non-DataFrame value",
+                method,
+                span,
+            ));
+        };
+        let left = self.frames.get(&id).ok_or_else(|| {
+            runtime_error(
+                bn_diag::DiagId::USE_AFTER_RELEASE,
+                "DataFrame handle is invalid",
+                span,
+            )
+        })?;
+        let right = self.frames.get(&other_id).ok_or_else(|| {
+            runtime_error(
+                bn_diag::DiagId::USE_AFTER_RELEASE,
+                "DataFrame handle is invalid",
+                span,
+            )
+        })?;
+        if method == "AppendRows" {
+            let columns = match append_rows(left, right, is_not_available, |left, right| {
+                std::mem::discriminant(left) == std::mem::discriminant(right)
+            }) {
+                Ok(frame) => frame,
+                Err(failure) => {
+                    return Ok(failed(name, &failure));
+                }
+            };
+            let new_id = self.insert_frame(columns);
+            return Ok(Value::DataFrame(new_id));
+        }
+        let columns = match append_columns(left, right) {
+            Ok(frame) => frame,
+            Err(failure) => {
+                return Ok(failed(name, &failure));
+            }
+        };
+        let new_id = self.insert_frame(columns);
+        Ok(Value::DataFrame(new_id))
+    }
+
+    fn dataframe_add_column(
+        &mut self,
+        core: &mut dyn CoreContext,
+        name: &str,
+        method: &str,
+        id: u64,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        let frame = self.frames.get_mut(&id).ok_or_else(|| {
+            runtime_error(
+                bn_diag::DiagId::USE_AFTER_RELEASE,
+                "DataFrame handle is invalid",
+                span,
+            )
+        })?;
+
+        require_arity(name, arguments, 3, span)?;
+        let Value::String(column_name) = &arguments[1] else {
+            return Err(type_mismatch(
+                "STRING",
+                "non-STRING value",
+                "DataFrame.AddColumn name",
+                span,
+            ));
+        };
+        let values = match &arguments[2] {
+            Value::Vector(values) => values.clone(),
+            Value::Pointer { handle, .. } => (0..core.memory().len(*handle, span)?)
+                .map(|index| core.memory().get(*handle, index, span).cloned())
+                .collect::<Result<Vec<_>, _>>()?,
+            _ => {
+                return Err(type_mismatch(
+                    "vector",
+                    "non-vector value",
+                    "DataFrame.AddColumn values",
+                    span,
+                ));
+            }
+        };
+        let type_ok = values.iter().all(|value| match method {
+            "AddIntegerColumn" => matches!(value, Value::Integer(_, _)),
+            "AddFloatColumn" => matches!(value, Value::Float(_, _)),
+            "AddStringColumn" => matches!(value, Value::String(_)),
+            "AddBooleanColumn" => matches!(value, Value::Boolean(_)),
+            _ => false,
+        });
+        if !type_ok {
+            return Ok(failed(
+                name,
+                &DataFailure::TypeMismatch {
+                    expected: match method {
+                        "AddIntegerColumn" => "INTEGER",
+                        "AddFloatColumn" => "FLOAT",
+                        "AddStringColumn" => "STRING",
+                        _ => "BOOLEAN",
+                    },
+                    column: column_name.to_string(),
+                },
+            ));
+        }
+        match add_dataframe_column(frame, column_name.to_string(), values) {
+            Ok(()) => Ok(Value::Null),
+            Err(failure) => Ok(failed(name, &failure)),
+        }
+    }
+
+    fn dataframe_count(
+        &mut self,
+        _core: &mut dyn CoreContext,
+        name: &str,
+        method: &str,
+        id: u64,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        require_arity(name, arguments, 1, span)?;
+        let frame = self.frames.get(&id).ok_or_else(|| {
+            runtime_error(
+                bn_diag::DiagId::USE_AFTER_RELEASE,
+                "DataFrame handle is invalid",
+                span,
+            )
+        })?;
+        if method == "RowCount" {
+            integer_from_count(
+                frame
+                    .columns
+                    .first()
+                    .map_or(0, |column| column.values.len()),
+                span,
+            )
+        } else {
+            integer_from_count(frame.columns.len(), span)
+        }
+    }
+}
+
+/// The `Error` of a failed member `name` (`BNData.DataFrame.ZScore`),
+/// with the report the native ABI records for the same failure.
+fn failed(name: &str, failure: &DataFailure) -> Value {
+    let mut parts = name.rsplit('.');
+    let method = parts.next().unwrap_or_default();
+    let class = parts.next().unwrap_or_default();
+    let op_name = if class.is_empty() || class == "BNData" {
+        format!("BNData.{method}")
+    } else {
+        format!("BNData.{class}.{method}")
+    };
+    Value::error_report(failure.code(), &op_name, failure.message(), failure.cause())
+}
+
+/// An interpreter `INTEGER` as the `i64` the `DataFrame` primitives check;
+/// a value beyond `i64` saturates and is reported out of range.
+fn saturating_i64(value: i128) -> i64 {
+    i64::try_from(value).unwrap_or(if value < 0 { i64::MIN } else { i64::MAX })
+}
+
+fn signed_indices(values: Vec<i128>) -> Vec<i64> {
+    values.into_iter().map(saturating_i64).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bn_types::IntegerType;
+
+    #[test]
+    fn module_constants_match_the_runtime_codes() {
+        let module = include_str!("../../../modules/bn/BNData.bn");
+        for (name, value) in bn_types::error_codes::data::ALL {
+            let line = format!("EXPORT CONST {name} AS INTEGER = {value}");
+            assert!(module.contains(&line), "BNData.bn lacks `{line}`");
+        }
+    }
+
+    #[test]
+    fn copy_integer_adapter_rejects_out_of_range_value() {
+        let mut provider = DataProvider::default();
+        let frame = bn_stdlib::DataFrameResource {
+            columns: vec![bn_stdlib::DataFrameColumn {
+                name: "col".to_string(),
+                values: vec![Value::Integer(3_000_000_000, IntegerType::Int64)],
+            }],
+        };
+        provider.frames.insert(1, frame);
+        let res = provider.frames.get(&1).unwrap();
+        let adapter = |value: &Value| match value {
+            Value::Integer(number, _) => {
+                let ok_i32 = bn_stdlib::copy_integer_element(*number)?;
+                Ok(Value::Integer(i128::from(ok_i32), IntegerType::Int32))
+            }
+            _ => unreachable!(),
+        };
+        let err = bn_stdlib::copy_dataframe_column(res, "col", 1, adapter).unwrap_err();
+        assert_eq!(
+            err,
+            DataFailure::InvalidFormat("integer out of range".into())
+        );
+        assert_eq!(err.code(), bn_types::error_codes::data::INVALID_FORMAT);
+    }
+}

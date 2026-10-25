@@ -42,22 +42,7 @@ fn files(directory: &Path, extensions: &[&str], out: &mut Vec<PathBuf>) {
     }
 }
 
-/// The C exports of `bn_rt`, read from the built archive (`nm -g`, as the
-/// ABI gate of `compiler_capabilities.rs` does), so the exports a macro
-/// generates are seen too. Run `cargo build -p bn_rt` first (or set
-/// `BN_RT_LIB`).
-fn exports() -> BTreeSet<String> {
-    let archive = std::env::var_os("BN_RT_LIB").map_or_else(
-        || {
-            let name = if cfg!(windows) {
-                "bn_rt.lib"
-            } else {
-                "libbn_rt.a"
-            };
-            PathBuf::from("target/debug").join(name)
-        },
-        PathBuf::from,
-    );
+fn archive_exports(archive: &Path) -> BTreeSet<String> {
     let nm = ["llvm-nm", "nm"]
         .into_iter()
         .find_map(|name| {
@@ -72,7 +57,7 @@ fn exports() -> BTreeSet<String> {
         .expect("llvm-nm or nm is required for the dead C ABI gate");
     let output = std::process::Command::new(nm)
         .arg("-g")
-        .arg(&archive)
+        .arg(archive)
         .output()
         .expect("run nm");
     assert!(
@@ -93,6 +78,40 @@ fn exports() -> BTreeSet<String> {
             })
         })
         .collect()
+}
+
+/// The C exports of `bn_rt` and `bn_stdlib`, read from the built archives
+/// (`nm -g`, as the ABI gate of `compiler_capabilities.rs` does), so the
+/// exports a macro generates are seen too. Run `cargo build -p bn_rt -p bn_stdlib`
+/// first (or set `BN_RT_LIB` / `BN_STDLIB_LIB`).
+fn exports() -> BTreeSet<String> {
+    let rt_archive = std::env::var_os("BN_RT_LIB").map_or_else(
+        || {
+            let name = if cfg!(windows) {
+                "bn_rt.lib"
+            } else {
+                "libbn_rt.a"
+            };
+            PathBuf::from("target/debug").join(name)
+        },
+        PathBuf::from,
+    );
+    let stdlib_archive = std::env::var_os("BN_STDLIB_LIB").map_or_else(
+        || {
+            let name = if cfg!(windows) {
+                "bn_stdlib.lib"
+            } else {
+                "libbn_stdlib.a"
+            };
+            PathBuf::from("target/debug").join(name)
+        },
+        PathBuf::from,
+    );
+    let mut symbols = archive_exports(&rt_archive);
+    if stdlib_archive.is_file() {
+        symbols.extend(archive_exports(&stdlib_archive));
+    }
+    symbols
 }
 
 /// Every word of the code that can reach an export.

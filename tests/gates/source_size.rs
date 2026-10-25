@@ -16,7 +16,7 @@ const MAX_LINES: usize = 1000;
 const CEILINGS: &[(&str, usize)] = &[
     ("crates/bn_diag/src/lib.rs", 2200),
     ("crates/bn_ir/src/validate.rs", 1024),
-    ("crates/bn_rt/src/dataframe_abi.rs", 1528),
+    ("libraries/bn_stdlib/src/dataframe_abi.rs", 1528),
     ("crates/bn_llvm/src/lib.rs", 1065),
     ("crates/bn_host_net/src/lib.rs", 1029),
 ];
@@ -53,6 +53,10 @@ fn source_files_stay_within_their_line_budget() {
         if source.is_dir() {
             rust_sources(&source, &mut files);
         }
+    }
+    let stdlib_src = root.join("libraries/bn_stdlib/src");
+    if stdlib_src.is_dir() {
+        rust_sources(&stdlib_src, &mut files);
     }
     let prefix = format!("{}/", root.to_string_lossy().replace('\\', "/"));
     let mut violations = Vec::new();

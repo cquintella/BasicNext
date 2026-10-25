@@ -275,8 +275,9 @@ Full llvm-declared list is in the index below (every `bn_rt_json_*` declared in 
 ## LLVM-declared runtime symbol index (0.6.5)
 
 The exact declaration index below complements the ownership groups above.
-`tests/compiler_capabilities.rs` verifies each symbol against the built static archive
-(including macro-generated exports), rather than treating source text as proof
+`tests/compiler_capabilities.rs` verifies each symbol against the built static archives
+(`libbn_rt.a` for core language and `HOST` symbols, `libbn_stdlib.a` under `libraries/bn_stdlib`
+for optional `BN*` standard library symbols), rather than treating source text as proof
 of an exported ABI. This index does not expand the advertised language subset.
 
 ```text llvm-emitted-bn-rt-symbols

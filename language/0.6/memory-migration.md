@@ -39,4 +39,4 @@ A short overlay note also sits at the top of that book file pointing here.
 ## Related
 
 - Conformance: [`arc-conformance.md`](arc-conformance.md)
-- Plan locks: [`todo/proposals/bucket-0.5.0-corrective.md`](../../todo/proposals/bucket-0.5.0-corrective.md)
+- Normative semantics and grammar: [`0.6.md`](0.6.md), [`0.6.ebnf`](0.6.ebnf)

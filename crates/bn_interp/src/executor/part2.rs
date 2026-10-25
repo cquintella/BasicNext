@@ -149,6 +149,14 @@ impl Executor<'_, '_> {
                         *span,
                     )
                 })?;
+                if let Some(emitter) = self.emitter.as_deref_mut() {
+                    emitter.emit(&Event::VariableRead {
+                        name: format!("symbol#{}", symbol.value()),
+                        value: format!("{loaded:?}"),
+                        depth: self.call_depth,
+                        span: *span,
+                    });
+                }
                 let loaded = if weak { self.weak_read(loaded) } else { loaded };
                 set(values, *destination, loaded);
             }
@@ -169,6 +177,14 @@ impl Executor<'_, '_> {
                         "assigned vector length differs from the declared length",
                         *span,
                     ));
+                }
+                if let Some(emitter) = self.emitter.as_deref_mut() {
+                    emitter.emit(&Event::VariableWrite {
+                        name: format!("symbol#{}", symbol.value()),
+                        new_value: format!("{stored:?}"),
+                        depth: self.call_depth,
+                        span: *span,
+                    });
                 }
                 let replaced = symbols.insert(*symbol, stored).unwrap_or(Value::Null);
                 if let Some(previous) = previous {

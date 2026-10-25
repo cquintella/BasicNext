@@ -116,7 +116,7 @@ jobs:
         shell: bash
         run: |
           # Native bnc links these staticlibs; cargo test alone may not emit them.
-          cargo build --locked -p bn_rt -p bn_web
+          cargo build --locked -p bn_rt -p bn_stdlib -p bn_web
           cargo build --locked --workspace --bins
 
       - name: Test
@@ -158,7 +158,7 @@ jobs:
           set -euo pipefail
           rustup target add ${{ matrix.target }}
           cargo build --release --locked --target ${{ matrix.target }} -p bni -p bnc --bin bni --bin bnc
-          cargo build --release --locked --target ${{ matrix.target }} -p bn_rt
+          cargo build --release --locked --target ${{ matrix.target }} -p bn_rt -p bn_stdlib
       - name: Stage assets
         shell: bash
         run: |

@@ -18,10 +18,10 @@ use std::{
 use super::secure_fs::{OpenMode, RootedDir};
 
 pub(crate) const POLICY_CLOCK: u64 = 1 << 0;
-pub(crate) const POLICY_CONSOLE: u64 = 1 << 1;
+pub const POLICY_CONSOLE: u64 = 1 << 1;
 pub const POLICY_FILESYSTEM: u64 = 1 << 2;
 pub(crate) const POLICY_NET: u64 = 1 << 3;
-pub(crate) const POLICY_DISPATCH: u64 = 1 << 4;
+pub const POLICY_DISPATCH: u64 = 1 << 4;
 pub(crate) const POLICY_RANDOM: u64 = 1 << 5;
 pub(crate) const POLICY_EXEC: u64 = 1 << 6;
 pub(crate) const POLICY_ENV: u64 = 1 << 7;
@@ -446,7 +446,7 @@ pub(crate) fn reset_for_tests() -> PolicyTestGuard {
 }
 
 #[must_use]
-pub(crate) fn allows(capability: u64) -> bool {
+pub fn allows(capability: u64) -> bool {
     current().allows(capability)
 }
 
@@ -460,17 +460,17 @@ pub(crate) fn env_policy() -> bn_host_env::Policy {
     current().env()
 }
 
-#[cfg(feature = "sqlite")]
-pub(crate) fn allows_path(path: &Path, write: bool) -> bool {
+#[must_use]
+pub fn allows_path(path: &Path, write: bool) -> bool {
     current().fs().allows_path(path, write)
 }
 
 /// Runs `f` against the effective filesystem policy.
-pub(crate) fn with_fs<T>(f: impl FnOnce(&FsPolicy) -> T) -> T {
+pub fn with_fs<T>(f: impl FnOnce(&FsPolicy) -> T) -> T {
     f(current().fs())
 }
 
-pub(crate) fn open_path(path: &Path, mode: OpenMode) -> io::Result<File> {
+pub fn open_path(path: &Path, mode: OpenMode) -> io::Result<File> {
     current().fs().open(path, mode)
 }
 

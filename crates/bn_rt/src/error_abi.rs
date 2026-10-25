@@ -33,12 +33,12 @@ thread_local! {
 
 /// Records the failure of the current ABI call with only a message (code 1);
 /// the emitted code reads it back into the `Error` it builds.
-pub(crate) fn set_error(message: impl Into<String>) {
+pub fn set_error(message: impl Into<String>) {
     set_error_report(1, "", message, "");
 }
 
 /// Records the full `Error` of the current ABI call.
-pub(crate) fn set_error_report(
+pub fn set_error_report(
     code: i32,
     operation: &str,
     message: impl Into<String>,
@@ -202,7 +202,7 @@ pub extern "C" fn bn_rt_error_field(error: *const c_char, field: i32) -> *const 
 
 /// The code and message of an `Error` a compiled worker returned: its record
 /// when `error` is one, else `fallback_code` and `error` as a plain message.
-pub(crate) fn code_and_message(error: *const c_char, fallback_code: i64) -> (i64, String) {
+pub fn code_and_message(error: *const c_char, fallback_code: i64) -> (i64, String) {
     let code = if is_record(error) {
         bn_rt_error_code(error)
     } else {

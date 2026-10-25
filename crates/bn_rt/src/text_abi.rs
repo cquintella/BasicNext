@@ -14,7 +14,7 @@ use super::{LibcStdout, c_string};
 /// A `malloc`ed NUL-terminated copy of `value` for the emitted code to own,
 /// or null when memory runs out.
 #[allow(unsafe_code)] // malloc and a bounded copy into the new block.
-pub(crate) fn owned_c_string(value: &[u8]) -> *mut c_char {
+pub fn owned_c_string(value: &[u8]) -> *mut c_char {
     super::string::c_string_from_bytes(value)
 }
 

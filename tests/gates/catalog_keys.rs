@@ -77,7 +77,7 @@ fn references() -> (BTreeSet<(String, String)>, BTreeSet<String>) {
                 }
             }
         }
-        if path.starts_with("crates/bn_core_log") {
+        if path.starts_with("crates/bn_core_log") || path.starts_with("libraries/bn_core_log") {
             for call in ["catalog::text(", "catalog::fill(", "catalog::words("] {
                 for (index, _) in source.match_indices(call) {
                     if source[..index].ends_with("bn_") {

@@ -33,9 +33,9 @@ use bn_interp::{
     require_arity_pub as require_arity, run_isolated, runtime_error_pub as runtime_error,
     type_mismatch,
 };
-use bn_rt::web_error::WebFailure;
 use bn_runtime::Handle;
 use bn_types::IntegerType;
+use bn_web::WebFailure;
 
 pub const NAME: &str = "BNWeb";
 

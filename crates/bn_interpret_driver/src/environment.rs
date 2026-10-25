@@ -8,6 +8,9 @@ use std::env;
 use bn_cli::options::Options;
 use bn_interp::HostEnv;
 
+#[cfg(feature = "lib-data")]
+pub use bn_lib_data::{CsvProvider, DataFailure};
+
 /// The providers this build ships. A `HostEnv` starts with **empty**
 /// registries (the language alone); the binaries and tests add the shipped
 /// `BN*` libraries and HOST capabilities through this trait, so the core
@@ -17,6 +20,9 @@ pub trait HostEnvDefaults {
     fn with_default_providers(self) -> Self;
     #[must_use]
     fn with_default_providers_with_ffi(self, ffi_paths: &[std::path::PathBuf]) -> Self;
+    #[cfg(feature = "lib-data")]
+    #[must_use]
+    fn with_data_provider(self, provider: std::sync::Arc<dyn CsvProvider>) -> Self;
 }
 
 impl HostEnvDefaults for HostEnv {
@@ -27,6 +33,18 @@ impl HostEnvDefaults for HostEnv {
     fn with_default_providers_with_ffi(self, ffi_paths: &[std::path::PathBuf]) -> Self {
         self.with_libraries(crate::libraries::default_libraries(ffi_paths))
             .with_hosts(crate::hosts::default_hosts())
+    }
+
+    #[cfg(feature = "lib-data")]
+    fn with_data_provider(self, provider: std::sync::Arc<dyn CsvProvider>) -> Self {
+        self.with_library(
+            bn_lib_data::NAME,
+            std::sync::Arc::new(move || {
+                Box::new(bn_lib_data::DataProvider::with_csv_provider(
+                    std::sync::Arc::clone(&provider),
+                ))
+            }),
+        )
     }
 }
 

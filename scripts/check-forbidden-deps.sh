@@ -66,8 +66,10 @@ declare -a backend_paths=(
   src/dataframe.rs src/llvm.rs src/llvm crates/bn_rt/src crates/bn_runtime/src
   crates/bn_value/src crates/bn_llvm/src crates/bn_interp/src
   crates/bn_host_exec/src crates/bn_host_fs/src crates/bn_host_net/src
-  crates/bn_lib_math/src crates/bn_lib_json/src crates/bn_lib_log/src
-  crates/bn_lib_data/src crates/bn_lib_dispatch/src crates/bn_lib_web/src
+  libraries/bn_stdlib/src libraries/bn_web/src
+  libraries/bn_lib_math/src libraries/bn_lib_json/src libraries/bn_lib_log/src
+  libraries/bn_lib_data/src libraries/bn_lib_dispatch/src libraries/bn_lib_web/src
+  libraries/bn_lib_crypto/src libraries/bn_lib_ffi/src libraries/bn_lib_sqlite/src
   crates/bn_limits/src
 )
 

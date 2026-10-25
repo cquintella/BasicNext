@@ -19,7 +19,6 @@ pub(crate) fn analyze_function<'a>(
     let mut functions = HashMap::new();
     let mut strings = Vec::new();
     let mut input_count = 0;
-    let mut uses_random = false;
     let mut uses_string_concat = false;
     let mut uses_bn_rt = false;
     let mut uses_bn_rt_math = false;
@@ -28,7 +27,6 @@ pub(crate) fn analyze_function<'a>(
     let mut uses_temporal_print = false;
     let mut uses_heap = false;
     let mut uses_arc = !function.weak_symbols.is_empty();
-    let mut seeds_random = false;
     let mut intrinsics = BTreeSet::new();
     let mut def_counts = HashMap::<ValueId, usize>::new();
     let mut input_values = HashSet::new();
@@ -106,7 +104,6 @@ pub(crate) fn analyze_function<'a>(
                             intrinsics.insert(crate::runtime_abi::frame_address());
                         }
                         if matches!(name.as_str(), "HOST.Random.Random" | "HOST.Random.Seed") {
-                            uses_random = true;
                             uses_bn_rt = true;
                         }
                         if is_bn_rt_host_call(name) {
@@ -287,9 +284,6 @@ pub(crate) fn analyze_function<'a>(
                     }) {
                         uses_heap = true;
                         owned_struct_results.insert(*destination);
-                    }
-                    if functions.get(callee) == Some(&"HOST.Random.Seed") {
-                        seeds_random = true;
                     }
                     if matches!(
                         functions
@@ -511,23 +505,6 @@ pub(crate) fn analyze_function<'a>(
             function,
             instruction,
             "an alternative with a STRUCT member",
-        ));
-    }
-    if uses_random && !seeds_random {
-        let instruction = function
-            .blocks
-            .iter()
-            .flat_map(|block| &block.instructions)
-            .find(|instruction| matches!(
-                instruction,
-                Instruction::Call { callee, .. } if functions.get(callee) == Some(&"HOST.Random.Random")
-            ))
-            .expect("random use without seed must come from a call");
-        return Err(unsupported_instruction(
-            module,
-            function,
-            instruction,
-            "HOST.Random.Random without HOST.Random.Seed",
         ));
     }
 

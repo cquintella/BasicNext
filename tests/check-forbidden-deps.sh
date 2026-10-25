@@ -101,14 +101,21 @@ fi
 
 echo "IR model dependency check passed"
 
-# E.S1.a / AC9: bnc must not link or depend on tokio, hyper, or rustls.
-# The web runtime may live in the runtime library/archive, but never in the bnc compiler binary.
-for forbidden in tokio hyper rustls; do
+# E.S1.a / AC9: bnc and bn_rt must not link or depend on external BN* library stacks.
+for forbidden in tokio hyper rustls rusqlite libffi libloading bn_core_json bn_stdlib bn_web; do
   if cargo tree -p bnc -i "$forbidden" >/dev/null 2>&1; then
-    echo "bnc unexpectedly depends on web runtime crate: $forbidden" >&2
+    echo "bnc unexpectedly depends on optional library crate: $forbidden" >&2
+    exit 1
+  fi
+  if cargo tree -p bn_rt -i "$forbidden" >/dev/null 2>&1; then
+    echo "bn_rt unexpectedly depends on optional library crate: $forbidden" >&2
     exit 1
   fi
 done
+if cargo tree -p bn_rt -i serde_json >/dev/null 2>&1; then
+  echo "bn_rt unexpectedly depends on serde_json" >&2
+  exit 1
+fi
 # Positive sanity check: ensure inverted search works on an actual dependency
 if ! cargo tree -p bnc -i bn_frontend >/dev/null 2>&1; then
   echo "cargo tree inverted query sanity check failed for bn_frontend" >&2

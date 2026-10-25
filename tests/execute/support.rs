@@ -18,7 +18,7 @@ pub(crate) use bn_frontend::lowering::lower_graph;
 pub(crate) use bn_frontend::module_graph::load;
 pub(crate) use bn_frontend::semantic::analyze_modules;
 pub(crate) use bn_interp::{HostEnv, execute_with_host, execute_with_host_debug};
-use bn_interpret_driver::environment::HostEnvDefaults;
+pub(crate) use bn_interpret_driver::environment::HostEnvDefaults;
 
 pub(crate) struct ChannelReader {
     pub(crate) receiver: std::sync::mpsc::Receiver<Vec<u8>>,
@@ -137,12 +137,12 @@ pub(crate) fn run_loaded_debug(
 pub(crate) struct InjectedDataProvider;
 pub(crate) static NEXT_PROVIDER: AtomicU64 = AtomicU64::new(0);
 
-impl bn_interp::DataProvider for InjectedDataProvider {
+impl bn_interpret_driver::environment::CsvProvider for InjectedDataProvider {
     fn read_csv(
         &self,
         _text: &str,
         _separator: char,
-    ) -> Result<Vec<Vec<String>>, bn_interp::DataFailure> {
+    ) -> Result<Vec<Vec<String>>, bn_interpret_driver::environment::DataFailure> {
         Ok(vec![vec![String::from("provided")]])
     }
 }

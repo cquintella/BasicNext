@@ -40,12 +40,7 @@ struct SessionState {
     events: Vec<Value>,
 }
 
-#[derive(Clone, Copy, Debug)]
-enum StepMode {
-    Next(usize),
-    In,
-    Out(usize),
-}
+pub use bn_runtime_instrumentation::StepMode;
 
 type SharedSession = Arc<(Mutex<SessionState>, Condvar)>;
 

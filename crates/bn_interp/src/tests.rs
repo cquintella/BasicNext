@@ -273,7 +273,7 @@ fn the_arc_verifier_reports_a_count_without_references() {
     let mut input = std::io::Cursor::new(Vec::<u8>::new());
     let mut output = Vec::new();
     let host = HostEnv::system(Vec::new());
-    let mut executor = Executor::new(&module, &mut input, &mut output, &host, None, None);
+    let mut executor = Executor::new(&module, &mut input, &mut output, &host, None, None, None);
     let held = executor.register_allocation("Box", default_span());
     executor
         .objects

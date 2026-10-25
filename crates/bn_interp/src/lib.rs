@@ -7,10 +7,11 @@ use std::{
     collections::HashMap,
     io::{BufRead, Write},
     path::PathBuf,
-    sync::{Arc, atomic::AtomicU64},
+    sync::atomic::AtomicU64,
     time::{SystemTime, UNIX_EPOCH},
 };
 
+pub use bn_runtime_instrumentation::{Event, EventConsumer, EventContext, EventEmitter};
 use bn_value::{RecordValue, Value, shared_string};
 
 pub mod temporal;
@@ -54,8 +55,6 @@ use numeric::{
 use render::render;
 use temporal_ops::{is_temporal_builtin, temporal_call};
 
-pub use bn_rt::{DataProvider, StandardDataProvider, data_error::DataFailure};
-
 use bn_diag::Diagnostic;
 use bn_ir::{
     Function, Instruction, Module, ModuleId, SymbolId, Terminator, ValidatedModule, ValueId,
@@ -78,7 +77,6 @@ pub struct HostEnv {
     /// Execution policy: capability bits, HOST.Exec ceilings (D-H1-02) and the
     /// filesystem scope — the one type shared with the native runtime (0.5.2a).
     policy: bn_rt::Policy,
-    data_provider: Arc<dyn DataProvider>,
     libraries: provider::Providers,
     hosts: provider::Providers,
 }
@@ -111,7 +109,6 @@ impl Clone for HostEnv {
                 self.random_state.load(std::sync::atomic::Ordering::Relaxed),
             ),
             policy: self.policy.clone(),
-            data_provider: Arc::clone(&self.data_provider),
             libraries: self.libraries.clone(),
             hosts: self.hosts.clone(),
         }
@@ -135,7 +132,6 @@ impl HostEnv {
             clock: ClockKind::System,
             random_state: AtomicU64::new(host_random_seed()),
             policy: bn_rt::Policy::unrestricted(),
-            data_provider: Arc::new(StandardDataProvider),
             libraries: provider::Providers::default(),
             hosts: provider::Providers::default(),
         }
@@ -151,7 +147,6 @@ impl HostEnv {
             },
             random_state: AtomicU64::new(1),
             policy: bn_rt::Policy::unrestricted(),
-            data_provider: Arc::new(StandardDataProvider),
             libraries: provider::Providers::default(),
             hosts: provider::Providers::default(),
         }
@@ -166,7 +161,6 @@ impl HostEnv {
             clock: ClockKind::System,
             random_state: AtomicU64::new(host_random_seed()),
             policy: sandbox_policy(),
-            data_provider: Arc::new(StandardDataProvider),
             libraries: provider::Providers::default(),
             hosts: provider::Providers::default(),
         }
@@ -218,13 +212,6 @@ impl HostEnv {
         self
     }
 
-    /// Replaces the standard-library data provider for this execution.
-    #[must_use]
-    pub fn with_data_provider(mut self, provider: Arc<dyn DataProvider>) -> Self {
-        self.data_provider = provider;
-        self
-    }
-
     /// Restricts filesystem reads and writes to canonicalized directory roots.
     ///
     /// Existing roots must be directories. An empty root list denies that
@@ -269,12 +256,6 @@ impl HostEnv {
         }
     }
 
-    /// CSV/data provider bound to this host.
-    #[must_use]
-    pub fn data_provider(&self) -> &Arc<dyn DataProvider> {
-        &self.data_provider
-    }
-
     /// Filesystem policy in force for this host.
     #[must_use]
     pub fn filesystem(&self) -> &bn_rt::FsPolicy {
@@ -306,6 +287,13 @@ impl HostEnv {
     #[must_use]
     pub fn with_libraries(mut self, libraries: provider::Providers) -> Self {
         self.libraries = libraries;
+        self
+    }
+
+    /// Registers or replaces a single library provider factory on this host.
+    #[must_use]
+    pub fn with_library(mut self, name: &'static str, factory: provider::ProviderFactory) -> Self {
+        self.libraries.register(name, factory);
         self
     }
 
@@ -343,7 +331,6 @@ impl HostEnv {
             clock: self.clock.clone(),
             random_state: AtomicU64::new(seed),
             policy: self.policy.clone(),
-            data_provider: Arc::clone(&self.data_provider),
             libraries: self.libraries.clone(),
             hosts: self.hosts.clone(),
         }
@@ -399,6 +386,7 @@ struct Executor<'a, 'debug> {
     hosts: HashMap<&'static str, Box<dyn provider::Provider>>,
     debug_hook: Option<DebugHook<'debug>>,
     debug_control: Option<DebugControl<'debug>>,
+    emitter: Option<&'debug mut EventEmitter>,
     call_depth: usize,
     ownership_frames: Vec<OwnershipFrame>,
 }
@@ -420,6 +408,7 @@ impl<'a, 'debug> Executor<'a, 'debug> {
         host: &'a HostEnv,
         debug_hook: Option<DebugHook<'debug>>,
         debug_control: Option<DebugControl<'debug>>,
+        emitter: Option<&'debug mut EventEmitter>,
     ) -> Self {
         Self {
             module,
@@ -447,6 +436,7 @@ impl<'a, 'debug> Executor<'a, 'debug> {
             hosts: host.hosts.instantiate(),
             debug_hook,
             debug_control,
+            emitter,
             call_depth: 0,
             ownership_frames: Vec::new(),
         }
@@ -552,7 +542,8 @@ pub fn execute_named_with_host(
     // A fresh module copy: the handles it opens end with it (0.6.md,
     // "Isolation and conformance"; K90).
     bn_core_copy::run(|| {
-        let mut executor = Executor::new(validated.as_module(), input, output, host, None, None);
+        let mut executor =
+            Executor::new(validated.as_module(), input, output, host, None, None, None);
         match executor.function(function, arguments)? {
             Flow::Return(Some(value)) => Ok(value),
             Flow::Return(None) => Ok(Value::Null),
@@ -574,7 +565,30 @@ pub fn execute_validated_with_host(
     output: &mut dyn Write,
     host: &HostEnv,
 ) -> Result<u8, Diagnostic> {
-    execute_with_host_inner(validated.as_module(), input, output, host, None, None)
+    execute_with_host_inner(validated.as_module(), input, output, host, None, None, None)
+}
+
+/// Executes validated IR while reporting execution events to an [`EventEmitter`].
+///
+/// # Errors
+///
+/// Returns the same runtime diagnostics as [`execute_validated_with_host`].
+pub fn execute_validated_with_host_emitter(
+    validated: &ValidatedModule,
+    input: &mut dyn BufRead,
+    output: &mut dyn Write,
+    host: &HostEnv,
+    emitter: Option<&mut EventEmitter>,
+) -> Result<u8, Diagnostic> {
+    execute_with_host_inner(
+        validated.as_module(),
+        input,
+        output,
+        host,
+        None,
+        None,
+        emitter,
+    )
 }
 
 /// Executes `Start` while reporting each interpreter instruction to a caller-owned
@@ -612,6 +626,7 @@ pub(crate) fn execute_validated_with_host_debug(
         output,
         host,
         Some(debug_hook),
+        None,
         None,
     )
 }
@@ -658,6 +673,7 @@ pub fn execute_validated_with_host_debug_control(
         host,
         None,
         Some(debug_control),
+        None,
     )
 }
 
@@ -668,6 +684,7 @@ fn execute_with_host_inner<'debug>(
     host: &HostEnv,
     debug_hook: Option<DebugHook<'debug>>,
     debug_control: Option<DebugControl<'debug>>,
+    emitter: Option<&'debug mut EventEmitter>,
 ) -> Result<u8, Diagnostic> {
     // Only a host without the provider (`--no-filesystem`, a notebook
     // kernel) fails before Start; a policy that denies every path still
@@ -695,8 +712,29 @@ fn execute_with_host_inner<'debug>(
             start.span,
         ));
     }
-    let mut executor = Executor::new(module, input, output, host, debug_hook, debug_control);
-    let flow = executor.function(start, Vec::new())?;
+    let mut executor = Executor::new(
+        module,
+        input,
+        output,
+        host,
+        debug_hook,
+        debug_control,
+        emitter,
+    );
+    let flow = match executor.function(start, Vec::new()) {
+        Ok(flow) => flow,
+        Err(diag) => {
+            if let Some(emitter) = executor.emitter.as_deref_mut() {
+                emitter.emit(&Event::ErrorThrown {
+                    code: diag.code.to_string(),
+                    message: diag.message.to_string(),
+                    depth: executor.call_depth,
+                    span: diag.span,
+                });
+            }
+            return Err(diag);
+        }
+    };
     // Debug builds (the test suite): every count must match the references
     // the program still holds when it ends.
     if cfg!(debug_assertions) {
@@ -732,7 +770,7 @@ pub fn run_isolated<R>(
     bn_core_copy::run(|| {
         let mut input = std::io::Cursor::new(Vec::<u8>::new());
         let mut output = Vec::<u8>::new();
-        let mut executor = Executor::new(module, &mut input, &mut output, host, None, None);
+        let mut executor = Executor::new(module, &mut input, &mut output, host, None, None, None);
         f(&mut executor)
     })
 }

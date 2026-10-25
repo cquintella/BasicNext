@@ -1,8 +1,7 @@
 # ARC / lifetime conformance checklist (0.5.0)
 
 **Status:** Normative checklist for Quorra gate and implementation waves.  
-**Authority:** [`0.6.md`](0.6.md), [`0.6.ebnf`](0.6.ebnf),  
-[`todo/proposals/bucket-0.5.0-corrective.md`](../../todo/proposals/bucket-0.5.0-corrective.md).
+**Authority:** [`0.6.md`](0.6.md), [`0.6.ebnf`](0.6.ebnf).
 
 This document lists **required fixtures**. Programs live in an internal evidence
 directory (**fixtures-first**, Carlos 2026-09-12). They may be **red** until

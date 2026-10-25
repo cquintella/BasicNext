@@ -12,10 +12,20 @@ use std::path::PathBuf;
 
 use bn_cli::options::{OptionExtension, OutputFormat};
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProfileFormat {
+    Table,
+    Json,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InterpreterOptions {
     /// `--trace`: report the execution entry point.
     pub trace: bool,
+    /// `--trace-events <file>`: record NDJSON execution event stream to file.
+    pub trace_events: Option<PathBuf>,
+    /// `--profile table|json`: profile execution timings and display summary upon exit.
+    pub profile: Option<ProfileFormat>,
     /// `false` after `--no-filesystem`: deny `HOST.FileSystem` imports.
     pub filesystem: bool,
     /// `--jupyter-stdin`: announce `INPUT` requests on stderr.
@@ -30,6 +40,8 @@ impl Default for InterpreterOptions {
     fn default() -> Self {
         Self {
             trace: false,
+            trace_events: None,
+            profile: None,
             filesystem: true,
             jupyter_stdin: false,
             output_format: OutputFormat::Text,
@@ -46,6 +58,20 @@ impl OptionExtension for InterpreterOptions {
     ) -> Result<bool, String> {
         match argument {
             "--trace" => self.trace = true,
+            "--trace-events" => {
+                let file = rest
+                    .next()
+                    .filter(|val| !val.starts_with('-'))
+                    .ok_or_else(|| bn_catalog::text("cli", "option.trace_events.expects"))?;
+                self.trace_events = Some(PathBuf::from(file));
+            }
+            "--profile" => {
+                self.profile = match rest.next().as_deref() {
+                    Some("table") => Some(ProfileFormat::Table),
+                    Some("json") => Some(ProfileFormat::Json),
+                    _ => return Err(bn_catalog::text("cli", "option.profile.expects").into()),
+                };
+            }
             "--no-filesystem" => self.filesystem = false,
             "--jupyter-stdin" => self.jupyter_stdin = true,
             "--ffi-path" => {

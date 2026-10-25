@@ -1,0 +1,20 @@
+[package]
+name = "bn_core_log"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.97"
+description = "Basic Next logging core: levels, records, JSON redaction, and transport dispatcher"
+license.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+bn_catalog = { path = "../../crates/bn_catalog" }
+bn_core_text = { path = "../../crates/bn_core_text" }
+bn_host_env = { path = "../../crates/bn_host_env" }
+bn_types = { path = "../../crates/bn_types" }
+
+[lints]
+workspace = true

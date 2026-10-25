@@ -18,6 +18,8 @@ options:
   --trace                    report the execution entry point
   --no-filesystem            deny HOST.FileSystem imports (run only)
   --ffi-path <dir>           add an ordered dynamic library search directory (run only)
+  --trace-events <file>      emit execution event trace to <file> (run only)
+  --profile table|json       emit execution profile summary (run only)
   -v, --verbose              show pipeline stages (repeat for tokens: -v -v)
   -vv                        show stages and tokens
   --module-path <dir>        add an ordered import search directory (repeatable)

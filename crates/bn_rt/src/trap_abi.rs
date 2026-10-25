@@ -146,7 +146,7 @@ const fn join(low: u64, high: i64) -> i128 {
 
 /// [`bn_rt_trap_report`] for `bn_rt`'s own callers.
 #[allow(unsafe_code)] // Reads the site's NUL-terminated constant.
-pub(crate) fn report(text: *const c_char, [first, second]: [i128; 2]) {
+pub fn report(text: *const c_char, [first, second]: [i128; 2]) {
     if text.is_null() {
         return;
     }
@@ -157,6 +157,22 @@ pub(crate) fn report(text: *const c_char, [first, second]: [i128; 2]) {
     let _ = crate::libc_fflush();
     let mut stderr = std::io::stderr().lock();
     let _ = writeln!(stderr, "{}", fill(&text, [first, second]));
+}
+
+pub fn fail(code: &str, message: &str) -> ! {
+    eprintln!("error[{code}]: {message}");
+    std::process::exit(1);
+}
+
+/// Ends the program with the diagnostic `bnc` rendered for the calling site
+/// (`trap`, all facts known when compiling), as `bni` reports the failure;
+/// `code` and `message` only serve a caller that passed no site.
+pub fn fail_at(trap: *const c_char, code: &str, message: &str) -> ! {
+    if trap.is_null() {
+        fail(code, message);
+    }
+    report(trap, [0, 0]);
+    std::process::exit(1);
 }
 
 #[cfg(test)]

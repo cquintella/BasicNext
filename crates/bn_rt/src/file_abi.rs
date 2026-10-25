@@ -12,13 +12,13 @@ use std::sync::{Arc, Mutex};
 
 use super::file::{FileError, OpenFile};
 
-pub(crate) type BNFileHandle = u64;
-pub(crate) const BN_FILE_OK: u32 = 0;
-pub(crate) const BN_FILE_INVALID: u32 = 1;
-pub(crate) const BN_FILE_ERROR: u32 = 2;
-pub(crate) const BN_FILE_POLICY_DENIED: u32 = 3;
+pub type BNFileHandle = u64;
+pub const BN_FILE_OK: u32 = 0;
+pub const BN_FILE_INVALID: u32 = 1;
+pub const BN_FILE_ERROR: u32 = 2;
+pub const BN_FILE_POLICY_DENIED: u32 = 3;
 /// `EOF` from `ReadLine` / `ReadBytes`: a success, not an `Error`.
-pub(crate) const BN_FILE_EOF: u32 = 4;
+pub const BN_FILE_EOF: u32 = 4;
 
 fn authorize() -> Result<(), u32> {
     if super::policy::allows(super::policy::POLICY_FILESYSTEM) {
@@ -107,11 +107,11 @@ fn with_file_unchecked<T>(
     f(&mut slot.file).map_err(|error| failed(&error))
 }
 
-pub(crate) fn read_handle(handle: BNFileHandle) -> Result<String, u32> {
+pub fn read_handle(handle: BNFileHandle) -> Result<String, u32> {
     with_file(handle, OpenFile::read_all)
 }
 
-pub(crate) fn write_handle(handle: BNFileHandle, value: &str) -> Result<(), u32> {
+pub fn write_handle(handle: BNFileHandle, value: &str) -> Result<(), u32> {
     with_file(handle, |file| file.write(value, false))
 }
 
