@@ -79,6 +79,24 @@ impl SessionAccumulator {
         &self.history
     }
 
+    /// Returns accumulated imports across session turns.
+    #[must_use]
+    pub fn imports(&self) -> &[String] {
+        &self.imports
+    }
+
+    /// Returns accumulated constants across session turns.
+    #[must_use]
+    pub fn constants(&self) -> &[String] {
+        &self.constants
+    }
+
+    /// Returns accumulated declarations across session turns.
+    #[must_use]
+    pub fn declarations(&self) -> &[String] {
+        &self.declarations
+    }
+
     /// Resets all accumulated variables, declarations, and history.
     pub fn reset(&mut self) {
         self.imports.clear();
@@ -260,9 +278,6 @@ impl SessionAccumulator {
             buffer.push('\n');
         }
         push_start_header(&mut buffer);
-        for (name, ty) in &self.variables {
-            push_variable_decl(&mut buffer, name, ty);
-        }
         for turn_code in &self.history {
             let trimmed = turn_code.trim();
             if trimmed.starts_with("IMPORT ")

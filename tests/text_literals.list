@@ -1493,7 +1493,6 @@ crates/bn_interpret_driver/src/eval.rs	identifier	CONFIG_INVALID
 crates/bn_interpret_driver/src/eval.rs	identifier	CONFIG_INVALID
 crates/bn_interpret_driver/src/eval.rs	prose	--format expects text or json
 crates/bn_interpret_driver/src/eval.rs	prose	--mode expects snippet or program
-crates/bn_interpret_driver/src/eval.rs	prose	--session is not available
 crates/bn_interpret_driver/src/eval.rs	prose	END FUNCTION\\n
 crates/bn_interpret_driver/src/eval.rs	prose	FUNCTION Start() AS VOID\\n
 crates/bn_interpret_driver/src/eval.rs	prose	FUNCTION Start() AS VOID\\n

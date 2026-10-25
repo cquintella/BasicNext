@@ -7,6 +7,8 @@
 # Interpreter options (bn_interpret_driver).
 option.format.expects = --format expects text or json
 option.format.eval_only = --format is available only with bni eval
+option.session.requires_json = --session requires --format json
+option.session.conflicting_source = bni eval --session cannot be combined with SOURCE or --stdin
 option.sandbox.no_filesystem = --sandbox cannot be combined with --no-filesystem
 option.output.lex_only = -o writes the token stream of bni lex
 option.trace_events.expects = --trace-events expects a file path
@@ -14,6 +16,9 @@ option.profile.expects = --profile expects table or json
 option.trace_events.run_only = --trace-events is available only with bni run
 option.profile.run_only = --profile is available only with bni run
 check.no_trace = check has no execution to trace
+msg.session_invalid_json = Invalid JSON request
+msg.session_unknown_action = Unknown session action
+msg.session_action_missing = Missing action field in JSON request
 
 # Compiler options (bn_compile_driver).
 option.emit.repeated = --emit was specified more than once

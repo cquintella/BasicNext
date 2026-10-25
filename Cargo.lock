@@ -335,6 +335,7 @@ dependencies = [
  "bn_host_fs",
  "bn_host_net",
  "bn_interp",
+ "bn_ir",
  "bn_lib_crypto",
  "bn_lib_data",
  "bn_lib_dispatch",

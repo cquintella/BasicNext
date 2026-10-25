@@ -132,6 +132,7 @@ impl InteractiveSession {
     /// # Errors
     ///
     /// Returns runtime diagnostics on evaluation error or user cancellation.
+    #[allow(clippy::too_many_lines)]
     pub fn execute_submission(
         &mut self,
         validated: &ValidatedModule,

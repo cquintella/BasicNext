@@ -29,6 +29,7 @@ use crate::{options::InterpreterOptions, run::run_loaded};
 enum EvalMode {
     Snippet,
     Program,
+    Session,
 }
 
 fn eval_source(args: Vec<String>) -> Result<(String, Vec<String>, EvalMode), String> {
@@ -36,6 +37,7 @@ fn eval_source(args: Vec<String>) -> Result<(String, Vec<String>, EvalMode), Str
     let mut options = Vec::new();
     let mut program_arguments = Vec::new();
     let mut stdin_source = false;
+    let mut session = false;
     let mut mode = EvalMode::Snippet;
     let mut after_separator = false;
     let mut arguments = args.into_iter();
@@ -50,7 +52,8 @@ fn eval_source(args: Vec<String>) -> Result<(String, Vec<String>, EvalMode), Str
             }
             stdin_source = true;
         } else if argument == "--session" {
-            return Err("--session is not available".into());
+            session = true;
+            mode = EvalMode::Session;
         } else if argument == "--format" {
             options.push(argument);
             options.push(
@@ -107,10 +110,16 @@ fn eval_source(args: Vec<String>) -> Result<(String, Vec<String>, EvalMode), Str
             options.push(argument);
         }
     }
-    if stdin_source == source.is_some() {
+    if session {
+        if stdin_source || source.is_some() {
+            return Err(bn_catalog::text("cli", "option.session.conflicting_source").to_string());
+        }
+    } else if stdin_source == source.is_some() {
         return Err("bni eval requires exactly one source form: SOURCE or --stdin".into());
     }
-    let text = if stdin_source {
+    let text = if session {
+        String::new()
+    } else if stdin_source {
         let mut text = String::new();
         io::stdin()
             .read_to_string(&mut text)
@@ -280,6 +289,32 @@ pub(crate) fn eval(command_arguments: Vec<String>) -> ExitCode {
             return tool_error();
         }
     };
+    if mode == EvalMode::Session {
+        if !json_requested {
+            let message = bn_catalog::text("cli", "option.session.requires_json");
+            let code = bn_diag::DiagId::CONFIG_INVALID.code();
+            eprintln!("{code}: {message}");
+            return tool_error();
+        }
+        let virtual_path = env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(".bn-session.bn");
+        let separator = arguments.iter().position(|argument| argument == "--");
+        if let Some(index) = separator {
+            arguments.insert(index, virtual_path.display().to_string());
+        } else {
+            arguments.push(virtual_path.display().to_string());
+        }
+        let mut interpreter = InterpreterOptions::default();
+        let mut options = match parse_options(arguments.into_iter(), &mut interpreter) {
+            Ok(options) => options,
+            Err(message) => {
+                return eval_json_error(bn_diag::DiagId::CONFIG_INVALID.code(), message, "cli", 2);
+            }
+        };
+        options.output_format = OutputFormat::Json;
+        return crate::session_server::run_session_server(&options, &interpreter);
+    }
     let promotion_span = (mode == EvalMode::Snippet)
         .then(|| eval_top_level_start_span(&snippet))
         .flatten();

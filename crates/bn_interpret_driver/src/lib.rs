@@ -10,3 +10,4 @@ pub(crate) mod hosts;
 pub mod libraries;
 pub mod options;
 pub mod run;
+pub(crate) mod session_server;

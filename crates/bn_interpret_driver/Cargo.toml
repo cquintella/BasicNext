@@ -32,6 +32,7 @@ bn_host_exec = { path = "../bn_host_exec" }
 bn_host_fs = { path = "../bn_host_fs" }
 bn_host_net = { path = "../bn_host_net" }
 bn_interp = { path = "../bn_interp" }
+bn_ir = { path = "../bn_ir" }
 bn_rt = { path = "../bn_rt", default-features = false, features = ["net"] }
 bn_runtime_instrumentation = { path = "../bn_runtime_instrumentation" }
 bn_lib_crypto = { path = "../../libraries/bn_lib_crypto", optional = true }

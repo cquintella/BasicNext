@@ -165,7 +165,7 @@ impl Executor<'_, '_> {
                     if self.call_depth == 0
                         && let Some(captured) = &mut self.session_captured_symbols
                     {
-                        *captured = symbols.clone();
+                        captured.clone_from(&symbols);
                     }
                     return Ok(Flow::Return(returned));
                 }
