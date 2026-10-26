@@ -88,6 +88,10 @@ pub fn main(version: &str, arguments: Vec<String>) -> ExitCode {
                 );
                 bn_cli::output::tool_error()
             },
-            |thread| thread.join().unwrap_or_else(|_| bn_cli::output::tool_error()),
+            |thread| {
+                thread
+                    .join()
+                    .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+            },
         )
 }
