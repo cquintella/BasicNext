@@ -178,10 +178,10 @@ impl ReplSession {
                         .get("_")
                         .map(bn_interp::render_pub)
                         .or_else(|| {
-                            if !stdout.is_empty() {
-                                Some(stdout.trim_end_matches(['\r', '\n']).to_string())
-                            } else {
+                            if stdout.is_empty() {
                                 None
+                            } else {
+                                Some(stdout.trim_end_matches(['\r', '\n']).to_string())
                             }
                         })
                 } else {

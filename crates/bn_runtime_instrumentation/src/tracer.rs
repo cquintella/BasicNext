@@ -47,7 +47,7 @@ impl TracerConsumer {
             .map_or(0, |d| d.as_secs());
         let header = json!({
             "type": "Metadata",
-            "version": "0.6.8",
+            "version": "0.6.9",
             "program": program_name,
             "timestamp_secs": timestamp,
         });

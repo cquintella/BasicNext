@@ -189,7 +189,9 @@ impl Executor<'_, '_> {
                         span: *span,
                     });
                 }
-                let replaced = symbols.insert(*symbol, stored.clone()).unwrap_or(Value::Null);
+                let replaced = symbols
+                    .insert(*symbol, stored.clone())
+                    .unwrap_or(Value::Null);
                 if self.call_depth == 0
                     && let Some(captured) = &mut self.session_captured_symbols
                 {

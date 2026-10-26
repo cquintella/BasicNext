@@ -357,7 +357,7 @@ impl Analyzer {
                     if !is_valid {
                         return Err(type_mismatch(
                             bn_catalog::text("frontend", "msg.string_or_string_or_eof"),
-                            &display(&target_type),
+                            display(&target_type),
                             bn_catalog::text("frontend", "msg.input_target"),
                             *span,
                         ));

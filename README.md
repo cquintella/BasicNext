@@ -98,7 +98,7 @@ The script asks for a prefix (`$HOME/basicnext`, `/opt/basicnext`,
 catalog, and the man pages. It uses `sudo` only when the prefix is not
 writable, and builds from source with `cargo` when the release has no binary
 for your platform. Skip the menu with `--prefix DIR`; pin a release with
-`BN_VERSION=v0.6.8`. The install writes `$HOME/.basicnext/uninstall.sh`.
+`BN_VERSION=v0.6.9`. The install writes `$HOME/.basicnext/uninstall.sh`.
 
 **Windows (PowerShell)**
 
@@ -111,7 +111,7 @@ rights, or to `$env:BN_PREFIX`. It downloads the latest release's `bni.exe`,
 `bnc.exe`, and `bn_rt.lib` (checksum-verified against `SHA256SUMS`), the
 standard-library modules, and the diagnostics catalog, updates the user `PATH`,
 and writes `%USERPROFILE%\.basicnext\uninstall.ps1`. Pin a release with
-`$env:BN_VERSION = 'v0.6.8'`.
+`$env:BN_VERSION = 'v0.6.9'`.
 
 Or from a local repository checkout:
 
@@ -156,6 +156,12 @@ From a checkout, `cargo run -p bni -- run <file>` uses this tree's toolchain.
 | [`examples/parallel-examples.md`](examples/parallel-examples.md) | `BNDispatch`, including a parallel computation of pi |
 
 ## Release notes
+
+### 0.6.9
+
+- **Interactive REPL (`bnr`) stabilization**: dedicated 64MB execution thread matching interpreter stack budget, resolving stack exhaustion on recursion; entry point encapsulation via `__session_entry` synthesis, eliminating recursion and symbol collision with user-defined `FUNCTION Start()`; variable persistence across REPL turns for ARC-managed types (`STRING`, `OBJECT`, `VECTOR`); clean transparent panic propagation on thread join (`resume_unwind`); line-by-line injection test suite passing all 16 canonical examples with full `bni` parity.
+- **Statement-form `INPUT target` with silent `EOF` fallback**: direct support for pure `STRING` targets in `INPUT target` statements with silent `EOF` fallback to empty string `""` across both `bni` and native LLVM runtime (`bn_llvm` / `bn_rt` via `bn_input_str`), while keeping the expression form `INPUT()` strictly typed as `STRING OR EOF`.
+- **Toolchain and Quality Gates**: full compliance with all 34 quality gates (`cargo test --test gates`), zero text literals in production code, catalog key integrity.
 
 ### 0.6.8
 

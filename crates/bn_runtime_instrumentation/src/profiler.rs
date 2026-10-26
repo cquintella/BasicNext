@@ -120,7 +120,7 @@ pub fn render_json<S: std::hash::BuildHasher>(
         b_time.cmp(&a_time)
     });
     json!({
-        "version": "0.6.8",
+        "version": "0.6.9",
         "functions": functions,
     })
 }

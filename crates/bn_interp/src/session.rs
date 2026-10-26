@@ -3,7 +3,7 @@
 // with transactional rollback on runtime errors (W1–W5).
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     io::{BufRead, Write},
     sync::{
         Arc,
@@ -26,7 +26,7 @@ use crate::{
 pub struct ExecutionResult {
     pub exit_code: u8,
     pub returned_value: Option<Value>,
-    pub updated_variables: HashMap<String, Value>,
+    pub updated_variables: BTreeMap<String, Value>,
 }
 
 /// Snapshot of live ARC references and allocations for the `:arc` command.
@@ -47,7 +47,7 @@ pub(crate) struct SessionState {
     pub(crate) objects: Heap<Instance>,
     pub(crate) memory: Heap<Value>,
     pub(crate) pinned_dispatch: Vec<(Handle, String)>,
-    pub(crate) variable_values: HashMap<String, Value>,
+    pub(crate) variable_values: BTreeMap<String, Value>,
 }
 
 /// Persistent interpreter execution session holding memory and providers across turns.
@@ -110,7 +110,7 @@ impl InteractiveSession {
 
     /// Current live variable bindings in the session (name -> current Value).
     #[must_use]
-    pub const fn variables(&self) -> &HashMap<String, Value> {
+    pub const fn variables(&self) -> &BTreeMap<String, Value> {
         &self.state.variable_values
     }
 
@@ -260,7 +260,7 @@ impl InteractiveSession {
 
         // 7. Extract updated variable bindings
         let captured = executor.session_captured_symbols.take().unwrap_or_default();
-        let mut updated_variables = HashMap::new();
+        let mut updated_variables = BTreeMap::new();
         for (name, symbol_id) in variable_symbol_map {
             if let Some(val) = captured.get(symbol_id) {
                 updated_variables.insert(name.clone(), val.clone());

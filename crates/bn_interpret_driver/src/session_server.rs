@@ -154,6 +154,7 @@ fn handle_classify(req: &JsonValue, options: &Options) -> JsonValue {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn handle_submit(
     req: &JsonValue,
     options: &Options,
@@ -234,10 +235,10 @@ fn handle_submit(
                     .get("_")
                     .map(bn_interp::render_pub)
                     .or_else(|| {
-                        if !stdout.is_empty() {
-                            Some(stdout.trim_end_matches(['\r', '\n']).to_string())
-                        } else {
+                        if stdout.is_empty() {
                             None
+                        } else {
+                            Some(stdout.trim_end_matches(['\r', '\n']).to_string())
                         }
                     })
             } else {
@@ -417,7 +418,7 @@ fn handle_arc(session: &InteractiveSession) -> JsonValue {
             json!({
                 "id": obj.id.bits(),
                 "class": &obj.class,
-                "strong_count": obj.strong,
+                "strong": obj.strong,
                 "status": if obj.strong > 0 { "ALIVE" } else { "RELEASED" },
             })
         })

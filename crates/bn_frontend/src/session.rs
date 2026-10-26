@@ -364,11 +364,9 @@ pub fn classify_submission(source: &str) -> SubmissionCompleteness {
                         }
                     }
                 }
-                "UNTIL" => {
-                    // In Basic Next, REPEAT statement is terminated by END REPEAT:
-                    // `REPEAT \n statements \n UNTIL expr \n END REPEAT`
-                    // So OpenBlockKind::Repeat remains on the stack until END REPEAT.
-                }
+                // In Basic Next, REPEAT statement is terminated by END REPEAT:
+                // `REPEAT \n statements \n UNTIL expr \n END REPEAT`
+                // So OpenBlockKind::Repeat remains on the stack until END REPEAT.
                 _ => {}
             }
         }

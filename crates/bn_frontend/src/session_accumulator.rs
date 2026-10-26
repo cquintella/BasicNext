@@ -141,6 +141,7 @@ impl SessionAccumulator {
     /// # Errors
     ///
     /// Returns a diagnostic if the submission fails parsing, semantic analysis, or IR validation.
+    #[allow(clippy::too_many_lines)]
     pub fn compile_submission(
         &mut self,
         submission_source: &str,
