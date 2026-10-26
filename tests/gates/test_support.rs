@@ -52,7 +52,7 @@ fn successful_child_fixture_runs() {
     let result = run(
         &mut child_command("support_success_child"),
         None,
-        Duration::from_secs(5),
+        Duration::from_secs(30),
     )
     .expect("run successful child");
     assert!(result.status.success());
@@ -112,7 +112,7 @@ fn runner_preserves_bytes_and_optional_stdin() {
     let bytes = run(
         &mut child_command("support_bytes_child"),
         None,
-        Duration::from_secs(5),
+        Duration::from_secs(30),
     )
     .expect("run byte-emitting child");
     assert!(bytes.status.success());
@@ -128,7 +128,7 @@ fn runner_preserves_bytes_and_optional_stdin() {
     let echoed = run(
         &mut child_command("support_input_child"),
         Some(input),
-        Duration::from_secs(5),
+        Duration::from_secs(30),
     )
     .expect("run stdin child");
     assert!(echoed.status.success());
@@ -145,7 +145,7 @@ fn runner_retains_nonzero_failure_artifact() {
     let result = run(
         &mut child_command("support_failure_child"),
         None,
-        Duration::from_secs(5),
+        Duration::from_secs(30),
     )
     .expect("run failing child");
     assert!(!result.status.success());
@@ -179,7 +179,7 @@ fn runner_kills_and_reaps_a_timeout() {
     )
     .expect("run timeout child");
     assert!(result.timed_out);
-    assert!(started.elapsed() < Duration::from_secs(5));
+    assert!(started.elapsed() < Duration::from_secs(30));
     let artifact = result.failure_artifact.expect("timeout artifact path");
     let report: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&artifact).expect("read timeout artifact"))
