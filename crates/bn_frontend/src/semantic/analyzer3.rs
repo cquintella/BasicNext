@@ -336,6 +336,33 @@ impl Analyzer {
                         self.expression(value, locals)?;
                     }
                 }
+                Statement::Input {
+                    prompt,
+                    target,
+                    span,
+                } => {
+                    if let Some(prompt) = prompt {
+                        let prompt_type = self.expression(prompt, locals)?;
+                        if prompt_type != Type::String {
+                            return Err(error(
+                                DiagId::INPUT_PROMPT_TYPE,
+                                bn_catalog::text("frontend", "msg.input_prompt_must_be_string"),
+                                prompt.span,
+                            ));
+                        }
+                    }
+                    let target_type = self.assignment_target(target, locals)?;
+                    let is_valid = target_type == Type::String
+                        || matches!(&target_type, Type::Alternative(alts) if alts.contains(&Type::String) && alts.contains(&Type::EndOfFile));
+                    if !is_valid {
+                        return Err(type_mismatch(
+                            bn_catalog::text("frontend", "msg.string_or_string_or_eof"),
+                            &display(&target_type),
+                            bn_catalog::text("frontend", "msg.input_target"),
+                            *span,
+                        ));
+                    }
+                }
                 Statement::ClearScreen { span, .. } | Statement::Beep { span, .. } => {
                     return Err(name_not_found(
                         "the CLS or BEEP statement",

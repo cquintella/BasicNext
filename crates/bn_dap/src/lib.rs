@@ -639,6 +639,7 @@ fn collect_statement_lines(statements: &[bn_frontend::ast::Statement], lines: &m
             | bn_frontend::ast::Statement::Assignment { span, .. }
             | bn_frontend::ast::Statement::Return { span, .. }
             | bn_frontend::ast::Statement::Print { span, .. }
+            | bn_frontend::ast::Statement::Input { span, .. }
             | bn_frontend::ast::Statement::ClearScreen { span, .. }
             | bn_frontend::ast::Statement::Beep { span, .. }
             | bn_frontend::ast::Statement::Release { span, .. }

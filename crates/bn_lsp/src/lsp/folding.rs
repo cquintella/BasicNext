@@ -83,6 +83,7 @@ fn collect_statement_folding_ranges(stmt: &Statement, ranges: &mut Vec<FoldingRa
         | Statement::Assignment { .. }
         | Statement::Return { .. }
         | Statement::Print { .. }
+        | Statement::Input { .. }
         | Statement::ClearScreen { .. }
         | Statement::Beep { .. }
         | Statement::Release { .. }

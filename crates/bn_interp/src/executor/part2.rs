@@ -189,7 +189,12 @@ impl Executor<'_, '_> {
                         span: *span,
                     });
                 }
-                let replaced = symbols.insert(*symbol, stored).unwrap_or(Value::Null);
+                let replaced = symbols.insert(*symbol, stored.clone()).unwrap_or(Value::Null);
+                if self.call_depth == 0
+                    && let Some(captured) = &mut self.session_captured_symbols
+                {
+                    captured.insert(*symbol, stored);
+                }
                 if let Some(previous) = previous {
                     set(values, *previous, replaced);
                 }
@@ -331,8 +336,8 @@ impl Executor<'_, '_> {
             Instruction::Input {
                 destination,
                 prompt,
+                ty,
                 span,
-                ..
             } => {
                 if let Some(prompt) = prompt {
                     write!(self.output, "{}", render(value(values, *prompt, *span)?)).map_err(
@@ -361,7 +366,11 @@ impl Executor<'_, '_> {
                     )
                 })?;
                 let result = if count == 0 {
-                    Value::EndOfFile
+                    if *ty == Type::String {
+                        Value::String(shared_string(String::new()))
+                    } else {
+                        Value::EndOfFile
+                    }
                 } else {
                     while matches!(line.as_bytes().last(), Some(b'\n' | b'\r')) {
                         line.pop();

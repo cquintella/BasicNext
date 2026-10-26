@@ -349,6 +349,7 @@ pub(crate) fn statement_span(statement: &Statement) -> Span {
         | Statement::Assignment { span, .. }
         | Statement::Return { span, .. }
         | Statement::Print { span, .. }
+        | Statement::Input { span, .. }
         | Statement::ClearScreen { span, .. }
         | Statement::Beep { span, .. }
         | Statement::Release { span, .. }
@@ -379,6 +380,9 @@ pub(crate) fn block_uses_self(statements: &[Statement]) -> bool {
         }
         Statement::Return { value, .. } => value.as_ref().is_some_and(expression_uses_self),
         Statement::Print { values, .. } => values.iter().any(expression_uses_self),
+        Statement::Input { prompt, target, .. } => {
+            prompt.as_deref().is_some_and(expression_uses_self) || expression_uses_self(target)
+        }
         Statement::ClearScreen { console: value, .. }
         | Statement::Beep { console: value, .. }
         | Statement::Release { value, .. }
@@ -421,6 +425,9 @@ pub(crate) fn statement_uses_super(statement: &Statement) -> bool {
         }
         Statement::Return { value, .. } => value.as_ref().is_some_and(expression_uses_super),
         Statement::Print { values, .. } => values.iter().any(expression_uses_super),
+        Statement::Input { prompt, target, .. } => {
+            prompt.as_deref().is_some_and(expression_uses_super) || expression_uses_super(target)
+        }
         Statement::ClearScreen { console, .. }
         | Statement::Beep { console, .. }
         | Statement::Release { value: console, .. }
@@ -465,6 +472,10 @@ pub(crate) fn statement_has_invalid_super(statement: &Statement) -> bool {
         }
         Statement::Return { value, .. } => value.as_ref().is_some_and(expression_has_invalid_super),
         Statement::Print { values, .. } => values.iter().any(expression_has_invalid_super),
+        Statement::Input { prompt, target, .. } => {
+            prompt.as_deref().is_some_and(expression_has_invalid_super)
+                || expression_has_invalid_super(target)
+        }
         Statement::ClearScreen { console, .. }
         | Statement::Beep { console, .. }
         | Statement::Release { value: console, .. }

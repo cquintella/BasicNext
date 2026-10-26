@@ -107,6 +107,25 @@ impl Builder<'_> {
                     span: *span,
                 });
             }
+            Statement::Input {
+                prompt,
+                target,
+                span,
+            } => {
+                let prompt = prompt
+                    .as_ref()
+                    .map(|prompt| self.expression(prompt))
+                    .transpose()?;
+                let ty = type_at(self.model, target.span)?;
+                let destination = self.value();
+                self.emit(Instruction::Input {
+                    destination,
+                    prompt,
+                    ty,
+                    span: *span,
+                });
+                self.store_to_target(target, destination, *span)?;
+            }
             Statement::ClearScreen { console, span } => {
                 let console = self.expression(console)?;
                 self.emit(Instruction::ClearScreen {

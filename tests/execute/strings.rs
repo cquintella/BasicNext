@@ -33,3 +33,24 @@ fn asc_and_char_convert_unicode_scalars() {
     let (_, output) = run(source, "").expect("execute ASC and CHAR");
     assert_eq!(output, "233 B\n1\n");
 }
+
+#[test]
+fn input_statement_into_string_target_reads_line() {
+    let source = "FUNCTION Start() AS VOID\nLET name AS STRING = \"initial\"\nINPUT name\nPRINT \"Nome: [\", name, \"]\"\nEND FUNCTION\n";
+    let (_, output) = run(source, "Carlos\n").expect("execute INPUT name");
+    assert_eq!(output, "Nome: [ Carlos ]\n");
+}
+
+#[test]
+fn input_statement_into_string_target_assigns_empty_on_eof() {
+    let source = "FUNCTION Start() AS VOID\nLET name AS STRING = \"initial\"\nINPUT name\nPRINT \"Nome: [\", name, \"]\"\nEND FUNCTION\n";
+    let (_, output) = run(source, "").expect("execute INPUT name on EOF");
+    assert_eq!(output, "Nome: [  ]\n");
+}
+
+#[test]
+fn input_expression_fails_to_bind_to_string_target() {
+    let source = "FUNCTION Start() AS VOID\nLET name AS STRING = INPUT()\nEND FUNCTION\n";
+    let error = run(source, "").expect_err("INPUT() expression must not bind directly to STRING");
+    assert_eq!(error.code, "TYPE_MISMATCH");
+}

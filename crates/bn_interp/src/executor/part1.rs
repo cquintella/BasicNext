@@ -165,7 +165,9 @@ impl Executor<'_, '_> {
                     if self.call_depth == 0
                         && let Some(captured) = &mut self.session_captured_symbols
                     {
-                        captured.clone_from(&symbols);
+                        for (sym, val) in symbols {
+                            captured.insert(sym, val);
+                        }
                     }
                     return Ok(Flow::Return(returned));
                 }

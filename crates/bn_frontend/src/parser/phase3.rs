@@ -255,13 +255,9 @@ impl<'a> Parser<'a> {
             ) {
                 return Err(self.error("INPUT target must be assignable"));
             }
-            Ok(Statement::Assignment {
+            Ok(Statement::Input {
+                prompt,
                 target,
-                operator: "Assign".into(),
-                value: Expression {
-                    kind: ExpressionKind::Input { prompt },
-                    span,
-                },
                 span,
             })
         } else if self.keyword("PRINT") {

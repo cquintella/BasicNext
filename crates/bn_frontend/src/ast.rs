@@ -112,6 +112,11 @@ pub enum Statement {
         values: Vec<Expression>,
         span: Span,
     },
+    Input {
+        prompt: Option<Box<Expression>>,
+        target: Expression,
+        span: Span,
+    },
     ClearScreen {
         console: Expression,
         span: Span,

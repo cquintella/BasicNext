@@ -22,6 +22,7 @@ pub(crate) fn lower_value_emission(
         Instruction::Input {
             destination,
             prompt,
+            ty,
             ..
         } => {
             block_state.constants.remove(destination);
@@ -29,7 +30,12 @@ pub(crate) fn lower_value_emission(
                 let args = vec![(T::Ptr, O::global(".bn_fmt_str")), (T::Ptr, v(*prompt))];
                 text.emit(I::call_variadic(T::I32, vec![T::Ptr], "printf", args));
             }
-            let read = I::call(T::Ptr, "bn_input", vec![(T::Ptr, O::null())]);
+            let func_name = if *ty == Type::String {
+                "bn_input_str"
+            } else {
+                "bn_input"
+            };
+            let read = I::call(T::Ptr, func_name, vec![(T::Ptr, O::null())]);
             text.assign(format!("v{}", destination.0), read);
         }
         Instruction::Length {

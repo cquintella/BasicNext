@@ -845,6 +845,7 @@ pub(crate) fn emit_input_runtime(text: &mut crate::ir::LlvmModule) {
     crate::ir::write_declarations(text, crate::runtime_abi::INPUT_DECLARATIONS);
     text.blank();
     text.function(input_runtime::input_function());
+    text.function(input_runtime::input_str_function());
 }
 
 pub(crate) fn instruction_name(instruction: &Instruction) -> &'static str {
