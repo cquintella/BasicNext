@@ -67,6 +67,11 @@ impl Executor<'_, '_> {
                         *span,
                     ));
                 }
+                if self.call_depth == 0
+                    && let Some(captured) = &mut self.session_captured_symbols
+                {
+                    captured.remove(symbol);
+                }
             }
             Instruction::Constant {
                 destination,

@@ -265,6 +265,8 @@ impl InteractiveSession {
             if let Some(val) = captured.get(symbol_id) {
                 updated_variables.insert(name.clone(), val.clone());
                 self.state.variable_values.insert(name.clone(), val.clone());
+            } else {
+                self.state.variable_values.remove(name);
             }
         }
 

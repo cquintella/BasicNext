@@ -21,7 +21,13 @@
     "bn::test/execute::migrated_execute_tests_match_the_ledger",
     "bn::test/values::migrated_values_tests_match_the_ledger",
     "bn::test/programs::migrated_programs_tests_match_the_ledger",
-    "bn::test/host::migrated_host_tests_match_the_ledger"
+    "bn::test/host::migrated_host_tests_match_the_ledger",
+    "bn::test/execute::strings::input_expression_fails_to_bind_to_string_target",
+    "bn::test/execute::strings::input_statement_into_string_target_assigns_empty_on_eof",
+    "bn::test/execute::strings::input_statement_into_string_target_reads_line",
+    "bn::test/execute::language::timezone_conversion_and_dst_round_trip",
+    "bn::test/programs::parity::timezone_conversion_matches_across_backends",
+    "bn::test/programs::parity::host_net_address_predicates_and_tcp_shutdown_match_across_backends"
   ],
   "matrices": [
     {

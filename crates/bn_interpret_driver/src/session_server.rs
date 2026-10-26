@@ -217,6 +217,11 @@ fn handle_submit(
                         new_var_types.insert(name.clone(), sym.type_name.clone());
                     }
                 }
+                for sym in &model.symbols {
+                    if !res.updated_variables.contains_key(&sym.name) {
+                        accumulator.remove_variable(&sym.name);
+                    }
+                }
             }
             accumulator.commit_turn(source, new_var_types);
 

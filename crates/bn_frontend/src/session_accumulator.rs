@@ -136,6 +136,11 @@ impl SessionAccumulator {
         self.turn += 1;
     }
 
+    /// Removes a variable from the accumulated session symbols.
+    pub fn remove_variable(&mut self, name: &str) {
+        self.variables.remove(name);
+    }
+
     /// Compiles a submission into a fully validated `Prepared` artifact, classifying its submission kind.
     ///
     /// # Errors

@@ -161,6 +161,11 @@ impl ReplSession {
                             new_var_types.insert(name.clone(), sym.type_name.clone());
                         }
                     }
+                    for sym in &model.symbols {
+                        if !res.updated_variables.contains_key(&sym.name) {
+                            self.accumulator.remove_variable(&sym.name);
+                        }
+                    }
                 }
                 self.accumulator.commit_turn(source, new_var_types);
 

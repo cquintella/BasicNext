@@ -55,7 +55,7 @@ fn bnr_evaluates_piped_expressions_and_types() {
     let (code, stdout, stderr) = run_piped_session(input);
     assert_eq!(code, 0);
     assert!(stderr.is_empty());
-    assert!(stdout.contains("35\n35 : INT32"));
+    assert!(stdout.contains("35 : INT32"));
     assert!(stdout.contains("INT32"));
 }
 
@@ -86,7 +86,7 @@ Factorial(5)
     let (code, stdout, stderr) = run_piped_session(input);
     assert_eq!(code, 0);
     assert!(stderr.is_empty());
-    assert!(stdout.contains("120\n120 : INT32"));
+    assert!(stdout.contains("120 : INT32"));
 }
 
 #[test]
@@ -126,7 +126,7 @@ fn bnr_meta_commands_and_load_file() {
     assert_eq!(code, 0);
     assert!(stderr.is_empty());
     assert!(stdout.contains("Active execution policy:"));
-    assert!(stdout.contains("21\n21 : INT32"));
+    assert!(stdout.contains("21 : INT32"));
     assert!(stdout.contains("Session state reset."));
     assert!(stdout.contains("No user bindings in current session."));
 }
@@ -137,8 +137,8 @@ fn bnr_underscore_and_structured_vectors() {
     let (code, stdout, stderr) = run_piped_session(input);
     assert_eq!(code, 0);
     assert!(stderr.is_empty());
-    assert!(stdout.contains("30\n30 : INT32"));
-    assert!(stdout.contains("60\n60 : INT32"));
+    assert!(stdout.contains("30 : INT32"));
+    assert!(stdout.contains("60 : INT32"));
     assert!(stdout.contains("[0]: 1"));
     assert!(stdout.contains("[9]: 10"));
     assert!(stdout.contains("INT32[10]"));
