@@ -179,7 +179,7 @@ fn handle_submit(
     };
 
     let mut var_symbol_map = HashMap::new();
-    if let Some(model) = prepared_sub.prepared.models.first() {
+    if let Some(model) = prepared_sub.prepared.root_model() {
         for sym in &model.symbols {
             var_symbol_map.insert(sym.name.clone(), SymbolId::from_raw(sym.id.value()));
         }
@@ -210,7 +210,7 @@ fn handle_submit(
         }
         Ok(res) => {
             let mut new_var_types = BTreeMap::new();
-            if let Some(model) = prepared_sub.prepared.models.first() {
+            if let Some(model) = prepared_sub.prepared.root_model() {
                 for name in res.updated_variables.keys() {
                     if let Some(sym) = model.symbols.iter().rev().find(|s| &s.name == name) {
                         new_var_types.insert(name.clone(), sym.type_name.clone());
@@ -221,7 +221,7 @@ fn handle_submit(
 
             let stdout = String::from_utf8_lossy(&stdout_buf).to_string();
             let result_type = if prepared_sub.kind == SubmissionKind::Expression {
-                prepared_sub.prepared.models.first().and_then(|m| {
+                prepared_sub.prepared.root_model().and_then(|m| {
                     m.expressions
                         .last()
                         .map(|e| bn_frontend::semantic::display(&e.ty))
@@ -229,12 +229,20 @@ fn handle_submit(
             } else {
                 None
             };
-            let result_value =
-                if prepared_sub.kind == SubmissionKind::Expression && !stdout.is_empty() {
-                    Some(stdout.trim_end_matches(['\r', '\n']).to_string())
-                } else {
-                    None
-                };
+            let result_value = if prepared_sub.kind == SubmissionKind::Expression {
+                res.updated_variables
+                    .get("_")
+                    .map(bn_interp::render_pub)
+                    .or_else(|| {
+                        if !stdout.is_empty() {
+                            Some(stdout.trim_end_matches(['\r', '\n']).to_string())
+                        } else {
+                            None
+                        }
+                    })
+            } else {
+                None
+            };
             let structured_data = res
                 .returned_value
                 .as_ref()
@@ -444,7 +452,7 @@ fn handle_bench(
     };
 
     let mut var_symbol_map = HashMap::new();
-    if let Some(model) = prepared_sub.prepared.models.first() {
+    if let Some(model) = prepared_sub.prepared.root_model() {
         for sym in &model.symbols {
             var_symbol_map.insert(sym.name.clone(), SymbolId::from_raw(sym.id.value()));
         }

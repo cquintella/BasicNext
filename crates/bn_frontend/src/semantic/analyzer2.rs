@@ -405,7 +405,11 @@ impl Analyzer {
                 && let Some(signature) = signature
                 && (!self.is_standard_module || !statements.is_empty())
             {
-                validate_returns(statements, &signature.return_type, name == "Start")?;
+                validate_returns(
+                    statements,
+                    &signature.return_type,
+                    name == "Start" || name == "__session_entry",
+                )?;
             }
         }
         Ok(())

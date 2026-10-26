@@ -33,6 +33,9 @@ fn help(version: &str) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+const COMMAND_STACK: usize = 64 * 1024 * 1024;
+const STACK_MARGIN: usize = 8 * 1024 * 1024;
+
 /// Runs `bnr` with `arguments` (without the program name); `version` is the
 /// line `--version` prints.
 #[must_use]
@@ -68,5 +71,23 @@ pub fn main(version: &str, arguments: Vec<String>) -> ExitCode {
         }
         Err(message) => return option_error(&message, &help_text(version)),
     };
-    run_repl(&options, &interpreter_options, version)
+    let version_string = version.to_string();
+    std::thread::Builder::new()
+        .name("bnr".into())
+        .stack_size(COMMAND_STACK)
+        .spawn(move || {
+            bn_interp::set_stack_budget(COMMAND_STACK - STACK_MARGIN);
+            run_repl(&options, &interpreter_options, &version_string)
+        })
+        .map_or_else(
+            |error| {
+                let err_str = error.to_string();
+                eprintln!(
+                    "{}",
+                    bn_catalog::fill("cli", "err.bnr_thread_start", &[("error", &err_str)])
+                );
+                bn_cli::output::tool_error()
+            },
+            |thread| thread.join().unwrap_or_else(|_| bn_cli::output::tool_error()),
+        )
 }

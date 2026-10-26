@@ -128,7 +128,7 @@ impl ReplSession {
         }
 
         let mut var_symbol_map = HashMap::new();
-        if let Some(model) = prepared_sub.prepared.models.first() {
+        if let Some(model) = prepared_sub.prepared.root_model() {
             for sym in &model.symbols {
                 var_symbol_map.insert(sym.name.clone(), SymbolId::from_raw(sym.id.value()));
             }
@@ -155,7 +155,7 @@ impl ReplSession {
             }
             Ok(res) => {
                 let mut new_var_types = BTreeMap::new();
-                if let Some(model) = prepared_sub.prepared.models.first() {
+                if let Some(model) = prepared_sub.prepared.root_model() {
                     for name in res.updated_variables.keys() {
                         if let Some(sym) = model.symbols.iter().rev().find(|s| &s.name == name) {
                             new_var_types.insert(name.clone(), sym.type_name.clone());
@@ -165,7 +165,7 @@ impl ReplSession {
                 self.accumulator.commit_turn(source, new_var_types);
 
                 let result_type = if prepared_sub.kind == SubmissionKind::Expression {
-                    prepared_sub.prepared.models.first().and_then(|m| {
+                    prepared_sub.prepared.root_model().and_then(|m| {
                         m.expressions
                             .last()
                             .map(|e| bn_frontend::semantic::display(&e.ty))
@@ -173,12 +173,20 @@ impl ReplSession {
                 } else {
                     None
                 };
-                let result_value =
-                    if prepared_sub.kind == SubmissionKind::Expression && !stdout.is_empty() {
-                        Some(stdout.trim_end_matches(['\r', '\n']).to_string())
-                    } else {
-                        None
-                    };
+                let result_value = if prepared_sub.kind == SubmissionKind::Expression {
+                    res.updated_variables
+                        .get("_")
+                        .map(bn_interp::render_pub)
+                        .or_else(|| {
+                            if !stdout.is_empty() {
+                                Some(stdout.trim_end_matches(['\r', '\n']).to_string())
+                            } else {
+                                None
+                            }
+                        })
+                } else {
+                    None
+                };
 
                 let mut structured_preview = None;
                 if prepared_sub.kind == SubmissionKind::Expression
@@ -209,7 +217,7 @@ impl ReplSession {
         let query_src = bn_catalog::text("cli", "bnr.query.json_stringify");
         let sub = self.accumulator.compile_submission(query_src).ok()?;
         let mut var_symbol_map = HashMap::new();
-        if let Some(model) = sub.prepared.models.first() {
+        if let Some(model) = sub.prepared.root_model() {
             for sym in &model.symbols {
                 var_symbol_map.insert(sym.name.clone(), SymbolId::from_raw(sym.id.value()));
             }
@@ -230,7 +238,7 @@ impl ReplSession {
         let query_src = bn_catalog::text("cli", "bnr.query.dataframe_preview");
         let sub = self.accumulator.compile_submission(query_src).ok()?;
         let mut var_symbol_map = HashMap::new();
-        if let Some(model) = sub.prepared.models.first() {
+        if let Some(model) = sub.prepared.root_model() {
             for sym in &model.symbols {
                 var_symbol_map.insert(sym.name.clone(), SymbolId::from_raw(sym.id.value()));
             }
@@ -381,7 +389,7 @@ impl ReplSession {
         })?;
 
         let mut var_symbol_map = HashMap::new();
-        if let Some(model) = prepared_sub.prepared.models.first() {
+        if let Some(model) = prepared_sub.prepared.root_model() {
             for sym in &model.symbols {
                 var_symbol_map.insert(sym.name.clone(), SymbolId::from_raw(sym.id.value()));
             }

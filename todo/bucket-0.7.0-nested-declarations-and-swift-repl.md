@@ -5,6 +5,76 @@
 **Decisão BDFL:** Carlos Quintella (@cquintella) em 2026-10-25: mudança significativa na gramática e semântica da linguagem com transição de versão para **Basic Next 0.7.0**. Adoção integral do modelo do Swift para declarações aninhadas e comportamento de execução do REPL.
 **Dependências:** Série 0.6.9 concluída.
 
+## Revisão de planejamento (2026-10-25)
+
+O bucket não está pronto para execução. A ordem especificação, frontend, IR está certa, e a paridade `bni`/`bnc` está no lugar certo. O problema é de arquitetura: o claim e os locks descrevem duas linguagens, e vários contratos de 0.6 são reutilizados sem regra de desempate. Nenhum cluster deve começar antes das decisões da seção [Decisões que travam a execução](#decisões-que-travam-a-execução) estarem escritas em `language/0.7/0.7.md` como decisão BDFL.
+
+Classificação (language guardian): extensão de gramática, de escopo e do que um programa válido faz. A direção está autorizada no cabeçalho deste bucket (Carlos, 2026-10-25). Isso não fecha captura, sombreamento, escape de tipo local nem o nome do entry point. Norma vigente que o plano tem de enfrentar, não copiar por cima:
+
+- `language/0.6/0.6.md`, "Function values": "There are no closures: a function value captures nothing."
+- `language/0.6/0.6.md`, "Scopes and bindings": o nome vale da declaração ao fim do bloco; "One name per function" e `DUPLICATE_NAME`, sem sombreamento.
+- `language/0.6/0.6.ebnf`: `statement` não inclui declaração; `named-type` já é `identifier { "." identifier }` e hoje nomeia export de módulo (`Pets.Named`).
+- `language/0.6/0.6.md`, "Jupyter host": célula é programa completo com `FUNCTION Start()`; "There are no top-level statements".
+- `crates/bn_ir/src/names.rs`: nome emitido é `Dono.Membro` com no máximo um ponto depois do prefixo de módulo. `classify` devolve `None` para `Outer.Inner.Method` e para qualquer nome com `$` no meio. `None` está documentado como bug de lowering ou extensão não documentada. `Start` é o único `EmittedNameKind::Entry`.
+
+### Problemas
+
+1. **"Modelo integral do Swift" e "lambda lifting sem mudar o IR" não cabem no mesmo lock.** Função aninhada no Swift lê e altera locais da função mãe. Isso é closure, mesmo quando a função não é valor de primeira classe. O item C.1 só cria nomes qualificados. Isso implementa função aninhada que não captura nada, e chama o resultado de Swift. Tipo local no Swift também não captura variável local. O plano trata função local e tipo local como o mesmo rebaixamento.
+
+2. **Declaração metida em `statement` alarga o lugar errado.** `statement` aparece em todo `statement-block`, inclusive `IF`, `WHILE` e `FOR`, e o `IF` de uma linha usa `simple-statement`. Uma classe declarada dentro de um laço é um tipo só, no texto, não um tipo novo por iteração. O executor não deve "executar" uma declaração. O plano não diz isso.
+
+3. **`Outer.Inner` já é sintaxe de módulo.** A gramática não precisa de um operador novo. Falta a regra de resolução: o primeiro identificador é um tipo no escopo que tem membro-tipo, ou é um alias de `IMPORT`. Sem essa ordem, `Outer.Inner` passa a ter dois significados.
+
+4. **O esquema `Outer$Inner$Method` quebra o contrato de nomes do IR.** `$` já é o marcador de intrínsecos e de sufixos sintéticos (`$for_condition`, `Counter.$init`). O IR já tem `Function.owner` e o padrão `Dono.Membro`. O plano inventa um mangling paralelo em vez de estender `classify` para um caminho de tipos.
+
+5. **Tipo local que escapa da função não tem regra.** Se `Local` só existe dentro de `F`, o retorno de `F`, o parâmetro de uma função de fora e o campo de um tipo de módulo não podem ser `Local`. Sem isso, o nome mangled vira ABI e aparece em `PRINT` do objeto fora do escopo. Os testes de E.2 cobrem instanciação local e não cobrem escape.
+
+6. **Sombreamento.** 0.6 proíbe dois nomes iguais na mesma função, inclusive num bloco interno. O Swift sombreia. Adotar o Swift aqui muda todo programa que hoje é `DUPLICATE_NAME`, não só os aninhados.
+
+7. **O REPL está acoplado a uma mudança de linguagem que ele não precisa.** O acumulador envolve o turno em `FUNCTION Start()` (`session_accumulator.rs`). Se o usuário declara `Start` e o turno chama `Start()`, a chamada entra no invólucro. Renomear o invólucro resolve isso. Declaração aninhada não resolve isso. Juntos, os dois viram um programa cuja entrada não é `Start`, enquanto `classify("Start")` continua sendo `Entry` e o Jupyter 0.6 continua exigindo `Start`.
+
+8. **`__session_entry` é um identificador válido.** O usuário pode declará-lo. Marcá-lo como `FunctionKind::Entry` cria um segundo entry quando o usuário também declara `Start`. `bnc` precisa de um único entry.
+
+9. **A.1 troca `SPEC_EBNF` no primeiro item.** `build.rs` e `tests/frontend/u1.rs` comparam o registry com a gramática ativa. Apontar o registry para `0.7.ebnf` antes do parser aceitar a gramática nova derruba o gate no meio do Cluster A. Copiar a árvore 0.6 inteira também duplica host, diagnóstico e palavras reservadas: qualquer correção de 0.6 durante a migração diverge em silêncio.
+
+10. **E.4 testa o nome errado.** `FUNCTION start()` não é o ponto de entrada. `Start` é identificador, `FUNCTION` é a palavra reservada. Palavra reservada minúscula é outro identificador.
+
+11. **Superfície incompleta em relação ao próprio claim.** O claim cita classe e struct. Não cita `INTERFACE` nem `ENUM`. Não diz se tipo aninhado tem `PUBLIC` / `PRIVATE` / `PROTECTED`, se pode ser `EXPORT`, se `EXTENDS` pode apontar para o tipo pai, nem se duas funções locais podem recursar uma na outra. "One name per function" e "visível a partir da declaração" respondem a recursão mútua de um jeito. O Swift responde de outro.
+
+### Sugestões
+
+1. **Partir o bucket em dois cortes.** Corte 1: função aninhada, tipo aninhado e tipo local, sem captura de local. Corte 2, só com decisão explícita: closure. O REPL é um terceiro corte, ou o primeiro, porque o defeito do `Start` sintético já está no acumulador e não depende de declaração aninhada. Não implementar os três no mesmo cluster.
+
+2. **Escrever o modelo sem captura como o default que preserva 0.6, e pedir confirmação para furar isso.** Função local vê os próprios parâmetros, nomes de módulo e tipos visíveis no ponto da declaração. Não vê local, parâmetro nem `CONST` da função mãe. Valor de função continua sem captura. Tipo local e tipo aninhado seguem a mesma regra: método não lê local da função onde o tipo foi declarado. Isso é o único modelo compatível com C.1 como está escrito. Se a decisão de 2026-10-25 exigir captura no estilo Swift, C.1 está errado e o lock de IR cai: passa a existir um ambiente, com vida, ARC e paridade. Essa escolha fica na seção de decisões, antes de A.2.
+
+3. **Não pôr a declaração em `statement`.** Acrescentar `local-declaration` como alternativa de `statement-block`, nunca de `simple-statement`. A declaração não é instrução: não corre, não participa de `STOP` e existe uma vez por ocorrência no texto. O nome segue a regra de bloco já vigente: da declaração até o fim daquele bloco, e `DUPLICATE_NAME` se repetir na função. Recursão da própria função local é permitida, como já é no módulo. Recursão mútua fica na decisão abaixo. Não adotar sombreamento do Swift neste bucket.
+
+4. **Tipo local não escapa.** Proibir o nome de um tipo declarado dentro da função em retorno, parâmetro e campo de qualquer tipo declarado fora dessa função. A instância só sai se o tipo estático visível do lado de fora for uma classe ou interface de módulo que o tipo local estende ou implementa. `PRINT` de um objeto continua mostrando o nome de tipo. Definir qual nome: o caminho fonte `Outer.Inner`, não o símbolo interno do IR.
+
+5. **Estender o nome que já existe.** Caminho de tipo com pontos, `Outer.Inner.Method`, `Outer.Inner.CONSTRUCTOR`, `Outer.Inner.$init`, mais o prefixo de módulo `#N.` quando houver. Atualizar `classify` e os testes em `names.rs` no mesmo corte que introduz o caminho. Não usar `$` como separador de aninhamento. `Function.owner` carrega o tipo dono. A chave de ordenação estável é esse caminho, não um mangling paralelo.
+
+6. **Resolver `Outer.Inner` pelo binding do primeiro nome.** Se `Outer` é classe ou struct no escopo e `Inner` é tipo declarado nele, o caminho é esse tipo. Se `Outer` é alias de `IMPORT`, vale a regra de export de hoje. Um nome não pode ser as duas coisas. Isso já cai em `DUPLICATE_NAME` se alguém tentar. Visibilidade do tipo aninhado é a mesma de um membro: o que está escrito, e a omissão precisa de uma frase normativa, não de um default inventado na implementação. `PRIVATE` vê-se no tipo pai e nos tipos declarados dentro dele. Não se vê em subclasse, igual ao campo privado. Tipo aninhado não é campo e não entra no layout. `EXPORT` aplica-se ao tipo de módulo, não ao tipo aninhado. `INTERFACE` entra no mesmo corte. `ENUM` fica de fora até existir decisão. Ciclo `Inner EXTENDS Outer` é o mesmo erro de herança cíclica já especificado.
+
+7. **REPL sem segunda linguagem.** Arquivo `.bn` continua sem statement de topo e com um único `FUNCTION Start` como entry, quando o programa tem entry. A sessão do `bnr` é outra gramática, escrita na spec: declarações de módulo persistem. Statements de um turno vão para o corpo de uma função sintética cujo nome é reservado, rejeitado se o usuário o declarar. Essa função é o entry daquele turno. `Start` declarado pelo usuário é função comum. O turno que contém a chamada `Start()` gera um corpo que chama essa função. Não há recursão. `export_program` emite um programa 0.7 válido: o `Start` do usuário, se existir, é o entry do arquivo exportado. Os statements acumulados precisam de um lugar honesto nesse arquivo, ou o export deixa de prometer programa executável. Não marcar duas funções como `FunctionKind::Entry`.
+
+8. **Trocar o registry por último.** A.1 cria `language/0.7/` como cópia e não altera `SPEC_EBNF`. O parser e os testes negativos passam a conhecer a gramática nova ainda com a árvore 0.6 ativa, ou a troca do ponteiro é o último item do Cluster B, com a bateria verde no mesmo corte. Até a troca, 0.6 permanece a norma do toolchain. Congelar 0.6 no momento da cópia e não editar as duas árvores.
+
+9. **Testes mínimos que faltam em E.2 e E.4, como negativos.** Função local lendo local da mãe, rejeitada no corte sem captura. Tipo local no retorno da função mãe, rejeitado. `Outer.Inner` com `Outer` alias de módulo e com `Outer` classe, um programa cada. Nome com mais de um ponto aceito por `classify`. Declaração dentro de `IF` de uma linha, rejeitada. Dois `Start` no sentido de entry, impossível. `FUNCTION Start()` com esse spelling, não `start`. `STEP` de sessão: declarar `Start`, chamar `Start()` no turno seguinte, a pilha não cresce com o turno. Paridade `bni` e `bnc` nesses programas, não só nos positivos.
+
+### Decisões que travam a execução
+
+Enquanto a linha correspondente não estiver em `0.7.md` com data, o cluster indicado não abre.
+
+| # | Decisão | Recomendação para reduzir risco | Trava |
+| --- | --- | --- | --- |
+| G1 | Função aninhada captura local da função mãe? | Não neste bucket. Captura é outro bucket, com ambiente no IR. | A.2, Cluster C |
+| G2 | Tipo local e tipo aninhado capturam local ou parâmetro de tipo da função? | Não. Basic Next não tem genéricos. Não importar esse pedaço do Swift. | A.3 |
+| G3 | Sombreamento de nome? | Manter `DUPLICATE_NAME`. | A.3, B.2 |
+| G4 | Recursão mútua entre funções locais do mesmo bloco? | Só a própria função, mais chamar uma função local já declarada. Não içar nomes. | A.3 |
+| G5 | Instância de tipo local pode escapar com o tipo local no assinatura? | Não. Só por upcast para tipo de módulo. | A.3, E.2 |
+| G6 | Statement de topo em arquivo `.bn`? | Não. Só na sessão do `bnr`, com a gramática de sessão escrita na spec. | Cluster D |
+| G7 | Nome reservado do entry sintético da sessão, e o que `export_program` produz? | Um nome reservado. Um entry. Export é programa com `Start` se o usuário declarou `Start`. | D.1, D.2 |
+
 **Restrições Arquiteturais (BDFL Locks):**
 * **Paridade Estrita entre Interpretador e Compilador:** todo programa aceito por `bni` com funções e classes aninhadas compila e produz o mesmo resultado determinístico em `bnc` (`Native::Same`), conforme `docs/architecture/conformance.md`.
 * **Zero Quebra de Invariantes W1–W5:** as declarações aninhadas são normalizadas no frontend via rebaixamento canônico determinístico (desaninhamento / lambda lifting com qualificação léxica de símbolos), preservando o modelo do BN IR e sem tipos de frontend no IR (`GC-DEP`).

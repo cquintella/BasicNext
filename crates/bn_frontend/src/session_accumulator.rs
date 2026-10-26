@@ -123,8 +123,9 @@ impl SessionAccumulator {
             || trimmed.starts_with("INTERFACE ")
             || trimmed.starts_with("ENUM ")
         {
-            if defines_start_function(trimmed) {
-                self.declarations.retain(|d| !defines_start_function(d));
+            if let Some(decl_name) = extract_decl_name(trimmed) {
+                self.declarations
+                    .retain(|d| extract_decl_name(d).as_deref() != Some(&decl_name));
             }
             self.declarations.push(trimmed.to_string());
         }
@@ -193,29 +194,46 @@ impl SessionAccumulator {
 
                 let probe_body = format!("    PRINT ({trimmed})\n");
                 let synthetic_probe = self.synthesize_program(&probe_body);
+                let expr_offset = synthetic_probe.rfind(trimmed).unwrap_or(0);
                 if let Ok(prepared_probe) =
                     self.prepare_synthetic(synthetic_probe, SubmissionKind::Expression, None)
                 {
-                    let ty_str = prepared_probe.prepared.models.first().and_then(|m| {
+                    let ty_str = prepared_probe.prepared.root_model().and_then(|m| {
                         m.expressions
-                            .last()
+                            .iter()
+                            .filter(|e| e.span.start.offset >= expr_offset)
+                            .max_by_key(|e| e.span.end.offset.saturating_sub(e.span.start.offset))
                             .map(|e| crate::semantic::display(&e.ty))
                     });
 
                     if let Some(ty) = ty_str {
+                        if ty == "VOID" {
+                            let mut start_body = String::new();
+                            for line in submission_source.lines() {
+                                start_body.push_str("    ");
+                                start_body.push_str(line);
+                                start_body.push('\n');
+                            }
+                            let synthetic = self.synthesize_program(&start_body);
+                            return self.prepare_synthetic(
+                                synthetic,
+                                SubmissionKind::Statement,
+                                None,
+                            );
+                        }
                         let mut final_body = String::new();
                         if uses_underscore
                             && self.variables.get("_").map(String::as_str) == Some(&ty)
                         {
                             final_body.push_str("    _ = (");
                             final_body.push_str(trimmed);
-                            final_body.push_str(")\n    PRINT _\n");
+                            final_body.push_str(")\n");
                         } else if !uses_underscore {
                             push_variable_decl(&mut final_body, "_", &ty);
                             final_body.pop();
                             final_body.push_str(" = (");
                             final_body.push_str(trimmed);
-                            final_body.push_str(")\n    PRINT _\n");
+                            final_body.push_str(")\n");
                         } else {
                             final_body.push_str("    PRINT (");
                             final_body.push_str(trimmed);
@@ -280,11 +298,7 @@ impl SessionAccumulator {
             buffer.push_str(constant);
             buffer.push('\n');
         }
-        let has_new_statements = !start_statements.trim().is_empty();
         for decl in &self.declarations {
-            if has_new_statements && defines_start_function(decl) {
-                continue;
-            }
             buffer.push_str(decl);
             buffer.push('\n');
         }
@@ -292,19 +306,14 @@ impl SessionAccumulator {
             buffer.push_str(extra_decl);
             buffer.push('\n');
         }
-        let decl_defines_start = defines_start_function(extra_decl)
-            || (!has_new_statements && self.declarations.iter().any(|d| defines_start_function(d)));
-
-        if !decl_defines_start {
-            push_start_header(&mut buffer);
-            for (name, ty) in &self.variables {
-                if Some(name.as_str()) != excluded {
-                    push_variable_decl(&mut buffer, name, ty);
-                }
+        push_start_header(&mut buffer);
+        for (name, ty) in &self.variables {
+            if Some(name.as_str()) != excluded {
+                push_variable_decl(&mut buffer, name, ty);
             }
-            buffer.push_str(start_statements);
-            push_end_function(&mut buffer);
         }
+        buffer.push_str(start_statements);
+        push_end_function(&mut buffer);
         buffer
     }
 
@@ -353,26 +362,32 @@ impl SessionAccumulator {
             buffer.push('\n');
             buffer.push('\n');
         }
-        push_start_header(&mut buffer);
-        for turn_code in &self.history {
-            let trimmed = turn_code.trim();
-            if trimmed.starts_with("IMPORT ")
-                || trimmed.starts_with("CONST ")
-                || trimmed.starts_with("FUNCTION ")
-                || trimmed.starts_with("CLASS ")
-                || trimmed.starts_with("STRUCT ")
-                || trimmed.starts_with("INTERFACE ")
-                || trimmed.starts_with("ENUM ")
-            {
-                continue;
+        let has_user_start = self
+            .declarations
+            .iter()
+            .any(|d| extract_decl_name(d).as_deref() == Some("START"));
+        if !has_user_start {
+            push_export_start_header(&mut buffer);
+            for turn_code in &self.history {
+                let trimmed = turn_code.trim();
+                if trimmed.starts_with("IMPORT ")
+                    || trimmed.starts_with("CONST ")
+                    || trimmed.starts_with("FUNCTION ")
+                    || trimmed.starts_with("CLASS ")
+                    || trimmed.starts_with("STRUCT ")
+                    || trimmed.starts_with("INTERFACE ")
+                    || trimmed.starts_with("ENUM ")
+                {
+                    continue;
+                }
+                for line in turn_code.lines() {
+                    buffer.push_str("    ");
+                    buffer.push_str(line);
+                    buffer.push('\n');
+                }
             }
-            for line in turn_code.lines() {
-                buffer.push_str("    ");
-                buffer.push_str(line);
-                buffer.push('\n');
-            }
+            push_end_function(&mut buffer);
         }
-        push_end_function(&mut buffer);
         buffer
     }
 }
@@ -405,22 +420,18 @@ fn is_assignment_statement(tokens: &[Token]) -> bool {
 
 fn push_start_header(buffer: &mut String) {
     buffer.push_str("FUNCTION");
-    buffer.push_str(" Start()");
+    buffer.push(' ');
+    buffer.push_str(bn_ir::names::SESSION_ENTRY);
+    buffer.push_str("()");
     buffer.push_str(" AS");
     buffer.push_str(" VOID\n");
 }
 
-fn defines_start_function(text: &str) -> bool {
-    let trimmed = text.trim_start();
-    if let Some(rest) = trimmed.strip_prefix("FUNCTION") {
-        let rest = rest.trim_start();
-        if let Some(after_name) = rest.strip_prefix("Start") {
-            return after_name.is_empty()
-                || after_name.starts_with('(')
-                || after_name.starts_with(char::is_whitespace);
-        }
-    }
-    false
+fn push_export_start_header(buffer: &mut String) {
+    buffer.push_str("FUNCTION");
+    buffer.push_str(" Start()");
+    buffer.push_str(" AS");
+    buffer.push_str(" VOID\n");
 }
 
 fn push_end_function(buffer: &mut String) {
@@ -434,4 +445,20 @@ fn push_variable_decl(buffer: &mut String, name: &str, ty: &str) {
     buffer.push_str(" AS ");
     buffer.push_str(ty);
     buffer.push('\n');
+}
+
+fn extract_decl_name(source: &str) -> Option<String> {
+    let mut words = source.split_whitespace();
+    let kind = words.next()?;
+    if kind == "FUNCTION"
+        || kind == "CLASS"
+        || kind == "STRUCT"
+        || kind == "INTERFACE"
+        || kind == "ENUM"
+    {
+        let name_part = words.next()?;
+        let name = name_part.split('(').next()?;
+        return Some(name.to_ascii_uppercase());
+    }
+    None
 }

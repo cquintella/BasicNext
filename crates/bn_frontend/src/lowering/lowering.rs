@@ -234,6 +234,16 @@ pub(crate) fn lower_program(
             _ => {}
         }
     }
+    let has_session_entry = program.items.iter().any(|item| {
+        matches!(
+            item,
+            Item::Declaration {
+                kind: DeclarationKind::Function,
+                name,
+                ..
+            } if name == bn_ir::names::SESSION_ENTRY
+        )
+    });
     for item in &program.items {
         let Item::Declaration {
             kind: DeclarationKind::Function,
@@ -247,10 +257,13 @@ pub(crate) fn lower_program(
         else {
             continue;
         };
+        let is_entry = prefix.is_empty()
+            && (name == bn_ir::names::SESSION_ENTRY
+                || (!has_session_entry && name == bn_ir::names::ENTRY));
         functions.push(lower_callable(
             model,
             &format!("{prefix}{name}"),
-            if prefix.is_empty() && name == "Start" {
+            if is_entry {
                 FunctionKind::Entry
             } else {
                 FunctionKind::User

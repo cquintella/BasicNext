@@ -46,6 +46,9 @@ pub(crate) const SYNTHESISED_SUFFIXES: &[(&str, EmittedNameKind)] = &[
 /// Name of the entry function.
 pub const ENTRY: &str = "Start";
 
+/// Name of the synthetic interactive session entry function.
+pub const SESSION_ENTRY: &str = "__session_entry";
+
 /// Prefix of a super-call target (`@super:<Class>.<Method>`), resolved by the
 /// backends to the base implementation, never dispatched dynamically.
 pub const SUPER_PREFIX: &str = "@super:";
@@ -86,7 +89,7 @@ pub fn is_intrinsic(name: &str) -> bool {
 #[must_use]
 pub fn classify(name: &str) -> Option<EmittedNameKind> {
     let name = name.strip_prefix(SUPER_PREFIX).unwrap_or(name);
-    if name == ENTRY {
+    if name == ENTRY || name == SESSION_ENTRY {
         return Some(EmittedNameKind::Entry);
     }
     let body = match name.strip_prefix(MODULE_PREFIX) {

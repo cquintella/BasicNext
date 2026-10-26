@@ -44,6 +44,17 @@ impl Prepared {
             .map(|module| &module.program)
             .expect("module graph always contains its root")
     }
+
+    /// The executable (root) module's semantic model.
+    #[must_use]
+    pub fn root_model(&self) -> Option<&SemanticModel> {
+        let index = self
+            .graph
+            .modules
+            .iter()
+            .position(|module| module.id == self.graph.root)?;
+        self.models.get(index)
+    }
 }
 
 /// Phase in which preparation stopped, with the diagnostic that stopped it.

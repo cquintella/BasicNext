@@ -148,7 +148,11 @@ for rel_path in "${TARGET_FILES[@]}"; do
 
     # Feed line-by-line
     feed_lines() {
+        local has_start_decl=0
         while IFS= read -r line || [[ -n "$line" ]]; do
+            if [[ "$line" =~ ^[[:space:]]*FUNCTION[[:space:]]+Start\( ]]; then
+                has_start_decl=1
+            fi
             if [[ "$VERBOSE" -eq 1 ]]; then
                 printf "${CLR_GRAY}--> %s${CLR_RESET}\n" "$line" >&2
             fi
@@ -159,6 +163,13 @@ for rel_path in "${TARGET_FILES[@]}"; do
                 sleep "$DELAY"
             fi
         done < "$file_path" 3<&0
+        # If the program defined FUNCTION Start(), invoke it to run the entry point
+        if [[ "$has_start_decl" -eq 1 ]]; then
+            if [[ "$VERBOSE" -eq 1 ]]; then
+                printf "${CLR_GRAY}--> Start()${CLR_RESET}\n" >&2
+            fi
+            printf "Start()\n"
+        fi
     }
 
     bnr_out_file="$(mktemp /tmp/bnr_test_out.XXXXXX)"
@@ -210,6 +221,15 @@ for rel_path in "${TARGET_FILES[@]}"; do
         if [[ "$base_name" == "clock.bn" ]]; then
             trimmed_bnr="$(echo "$trimmed_bnr" | sed -E 's/Hora:  [0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]+/Hora:  <TIME>/')"
             trimmed_bni="$(echo "$trimmed_bni" | sed -E 's/Hora:  [0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]+/Hora:  <TIME>/')"
+        fi
+
+        # If Start() returns an integer, bnr displays the turn's expression result (e.g. "0 : INT32")
+        # while bni uses it as the process exit code. Normalize for parity comparison:
+        if [[ "$trimmed_bnr" =~ ^(.*)[[:space:]]+[0-9]+[[:space:]]*:[[:space:]]*INT32$ ]]; then
+            normalized_bnr="${BASH_REMATCH[1]}"
+            if [[ "$normalized_bnr" == "$trimmed_bni" ]]; then
+                trimmed_bnr="$trimmed_bni"
+            fi
         fi
 
         if [[ "$trimmed_bnr" == "$trimmed_bni" ]]; then

@@ -71,6 +71,7 @@ msg.bnr_symbol_not_found = No documentation found for '{symbol}'
 msg.bnr_dataframe_dims = [{rows} rows × {cols} columns]
 msg.bnr_vector_more =   ... ({total} items)
 msg.bnr_autocomplete_modules = HOST,HOST.Net,HOST.Fs,BNCrypto,BNData,BNDispatch,BNJson,BNLog,BNMath,BNSqlite
+err.bnr_thread_start = error: cannot start the REPL thread: {error}
 bnr.query.json_stringify = FUNCTION Start() AS VOID\nLET txt AS STRING OR Error = BNJson.Json.Stringify(_)\nIF txt IS STRING THEN\nPRINT txt\nEND IF\nEND FUNCTION\n
 bnr.query.dataframe_preview = FUNCTION Start() AS VOID\nPRINT _.RowCount()\nPRINT _.ColumnCount()\nLET c AS INTEGER = 0\nWHILE c < _.ColumnCount()\nLET colName AS STRING OR Error = _.ColumnName(c)\nIF colName IS STRING THEN\nPRINT colName\nIF _.RowCount() > 0 THEN\nIF _.GetInteger(0, colName) IS INTEGER THEN\nPRINT "INTEGER"\nELSE IF _.GetFloat(0, colName) IS FLOAT THEN\nPRINT "FLOAT"\nELSE IF _.GetBoolean(0, colName) IS BOOLEAN THEN\nPRINT "BOOLEAN"\nELSE\nPRINT "STRING"\nEND IF\nELSE\nPRINT "ANY"\nEND IF\nEND IF\nc = c + 1\nEND WHILE\nLET r AS INTEGER = 0\nWHILE r < _.RowCount() AND r < 5\nLET cc AS INTEGER = 0\nWHILE cc < _.ColumnCount()\nLET colName AS STRING OR Error = _.ColumnName(cc)\nIF colName IS STRING THEN\nLET cell AS STRING OR NA OR Error = _.GetString(r, colName)\nIF cell IS STRING THEN\nPRINT cell\nELSE\nPRINT "NA"\nEND IF\nEND IF\ncc = cc + 1\nEND WHILE\nr = r + 1\nEND WHILE\nEND FUNCTION\n
 
