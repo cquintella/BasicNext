@@ -1,15 +1,60 @@
-# Bucket 0.6.11 — numeric extensions deferred from 0.6.10
+# Bucket 0.6.11 — BNCrypto security hardening and numeric extensions
 
-**Status:** todo, created 2026-10-27 (Carlos: "coloca isso num bucket 0.6.11"). Starts after
-`ongoing/bucket-0.6.10-numerics-na-for-scope-bni-perf.md` closes.
-**Source:** `todo/proposals/bnmath-bndata-statistics-0.6.10.md` (sections 3–6) and
-`todo/proposals/bndata-expansion.md`; decision G-5 of bucket 0.6.10 moved these rows here.
+**Status:** todo, updated 2026-10-27 (Carlos: "Antes das operações novas, o mais urgente: a BNCrypto não tem gerador aleatório seguro... definir como resolver isso e colocar no bucket da 0.6.11"). Starts after 0.6.10.
+**Source:** Issue #20 (BNCrypto security), `todo/proposals/bnmath-bndata-statistics-0.6.10.md` (sections 3–6) and `todo/proposals/bndata-expansion.md`.
 
-Every row is an extension: spec text, red tests on `bni` and `bnc`, then one implementation in
-`bn_core_math` / `bn_stdlib` adapted by both backends. Each waits for the decision named with it.
-New members are PascalCase (object style, BDFL 2026-10-26).
+Every row is an extension: spec text, red tests on `bni` and `bnc`, then one implementation adapted by both backends.
 
-## Deferred by Carlos (the list he moved, 2026-10-27)
+---
+
+## Priority: BNCrypto Security Hardening (Carlos: "o mais urgente", Issue #20)
+
+### Problema Diagnosticado
+1. **Falta de CSPRNG seguro:** A especificação (`language/0.6/bncrypto.md` linha 86) orienta: *"derive nonces from HOST.Random or a counter you control"*. `HOST.Random` é um PRNG determinístico com semente (`Seed`), gerando nonces previsíveis e quebrando a segurança de cifras simétricas (AES-GCM, ChaCha20-Poly1305).
+2. **Ausência de zeroização de chaves:** O descarte de buffers de chaves e material sensível no runtime ARC não limpa os bytes (`zeroize`), deixando segredos expostos em memória heap/stack.
+3. **Falta de tipo de chave dedicado:** Qualquer instância de `Bytes` serve como chave para cifras, HMAC e assinaturas, permitindo tamanhos incorretos, misturas acidentais de buffers (chave x nonce x dados) e ausência de invariantes de ciclo de vida.
+
+### Resolução Técnica Definida
+- **CSPRNG Seguro:**
+  - Adicionar em `BNCrypto` o gerador aleatório criptográfico provido diretamente pelo SO (`getrandom` em Linux, `SecRandomCopyBytes` em macOS, `BCryptGenRandom` em Windows):
+    - `EXPORT FUNCTION RandomBytes(length AS INTEGER) AS Bytes OR Error`
+    - `EXPORT FUNCTION GenerateNonce(cipherAlgorithm AS INTEGER) AS Bytes OR Error`
+  - Retificar `language/0.6/bncrypto.md`: revogar formalmente qualquer menção a `HOST.Random` para derivação de nonces; estipular uso exclusivo do CSPRNG seguro.
+- **Zeroização de Memória (`Zeroize`):**
+  - Implementar no runtime Rust (`libraries/bn_crypto` e `crates/bn_rt/src/crypto.rs`) a trait `zeroize::Zeroize` / `ZeroizeOnDrop` (com barreira de otimização de compilador) para todo buffer de chave, semente e estado intermediário de cifras.
+  - Expor no ciclo de vida do ARC: o `DESTRUCTOR` da classe de chave invoca a rotina nativa de zeroização antes de desalocar o handle.
+  - Adicionar método explícito: `PUBLIC FUNCTION Zeroize() AS VOID` na classe de chave.
+- **Tipo de Chave Dedicado (`Key`):**
+  - Introduzir em `modules/bn/BNCrypto.bn` a classe opaca `EXPORT CLASS Key` (distinta de `Bytes`):
+    - `PUBLIC FUNCTION Algorithm() AS INTEGER`
+    - `PUBLIC FUNCTION Length() AS INTEGER`
+    - `PUBLIC FUNCTION Zeroize() AS VOID`
+    - Não expõe `ToHex()` nem conversão implícita para `STRING` (opaca contra vazamento acidental em logs/console).
+  - Fábricas seguras:
+    - `EXPORT FUNCTION GenerateKey(algorithm AS INTEGER) AS Key OR Error` (gera chave a partir do CSPRNG nativo validando o tamanho exato do algoritmo).
+    - `EXPORT FUNCTION ImportKey(material AS Bytes, algorithm AS INTEGER) AS Key OR Error` (valida o tamanho exato: 32 bytes para AES-256 / ChaCha20 / Ed25519; consome ou copia com zeroização garantida).
+  - Atualização das assinaturas criptográficas em `BNCrypto.bn` e `language/0.6/bncrypto.md`:
+    - `SealAesGcm(key AS Key, nonce, plaintext, aad AS Bytes) AS Bytes OR Error`
+    - `OpenAesGcm(key AS Key, nonce, ciphertext, aad AS Bytes) AS Bytes OR Error`
+    - `SealChaCha20(key AS Key, nonce, plaintext, aad AS Bytes) AS Bytes OR Error`
+    - `OpenChaCha20(key AS Key, nonce, ciphertext, aad AS Bytes) AS Bytes OR Error`
+    - `HmacSha256(key AS Key, data AS Bytes) AS Bytes OR Error`
+    - `VerifyHmacSha256(key AS Key, data, tag AS Bytes) AS BOOLEAN`
+    - `Ed25519Sign(key AS Key, message AS Bytes) AS Bytes OR Error`
+    - `EcdsaP256Sign(key AS Key, message AS Bytes) AS Bytes OR Error`
+    - `MlDsaSign(key AS Key, message AS Bytes) AS Bytes OR Error`
+    - `MlKemDecapsulate(key AS Key, ciphertext AS Bytes) AS Bytes OR Error`
+
+### Lista de Atividades BNCrypto
+- [ ] **CRYPTO-1 (Spec & Interface):** Atualizar `language/0.6/bncrypto.md` e `modules/bn/BNCrypto.bn` com a declaração da classe `Key`, as fábricas `GenerateKey` / `ImportKey`, as funções de geração de entropia `RandomBytes` / `GenerateNonce`, e a revogação do uso de `HOST.Random` para nonces.
+- [ ] **CRYPTO-2 (CSPRNG nativo):** Implementar `RandomBytes` e `GenerateNonce` no runtime nativo (`crates/bn_rt/src/crypto.rs`) e no provider interpretado (`libraries/bn_lib_crypto`), consumindo a fonte criptográfica segura do SO (`getrandom` / `ring::rand::SystemRandom`).
+- [ ] **CRYPTO-3 (Tipo Key e Zeroize):** Implementar o gerenciador de handles de `Key` no runtime nativo com `zeroize::ZeroizeOnDrop`, integrando ao destrutor ARC em `bnc` e `bni`. Adicionar método explícito `.Zeroize()`.
+- [ ] **CRYPTO-4 (Migração de Assinaturas):** Atualizar lowering de `bnc` e adaptadores de `bni` para exigirem `Key` nos métodos de cifra simétrica, HMAC, assinatura assimétrica e decapsulação pós-quântica.
+- [ ] **CRYPTO-5 (Testes de Paridade e Segurança):** Fixtures com KATs (Known Answer Tests), testes de rejeição para tamanhos inválidos de chaves, teste de paridade cruzada `bni` x `bnc`, e verificação da impossibilidade de vazamento de chave via `PRINT` ou interpolação.
+
+---
+
+## Numeric Extensions Deferred by Carlos (2026-10-27)
 
 - [ ] **Factorial, Binomial.** Returning `FLOAT` for an integer result is a design choice that
   needs its own discussion (the proposal follows R: exact to `22!`, then rounded; `n > 170` is
