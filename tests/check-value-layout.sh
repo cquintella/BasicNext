@@ -36,8 +36,8 @@ scan_root() {
     echo "check-value-layout: string-keyed runtime record storage returned" >&2
     return 1
   fi
-  rg -q 'fields:[[:space:]]*Box<\[Value\]>' "$value" || {
-    echo "check-value-layout: RecordValue no longer owns boxed positional fields" >&2
+  rg -q 'fields:[[:space:]]*(Box<\[Value\]>|Arc<Vec<Value>>)' "$value" || {
+    echo "check-value-layout: RecordValue no longer owns positional fields" >&2
     return 1
   }
   # Multiline: rustfmt splits the variant across lines.
