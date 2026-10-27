@@ -1,7 +1,7 @@
-# Bucket 0.6.11 — BNCrypto security hardening and numeric extensions
+# Bucket 0.6.11 — BNCrypto security, BNCompress and numeric extensions
 
-**Status:** todo, updated 2026-10-27 (Carlos: "Antes das operações novas, o mais urgente: a BNCrypto não tem gerador aleatório seguro... definir como resolver isso e colocar no bucket da 0.6.11"). Starts after 0.6.10.
-**Source:** Issue #20 (BNCrypto security), `todo/proposals/bnmath-bndata-statistics-0.6.10.md` (sections 3–6) and `todo/proposals/bndata-expansion.md`.
+**Status:** todo, updated 2026-10-27 (Carlos: BNCrypto security hardening, BNCompress / ZIP, and numeric extensions). Starts after 0.6.10.
+**Source:** Issue #20 (BNCrypto security), BNCompress proposal, `todo/proposals/bnmath-bndata-statistics-0.6.10.md` (sections 3–6) and `todo/proposals/bndata-expansion.md`.
 
 Every row is an extension: spec text, red tests on `bni` and `bnc`, then one implementation adapted by both backends.
 
@@ -51,6 +51,38 @@ Every row is an extension: spec text, red tests on `bni` and `bnc`, then one imp
 - [ ] **CRYPTO-3 (Tipo Key e Zeroize):** Implementar o gerenciador de handles de `Key` no runtime nativo com `zeroize::ZeroizeOnDrop`, integrando ao destrutor ARC em `bnc` e `bni`. Adicionar método explícito `.Zeroize()`.
 - [ ] **CRYPTO-4 (Migração de Assinaturas):** Atualizar lowering de `bnc` e adaptadores de `bni` para exigirem `Key` nos métodos de cifra simétrica, HMAC, assinatura assimétrica e decapsulação pós-quântica.
 - [ ] **CRYPTO-5 (Testes de Paridade e Segurança):** Fixtures com KATs (Known Answer Tests), testes de rejeição para tamanhos inválidos de chaves, teste de paridade cruzada `bni` x `bnc`, e verificação da impossibilidade de vazamento de chave via `PRINT` ou interpolação.
+
+---
+
+## BNCompress: Compressão Deflate, Gzip e Arquivos ZIP
+
+### Justificativa Arquitetural
+- **Não usar `BNUtil`:** Pela diretriz de Clean Code de Basic Next (2026-10-11, `AGENTS.md`), um módulo chamado `utils`, `helpers` ou `misc` é proibido porque agrupa responsabilidades desconexas. Compressão é um domínio coeso e deve residir em módulo dedicado: `BNCompress`.
+- **Escopo do Domínio:** Suporte a compressão de memória/stream (Deflate RFC 1951, Gzip RFC 1952) e manipulação de arquivos/arquivos comprimidos (ZIP archives), atendendo transferências de rede, manipulação de arquivos e o ecossistema de pacotes `.bnp`.
+
+### Resolução Técnica Definida
+- **Módulo:** `modules/bn/BNCompress.bn` e especificação normativa `language/0.6/bncompress.md`.
+- **Crate Compartilhado:** `libraries/bn_core_compress` encapsulando implementações puras e seguras (`flate2` / `miniz_oxide` e `zip`).
+- **Superfície da API:**
+  - `Deflate(data AS Bytes) AS Bytes OR Error`
+  - `Inflate(data AS Bytes) AS Bytes OR Error`
+  - `Gzip(data AS Bytes) AS Bytes OR Error`
+  - `Gunzip(data AS Bytes) AS Bytes OR Error`
+  - `EXPORT CLASS ZipArchive`:
+    - `ZipArchive.Open(path AS STRING) AS ZipArchive OR Error` (leitura)
+    - `ZipArchive.Create(path AS STRING) AS ZipArchive OR Error` (escrita)
+    - `archive.Entries() AS STRING[]`
+    - `archive.ExtractBytes(entryName AS STRING) AS Bytes OR Error`
+    - `archive.ExtractAll(destinationDir AS STRING) AS VOID OR Error`
+    - `archive.AddBytes(entryName AS STRING, data AS Bytes) AS VOID OR Error`
+    - `archive.AddFile(entryName AS STRING, filePath AS STRING) AS VOID OR Error`
+    - `archive.Close() AS VOID OR Error`
+
+### Lista de Atividades BNCompress
+- [ ] **COMPRESS-1 (Spec & Declaração):** Redigir `language/0.6/bncompress.md` e `modules/bn/BNCompress.bn`.
+- [ ] **COMPRESS-2 (Core de Domínio):** Criar `libraries/bn_core_compress` com as operações de Deflate/Inflate, Gzip/Gunzip e manipulação do formato ZIP.
+- [ ] **COMPRESS-3 (Runtime e Provider):** Adaptar C ABI em `crates/bn_rt/src/compress.rs` e provider em `libraries/bn_lib_compress`.
+- [ ] **COMPRESS-4 (Testes de Paridade):** Validar compressão e descompressão de arquivos de teste, extração e integridade de arquivos ZIP nos dois backends (`bni` x `bnc`).
 
 ---
 
