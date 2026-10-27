@@ -170,11 +170,13 @@ jobs:
             cp "$out/bnc.exe" "dist/bnc-${{ matrix.platform }}.exe"
             cp "$out/bnr.exe" "dist/bnr-${{ matrix.platform }}.exe"
             cp "$out/bn_rt.lib" "dist/bn_rt-${{ matrix.platform }}.lib"
+            cp "$out/bn_stdlib.lib" "dist/bn_stdlib-${{ matrix.platform }}.lib"
           else
             cp "$out/bni" "dist/bni-${{ matrix.platform }}"
             cp "$out/bnc" "dist/bnc-${{ matrix.platform }}"
             cp "$out/bnr" "dist/bnr-${{ matrix.platform }}"
             cp "$out/libbn_rt.a" "dist/libbn_rt-${{ matrix.platform }}.a"
+            cp "$out/libbn_stdlib.a" "dist/libbn_stdlib-${{ matrix.platform }}.a"
             chmod +x dist/bni-* dist/bnc-* dist/bnr-*
           fi
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -210,6 +212,7 @@ jobs:
           cp dist/bnc-linux-x86_64 target/release/bnc
           cp dist/bnr-linux-x86_64 target/release/bnr
           cp dist/libbn_rt-linux-x86_64.a target/release/libbn_rt.a
+          cp dist/libbn_stdlib-linux-x86_64.a target/release/libbn_stdlib.a
           chmod +x target/release/bni target/release/bnc target/release/bnr
           prefix="$RUNNER_TEMP/bn"
           BN_STATE_DIR="$RUNNER_TEMP/bn-state" scripts/install.sh --no-build --prefix "$prefix"

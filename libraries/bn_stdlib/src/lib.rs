@@ -19,6 +19,7 @@ pub use bn_rt::*;
 
 pub mod crypto;
 mod crypto_abi;
+pub mod compress_abi;
 pub mod crypto_error;
 pub mod data_error;
 mod dataframe;
@@ -49,6 +50,7 @@ pub(crate) mod sqlite_error;
 mod stats;
 
 pub use bn_core_log::{Level as LogLevel, Record as LogRecord};
+pub use compress_abi::*;
 pub use crypto_abi::*;
 pub use dataframe::{
     CellKind, ConvertedCell, DataFrameColumn, DataFrameJoin, DataFrameJoinConfig,

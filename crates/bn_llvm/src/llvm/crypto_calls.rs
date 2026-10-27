@@ -48,14 +48,44 @@ pub(super) fn lower_bncrypto_call(
             );
             return;
         }
-        "Length" | "ToHex" => {
+        "Length" | "ToHex" | "Algorithm" | "Zeroize" => {
             emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
             let args = vec![(T::I64, cryh())];
             if member == "ToHex" {
                 let call = I::call(T::Ptr, "bn_rt_crypto_bytes_to_hex", args);
                 text.assign(format!("v{dest}"), call);
+            } else if member == "Algorithm" {
+                let call = I::call(T::I32, "bn_rt_crypto_key_algorithm", args);
+                text.assign(format!("v{dest}"), call);
+            } else if member == "Zeroize" {
+                let call = I::call(T::I32, "bn_rt_crypto_key_zeroize", args);
+                text.assign(format!("cryrc{dest}"), call);
             } else {
-                let call = I::call(T::I64, "bn_rt_crypto_bytes_length", args);
+                let is_key = analysis
+                    .values
+                    .get(&arguments[0])
+                    .is_some_and(|ty| match ty {
+                        Type::Named(name)
+                        | Type::ImportedNamed { name, .. }
+                        | Type::ImportedTypeName { name, .. } => {
+                            name == "Key" || name.ends_with(".Key")
+                        }
+                        Type::Alternative(alternatives) => alternatives.iter().any(|a| match a {
+                            Type::Named(name)
+                            | Type::ImportedNamed { name, .. }
+                            | Type::ImportedTypeName { name, .. } => {
+                                name == "Key" || name.ends_with(".Key")
+                            }
+                            _ => false,
+                        }),
+                        _ => false,
+                    });
+                let sym = if is_key {
+                    "bn_rt_crypto_key_length"
+                } else {
+                    "bn_rt_crypto_bytes_length"
+                };
+                let call = I::call(T::I64, sym, args);
                 text.assign(format!("cryl{dest}"), call);
                 let length = O::reg(format!("cryl{dest}"));
                 text.assign(
@@ -63,6 +93,75 @@ pub(super) fn lower_bncrypto_call(
                     I::cast(CastOp::Trunc, T::I64, length, T::I32),
                 );
             }
+            return;
+        }
+        "RandomBytes" => {
+            let ty = analysis
+                .values
+                .get(&arguments[0])
+                .and_then(llvm_type)
+                .unwrap_or(T::I64);
+            let arg_op = if ty == T::I64 {
+                v(arguments[0])
+            } else {
+                let slot = format!("crybound{dest}");
+                text.assign(&slot, I::cast(CastOp::SExt, ty, v(arguments[0]), T::I64));
+                O::reg(slot)
+            };
+            let args = vec![(T::I64, arg_op)];
+            lower_status_call(
+                text,
+                destination,
+                "bn_rt_crypto_random_bytes",
+                args,
+                Out::Handle,
+            );
+            return;
+        }
+        "GenerateNonce" | "GenerateKey" => {
+            let ty = analysis
+                .values
+                .get(&arguments[0])
+                .and_then(llvm_type)
+                .unwrap_or(T::I32);
+            let arg_op = if ty == T::I32 {
+                v(arguments[0])
+            } else {
+                let slot = format!("cryalg{dest}");
+                text.assign(&slot, I::cast(CastOp::Trunc, ty, v(arguments[0]), T::I32));
+                O::reg(slot)
+            };
+            let args = vec![(T::I32, arg_op)];
+            let sym = if member == "GenerateNonce" {
+                "bn_rt_crypto_generate_nonce"
+            } else {
+                "bn_rt_crypto_generate_key"
+            };
+            lower_status_call(text, destination, sym, args, Out::Handle);
+            return;
+        }
+        "ImportKey" => {
+            emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
+            let ty = analysis
+                .values
+                .get(&arguments[1])
+                .and_then(llvm_type)
+                .unwrap_or(T::I32);
+            let arg1_op = if ty == T::I32 {
+                v(arguments[1])
+            } else {
+                let slot = format!("cryalg{dest}");
+                text.assign(&slot, I::cast(CastOp::Trunc, ty, v(arguments[1]), T::I32));
+                O::reg(slot)
+            };
+            let args = vec![(T::I64, cryh()), (T::I32, arg1_op)];
+            lower_status_call(
+                text,
+                destination,
+                "bn_rt_crypto_import_key",
+                args,
+                Out::Handle,
+            );
             return;
         }
         "FromHex" => {

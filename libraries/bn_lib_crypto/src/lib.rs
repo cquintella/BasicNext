@@ -10,6 +10,7 @@
 //! drift. Nothing here is language.
 
 use std::collections::HashMap;
+use zeroize::Zeroize;
 
 use bn_diag::Diagnostic;
 use bn_source::Span;
@@ -25,13 +26,22 @@ use bn_interp::{
 
 pub const NAME: &str = "BNCrypto";
 
-/// Interpreter-side owner of `BNCrypto.Bytes` buffers. Compiled programs use
-/// the parallel table in `bn_rt::crypto`; neither observes the other, and both
+#[derive(Debug)]
+struct KeyEntry {
+    algorithm: i32,
+    material: zeroize::Zeroizing<Vec<u8>>,
+    zeroized: bool,
+}
+
+/// Interpreter-side owner of `BNCrypto.Bytes` and `BNCrypto.Key` handles. Compiled programs use
+/// the parallel tables in `bn_stdlib::crypto_abi`; neither observes the other, and both
 /// hand out opaque `u64` handles.
 #[derive(Debug, Default)]
 pub struct CryptoProvider {
     buffers: HashMap<u64, Vec<u8>>,
     holders: HashMap<u64, usize>,
+    keys: HashMap<u64, KeyEntry>,
+    key_holders: HashMap<u64, usize>,
     next: u64,
 }
 
@@ -42,6 +52,59 @@ impl CryptoProvider {
         self.buffers.insert(handle, bytes);
         self.holders.insert(handle, 1);
         Value::CryptoBytes(handle)
+    }
+
+    fn insert_key(&mut self, algorithm: i32, material: zeroize::Zeroizing<Vec<u8>>) -> Value {
+        self.next += 1;
+        let handle = self.next;
+        self.keys.insert(
+            handle,
+            KeyEntry {
+                algorithm,
+                material,
+                zeroized: false,
+            },
+        );
+        self.key_holders.insert(handle, 1);
+        Value::CryptoKey(handle)
+    }
+
+    /// Reads the `Key` operand at `index`, or reports the type mismatch.
+    fn key_at(
+        &self,
+        arguments: &[Value],
+        index: usize,
+        member: &str,
+        span: Span,
+    ) -> Result<zeroize::Zeroizing<Vec<u8>>, Diagnostic> {
+        match arguments.get(index) {
+            Some(Value::CryptoKey(handle)) => {
+                let Some(entry) = self.keys.get(handle) else {
+                    return Err(runtime_error(
+                        bn_diag::DiagId::USE_AFTER_RELEASE,
+                        "BNCrypto.Key was already released",
+                        span,
+                    ));
+                };
+                if entry.zeroized {
+                    return Err(runtime_error(
+                        bn_diag::DiagId::USE_AFTER_RELEASE,
+                        "key material has already been zeroized",
+                        span,
+                    ));
+                }
+                Ok(entry.material.clone())
+            }
+            Some(Value::CryptoBytes(handle)) => {
+                Ok(zeroize::Zeroizing::new(self.buffer(*handle, span)?.clone()))
+            }
+            _ => Err(type_mismatch(
+                "BNCrypto.Key",
+                "non-BNCrypto.Key value",
+                member,
+                span,
+            )),
+        }
     }
 
     /// Reads the `Bytes` operand at `index`, or reports the type mismatch.
@@ -81,7 +144,7 @@ impl CryptoProvider {
         match method {
             "MlKemKeypair" | "MlDsaKeypair" => {
                 require_arity(member, arguments, 1, span)?;
-                let seed = self.bytes_at(arguments, 0, member, span)?;
+                let seed = self.key_at(arguments, 0, member, span)?;
                 let pair = if method.starts_with("MlKem") {
                     bn_stdlib::crypto::ml_kem_keypair(&seed)
                 } else {
@@ -135,7 +198,7 @@ impl CryptoProvider {
             )));
         }
         require_arity(member, arguments, 2, span)?;
-        let key = self.bytes_at(arguments, 0, member, span)?;
+        let key = self.key_at(arguments, 0, member, span)?;
         let payload = self.bytes_at(arguments, 1, member, span)?;
         let (produced, rejected) = if method == "MlKemDecapsulate" {
             (
@@ -176,7 +239,7 @@ impl CryptoProvider {
                 bn_stdlib::crypto::p256_verify(&public_key, &message, &signature)
             }));
         }
-        let key = self.bytes_at(arguments, 0, member, span)?;
+        let key = self.key_at(arguments, 0, member, span)?;
         let produced = if method.ends_with("PublicKey") {
             require_arity(member, arguments, 1, span)?;
             if ed25519 {
@@ -218,13 +281,13 @@ impl CryptoProvider {
         match method {
             "HmacSha256" => {
                 require_arity(member, arguments, 2, span)?;
-                let key = self.bytes_at(arguments, 0, member, span)?;
+                let key = self.key_at(arguments, 0, member, span)?;
                 let data = self.bytes_at(arguments, 1, member, span)?;
                 Ok(self.insert(bn_stdlib::crypto::hmac_sha256(&key, &data)))
             }
             "VerifyHmacSha256" => {
                 require_arity(member, arguments, 3, span)?;
-                let key = self.bytes_at(arguments, 0, member, span)?;
+                let key = self.key_at(arguments, 0, member, span)?;
                 let data = self.bytes_at(arguments, 1, member, span)?;
                 let tag = self.bytes_at(arguments, 2, member, span)?;
                 Ok(Value::Boolean(bn_stdlib::crypto::hmac_verify(
@@ -310,19 +373,35 @@ impl CryptoProvider {
             }
             "Length" => {
                 require_arity(member, arguments, 1, span)?;
-                let &Value::CryptoBytes(handle) = &arguments[0] else {
-                    return Err(type_mismatch(
-                        "BNCrypto.Bytes",
-                        "non-BNCrypto.Bytes value",
+                match &arguments[0] {
+                    Value::CryptoBytes(handle) => {
+                        let length = self.buffer(*handle, span)?.len();
+                        Ok(Value::Integer(
+                            i128::try_from(length).unwrap_or(i128::MAX),
+                            IntegerType::Int32,
+                        ))
+                    }
+                    Value::CryptoKey(handle) => {
+                        let entry = self.keys.get(handle).ok_or_else(|| {
+                            runtime_error(
+                                bn_diag::DiagId::USE_AFTER_RELEASE,
+                                "BNCrypto.Key is invalid",
+                                span,
+                            )
+                        })?;
+                        let length = if entry.zeroized { 0 } else { entry.material.len() };
+                        Ok(Value::Integer(
+                            i128::try_from(length).unwrap_or(i128::MAX),
+                            IntegerType::Int32,
+                        ))
+                    }
+                    _ => Err(type_mismatch(
+                        "BNCrypto.Bytes or BNCrypto.Key",
+                        "non-crypto value",
                         member,
                         span,
-                    ));
-                };
-                let length = self.buffer(handle, span)?.len();
-                Ok(Value::Integer(
-                    i128::try_from(length).unwrap_or(i128::MAX),
-                    IntegerType::Int32,
-                ))
+                    )),
+                }
             }
             "ToHex" => {
                 require_arity(member, arguments, 1, span)?;
@@ -382,18 +461,10 @@ impl CryptoProvider {
         span: Span,
     ) -> Result<Value, Diagnostic> {
         require_arity(member, arguments, 4, span)?;
-        let mut operands = Vec::with_capacity(4);
-        for argument in arguments {
-            let Value::CryptoBytes(handle) = argument else {
-                return Err(type_mismatch(
-                    "BNCrypto.Bytes",
-                    "non-BNCrypto.Bytes value",
-                    member,
-                    span,
-                ));
-            };
-            operands.push(self.buffer(*handle, span)?.clone());
-        }
+        let key = self.key_at(arguments, 0, member, span)?;
+        let nonce = self.bytes_at(arguments, 1, member, span)?;
+        let data = self.bytes_at(arguments, 2, member, span)?;
+        let aad = self.bytes_at(arguments, 3, member, span)?;
         let algorithm = if method.ends_with("AesGcm") {
             bn_stdlib::crypto::Aead::Aes256Gcm
         } else {
@@ -401,21 +472,9 @@ impl CryptoProvider {
         };
         let sealing = method.starts_with("Seal");
         let result = if sealing {
-            bn_stdlib::crypto::seal(
-                algorithm,
-                &operands[0],
-                &operands[1],
-                &operands[2],
-                &operands[3],
-            )
+            bn_stdlib::crypto::seal(algorithm, &key, &nonce, &data, &aad)
         } else {
-            bn_stdlib::crypto::open(
-                algorithm,
-                &operands[0],
-                &operands[1],
-                &operands[2],
-                &operands[3],
-            )
+            bn_stdlib::crypto::open(algorithm, &key, &nonce, &data, &aad)
         };
         match result {
             Some(bytes) => Ok(self.insert(bytes)),
@@ -424,6 +483,141 @@ impl CryptoProvider {
             } else {
                 CryptoFailure::Open(algorithm)
             }),
+        }
+    }
+
+    fn key_or_entropy(
+        &mut self,
+        method: &str,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        match method {
+            "RandomBytes" => {
+                require_arity(member, arguments, 1, span)?;
+                let Value::Integer(length, _) = &arguments[0] else {
+                    return Err(type_mismatch("INTEGER", "non-INTEGER value", member, span));
+                };
+                let Ok(len) = usize::try_from(*length) else {
+                    return Err(type_mismatch(
+                        "a non-negative INTEGER",
+                        "out-of-range value",
+                        member,
+                        span,
+                    ));
+                };
+                match bn_stdlib::crypto::random_bytes(len) {
+                    Ok(bytes) => Ok(self.insert(bytes)),
+                    Err(err) => failure(&err),
+                }
+            }
+            "GenerateNonce" => {
+                require_arity(member, arguments, 1, span)?;
+                let Value::Integer(algorithm, _) = &arguments[0] else {
+                    return Err(type_mismatch("INTEGER", "non-INTEGER value", member, span));
+                };
+                let Ok(alg) = i32::try_from(*algorithm) else {
+                    return Err(type_mismatch(
+                        "an INTEGER algorithm code",
+                        "out-of-range value",
+                        member,
+                        span,
+                    ));
+                };
+                match bn_stdlib::crypto::generate_nonce(alg) {
+                    Ok(nonce) => Ok(self.insert(nonce)),
+                    Err(err) => failure(&err),
+                }
+            }
+            "GenerateKey" => {
+                require_arity(member, arguments, 1, span)?;
+                let Value::Integer(algorithm, _) = &arguments[0] else {
+                    return Err(type_mismatch("INTEGER", "non-INTEGER value", member, span));
+                };
+                let Ok(alg) = i32::try_from(*algorithm) else {
+                    return Err(type_mismatch(
+                        "an INTEGER algorithm code",
+                        "out-of-range value",
+                        member,
+                        span,
+                    ));
+                };
+                match bn_stdlib::crypto::generate_key_material(alg) {
+                    Ok(material) => Ok(self.insert_key(alg, material)),
+                    Err(err) => failure(&err),
+                }
+            }
+            "ImportKey" => {
+                require_arity(member, arguments, 2, span)?;
+                let raw_bytes = self.bytes_at(arguments, 0, member, span)?;
+                let Value::Integer(algorithm, _) = &arguments[1] else {
+                    return Err(type_mismatch("INTEGER", "non-INTEGER value", member, span));
+                };
+                let Ok(alg) = i32::try_from(*algorithm) else {
+                    return Err(type_mismatch(
+                        "an INTEGER algorithm code",
+                        "out-of-range value",
+                        member,
+                        span,
+                    ));
+                };
+                let Some(expected_len) = bn_stdlib::crypto::required_key_length(alg) else {
+                    return failure(&CryptoFailure::Algorithm(alg));
+                };
+                if raw_bytes.len() != expected_len {
+                    return failure(&CryptoFailure::KeyLength {
+                        expected: expected_len,
+                        actual: raw_bytes.len(),
+                    });
+                }
+                let material = zeroize::Zeroizing::new(raw_bytes);
+                Ok(self.insert_key(alg, material))
+            }
+            "Algorithm" => {
+                require_arity(member, arguments, 1, span)?;
+                let Value::CryptoKey(handle) = &arguments[0] else {
+                    return Err(type_mismatch(
+                        "BNCrypto.Key",
+                        "non-BNCrypto.Key value",
+                        member,
+                        span,
+                    ));
+                };
+                let entry = self.keys.get(handle).ok_or_else(|| {
+                    runtime_error(
+                        bn_diag::DiagId::USE_AFTER_RELEASE,
+                        "BNCrypto.Key is invalid",
+                        span,
+                    )
+                })?;
+                Ok(Value::Integer(
+                    i128::from(entry.algorithm),
+                    IntegerType::Int32,
+                ))
+            }
+            "Zeroize" => {
+                require_arity(member, arguments, 1, span)?;
+                let Value::CryptoKey(handle) = &arguments[0] else {
+                    return Err(type_mismatch(
+                        "BNCrypto.Key",
+                        "non-BNCrypto.Key value",
+                        member,
+                        span,
+                    ));
+                };
+                let entry = self.keys.get_mut(handle).ok_or_else(|| {
+                    runtime_error(
+                        bn_diag::DiagId::USE_AFTER_RELEASE,
+                        "BNCrypto.Key is invalid",
+                        span,
+                    )
+                })?;
+                entry.material.zeroize();
+                entry.zeroized = true;
+                Ok(Value::Null)
+            }
+            _ => Err(name_not_found(method, "BNCrypto function", span)),
         }
     }
 
@@ -463,50 +657,86 @@ impl Provider for CryptoProvider {
             }
             "MlKemKeypair" | "MlKemEncapsulate" | "MlKemDecapsulate" | "MlDsaKeypair"
             | "MlDsaSign" | "MlDsaVerify" => self.post_quantum(method, member, &arguments, span),
+            "RandomBytes" | "GenerateNonce" | "GenerateKey" | "ImportKey" | "Algorithm"
+            | "Zeroize" => self.key_or_entropy(method, member, &arguments, span),
             "CONSTRUCTOR" => Ok(Value::Null),
             _ => Err(name_not_found(method, "BNCrypto function", span)),
         }
     }
 
     fn allocate(&mut self, class: &str, _span: Span) -> Option<Result<Value, Diagnostic>> {
-        (class.rsplit('.').next() == Some("Bytes")).then(|| Ok(self.insert(Vec::new())))
+        let base = class.rsplit('.').next();
+        if base == Some("Bytes") {
+            Some(Ok(self.insert(Vec::new())))
+        } else if base == Some("Key") {
+            Some(Ok(self.insert_key(0, zeroize::Zeroizing::new(Vec::new()))))
+        } else {
+            None
+        }
     }
 
     fn retain(&mut self, value: &Value, span: Span) -> Option<Result<(), Diagnostic>> {
-        let Value::CryptoBytes(handle) = value else {
-            return None;
-        };
-        Some(match self.holders.get_mut(handle) {
-            Some(holders) => {
-                *holders += 1;
-                Ok(())
-            }
-            None => Err(runtime_error(
-                bn_diag::DiagId::USE_AFTER_RELEASE,
-                bn_catalog::text("crypto", "msg.bncrypto_bytes_was_already_released"),
-                span,
-            )),
-        })
+        match value {
+            Value::CryptoBytes(handle) => Some(match self.holders.get_mut(handle) {
+                Some(holders) => {
+                    *holders += 1;
+                    Ok(())
+                }
+                None => Err(runtime_error(
+                    bn_diag::DiagId::USE_AFTER_RELEASE,
+                    bn_catalog::text("crypto", "msg.bncrypto_bytes_was_already_released"),
+                    span,
+                )),
+            }),
+            Value::CryptoKey(handle) => Some(match self.key_holders.get_mut(handle) {
+                Some(holders) => {
+                    *holders += 1;
+                    Ok(())
+                }
+                None => Err(runtime_error(
+                    bn_diag::DiagId::USE_AFTER_RELEASE,
+                    "BNCrypto.Key was already released",
+                    span,
+                )),
+            }),
+            _ => None,
+        }
     }
 
     fn release(&mut self, value: &Value, span: Span) -> Option<Result<(), Diagnostic>> {
-        let Value::CryptoBytes(handle) = value else {
-            return None;
-        };
-        Some(if let Some(holders) = self.holders.get_mut(handle) {
-            *holders -= 1;
-            if *holders == 0 {
-                self.holders.remove(handle);
-                self.buffers.remove(handle);
-            }
-            Ok(())
-        } else {
-            Err(runtime_error(
-                bn_diag::DiagId::USE_AFTER_RELEASE,
-                bn_catalog::text("crypto", "msg.bncrypto_bytes_was_already_released"),
-                span,
-            ))
-        })
+        match value {
+            Value::CryptoBytes(handle) => Some(if let Some(holders) = self.holders.get_mut(handle) {
+                *holders -= 1;
+                if *holders == 0 {
+                    self.holders.remove(handle);
+                    self.buffers.remove(handle);
+                }
+                Ok(())
+            } else {
+                Err(runtime_error(
+                    bn_diag::DiagId::USE_AFTER_RELEASE,
+                    bn_catalog::text("crypto", "msg.bncrypto_bytes_was_already_released"),
+                    span,
+                ))
+            }),
+            Value::CryptoKey(handle) => Some(if let Some(holders) = self.key_holders.get_mut(handle) {
+                *holders -= 1;
+                if *holders == 0 {
+                    self.key_holders.remove(handle);
+                    if let Some(mut entry) = self.keys.remove(handle) {
+                        entry.material.zeroize();
+                    }
+                }
+                Ok(())
+            } else {
+                Err(runtime_error(
+                    bn_diag::DiagId::USE_AFTER_RELEASE,
+                    "BNCrypto.Key was already released",
+                    span,
+                ))
+            }),
+            _ => None,
+        }
     }
 }
 

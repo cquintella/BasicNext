@@ -5,6 +5,8 @@ use runtime_abi::*;
 use traps::Fact;
 #[path = "crypto_calls.rs"]
 mod crypto_calls;
+#[path = "compress_calls.rs"]
+mod compress_calls;
 #[path = "json_calls.rs"]
 mod json_calls;
 use crate::ir::{CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
@@ -521,6 +523,10 @@ pub(crate) fn lower_call_instruction(
         name if bncrypto_method(module, name).is_some() => {
             let member = bncrypto_method(module, name).expect("validated BNCrypto member");
             crypto_calls::lower_bncrypto_call(text, analysis, *destination, member, arguments);
+        }
+        name if bncompress_method(module, name).is_some() => {
+            let member = bncompress_method(module, name).expect("validated BNCompress member");
+            compress_calls::lower_bncompress_call(text, analysis, *destination, member, arguments);
         }
         #[cfg(feature = "sqlite")]
         name if bnsqlite_method(module, name).is_some() => {

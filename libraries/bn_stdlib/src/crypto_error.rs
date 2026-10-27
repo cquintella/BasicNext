@@ -38,6 +38,17 @@ pub enum CryptoFailure {
     Decapsulate,
     /// `MlDsaSign` with a malformed signing key.
     SigningKey,
+    /// Operating system CSPRNG entropy failure (`operation` names the caller).
+    Random(&'static str),
+    /// Invalid or unsupported algorithm constant.
+    Algorithm(i32),
+    /// Key material length does not match algorithm requirement.
+    KeyLength {
+        expected: usize,
+        actual: usize,
+    },
+    /// Attempt to use an already zeroized key.
+    ZeroizedKey,
 }
 
 impl CryptoFailure {
@@ -46,6 +57,7 @@ impl CryptoFailure {
     pub const fn code(&self) -> i32 {
         match self {
             Self::Open(_) | Self::Decapsulate => crypto::AUTHENTICATION_FAILED,
+            Self::Random(_) => crypto::UNAVAILABLE,
             _ => crypto::INVALID_ARGUMENT,
         }
     }
@@ -60,11 +72,13 @@ impl CryptoFailure {
             Self::Open(Aead::Aes256Gcm) => "BNCrypto.OpenAesGcm",
             Self::Open(Aead::ChaCha20Poly1305) => "BNCrypto.OpenChaCha20",
             Self::Argon2id => "BNCrypto.Argon2id",
-            Self::Key(operation) | Self::Seed(operation) => operation,
+            Self::Key(operation) | Self::Seed(operation) | Self::Random(operation) => operation,
             Self::Slice { .. } => "BNCrypto.Slice",
             Self::EncapsulationKey => "BNCrypto.MlKemEncapsulate",
             Self::Decapsulate => "BNCrypto.MlKemDecapsulate",
             Self::SigningKey => "BNCrypto.MlDsaSign",
+            Self::Algorithm(_) | Self::KeyLength { .. } => "BNCrypto.ImportKey",
+            Self::ZeroizedKey => "BNCrypto.Key",
         }
     }
 
@@ -90,6 +104,12 @@ impl CryptoFailure {
             Self::EncapsulationKey => "cannot encapsulate a secret".into(),
             Self::Decapsulate => "cannot decapsulate the ciphertext".into(),
             Self::SigningKey => "cannot sign the message".into(),
+            Self::Random(_) => "cannot obtain random bytes from system entropy".into(),
+            Self::Algorithm(code) => format!("unsupported or invalid algorithm code {code}"),
+            Self::KeyLength { expected, actual } => {
+                format!("key material length {actual} does not match required length {expected}")
+            }
+            Self::ZeroizedKey => "key material has already been zeroized".into(),
         }
     }
 
@@ -126,6 +146,12 @@ impl CryptoFailure {
             }
             Self::Decapsulate => "the ciphertext or the private key is malformed".into(),
             Self::SigningKey => "the signing key has the wrong length or is malformed".into(),
+            Self::Random(_) => "the system entropy generator failed or is unavailable".into(),
+            Self::Algorithm(_) => "the algorithm code must be one of the ALG_* constants".into(),
+            Self::KeyLength { .. } => {
+                "the key material must match the exact byte length required by the algorithm".into()
+            }
+            Self::ZeroizedKey => "zeroized keys cannot be used for cryptographic operations".into(),
         }
     }
 }

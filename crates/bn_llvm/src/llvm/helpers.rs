@@ -619,6 +619,12 @@ pub(crate) fn provider_name(module: &Module, name: &str) -> Option<&'static str>
     {
         Some("BNCrypto")
     } else if module
+        .bncompress_providers
+        .iter()
+        .any(|provider| provider.0 == module_id)
+    {
+        Some("BNCompress")
+    } else if module
         .bnjson_providers
         .iter()
         .any(|provider| provider.0 == module_id)
@@ -728,9 +734,37 @@ pub(crate) fn carries_bncrypto_bytes(module: &Module, ty: &Type) -> bool {
     }
 }
 
+/// True when `ty` is `BNCrypto.Key` from a module this program imports.
+pub(crate) fn is_bncrypto_key_type(module: &Module, ty: &Type) -> bool {
+    matches!(
+        ty,
+        Type::ImportedNamed {
+            module: module_id,
+            name
+        } if name == "Key"
+            && module
+                .bncrypto_providers
+                .contains(&bn_ir::ModuleId::from(*module_id))
+    )
+}
+
+/// True when `ty` carries a `BNCrypto.Key`, either directly or inside an
+/// `OR Error` alternative.
+pub(crate) fn carries_bncrypto_key(module: &Module, ty: &Type) -> bool {
+    match ty {
+        Type::Alternative(alternatives) => alternatives
+            .iter()
+            .any(|alternative| is_bncrypto_key_type(module, alternative)),
+        other => is_bncrypto_key_type(module, other),
+    }
+}
+
 /// The `BNCrypto` member `name` selects, if this module imports `BNCrypto` and
 /// the callee is part of the supported surface.
 pub(crate) fn bncrypto_method<'a>(module: &Module, name: &'a str) -> Option<&'a str> {
+    if name.starts_with('#') && provider_name(module, name) != Some("BNCrypto") {
+        return None;
+    }
     let method = name.rsplit('.').next()?;
     (!module.bncrypto_providers.is_empty()
         && matches!(
@@ -761,6 +795,103 @@ pub(crate) fn bncrypto_method<'a>(module: &Module, name: &'a str) -> Option<&'a 
                 | "MlDsaKeypair"
                 | "MlDsaSign"
                 | "MlDsaVerify"
+                | "RandomBytes"
+                | "GenerateNonce"
+                | "GenerateKey"
+                | "ImportKey"
+                | "Algorithm"
+                | "Zeroize"
+        ))
+    .then_some(method)
+}
+
+/// True when `ty` is `BNCompress.Bytes` from a module this program imports.
+pub(crate) fn is_bncompress_bytes_type(module: &Module, ty: &Type) -> bool {
+    matches!(
+        ty,
+        Type::ImportedNamed {
+            module: module_id,
+            name
+        } if name == "Bytes"
+            && module
+                .bncompress_providers
+                .contains(&bn_ir::ModuleId::from(*module_id))
+    )
+}
+
+/// True when `ty` carries a `BNCompress.Bytes`, either directly or inside an
+/// `OR Error` alternative.
+pub(crate) fn carries_bncompress_bytes(module: &Module, ty: &Type) -> bool {
+    match ty {
+        Type::Alternative(alternatives) => alternatives
+            .iter()
+            .any(|alternative| is_bncompress_bytes_type(module, alternative)),
+        other => is_bncompress_bytes_type(module, other),
+    }
+}
+
+/// True when `ty` is `BNCompress.ZipArchive` from a module this program imports.
+pub(crate) fn is_bncompress_zip_type(module: &Module, ty: &Type) -> bool {
+    matches!(
+        ty,
+        Type::ImportedNamed {
+            module: module_id,
+            name
+        } if name == "ZipArchive"
+            && module
+                .bncompress_providers
+                .contains(&bn_ir::ModuleId::from(*module_id))
+    )
+}
+
+/// True when `ty` carries a `BNCompress.ZipArchive`, either directly or inside an
+/// `OR Error` alternative.
+pub(crate) fn carries_bncompress_zip(module: &Module, ty: &Type) -> bool {
+    match ty {
+        Type::Alternative(alternatives) => alternatives
+            .iter()
+            .any(|alternative| is_bncompress_zip_type(module, alternative)),
+        other => is_bncompress_zip_type(module, other),
+    }
+}
+
+/// The `BNCompress` member `name` selects, if this module imports `BNCompress` and
+/// the callee is part of the supported surface.
+pub(crate) fn bncompress_method<'a>(module: &Module, name: &'a str) -> Option<&'a str> {
+    if name.starts_with('#') && provider_name(module, name) != Some("BNCompress") {
+        return None;
+    }
+    let method = name.rsplit('.').next()?;
+    (!module.bncompress_providers.is_empty()
+        && matches!(
+            method,
+            "Deflate"
+                | "Inflate"
+                | "Gzip"
+                | "Gunzip"
+                | "DeflateText"
+                | "InflateText"
+                | "GzipText"
+                | "GunzipText"
+                | "FromText"
+                | "FromHex"
+                | "Length"
+                | "ToHex"
+                | "ToText"
+                | "Create"
+                | "Open"
+                | "AddFile"
+                | "AddText"
+                | "AddStoredText"
+                | "AddBytes"
+                | "AddStoredBytes"
+                | "ExtractAll"
+                | "ExtractFile"
+                | "ExtractText"
+                | "ExtractBytes"
+                | "EntryCount"
+                | "EntryName"
+                | "Close"
         ))
     .then_some(method)
 }

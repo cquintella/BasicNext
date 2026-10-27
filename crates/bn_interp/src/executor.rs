@@ -363,7 +363,10 @@ pub(super) fn coerce(value: Value, ty: &Type, span: Span) -> Result<Value, Diagn
             | Value::LogEntry(_)
             | Value::LogLogger(_)
             | Value::Json(_)
-            | Value::CryptoBytes(_),
+            | Value::CryptoBytes(_)
+            | Value::CryptoKey(_)
+            | Value::CompressBytes(_)
+            | Value::CompressZip(_),
             Type::Named(_)
             | Type::TypeName(_)
             | Type::ImportedNamed { .. }
@@ -543,7 +546,14 @@ fn builtin(name: &str, arguments: &[Value], span: Span) -> Result<Value, Diagnos
             ));
         };
         return Ok(text.chars().next().map_or_else(
-            || Value::error(1, bn_diag::trap_texts::ASC_EMPTY_STRING.into()),
+            || {
+                Value::error_report(
+                    1,
+                    "ASC",
+                    bn_diag::trap_texts::ASC_EMPTY_STRING.to_string(),
+                    "string is empty".to_string(),
+                )
+            },
             |c| Value::Integer(i128::from(u32::from(c)), IntegerType::Int32),
         ));
     }
@@ -553,7 +563,14 @@ fn builtin(name: &str, arguments: &[Value], span: Span) -> Result<Value, Diagnos
             .ok()
             .and_then(char::from_u32)
             .map_or_else(
-                || Value::error(1, bn_diag::trap_texts::CHAR_NOT_UNICODE.into()),
+                || {
+                    Value::error_report(
+                        1,
+                        "CHAR",
+                        bn_diag::trap_texts::CHAR_NOT_UNICODE.to_string(),
+                        "code point is outside Unicode scalar range".to_string(),
+                    )
+                },
                 |c| Value::String(shared_string(c.to_string())),
             ));
     }

@@ -153,7 +153,24 @@ pub extern "C" fn bn_rt_error_wrap(
     if !failed || is_record(value) {
         return value;
     }
-    new_record(1, text(value), text(operation), "")
+    let msg = text(value);
+    let op = text(operation);
+    let (op, cause) = if op.is_empty() {
+        if msg.starts_with("ASC") {
+            ("ASC", "string is empty")
+        } else if msg.starts_with("CHAR") {
+            ("CHAR", "code point is outside Unicode scalar range")
+        } else {
+            (op, "")
+        }
+    } else if op == "ASC" {
+        ("ASC", "string is empty")
+    } else if op == "CHAR" {
+        ("CHAR", "code point is outside Unicode scalar range")
+    } else {
+        (op, "")
+    };
+    new_record(1, msg, op, cause)
 }
 
 /// `Error.Code` of a record from `bn_rt_error_take` (1 for any other pointer).

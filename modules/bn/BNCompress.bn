@@ -1,0 +1,119 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// BNCompress standard library module.
+//
+// [NATIVE BINDING BOUNDARY]
+// Compression algorithms and ZIP archive processing are supplied natively
+// by bn_core_compress over the C ABI, so the interpreter and compiled binaries
+// execute identical implementations without code duplication or drifting.
+
+EXPORT CONST OK AS INTEGER = 0
+EXPORT CONST INVALID_ARGUMENT AS INTEGER = 1
+EXPORT CONST NOT_FOUND AS INTEGER = 2
+EXPORT CONST IO_ERROR AS INTEGER = 3
+EXPORT CONST CORRUPT_DATA AS INTEGER = 4
+EXPORT CONST ZIP_SLIP AS INTEGER = 5
+
+EXPORT CLASS Bytes
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Length() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION ToHex() AS STRING
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION ToText() AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS ZipArchive
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC STATIC FUNCTION Create(path AS STRING) AS ZipArchive OR Error
+        RETURN NEW ZipArchive()
+    END FUNCTION
+    PUBLIC STATIC FUNCTION Open(path AS STRING) AS ZipArchive OR Error
+        RETURN NEW ZipArchive()
+    END FUNCTION
+    PUBLIC FUNCTION AddFile(entryName AS STRING, diskPath AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION AddText(entryName AS STRING, content AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION AddStoredText(entryName AS STRING, content AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION AddBytes(entryName AS STRING, data AS Bytes) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION AddStoredBytes(entryName AS STRING, data AS Bytes) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION ExtractAll(destinationDir AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION ExtractFile(entryName AS STRING, diskPath AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION ExtractText(entryName AS STRING) AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION ExtractBytes(entryName AS STRING) AS Bytes OR Error
+        RETURN NEW Bytes()
+    END FUNCTION
+    PUBLIC FUNCTION EntryCount() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION EntryName(index AS INTEGER) AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION Close() AS VOID OR Error
+        RETURN
+    END FUNCTION
+END CLASS
+
+EXPORT FUNCTION FromText(text AS STRING) AS Bytes
+    RETURN NEW Bytes()
+END FUNCTION
+
+EXPORT FUNCTION FromHex(hex AS STRING) AS Bytes OR Error
+    RETURN NEW Bytes()
+END FUNCTION
+
+EXPORT FUNCTION Deflate(data AS Bytes) AS Bytes OR Error
+    RETURN NEW Bytes()
+END FUNCTION
+
+EXPORT FUNCTION Inflate(data AS Bytes) AS Bytes OR Error
+    RETURN NEW Bytes()
+END FUNCTION
+
+EXPORT FUNCTION Gzip(data AS Bytes) AS Bytes OR Error
+    RETURN NEW Bytes()
+END FUNCTION
+
+EXPORT FUNCTION Gunzip(data AS Bytes) AS Bytes OR Error
+    RETURN NEW Bytes()
+END FUNCTION
+
+EXPORT FUNCTION DeflateText(text AS STRING) AS Bytes OR Error
+    RETURN NEW Bytes()
+END FUNCTION
+
+EXPORT FUNCTION InflateText(data AS Bytes) AS STRING OR Error
+    RETURN ""
+END FUNCTION
+
+EXPORT FUNCTION GzipText(text AS STRING) AS Bytes OR Error
+    RETURN NEW Bytes()
+END FUNCTION
+
+EXPORT FUNCTION GunzipText(data AS Bytes) AS STRING OR Error
+    RETURN ""
+END FUNCTION

@@ -169,7 +169,10 @@ pub(crate) fn call_instruction_supported(
             match bncrypto_method(module, name).unwrap_or(name) {
                 "SealAesGcm" | "OpenAesGcm" | "SealChaCha20" | "OpenChaCha20" => {
                     arguments.len() == 4
-                        && arguments.iter().all(|argument| {
+                        && values.get(&arguments[0]).is_some_and(|ty| {
+                            carries_bncrypto_key(module, ty) || carries_bncrypto_bytes(module, ty)
+                        })
+                        && arguments[1..].iter().all(|argument| {
                             values
                                 .get(argument)
                                 .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
@@ -187,7 +190,13 @@ pub(crate) fn call_instruction_supported(
                                 .is_some_and(|ty| ty.is_integer())
                         })
                 }
-                "MlKemKeypair" | "MlKemEncapsulate" | "MlDsaKeypair" => {
+                "MlKemKeypair" | "MlDsaKeypair" => {
+                    arguments.len() == 1
+                        && values.get(&arguments[0]).is_some_and(|ty| {
+                            carries_bncrypto_key(module, ty) || carries_bncrypto_bytes(module, ty)
+                        })
+                }
+                "MlKemEncapsulate" => {
                     arguments.len() == 1
                         && values
                             .get(&arguments[0])
@@ -195,11 +204,12 @@ pub(crate) fn call_instruction_supported(
                 }
                 "MlKemDecapsulate" | "MlDsaSign" => {
                     arguments.len() == 2
-                        && arguments.iter().all(|argument| {
-                            values
-                                .get(argument)
-                                .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                        && values.get(&arguments[0]).is_some_and(|ty| {
+                            carries_bncrypto_key(module, ty) || carries_bncrypto_bytes(module, ty)
                         })
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
                 }
                 "MlDsaVerify" => {
                     arguments.len() == 3
@@ -211,17 +221,18 @@ pub(crate) fn call_instruction_supported(
                 }
                 "Ed25519PublicKey" | "EcdsaP256PublicKey" => {
                     arguments.len() == 1
-                        && values
-                            .get(&arguments[0])
-                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                        && values.get(&arguments[0]).is_some_and(|ty| {
+                            carries_bncrypto_key(module, ty) || carries_bncrypto_bytes(module, ty)
+                        })
                 }
                 "Ed25519Sign" | "EcdsaP256Sign" => {
                     arguments.len() == 2
-                        && arguments.iter().all(|argument| {
-                            values
-                                .get(argument)
-                                .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                        && values.get(&arguments[0]).is_some_and(|ty| {
+                            carries_bncrypto_key(module, ty) || carries_bncrypto_bytes(module, ty)
                         })
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
                 }
                 "Ed25519Verify" | "EcdsaP256Verify" => {
                     arguments.len() == 3
@@ -233,19 +244,24 @@ pub(crate) fn call_instruction_supported(
                 }
                 "HmacSha256" => {
                     arguments.len() == 2
-                        && arguments.iter().all(|argument| {
-                            values
-                                .get(argument)
-                                .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                        && values.get(&arguments[0]).is_some_and(|ty| {
+                            carries_bncrypto_key(module, ty) || carries_bncrypto_bytes(module, ty)
                         })
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
                 }
                 "VerifyHmacSha256" => {
                     arguments.len() == 3
-                        && arguments.iter().all(|argument| {
-                            values
-                                .get(argument)
-                                .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                        && values.get(&arguments[0]).is_some_and(|ty| {
+                            carries_bncrypto_key(module, ty) || carries_bncrypto_bytes(module, ty)
                         })
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                        && values
+                            .get(&arguments[2])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
                 }
                 "Argon2id" => {
                     arguments.len() == 5
@@ -261,13 +277,82 @@ pub(crate) fn call_instruction_supported(
                                 .is_some_and(|ty| ty.is_integer())
                         })
                 }
+                "RandomBytes" | "GenerateNonce" | "GenerateKey" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .and_then(llvm_type)
+                            .is_some_and(|ty| ty.is_integer())
+                }
+                "ImportKey" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                        && values
+                            .get(&arguments[1])
+                            .and_then(llvm_type)
+                            .is_some_and(|ty| ty.is_integer())
+                }
+                "Algorithm" | "Zeroize" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_key(module, ty))
+                }
                 method => {
                     arguments.len() == 1
                         && values.get(&arguments[0]).is_some_and(|ty| match method {
-                            "Length" | "ToHex" => carries_bncrypto_bytes(module, ty),
+                            "Length" => {
+                                carries_bncrypto_bytes(module, ty)
+                                    || carries_bncrypto_key(module, ty)
+                            }
+                            "ToHex" => carries_bncrypto_bytes(module, ty),
                             _ => *ty == Type::String,
                         })
                 }
+            }
+        }
+        Some(name) if bncompress_method(module, name).is_some() => {
+            let bytes = |argument: &ValueId| {
+                values.get(argument).is_some_and(|ty| carries_bncompress_bytes(module, ty))
+            };
+            let zip = |argument: &ValueId| {
+                values.get(argument).is_some_and(|ty| carries_bncompress_zip(module, ty))
+            };
+            let string = |argument: &ValueId| values.get(argument) == Some(&Type::String);
+            let integer = |argument: &ValueId| {
+                values.get(argument).and_then(llvm_type).is_some_and(|ty| ty.is_integer())
+            };
+            match bncompress_method(module, name).unwrap_or(name) {
+                "Deflate" | "Inflate" | "Gzip" | "Gunzip" | "InflateText" | "GunzipText" => {
+                    arguments.len() == 1 && bytes(&arguments[0])
+                }
+                "DeflateText" | "GzipText" | "FromText" | "FromHex" => {
+                    arguments.len() == 1 && string(&arguments[0])
+                }
+                "Length" | "ToHex" | "ToText" => {
+                    arguments.len() == 1 && bytes(&arguments[0])
+                }
+                "Create" | "Open" => {
+                    arguments.len() == 1 && string(&arguments[0])
+                }
+                "Close" | "EntryCount" => {
+                    arguments.len() == 1 && zip(&arguments[0])
+                }
+                "ExtractAll" | "ExtractText" | "ExtractBytes" => {
+                    arguments.len() == 2 && zip(&arguments[0]) && string(&arguments[1])
+                }
+                "EntryName" => {
+                    arguments.len() == 2 && zip(&arguments[0]) && integer(&arguments[1])
+                }
+                "AddFile" | "AddText" | "AddStoredText" | "ExtractFile" => {
+                    arguments.len() == 3 && zip(&arguments[0]) && string(&arguments[1]) && string(&arguments[2])
+                }
+                "AddBytes" | "AddStoredBytes" => {
+                    arguments.len() == 3 && zip(&arguments[0]) && string(&arguments[1]) && bytes(&arguments[2])
+                }
+                _ => false,
             }
         }
         #[cfg(feature = "sqlite")]

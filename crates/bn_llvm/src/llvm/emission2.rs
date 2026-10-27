@@ -583,7 +583,7 @@ pub(crate) fn lower_print_value(
         return;
     }
     if let Type::Named(name) = ty
-        && !matches!(name.as_str(), "DATE" | "TIME" | "Error" | "VOID")
+        && !matches!(name.as_str(), "DATE" | "TIME" | "TIMEZONE" | "Error" | "VOID")
         && !name.starts_with(bn_catalog::text("llvm", "msg.host_net"))
         && !name.starts_with("FS.")
         && llvm_type(ty) == Some(LlvmType::Ptr)
@@ -636,7 +636,7 @@ pub(crate) fn lower_print_value(
         state.print_count += 1;
         return;
     }
-    if *ty == Type::String {
+    if *ty == Type::String || matches!(ty, Type::Named(name) if name == "TIMEZONE") {
         // The header length is authoritative; printf would stop at U+0000.
         text.emit(LlvmInst::call(
             LlvmType::Void,

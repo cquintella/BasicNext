@@ -10,8 +10,13 @@
 IMPORT BNCrypto AS Crypto
 
 FUNCTION Start() AS VOID
-    LET kemSeed AS Crypto.Bytes = Crypto.FromText("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
-    LET kemPair AS Crypto.Bytes OR Error = Crypto.MlKemKeypair(kemSeed)
+    LET kemSeedRaw AS Crypto.Bytes = Crypto.FromText("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+    LET kemSeedKey AS Crypto.Key OR Error = Crypto.ImportKey(kemSeedRaw, Crypto.ALG_ML_KEM_768)
+    IF kemSeedKey IS Error THEN
+        PRINT "kem-key-failed"
+        RETURN
+    END IF
+    LET kemPair AS Crypto.Bytes OR Error = Crypto.MlKemKeypair(kemSeedKey)
     IF kemPair IS Error THEN
         PRINT "kem-keygen-failed"
     ELSE
@@ -24,26 +29,31 @@ FUNCTION Start() AS VOID
             IF kemPrivate IS Error THEN
                 PRINT "kem-slice-failed"
             ELSE
-                LET sealed AS Crypto.Bytes OR Error = Crypto.MlKemEncapsulate(kemPublic)
-                IF sealed IS Error THEN
-                    PRINT "kem-encapsulate-failed"
+                LET kemKey AS Crypto.Key OR Error = Crypto.ImportKey(kemPrivate, Crypto.ALG_ML_KEM_768)
+                IF kemKey IS Error THEN
+                    PRINT "kem-key-failed"
                 ELSE
-                    LET ciphertext AS Crypto.Bytes OR Error = Crypto.Slice(sealed, 0, 1088)
-                    LET sentSecret AS Crypto.Bytes OR Error = Crypto.Slice(sealed, 1088, 32)
-                    IF ciphertext IS Error THEN
-                        PRINT "kem-slice-failed"
+                    LET sealed AS Crypto.Bytes OR Error = Crypto.MlKemEncapsulate(kemPublic)
+                    IF sealed IS Error THEN
+                        PRINT "kem-encapsulate-failed"
                     ELSE
-                        IF sentSecret IS Error THEN
+                        LET ciphertext AS Crypto.Bytes OR Error = Crypto.Slice(sealed, 0, 1088)
+                        LET sentSecret AS Crypto.Bytes OR Error = Crypto.Slice(sealed, 1088, 32)
+                        IF ciphertext IS Error THEN
                             PRINT "kem-slice-failed"
                         ELSE
-                            LET received AS Crypto.Bytes OR Error = Crypto.MlKemDecapsulate(kemPrivate, ciphertext)
-                            IF received IS Error THEN
-                                PRINT "kem-decapsulate-failed"
+                            IF sentSecret IS Error THEN
+                                PRINT "kem-slice-failed"
                             ELSE
-                                IF sentSecret.ToHex() = received.ToHex() THEN
-                                    PRINT "kem-agree"
+                                LET received AS Crypto.Bytes OR Error = Crypto.MlKemDecapsulate(kemKey, ciphertext)
+                                IF received IS Error THEN
+                                    PRINT "kem-decapsulate-failed"
                                 ELSE
-                                    PRINT "kem-disagree"
+                                    IF sentSecret.ToHex() = received.ToHex() THEN
+                                        PRINT "kem-agree"
+                                    ELSE
+                                        PRINT "kem-disagree"
+                                    END IF
                                 END IF
                             END IF
                         END IF
@@ -53,8 +63,13 @@ FUNCTION Start() AS VOID
         END IF
     END IF
 
-    LET dsaSeed AS Crypto.Bytes = Crypto.FromText("0123456789abcdef0123456789abcdef")
-    LET dsaPair AS Crypto.Bytes OR Error = Crypto.MlDsaKeypair(dsaSeed)
+    LET dsaSeedRaw AS Crypto.Bytes = Crypto.FromText("0123456789abcdef0123456789abcdef")
+    LET dsaSeedKey AS Crypto.Key OR Error = Crypto.ImportKey(dsaSeedRaw, Crypto.ALG_ML_DSA_65)
+    IF dsaSeedKey IS Error THEN
+        PRINT "dsa-key-failed"
+        RETURN
+    END IF
+    LET dsaPair AS Crypto.Bytes OR Error = Crypto.MlDsaKeypair(dsaSeedKey)
     IF dsaPair IS Error THEN
         PRINT "dsa-keygen-failed"
     ELSE
@@ -65,7 +80,7 @@ FUNCTION Start() AS VOID
         ELSE
             LET message AS Crypto.Bytes = Crypto.FromText("abc")
             LET other AS Crypto.Bytes = Crypto.FromText("abd")
-            LET signature AS Crypto.Bytes OR Error = Crypto.MlDsaSign(dsaSeed, message)
+            LET signature AS Crypto.Bytes OR Error = Crypto.MlDsaSign(dsaSeedKey, message)
             IF signature IS Error THEN
                 PRINT "dsa-sign-failed"
             ELSE

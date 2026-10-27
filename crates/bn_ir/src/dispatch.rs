@@ -86,6 +86,7 @@ mod tests {
             bnweb_providers: HashSet::new(),
             bndispatch_providers: HashSet::new(),
             bncrypto_providers: HashSet::new(),
+            bncompress_providers: HashSet::new(),
             bnsqlite_providers: HashSet::new(),
             bnffi_providers: HashSet::new(),
             filesystem_import: None,
@@ -97,6 +98,7 @@ mod tests {
             env_import: None,
             bnlog_import: None,
             bnweb_import: None,
+            bncompress_import: None,
             bnsqlite_import: None,
             bnffi_import: None,
         }

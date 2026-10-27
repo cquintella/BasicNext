@@ -43,6 +43,37 @@ signatures! {
     CONSOLE_NUM_COLS = "bn_rt_console_num_cols"() -> I32;
     CONSOLE_NUM_ROWS = "bn_rt_console_num_rows"() -> I32;
     CONSOLE_PRINT_AT = "bn_rt_console_print_at"(I32, I32, Ptr) -> I32;
+    COMPRESS_DEFLATE = "bn_rt_compress_deflate"(I64, Ptr) -> I32;
+    COMPRESS_INFLATE = "bn_rt_compress_inflate"(I64, Ptr) -> I32;
+    COMPRESS_GZIP = "bn_rt_compress_gzip"(I64, Ptr) -> I32;
+    COMPRESS_GUNZIP = "bn_rt_compress_gunzip"(I64, Ptr) -> I32;
+    COMPRESS_DEFLATE_TEXT = "bn_rt_compress_deflate_text"(Ptr, Ptr) -> I32;
+    COMPRESS_INFLATE_TEXT = "bn_rt_compress_inflate_text"(I64, Ptr) -> I32;
+    COMPRESS_GZIP_TEXT = "bn_rt_compress_gzip_text"(Ptr, Ptr) -> I32;
+    COMPRESS_GUNZIP_TEXT = "bn_rt_compress_gunzip_text"(I64, Ptr) -> I32;
+    COMPRESS_BYTES_FROM_HEX = "bn_rt_compress_bytes_from_hex"(Ptr, Ptr) -> I32;
+    COMPRESS_BYTES_FROM_TEXT = "bn_rt_compress_bytes_from_text"(Ptr) -> I64;
+    COMPRESS_BYTES_LENGTH = "bn_rt_compress_bytes_length"(I64) -> I64;
+    COMPRESS_BYTES_RELEASE = "bn_rt_compress_bytes_release"(I64) -> I32;
+    COMPRESS_BYTES_RETAIN = "bn_rt_compress_bytes_retain"(I64) -> I32;
+    COMPRESS_BYTES_TO_HEX = "bn_rt_compress_bytes_to_hex"(I64) -> Ptr;
+    COMPRESS_BYTES_TO_TEXT = "bn_rt_compress_bytes_to_text"(I64, Ptr) -> I32;
+    ZIP_CREATE = "bn_rt_zip_create"(Ptr, Ptr) -> I32;
+    ZIP_OPEN = "bn_rt_zip_open"(Ptr, Ptr) -> I32;
+    ZIP_ADD_FILE = "bn_rt_zip_add_file"(I64, Ptr, Ptr) -> I32;
+    ZIP_ADD_TEXT = "bn_rt_zip_add_text"(I64, Ptr, Ptr) -> I32;
+    ZIP_ADD_STORED_TEXT = "bn_rt_zip_add_stored_text"(I64, Ptr, Ptr) -> I32;
+    ZIP_ADD_BYTES = "bn_rt_zip_add_bytes"(I64, Ptr, I64) -> I32;
+    ZIP_ADD_STORED_BYTES = "bn_rt_zip_add_stored_bytes"(I64, Ptr, I64) -> I32;
+    ZIP_EXTRACT_ALL = "bn_rt_zip_extract_all"(I64, Ptr) -> I32;
+    ZIP_EXTRACT_FILE = "bn_rt_zip_extract_file"(I64, Ptr, Ptr) -> I32;
+    ZIP_EXTRACT_TEXT = "bn_rt_zip_extract_text"(I64, Ptr, Ptr) -> I32;
+    ZIP_EXTRACT_BYTES = "bn_rt_zip_extract_bytes"(I64, Ptr, Ptr) -> I32;
+    ZIP_ENTRY_COUNT = "bn_rt_zip_entry_count"(I64) -> I64;
+    ZIP_ENTRY_NAME = "bn_rt_zip_entry_name"(I64, I64, Ptr) -> I32;
+    ZIP_CLOSE = "bn_rt_zip_close"(I64) -> I32;
+    ZIP_RETAIN = "bn_rt_zip_retain"(I64) -> I32;
+    ZIP_RELEASE = "bn_rt_zip_release"(I64) -> I32;
     CRYPTO_ARGON2ID = "bn_rt_crypto_argon2id"(I64, I64, I64, I64, I64, Ptr) -> I32;
     CRYPTO_BYTES_FROM_HEX = "bn_rt_crypto_bytes_from_hex"(Ptr, Ptr) -> I32;
     CRYPTO_BYTES_FROM_TEXT = "bn_rt_crypto_bytes_from_text"(Ptr) -> I64;
@@ -53,13 +84,22 @@ signatures! {
     CRYPTO_DSA_KEYPAIR = "bn_rt_crypto_dsa_keypair"(I64, Ptr) -> I32;
     CRYPTO_DSA_SIGN = "bn_rt_crypto_dsa_sign"(I64, I64, Ptr) -> I32;
     CRYPTO_DSA_VERIFY = "bn_rt_crypto_dsa_verify"(I64, I64, I64) -> I32;
+    CRYPTO_GENERATE_KEY = "bn_rt_crypto_generate_key"(I32, Ptr) -> I32;
+    CRYPTO_GENERATE_NONCE = "bn_rt_crypto_generate_nonce"(I32, Ptr) -> I32;
     CRYPTO_HMAC = "bn_rt_crypto_hmac"(I64, I64, Ptr) -> I32;
     CRYPTO_HMAC_VERIFY = "bn_rt_crypto_hmac_verify"(I64, I64, I64) -> I32;
+    CRYPTO_IMPORT_KEY = "bn_rt_crypto_import_key"(I64, I32, Ptr) -> I32;
     CRYPTO_KEM_DECAPSULATE = "bn_rt_crypto_kem_decapsulate"(I64, I64, Ptr) -> I32;
     CRYPTO_KEM_ENCAPSULATE = "bn_rt_crypto_kem_encapsulate"(I64, Ptr) -> I32;
     CRYPTO_KEM_KEYPAIR = "bn_rt_crypto_kem_keypair"(I64, Ptr) -> I32;
+    CRYPTO_KEY_ALGORITHM = "bn_rt_crypto_key_algorithm"(I64) -> I32;
+    CRYPTO_KEY_LENGTH = "bn_rt_crypto_key_length"(I64) -> I64;
+    CRYPTO_KEY_RELEASE = "bn_rt_crypto_key_release"(I64) -> I32;
+    CRYPTO_KEY_RETAIN = "bn_rt_crypto_key_retain"(I64) -> I32;
+    CRYPTO_KEY_ZEROIZE = "bn_rt_crypto_key_zeroize"(I64) -> I32;
     CRYPTO_OPEN = "bn_rt_crypto_open"(I32, I64, I64, I64, I64, Ptr) -> I32;
     CRYPTO_PUBLIC_KEY = "bn_rt_crypto_public_key"(I32, I64, Ptr) -> I32;
+    CRYPTO_RANDOM_BYTES = "bn_rt_crypto_random_bytes"(I64, Ptr) -> I32;
     CRYPTO_SEAL = "bn_rt_crypto_seal"(I32, I64, I64, I64, I64, Ptr) -> I32;
     CRYPTO_SHA256 = "bn_rt_crypto_sha256"(Ptr) -> Ptr;
     CRYPTO_SHA512 = "bn_rt_crypto_sha512"(Ptr) -> Ptr;
@@ -435,7 +475,17 @@ declarations! {
     CRYPTO_BYTES_LENGTH CRYPTO_BYTES_TO_HEX CRYPTO_BYTES_RELEASE CRYPTO_BYTES_RETAIN CRYPTO_SEAL CRYPTO_OPEN
     CRYPTO_HMAC CRYPTO_HMAC_VERIFY CRYPTO_ARGON2ID CRYPTO_PUBLIC_KEY CRYPTO_SIGN CRYPTO_VERIFY
     CRYPTO_SLICE CRYPTO_KEM_KEYPAIR CRYPTO_KEM_ENCAPSULATE CRYPTO_KEM_DECAPSULATE
-    CRYPTO_DSA_KEYPAIR CRYPTO_DSA_SIGN CRYPTO_DSA_VERIFY SQLITE_OPEN SQLITE_OPEN_READ_ONLY
+    CRYPTO_DSA_KEYPAIR CRYPTO_DSA_SIGN CRYPTO_DSA_VERIFY
+    CRYPTO_GENERATE_KEY CRYPTO_GENERATE_NONCE CRYPTO_IMPORT_KEY CRYPTO_KEY_ALGORITHM
+    CRYPTO_KEY_LENGTH CRYPTO_KEY_RELEASE CRYPTO_KEY_RETAIN CRYPTO_KEY_ZEROIZE CRYPTO_RANDOM_BYTES
+    COMPRESS_DEFLATE COMPRESS_INFLATE COMPRESS_GZIP COMPRESS_GUNZIP COMPRESS_DEFLATE_TEXT
+    COMPRESS_INFLATE_TEXT COMPRESS_GZIP_TEXT COMPRESS_GUNZIP_TEXT COMPRESS_BYTES_FROM_HEX
+    COMPRESS_BYTES_FROM_TEXT COMPRESS_BYTES_LENGTH COMPRESS_BYTES_RELEASE COMPRESS_BYTES_RETAIN
+    COMPRESS_BYTES_TO_HEX COMPRESS_BYTES_TO_TEXT ZIP_CREATE ZIP_OPEN ZIP_ADD_FILE ZIP_ADD_TEXT
+    ZIP_ADD_STORED_TEXT ZIP_ADD_BYTES ZIP_ADD_STORED_BYTES ZIP_EXTRACT_ALL ZIP_EXTRACT_FILE
+    ZIP_EXTRACT_TEXT ZIP_EXTRACT_BYTES ZIP_ENTRY_COUNT ZIP_ENTRY_NAME ZIP_CLOSE ZIP_RETAIN
+    ZIP_RELEASE
+    SQLITE_OPEN SQLITE_OPEN_READ_ONLY
     SQLITE_OPEN_EXISTING SQLITE_CLOSE SQLITE_RETAIN SQLITE_EXEC SQLITE_QUERY SQLITE_BEGIN SQLITE_COMMIT
     SQLITE_ROLLBACK SQLITE_CHANGES SQLITE_LAST_INSERT_ROWID JSON_OBJECT JSON_PARSE
     JSON_STRINGIFY JSON_SET_STRING JSON_GET_STRING JSON_RELEASE JSON_RETAIN JSON_ARRAY JSON_KIND JSON_HAS

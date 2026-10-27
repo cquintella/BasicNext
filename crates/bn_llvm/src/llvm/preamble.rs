@@ -528,6 +528,7 @@ pub(crate) fn emit_module_header(text: &mut crate::ir::LlvmModule) {
         (".bn_true", "TRUE"),
         (".bn_false", "FALSE"),
         (".bn_empty", ""),
+        (".bn_utc", "UTC"),
         (".bn_asc_error", bn_diag::trap_texts::ASC_EMPTY_STRING),
         (".bn_char_error", bn_diag::trap_texts::CHAR_NOT_UNICODE),
     ] {

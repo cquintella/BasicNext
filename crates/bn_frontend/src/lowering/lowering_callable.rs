@@ -4,6 +4,7 @@ use super::*;
 #[allow(clippy::too_many_arguments)] // Callable lowering keeps signature, body, and SELF explicit.
 pub(crate) fn lower_callable(
     model: &SemanticModel,
+    module_id: FrontendModuleId,
     name: &str,
     kind: FunctionKind,
     owner: Option<String>,
@@ -18,7 +19,7 @@ pub(crate) fn lower_callable(
     methods: HashSet<String>,
     prefix: &str,
 ) -> Result<Function, Diagnostic> {
-    let mut builder = Builder::new(model, methods, prefix);
+    let mut builder = Builder::new(model, methods, prefix, module_id);
     for parameter in parameters {
         let symbol = builder.symbol(parameter.span)?;
         builder.parameters.insert(symbol);

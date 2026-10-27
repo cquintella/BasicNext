@@ -22,6 +22,7 @@ ffi = ["dep:libffi", "dep:libloading"]
 
 [dependencies]
 bn_catalog = { path = "../../crates/bn_catalog" }
+bn_core_compress = { path = "../bn_core_compress" }
 bn_core_copy = { path = "../../crates/bn_core_copy" }
 bn_core_dispatch = { path = "../bn_core_dispatch" }
 bn_core_json = { path = "../bn_core_json", optional = true }
@@ -46,3 +47,5 @@ p256 = { version = "0.13", features = ["ecdsa"] }
 serde_json = { version = "1.0", optional = true }
 sha2 = "0.10"
 subtle = "2.6"
+getrandom = "0.2"
+zeroize = { version = "1.9", features = ["zeroize_derive"] }

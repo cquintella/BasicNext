@@ -16,6 +16,7 @@ lib-data = ["dep:bn_lib_data"]
 lib-dispatch = ["dep:bn_lib_dispatch"]
 lib-web = ["dep:bn_lib_web"]
 lib-crypto = ["dep:bn_lib_crypto"]
+lib-compress = ["dep:bn_lib_compress"]
 lib-sqlite = ["dep:bn_lib_sqlite"]
 lib-ffi = ["dep:bn_lib_ffi"]
 
@@ -36,6 +37,7 @@ bn_ir = { path = "../bn_ir" }
 bn_rt = { path = "../bn_rt", default-features = false, features = ["net"] }
 bn_runtime_instrumentation = { path = "../bn_runtime_instrumentation" }
 bn_lib_crypto = { path = "../../libraries/bn_lib_crypto", optional = true }
+bn_lib_compress = { path = "../../libraries/bn_lib_compress", optional = true }
 bn_lib_data = { path = "../../libraries/bn_lib_data", optional = true }
 bn_lib_dispatch = { path = "../../libraries/bn_lib_dispatch", optional = true }
 bn_lib_json = { path = "../../libraries/bn_lib_json", optional = true }

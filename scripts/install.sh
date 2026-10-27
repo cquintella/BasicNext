@@ -227,6 +227,19 @@ if ((_bootstrap)); then
       else
         log "    note: no libbn_rt-$os-$arch.a asset in $tag (will try cargo -p bn_rt if available)"
       fi
+      # Native `bnc` needs libbn_stdlib.a in the install prefix (arch-specific).
+      if curl -fsSL -o "$src/target/release/libbn_stdlib.a" "$base/libbn_stdlib-$os-$arch.a"; then
+        expected=$(awk -v n="libbn_stdlib-$os-$arch.a" '$2 == n { print $1 }' "$work/SHA256SUMS")
+        actual=$(sum "$src/target/release/libbn_stdlib.a")
+        if [[ -n "$expected" && "$expected" == "$actual" ]]; then
+          log "    libbn_stdlib.a checksum OK"
+        else
+          log "    warning: libbn_stdlib.a SHA256 mismatch or missing from SHA256SUMS; will try cargo -p bn_stdlib"
+          rm -f "$src/target/release/libbn_stdlib.a"
+        fi
+      else
+        log "    note: no libbn_stdlib-$os-$arch.a asset in $tag (will try cargo -p bn_stdlib if available)"
+      fi
       # The REPL ships as an asset from 0.6.10; for an older tag that has the
       # bnr crate (0.6.9) it is built from the tag's source when cargo exists.
       if curl -fsL -o "$src/target/release/bnr" "$base/bnr-$os-$arch" 2>/dev/null; then
@@ -294,6 +307,12 @@ if [[ ! -f "$bn_rt_lib" ]]; then
   if command -v cargo >/dev/null 2>&1; then
     log "==> libbn_rt.a missing; building cargo -p bn_rt --release"
     cargo build -p bn_rt --release
+  fi
+fi
+if [[ ! -f "$bn_stdlib_lib" && -d "$repo_root/libraries/bn_stdlib" ]]; then
+  if command -v cargo >/dev/null 2>&1; then
+    log "==> libbn_stdlib.a missing; building cargo -p bn_stdlib --release"
+    cargo build -p bn_stdlib --release
   fi
 fi
 [[ -f "$bn_rt_lib" ]] || {

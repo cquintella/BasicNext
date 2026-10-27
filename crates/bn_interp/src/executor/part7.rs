@@ -16,14 +16,18 @@ impl Executor<'_, '_> {
                 match std::thread::available_parallelism() {
                     Ok(count) => match i32::try_from(count.get()) {
                         Ok(count) => Ok(Value::Integer(i128::from(count), IntegerType::Int32)),
-                        Err(_) => Ok(Value::error(
+                        Err(_) => Ok(Value::error_report(
                             1,
-                            "available processor count exceeds INTEGER range".into(),
+                            "HOST.NumProcs",
+                            "available processor count exceeds INTEGER range".to_string(),
+                            "integer overflow".to_string(),
                         )),
                     },
-                    Err(error) => Ok(Value::error(
+                    Err(error) => Ok(Value::error_report(
                         1,
-                        shared_string(format!("available processor count is unavailable: {error}")),
+                        "HOST.NumProcs",
+                        format!("available processor count is unavailable: {error}"),
+                        error.to_string(),
                     )),
                 }
             }

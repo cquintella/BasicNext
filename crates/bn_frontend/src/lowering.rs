@@ -267,6 +267,7 @@ struct Builder<'a> {
     model: &'a SemanticModel,
     methods: HashSet<String>,
     prefix: String,
+    module_id: FrontendModuleId,
     blocks: Vec<OpenBlock>,
     current: BlockId,
     next_value: u32,
@@ -301,7 +302,13 @@ struct Builder<'a> {
 ///
 /// Returns a diagnostic when semantic information is missing or lowering encounters an unsupported construct.
 fn lower_unvalidated(program: &Program, model: &SemanticModel) -> Result<Module, Diagnostic> {
-    let functions = lower_program(program, model, "", &collect_methods(program, ""))?;
+    let functions = lower_program(
+        program,
+        model,
+        FrontendModuleId(0),
+        "",
+        &collect_methods(program, ""),
+    )?;
     let class_model = lowered_class_model(model, "");
     let mut pending_layouts = HashMap::new();
     collect_layouts(program, model, "", USER_LAYOUT_KINDS, &mut pending_layouts);
@@ -322,6 +329,7 @@ fn lower_unvalidated(program: &Program, model: &SemanticModel) -> Result<Module,
         bnweb_providers: HashSet::new(),
         bndispatch_providers: HashSet::new(),
         bncrypto_providers: HashSet::new(),
+        bncompress_providers: HashSet::new(),
         bnsqlite_providers: HashSet::new(),
         bnffi_providers: HashSet::new(),
         filesystem_import: filesystem_import_span(program),
@@ -333,6 +341,7 @@ fn lower_unvalidated(program: &Program, model: &SemanticModel) -> Result<Module,
         env_import: env_import_span(program),
         bnlog_import: standard_import_span(program, "BNLog"),
         bnweb_import: standard_import_span(program, "BNWeb"),
+        bncompress_import: standard_import_span(program, "BNCompress"),
         bnsqlite_import: standard_import_span(program, "BNSqlite"),
         bnffi_import: standard_import_span(program, "BNFfi"),
     };
@@ -427,8 +436,13 @@ fn lower_graph_unvalidated(
             if standard == StandardModule::BNMath {
                 continue;
             }
-            let mut data =
-                lower_standard_module_data(&loaded.program, model, &prefix, &method_names)?;
+            let mut data = lower_standard_module_data(
+                &loaded.program,
+                model,
+                loaded.id,
+                &prefix,
+                &method_names,
+            )?;
             qualify::qualify_functions(&mut data, &prefix, &declared);
             functions.extend(data);
             continue;
@@ -444,7 +458,8 @@ fn lower_graph_unvalidated(
         );
         collect_semantic_record_layouts(model, &prefix, &mut pending_layouts);
         qualify::qualify_layouts(&mut pending_layouts, &prefix, &declared);
-        let mut lowered = lower_program(&loaded.program, model, &prefix, &method_names)?;
+        let mut lowered =
+            lower_program(&loaded.program, model, loaded.id, &prefix, &method_names)?;
         qualify::qualify_functions(&mut lowered, &prefix, &declared);
         functions.extend(lowered);
     }
@@ -486,6 +501,10 @@ fn lower_graph_unvalidated(
         .modules
         .iter()
         .find_map(|module| standard_import_span(&module.program, "BNWeb"));
+    let bncompress_import = graph
+        .modules
+        .iter()
+        .find_map(|module| standard_import_span(&module.program, "BNCompress"));
     let bnsqlite_import = graph
         .modules
         .iter()
@@ -559,6 +578,14 @@ fn lower_graph_unvalidated(
                     .then_some(ir_module_id(loaded.id))
             })
             .collect(),
+        bncompress_providers: graph
+            .modules
+            .iter()
+            .filter_map(|loaded| {
+                (loaded.standard_module == Some(StandardModule::BNCompress))
+                    .then_some(ir_module_id(loaded.id))
+            })
+            .collect(),
         bnsqlite_providers: graph
             .modules
             .iter()
@@ -584,6 +611,7 @@ fn lower_graph_unvalidated(
         env_import,
         bnlog_import,
         bnweb_import,
+        bncompress_import,
         bnsqlite_import,
         bnffi_import,
     };
@@ -629,7 +657,7 @@ use helpers::{
     display_type, env_import_span, exec_import_span, filesystem_import_span,
     host_capability_constant, ir_error, is_bnmath_constant_owner, is_host_or_builtin_owner,
     is_namespace_type, is_numeric_type_name, is_user_class_name, math_constant, module_constant,
-    module_id_from_prefix, named_or_void, namespace_function, network_import_span,
+    named_or_void, namespace_function, network_import_span,
     pointer_test_with_identity, random_import_span, standard_import_span, static_class_name,
     type_at, type_test_name, typed_literal_constant, user_class_name,
 };

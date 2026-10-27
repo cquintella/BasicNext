@@ -15,6 +15,7 @@
 | File | Scope |
 | --- | --- |
 | [`arc-conformance.md`](arc-conformance.md) | ARC / lifetime conformance checklist and test fixtures |
+| [`bncompress.md`](bncompress.md) | Standard library module: `BNCompress` data compression and archives contract |
 | [`bncrypto.md`](bncrypto.md) | Standard library module: `BNCrypto` cryptography contract |
 | [`bndata.md`](bndata.md) | Standard library module: `BNData` DataFrames and tabular data |
 | [`bndispatch.md`](bndispatch.md) | Standard library module: `BNDispatch` asynchronous synchronization |

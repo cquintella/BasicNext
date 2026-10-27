@@ -121,7 +121,8 @@ The table below catalogs ownership and lifetime for all symbols declared in `BN_
 | **BNMath Vector Reductions** | `bn_rt_math_vmin_*`, `bn_rt_math_vmax_*`, `bn_rt_math_mean_*`, `bn_rt_math_median_*`, `bn_rt_math_quartile1_*`, `bn_rt_math_quartile3_*`, `bn_rt_math_range_*`, `bn_rt_math_stdev_*`, `bn_rt_math_variance_*`, `bn_rt_math_mode_*` | Array `ptr` borrowed for call; length `i32` copied | Scalar reduction value returned; mode writes into caller-owned buffer | Read-only slice access; callee neither mutates nor frees the buffer |
 | **String Operations** | `bn_rt_str_len`, `bn_rt_str_index_utf8`, `bn_rt_str_char_utf8`, `bn_rt_str_from_packed`, `bn_rt_str_asc`, `bn_rt_str_cmp`, `bn_rt_str_eq`, `bn_rt_str_concat`, `bn_rt_str_to_lower`, `bn_rt_str_to_upper`, `bn_rt_print_str`, `bn_rt_print_date`, `bn_rt_print_time`, `bn_rt_print_float`, `bn_rt_print_float32` | `ptr` borrowed for call duration | Scalar result; an indexed character is a fresh STRING built from the packed scalar (`bn_rt_str_from_packed`) | Operations on immutable string buffers. `PRINT` of a STRING uses the header length. `bn_rt_str_cmp` returns `-1`, `0` or `1` in UTF-8 byte order, which is Unicode scalar order |
 | **Scalar Text (`AS STRING`)** | `bn_rt_text_int(i64)`, `bn_rt_text_uint(i64)`, `bn_rt_text_float(double)`, `bn_rt_text_float32(double)` | Scalars copied; narrower integers sign- or zero-extended to 64 bits; `FLOAT32` widened to `double` | Owned STRING `ptr` (16-byte header with count 1 and length, payload, trailing NUL), same allocation as `bn_rt_str_to_upper` | Text is `bn_types::text`, shared with the interpreter and `PRINT`; `BOOLEAN` selects the `TRUE`/`FALSE` constants without a call |
-| **BNCrypto Operations** | `bn_rt_crypto_bytes_from_text`, `bn_rt_crypto_bytes_from_hex`, `bn_rt_crypto_bytes_to_hex`, `bn_rt_crypto_bytes_length`, `bn_rt_crypto_bytes_release`, `bn_rt_crypto_bytes_retain`, `bn_rt_crypto_slice`, `bn_rt_crypto_sha256`, `bn_rt_crypto_sha512`, `bn_rt_crypto_hmac`, `bn_rt_crypto_hmac_verify`, `bn_rt_crypto_argon2id`, `bn_rt_crypto_seal`, `bn_rt_crypto_open`, `bn_rt_crypto_sign`, `bn_rt_crypto_verify`, `bn_rt_crypto_public_key`, `bn_rt_crypto_dsa_*`, `bn_rt_crypto_kem_*` | Buffer `ptr` borrowed with length for call duration; key/byte handles `u64` copied | Status `i32` (0 = OK); out-pointer receives newly allocated `u64` byte handle or string | Byte buffers allocated in crypto handle registry; caller owns handle and must release via `bn_rt_crypto_bytes_release`, `bn_rt_crypto_bytes_retain` |
+| **BNCrypto Operations** | `bn_rt_crypto_bytes_*`, `bn_rt_crypto_key_*`, `bn_rt_crypto_random_bytes`, `bn_rt_crypto_generate_nonce`, `bn_rt_crypto_generate_key`, `bn_rt_crypto_import_key`, `bn_rt_crypto_slice`, `bn_rt_crypto_sha256`, `bn_rt_crypto_sha512`, `bn_rt_crypto_hmac`, `bn_rt_crypto_hmac_verify`, `bn_rt_crypto_argon2id`, `bn_rt_crypto_seal`, `bn_rt_crypto_open`, `bn_rt_crypto_sign`, `bn_rt_crypto_verify`, `bn_rt_crypto_public_key`, `bn_rt_crypto_dsa_*`, `bn_rt_crypto_kem_*` | Buffer `ptr` borrowed with length for call duration; key/byte handles `u64` copied | Status `i32` (0 = OK); out-pointer receives newly allocated `u64` byte/key handle or string | Byte buffers and keys allocated in crypto handle registries; caller owns handle and must release via `bn_rt_crypto_bytes_release` / `bn_rt_crypto_key_release` |
+| **BNCompress Operations** | `bn_rt_compress_deflate`, `bn_rt_compress_inflate`, `bn_rt_compress_gzip`, `bn_rt_compress_gunzip`, `bn_rt_compress_deflate_text`, `bn_rt_compress_inflate_text`, `bn_rt_compress_gzip_text`, `bn_rt_compress_gunzip_text`, `bn_rt_compress_bytes_*`, `bn_rt_zip_*` | Buffer `ptr` borrowed; handles `u64` copied | Status `i32` (0 = OK); out-pointer receives newly allocated `u64` byte/zip handle or string | Byte buffers and ZipArchive handles allocated in compress registries; caller owns handle and must release via `bn_rt_compress_bytes_release` / `bn_rt_zip_release` |
 | **BNJson Document & DOM Operations** | `bn_rt_json_object`, `bn_rt_json_array`, `bn_rt_json_parse`, `bn_rt_json_stringify`, `bn_rt_json_release`, `bn_rt_json_retain`, `bn_rt_json_clone`, `bn_rt_json_get_*`, `bn_rt_json_set_*`, `bn_rt_json_append_*`, `bn_rt_json_has`, `bn_rt_json_kind`, `bn_rt_json_length` | Key and JSON text `ptr` borrowed with length; scalars copied; child handles passed to `set_json` / `append_json` are moved (ownership transferred) | Status `i32`; out-pointer receives new handle `u64` or scalar; `stringify` returns owned STRING `ptr` (16-byte header with count 1 and length) | Handlers registered in runtime registry; `bn_rt_json_release`, `bn_rt_json_retain` recursively destroys entire DOM tree and invalidates handle |
 | **BNLog Logging Operations** | `bn_rt_log_logger_new`, `bn_rt_log_logger_retain`, `bn_rt_log_logger_close`, `bn_rt_log_logger_delete`, `bn_rt_log_logger_write`, `bn_rt_log_logger_access`, `bn_rt_log_logger_flush`, `bn_rt_log_logger_set_level`, `bn_rt_log_logger_set_defaults`, `bn_rt_log_logger_set_access_defaults`, `bn_rt_log_client_access` | Logger target/name/message `ptr` borrowed for call duration; level and config scalars copied; handle `u64` copied. `bn_rt_log_client_access` borrows method, URL and `name\nvalue\n` header text for the call | Status `i32`; `logger_new` writes owned handle `u64` to out-pointer. `bn_rt_log_client_access` writes one access record and does not take the logger | Loggers managed via reference counting; `delete` removes logger from registry and releases underlying resources |
 | **HOST.Exec Process Execution** | `bn_rt_exec_run`, `bn_rt_exec_result_close`, `bn_rt_exec_result_return_code`, `bn_rt_exec_result_stdout`, `bn_rt_exec_result_stderr` | Command, args, and stdin string buffers borrowed for call duration; handle `u64` copied | Status `i32`; out-pointer receives owned result handle `u64`; `stdout`/`stderr` return owned STRING `ptr` (16-byte header with count 1 and length) | Result handle owns captured output buffers; invalidated when caller invokes `bn_rt_exec_result_close` |
@@ -607,13 +608,22 @@ bn_rt_crypto_bytes_to_hex
 bn_rt_crypto_dsa_keypair
 bn_rt_crypto_dsa_sign
 bn_rt_crypto_dsa_verify
+bn_rt_crypto_generate_key
+bn_rt_crypto_generate_nonce
 bn_rt_crypto_hmac
 bn_rt_crypto_hmac_verify
+bn_rt_crypto_import_key
 bn_rt_crypto_kem_decapsulate
 bn_rt_crypto_kem_encapsulate
 bn_rt_crypto_kem_keypair
+bn_rt_crypto_key_algorithm
+bn_rt_crypto_key_length
+bn_rt_crypto_key_release
+bn_rt_crypto_key_retain
+bn_rt_crypto_key_zeroize
 bn_rt_crypto_open
 bn_rt_crypto_public_key
+bn_rt_crypto_random_bytes
 bn_rt_crypto_seal
 bn_rt_crypto_sha256
 bn_rt_crypto_sha512
@@ -643,4 +653,35 @@ bn_rt_temporal_timezone_offset
 bn_rt_temporal_timezone_is_dst
 bn_rt_temporal_timestamp_at_zone
 bn_rt_temporal_timestamp_from_local
+bn_rt_compress_bytes_from_hex
+bn_rt_compress_bytes_from_text
+bn_rt_compress_bytes_length
+bn_rt_compress_bytes_release
+bn_rt_compress_bytes_retain
+bn_rt_compress_bytes_to_hex
+bn_rt_compress_bytes_to_text
+bn_rt_compress_deflate
+bn_rt_compress_deflate_text
+bn_rt_compress_gunzip
+bn_rt_compress_gunzip_text
+bn_rt_compress_gzip
+bn_rt_compress_gzip_text
+bn_rt_compress_inflate
+bn_rt_compress_inflate_text
+bn_rt_zip_add_bytes
+bn_rt_zip_add_file
+bn_rt_zip_add_stored_bytes
+bn_rt_zip_add_stored_text
+bn_rt_zip_add_text
+bn_rt_zip_close
+bn_rt_zip_create
+bn_rt_zip_entry_count
+bn_rt_zip_entry_name
+bn_rt_zip_extract_all
+bn_rt_zip_extract_bytes
+bn_rt_zip_extract_file
+bn_rt_zip_extract_text
+bn_rt_zip_open
+bn_rt_zip_release
+bn_rt_zip_retain
 ```

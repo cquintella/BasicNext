@@ -46,12 +46,19 @@ impl Builder<'_> {
                     .and_then(|e| e.symbol_id);
                 let is_constant = symbol_id
                     .is_some_and(|id| self.model.symbols.iter().any(|s| s.id == id && s.constant));
-                let current_module = module_id_from_prefix(&self.prefix);
+                let constant_value = self
+                    .model
+                    .module_constants
+                    .get(&(self.module_id, name.clone()))
+                    .or_else(|| {
+                        self.model
+                            .module_constants
+                            .iter()
+                            .find(|((_, n), _)| n == name)
+                            .map(|(_, v)| v)
+                    });
                 if is_constant
-                    && let Some(value) = self
-                        .model
-                        .module_constants
-                        .get(&(current_module, name.clone()))
+                    && let Some(value) = constant_value
                 {
                     Instruction::Constant {
                         destination,

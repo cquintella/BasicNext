@@ -11,7 +11,62 @@ use std::ffi::c_char;
 
 use sha2::{Digest, Sha256, Sha512};
 
+use crate::crypto_error::CryptoFailure;
 use crate::{c_str, c_string};
+
+/// Algorithm constants for `BNCrypto.Key` and related factories.
+pub const ALG_AES_GCM_256: i32 = 1;
+pub const ALG_CHACHA20: i32 = 2;
+pub const ALG_CHACHA20_POLY1305: i32 = 2;
+pub const ALG_HMAC_SHA256: i32 = 3;
+pub const ALG_ED25519: i32 = 4;
+pub const ALG_ECDSA_P256: i32 = 5;
+pub const ALG_ML_KEM_768: i32 = 6;
+pub const ALG_ML_DSA_65: i32 = 7;
+
+/// Returns the required byte length for key material of `algorithm`, or `None` if invalid.
+#[must_use]
+pub const fn required_key_length(algorithm: i32) -> Option<usize> {
+    match algorithm {
+        ALG_AES_GCM_256
+        | ALG_CHACHA20_POLY1305
+        | ALG_HMAC_SHA256
+        | ALG_ED25519
+        | ALG_ECDSA_P256
+        | ALG_ML_DSA_65 => Some(32),
+        ALG_ML_KEM_768 => Some(64),
+        _ => None,
+    }
+}
+
+/// Generates `length` random bytes using the operating system CSPRNG (`getrandom`).
+pub fn random_bytes(length: usize) -> Result<Vec<u8>, CryptoFailure> {
+    let mut buf = vec![0u8; length];
+    getrandom::getrandom(&mut buf).map_err(|_| CryptoFailure::Random("BNCrypto.RandomBytes"))?;
+    Ok(buf)
+}
+
+/// Generates a CSPRNG nonce of appropriate length for the cipher specified by `algorithm`.
+pub fn generate_nonce(algorithm: i32) -> Result<Vec<u8>, CryptoFailure> {
+    match algorithm {
+        ALG_AES_GCM_256 | ALG_CHACHA20_POLY1305 => {
+            let mut nonce = vec![0u8; 12];
+            getrandom::getrandom(&mut nonce)
+                .map_err(|_| CryptoFailure::Random("BNCrypto.GenerateNonce"))?;
+            Ok(nonce)
+        }
+        _ => Err(CryptoFailure::Algorithm(algorithm)),
+    }
+}
+
+/// Generates key material using the operating system CSPRNG for the specified algorithm.
+pub fn generate_key_material(algorithm: i32) -> Result<zeroize::Zeroizing<Vec<u8>>, CryptoFailure> {
+    let len = required_key_length(algorithm).ok_or(CryptoFailure::Algorithm(algorithm))?;
+    let mut buf = zeroize::Zeroizing::new(vec![0u8; len]);
+    getrandom::getrandom(&mut buf)
+        .map_err(|_| CryptoFailure::Random("BNCrypto.GenerateKey"))?;
+    Ok(buf)
+}
 
 /// SHA-256 of `data` as 64 lowercase hex characters.
 #[must_use]

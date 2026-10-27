@@ -703,6 +703,7 @@ fn runtime_exported_symbols() -> BTreeSet<String> {
     let mut symbols = archive_exported_symbols(&rt_archive);
     for symbol in &symbols {
         for forbidden_prefix in [
+            "bn_rt_compress_",
             "bn_rt_crypto_",
             "bn_rt_sqlite_",
             "bn_rt_ffi_",
@@ -711,6 +712,7 @@ fn runtime_exported_symbols() -> BTreeSet<String> {
             "bn_rt_dispatch_",
             "bn_rt_log_",
             "bn_rt_math_",
+            "bn_rt_zip_",
         ] {
             assert!(
                 !symbol.starts_with(forbidden_prefix),

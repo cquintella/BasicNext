@@ -46,6 +46,16 @@ EXPORT CONST INVALID_ARGUMENT AS INTEGER = 1
 EXPORT CONST AUTHENTICATION_FAILED AS INTEGER = 2
 EXPORT CONST UNAVAILABLE AS INTEGER = 3
 
+// Algorithm identifiers for Key and Nonce operations.
+EXPORT CONST ALG_AES_GCM_256 AS INTEGER = 1
+EXPORT CONST ALG_CHACHA20 AS INTEGER = 2
+EXPORT CONST ALG_CHACHA20_POLY1305 AS INTEGER = 2
+EXPORT CONST ALG_HMAC_SHA256 AS INTEGER = 3
+EXPORT CONST ALG_ED25519 AS INTEGER = 4
+EXPORT CONST ALG_ECDSA_P256 AS INTEGER = 5
+EXPORT CONST ALG_ML_KEM_768 AS INTEGER = 6
+EXPORT CONST ALG_ML_DSA_65 AS INTEGER = 7
+
 EXPORT CLASS Bytes
     PUBLIC FUNCTION CONSTRUCTOR()
     END FUNCTION
@@ -56,6 +66,31 @@ EXPORT CLASS Bytes
         RETURN ""
     END FUNCTION
 END CLASS
+
+EXPORT CLASS Key
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Algorithm() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION Length() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION Zeroize() AS VOID
+    END FUNCTION
+END CLASS
+
+EXPORT FUNCTION RandomBytes(length AS INTEGER) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION GenerateNonce(cipherAlgorithm AS INTEGER) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION GenerateKey(algorithm AS INTEGER) AS Key OR Error
+END FUNCTION
+
+EXPORT FUNCTION ImportKey(material AS Bytes, algorithm AS INTEGER) AS Key OR Error
+END FUNCTION
 
 EXPORT FUNCTION SHA256(data AS STRING) AS STRING
 END FUNCTION
@@ -72,58 +107,58 @@ END FUNCTION
 EXPORT FUNCTION Slice(data AS Bytes, start AS INTEGER, length AS INTEGER) AS Bytes OR Error
 END FUNCTION
 
-EXPORT FUNCTION SealAesGcm(key AS Bytes, nonce AS Bytes, plaintext AS Bytes, aad AS Bytes) AS Bytes OR Error
+EXPORT FUNCTION SealAesGcm(key AS Key, nonce AS Bytes, plaintext AS Bytes, aad AS Bytes) AS Bytes OR Error
 END FUNCTION
 
-EXPORT FUNCTION OpenAesGcm(key AS Bytes, nonce AS Bytes, ciphertext AS Bytes, aad AS Bytes) AS Bytes OR Error
+EXPORT FUNCTION OpenAesGcm(key AS Key, nonce AS Bytes, ciphertext AS Bytes, aad AS Bytes) AS Bytes OR Error
 END FUNCTION
 
-EXPORT FUNCTION SealChaCha20(key AS Bytes, nonce AS Bytes, plaintext AS Bytes, aad AS Bytes) AS Bytes OR Error
+EXPORT FUNCTION SealChaCha20(key AS Key, nonce AS Bytes, plaintext AS Bytes, aad AS Bytes) AS Bytes OR Error
 END FUNCTION
 
-EXPORT FUNCTION OpenChaCha20(key AS Bytes, nonce AS Bytes, ciphertext AS Bytes, aad AS Bytes) AS Bytes OR Error
+EXPORT FUNCTION OpenChaCha20(key AS Key, nonce AS Bytes, ciphertext AS Bytes, aad AS Bytes) AS Bytes OR Error
 END FUNCTION
 
-EXPORT FUNCTION HmacSha256(key AS Bytes, data AS Bytes) AS Bytes
+EXPORT FUNCTION HmacSha256(key AS Key, data AS Bytes) AS Bytes
 END FUNCTION
 
-EXPORT FUNCTION VerifyHmacSha256(key AS Bytes, data AS Bytes, tag AS Bytes) AS BOOLEAN
+EXPORT FUNCTION VerifyHmacSha256(key AS Key, data AS Bytes, tag AS Bytes) AS BOOLEAN
 END FUNCTION
 
 EXPORT FUNCTION Argon2id(password AS Bytes, salt AS Bytes, memoryKiB AS INTEGER, iterations AS INTEGER, parallelism AS INTEGER) AS Bytes OR Error
 END FUNCTION
 
-EXPORT FUNCTION Ed25519PublicKey(seed AS Bytes) AS Bytes OR Error
+EXPORT FUNCTION Ed25519PublicKey(key AS Key) AS Bytes OR Error
 END FUNCTION
 
-EXPORT FUNCTION Ed25519Sign(seed AS Bytes, message AS Bytes) AS Bytes OR Error
+EXPORT FUNCTION Ed25519Sign(key AS Key, message AS Bytes) AS Bytes OR Error
 END FUNCTION
 
 EXPORT FUNCTION Ed25519Verify(publicKey AS Bytes, message AS Bytes, signature AS Bytes) AS BOOLEAN
 END FUNCTION
 
-EXPORT FUNCTION EcdsaP256PublicKey(privateKey AS Bytes) AS Bytes OR Error
+EXPORT FUNCTION EcdsaP256PublicKey(key AS Key) AS Bytes OR Error
 END FUNCTION
 
-EXPORT FUNCTION EcdsaP256Sign(privateKey AS Bytes, message AS Bytes) AS Bytes OR Error
+EXPORT FUNCTION EcdsaP256Sign(key AS Key, message AS Bytes) AS Bytes OR Error
 END FUNCTION
 
 EXPORT FUNCTION EcdsaP256Verify(publicKey AS Bytes, message AS Bytes, signature AS Bytes) AS BOOLEAN
 END FUNCTION
 
-EXPORT FUNCTION MlKemKeypair(seed AS Bytes) AS Bytes OR Error
+EXPORT FUNCTION MlKemKeypair(seed AS Key) AS Bytes OR Error
 END FUNCTION
 
 EXPORT FUNCTION MlKemEncapsulate(publicKey AS Bytes) AS Bytes OR Error
 END FUNCTION
 
-EXPORT FUNCTION MlKemDecapsulate(privateKey AS Bytes, ciphertext AS Bytes) AS Bytes OR Error
+EXPORT FUNCTION MlKemDecapsulate(key AS Key, ciphertext AS Bytes) AS Bytes OR Error
 END FUNCTION
 
-EXPORT FUNCTION MlDsaKeypair(seed AS Bytes) AS Bytes OR Error
+EXPORT FUNCTION MlDsaKeypair(seed AS Key) AS Bytes OR Error
 END FUNCTION
 
-EXPORT FUNCTION MlDsaSign(privateKey AS Bytes, message AS Bytes) AS Bytes OR Error
+EXPORT FUNCTION MlDsaSign(key AS Key, message AS Bytes) AS Bytes OR Error
 END FUNCTION
 
 EXPORT FUNCTION MlDsaVerify(publicKey AS Bytes, message AS Bytes, signature AS Bytes) AS BOOLEAN

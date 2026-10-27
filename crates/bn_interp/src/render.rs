@@ -29,6 +29,9 @@ pub fn render(value: &Value) -> String {
         Value::LogLogger(_) => "BNLog.Logger".into(),
         Value::Json(_) => "BNJson.Json".into(),
         Value::CryptoBytes(_) => "BNCrypto.Bytes".into(),
+        Value::CryptoKey(_) => "BNCrypto.Key".into(),
+        Value::CompressBytes(_) => "BNCompress.Bytes".into(),
+        Value::CompressZip(_) => "BNCompress.ZipArchive".into(),
         Value::DispatchQueue(id) => {
             debug_assert_ne!(*id, 0);
             "BNDispatch.Queue".into()

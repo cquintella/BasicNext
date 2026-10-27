@@ -53,11 +53,17 @@ impl<'a> Builder<'a> {
         self.emitted_member_owner(owner)
     }
 
-    pub(super) fn new(model: &'a SemanticModel, methods: HashSet<String>, prefix: &str) -> Self {
+    pub(super) fn new(
+        model: &'a SemanticModel,
+        methods: HashSet<String>,
+        prefix: &str,
+        module_id: FrontendModuleId,
+    ) -> Self {
         Self {
             model,
             methods,
             prefix: prefix.into(),
+            module_id,
             blocks: vec![OpenBlock {
                 instructions: Vec::new(),
                 terminator: None,

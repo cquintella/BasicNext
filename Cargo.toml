@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/bn_catalog", "crates/bn_core_copy", "libraries/bn_core_dispatch", "libraries/bn_core_log", "crates/bn_core_net", "libraries/bn_core_sqlite", "libraries/bn_core_json", "libraries/bn_web", "libraries/bn_core_math", "crates/bn_core_text", "crates/bn_rt", "libraries/bn_stdlib", "crates/bn_source", "crates/bn_types", "crates/bn_diag", "crates/bn_ir", "crates/bn_frontend", "crates/bn_runtime", "crates/bn_runtime_instrumentation", "crates/bn_value", "crates/bn_llvm", "crates/bn_interp", "crates/bn_host_env", "crates/bn_host_exec", "crates/bn_limits", "libraries/bn_lib_math", "libraries/bn_lib_json", "libraries/bn_lib_log", "libraries/bn_lib_data", "crates/bn_host_fs", "crates/bn_host_net", "libraries/bn_lib_dispatch", "libraries/bn_lib_web", "libraries/bn_lib_crypto", "libraries/bn_lib_sqlite", "libraries/bn_lib_ffi", "crates/bn_cli", "crates/bn_interpret_driver", "crates/bn_lsp", "crates/bn_dap", "crates/bn_compile_driver", "crates/bnc", "crates/bni", "crates/bnr"]
+members = ["crates/bn_catalog", "crates/bn_core_copy", "libraries/bn_core_compress", "libraries/bn_core_dispatch", "libraries/bn_core_log", "crates/bn_core_net", "libraries/bn_core_sqlite", "libraries/bn_core_json", "libraries/bn_web", "libraries/bn_core_math", "crates/bn_core_text", "crates/bn_rt", "libraries/bn_stdlib", "crates/bn_source", "crates/bn_types", "crates/bn_diag", "crates/bn_ir", "crates/bn_frontend", "crates/bn_runtime", "crates/bn_runtime_instrumentation", "crates/bn_value", "crates/bn_llvm", "crates/bn_interp", "crates/bn_host_env", "crates/bn_host_exec", "crates/bn_limits", "libraries/bn_lib_compress", "libraries/bn_lib_math", "libraries/bn_lib_json", "libraries/bn_lib_log", "libraries/bn_lib_data", "crates/bn_host_fs", "crates/bn_host_net", "libraries/bn_lib_dispatch", "libraries/bn_lib_web", "libraries/bn_lib_crypto", "libraries/bn_lib_sqlite", "libraries/bn_lib_ffi", "crates/bn_cli", "crates/bn_interpret_driver", "crates/bn_lsp", "crates/bn_dap", "crates/bn_compile_driver", "crates/bnc", "crates/bni", "crates/bnr"]
 resolver = "3"
 
 [workspace.package]
@@ -39,7 +39,7 @@ bn_catalog = { path = "crates/bn_catalog" }
 bn_diag = { path = "crates/bn_diag" }
 bn_frontend = { path = "crates/bn_frontend" }
 bn_interp = { path = "crates/bn_interp" }
-bn_interpret_driver = { path = "crates/bn_interpret_driver", features = ["lib-math", "lib-json", "lib-log", "lib-data", "lib-dispatch", "lib-web", "lib-crypto", "lib-sqlite"] }
+bn_interpret_driver = { path = "crates/bn_interpret_driver", features = ["lib-math", "lib-json", "lib-log", "lib-data", "lib-dispatch", "lib-web", "lib-crypto", "lib-compress", "lib-sqlite"] }
 bn_ir = { path = "crates/bn_ir" }
 bn_lib_web = { path = "libraries/bn_lib_web" } # tests/runtime.rs drives the web callback directly
 bn_llvm = { path = "crates/bn_llvm" }

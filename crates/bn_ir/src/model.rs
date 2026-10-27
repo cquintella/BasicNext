@@ -128,6 +128,7 @@ pub struct Module {
     pub bnweb_providers: HashSet<ModuleId>,
     pub bndispatch_providers: HashSet<ModuleId>,
     pub bncrypto_providers: HashSet<ModuleId>,
+    pub bncompress_providers: HashSet<ModuleId>,
     pub bnsqlite_providers: HashSet<ModuleId>,
     pub bnffi_providers: HashSet<ModuleId>,
     pub filesystem_import: Option<Span>,
@@ -139,6 +140,7 @@ pub struct Module {
     pub env_import: Option<Span>,
     pub bnlog_import: Option<Span>,
     pub bnweb_import: Option<Span>,
+    pub bncompress_import: Option<Span>,
     pub bnsqlite_import: Option<Span>,
     pub bnffi_import: Option<Span>,
 }
@@ -643,6 +645,7 @@ impl Module {
             (&self.bnweb_providers, "BNWeb"),
             (&self.bndispatch_providers, "BNDispatch"),
             (&self.bncrypto_providers, "BNCrypto"),
+            (&self.bncompress_providers, "BNCompress"),
             (&self.bnsqlite_providers, "BNSqlite"),
             (&self.bnffi_providers, "BNFfi"),
         ]

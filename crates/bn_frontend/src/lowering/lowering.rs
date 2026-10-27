@@ -106,6 +106,7 @@ pub(crate) fn collect_methods(program: &Program, prefix: &str) -> HashSet<String
 pub(crate) fn lower_program(
     program: &Program,
     model: &SemanticModel,
+    module_id: FrontendModuleId,
     prefix: &str,
     method_names: &HashSet<String>,
 ) -> Result<Vec<Function>, Diagnostic> {
@@ -125,13 +126,20 @@ pub(crate) fn lower_program(
         match kind {
             DeclarationKind::Class => {
                 let resolved_base = model.class_model.bases.get(type_name).cloned();
-                if let Some(init) =
-                    lower_static_init(model, prefix, type_name, statements, *span, method_names)?
-                {
+                if let Some(init) = lower_static_init(
+                    model,
+                    module_id,
+                    prefix,
+                    type_name,
+                    statements,
+                    *span,
+                    method_names,
+                )? {
                     functions.push(init);
                 }
                 functions.push(lower_instance_fields(
                     model,
+                    module_id,
                     prefix,
                     type_name,
                     statements,
@@ -140,6 +148,7 @@ pub(crate) fn lower_program(
                 )?);
                 functions.push(lower_field_release(
                     model,
+                    module_id,
                     prefix,
                     type_name,
                     resolved_base.as_deref(),
@@ -162,6 +171,7 @@ pub(crate) fn lower_program(
                     };
                     functions.push(lower_callable(
                         model,
+                        module_id,
                         &format!("{prefix}{type_name}.{name}"),
                         match name.as_str() {
                             "CONSTRUCTOR" => FunctionKind::Constructor,
@@ -197,6 +207,7 @@ pub(crate) fn lower_program(
                     })
                 {
                     functions.push(lower_inherited_constructor(
+                        module_id,
                         prefix,
                         type_name,
                         resolved_base.as_deref().expect("base class exists"),
@@ -213,6 +224,7 @@ pub(crate) fn lower_program(
                     })
                 {
                     functions.push(lower_inherited_destructor(
+                        module_id,
                         prefix,
                         type_name,
                         resolved_base.as_deref().expect("base class exists"),
@@ -224,6 +236,7 @@ pub(crate) fn lower_program(
             DeclarationKind::Struct => {
                 functions.push(lower_struct_default(
                     model,
+                    module_id,
                     prefix,
                     type_name,
                     statements,
@@ -262,6 +275,7 @@ pub(crate) fn lower_program(
                 || (!has_session_entry && name == bn_ir::names::ENTRY));
         functions.push(lower_callable(
             model,
+            module_id,
             &format!("{prefix}{name}"),
             if is_entry {
                 FunctionKind::Entry
@@ -286,6 +300,7 @@ pub(crate) fn lower_program(
 
 pub(crate) fn lower_static_init(
     model: &SemanticModel,
+    module_id: FrontendModuleId,
     prefix: &str,
     class_name: &str,
     statements: &[Statement],
@@ -307,7 +322,7 @@ pub(crate) fn lower_static_init(
     if statics.is_empty() {
         return Ok(None);
     }
-    let mut builder = Builder::new(model, method_names.clone(), prefix);
+    let mut builder = Builder::new(model, method_names.clone(), prefix, module_id);
     let class = format!("{prefix}{class_name}");
     for statement in statics {
         let Statement::Binding {
@@ -367,13 +382,14 @@ const SYNTHETIC_SELF: SymbolId = {
 
 pub(crate) fn lower_instance_fields(
     model: &SemanticModel,
+    module_id: FrontendModuleId,
     prefix: &str,
     class_name: &str,
     statements: &[Statement],
     span: Span,
     method_names: &HashSet<String>,
 ) -> Result<Function, Diagnostic> {
-    let mut builder = Builder::new(model, method_names.clone(), prefix);
+    let mut builder = Builder::new(model, method_names.clone(), prefix, module_id);
     builder.receiver = Some((SYNTHETIC_SELF, Type::Named(class_name.into())));
     let receiver = builder.load(SYNTHETIC_SELF, Type::Named(class_name.into()), span);
     emit_field_inits(
@@ -407,6 +423,7 @@ pub(crate) fn lower_instance_fields(
 /// fields go before base fields (0.6.md, "Zero strong → destructor").
 pub(crate) fn lower_field_release(
     model: &SemanticModel,
+    module_id: FrontendModuleId,
     prefix: &str,
     class_name: &str,
     base_class: Option<&str>,
@@ -416,7 +433,7 @@ pub(crate) fn lower_field_release(
 ) -> Result<Function, Diagnostic> {
     let owner = qualified_class_name(prefix, class_name);
     let self_type = Type::Named(class_name.into());
-    let mut builder = Builder::new(model, method_names.clone(), prefix);
+    let mut builder = Builder::new(model, method_names.clone(), prefix, module_id);
     let receiver = builder.load(SYNTHETIC_SELF, self_type, span);
     for statement in statements.iter().rev() {
         let Statement::Binding {
@@ -483,6 +500,7 @@ pub(crate) fn lower_field_release(
 }
 
 pub(crate) fn lower_inherited_constructor(
+    module_id: FrontendModuleId,
     prefix: &str,
     class_name: &str,
     base_class: &str,
@@ -502,7 +520,7 @@ pub(crate) fn lower_inherited_constructor(
         struct_fields: std::collections::HashMap::new(),
         host_aliases: std::collections::HashMap::new(),
     };
-    let mut builder = Builder::new(&empty_model, methods.clone(), prefix);
+    let mut builder = Builder::new(&empty_model, methods.clone(), prefix, module_id);
     builder.derived_fields = Some(format!("{prefix}{class_name}.$fields"));
     let receiver = builder.load(SYNTHETIC_SELF, Type::Named(class_name.into()), span);
     builder.emit_super_construction(base_class, receiver, Vec::new(), span);
@@ -523,6 +541,7 @@ pub(crate) fn lower_inherited_constructor(
 }
 
 pub(crate) fn lower_inherited_destructor(
+    module_id: FrontendModuleId,
     prefix: &str,
     class_name: &str,
     base_class: &str,
@@ -542,7 +561,7 @@ pub(crate) fn lower_inherited_destructor(
         struct_fields: std::collections::HashMap::new(),
         host_aliases: std::collections::HashMap::new(),
     };
-    let mut builder = Builder::new(&empty_model, methods.clone(), prefix);
+    let mut builder = Builder::new(&empty_model, methods.clone(), prefix, module_id);
     let receiver = builder.load(SYNTHETIC_SELF, Type::Named(class_name.into()), span);
     let callee = builder.function_constant(
         &format!(
@@ -576,13 +595,14 @@ pub(crate) fn lower_inherited_destructor(
 
 pub(crate) fn lower_struct_default(
     model: &SemanticModel,
+    module_id: FrontendModuleId,
     prefix: &str,
     struct_name: &str,
     statements: &[Statement],
     span: Span,
     method_names: &HashSet<String>,
 ) -> Result<Function, Diagnostic> {
-    let mut builder = Builder::new(model, method_names.clone(), prefix);
+    let mut builder = Builder::new(model, method_names.clone(), prefix, module_id);
     let storage_ty = Type::Named(qualified_class_name(prefix, struct_name));
     let record = builder.value();
     builder.emit(Instruction::Default {
@@ -671,6 +691,7 @@ pub(crate) fn emit_field_inits(
 pub(crate) fn lower_standard_module_data(
     program: &Program,
     model: &SemanticModel,
+    module_id: FrontendModuleId,
     prefix: &str,
     method_names: &HashSet<String>,
 ) -> Result<Vec<Function>, Diagnostic> {
@@ -688,14 +709,21 @@ pub(crate) fn lower_standard_module_data(
         };
         match kind {
             DeclarationKind::Class => {
-                if let Some(init) =
-                    lower_static_init(model, prefix, name, statements, *span, method_names)?
-                {
+                if let Some(init) = lower_static_init(
+                    model,
+                    module_id,
+                    prefix,
+                    name,
+                    statements,
+                    *span,
+                    method_names,
+                )? {
                     functions.push(init);
                 }
             }
             DeclarationKind::Struct => functions.push(lower_struct_default(
                 model,
+                module_id,
                 prefix,
                 name,
                 statements,

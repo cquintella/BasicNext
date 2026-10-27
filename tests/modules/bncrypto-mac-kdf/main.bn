@@ -11,7 +11,12 @@
 IMPORT BNCrypto AS Crypto
 
 FUNCTION Start() AS VOID
-    LET key AS Crypto.Bytes = Crypto.FromText("0123456789abcdef0123456789abcdef")
+    LET keyRaw AS Crypto.Bytes = Crypto.FromText("0123456789abcdef0123456789abcdef")
+    LET key AS Crypto.Key OR Error = Crypto.ImportKey(keyRaw, Crypto.ALG_HMAC_SHA256)
+    IF key IS Error THEN
+        PRINT "key-failed"
+        RETURN
+    END IF
     LET data AS Crypto.Bytes = Crypto.FromText("abc")
 
     LET tag AS Crypto.Bytes = Crypto.HmacSha256(key, data)

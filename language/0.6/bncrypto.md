@@ -51,29 +51,46 @@ not depend on input length. Output is always lowercase hexadecimal.
 
 | Type | Role |
 | --- | --- |
-| `Crypto.Bytes` | Opaque byte buffer. No implicit conversion to `STRING`, so key material cannot be printed, concatenated or logged by accident. Owned: `RELEASE` frees it, and releasing twice is reported. |
+| `Crypto.Bytes` | Opaque byte buffer. No implicit conversion to `STRING`, so byte data cannot be printed, concatenated or logged by accident. Owned: `RELEASE` frees it, and releasing twice is reported. |
+| `Crypto.Key` | Opaque cryptographic key or private seed. Never converts to `STRING` or exposes raw hex. Guarantees memory zeroization (`ZeroizeOnDrop`) upon scope exit or `RELEASE`. Supports explicit `.Zeroize()`. |
 
 | Function | Signature | Result |
 | --- | --- | --- |
 | `FromText` | `FromText(text AS STRING) AS Bytes` | The UTF-8 bytes of `text` |
 | `FromHex` | `FromHex(text AS STRING) AS Bytes OR Error` | Decoded bytes, or `Error` when the string is not even-length hex |
+| `RandomBytes` | `RandomBytes(length AS INTEGER) AS Bytes OR Error` | Cryptographically secure random bytes from operating-system entropy |
+| `GenerateNonce` | `GenerateNonce(cipherAlgorithm AS INTEGER) AS Bytes OR Error` | 12-byte CSPRNG nonce suitable for AEAD ciphers |
+| `GenerateKey` | `GenerateKey(algorithm AS INTEGER) AS Key OR Error` | Random key generated via CSPRNG with algorithm-specific length |
+| `ImportKey` | `ImportKey(material AS Bytes, algorithm AS INTEGER) AS Key OR Error` | Validates length for `algorithm` and encapsulates into a zeroizing `Key` |
 | `Length` | `<bytes>.Length() AS INTEGER` | Byte count |
-| `ToHex` | `<bytes>.ToHex() AS STRING` | Lowercase hex |
+| `ToHex` | `<bytes>.ToHex() AS STRING` | Lowercase hex (for `Bytes` only; `Key` does not support `ToHex`) |
 
 `FromHex` rejects odd-length input instead of truncating: an odd number of hex
 characters is not a byte sequence.
+
+### Algorithm Constants
+
+| Constant | Value | Algorithm / Key Length |
+| --- | ---: | --- |
+| `ALG_AES_GCM_256` | 1 | AES-256-GCM (32-byte key, 12-byte nonce) |
+| `ALG_CHACHA20` | 2 | ChaCha20-Poly1305 (32-byte key, 12-byte nonce) |
+| `ALG_HMAC_SHA256` | 3 | HMAC-SHA-256 (arbitrary key, minimum 32 recommended) |
+| `ALG_ED25519` | 4 | Ed25519 signing seed (32 bytes) |
+| `ALG_ECDSA_P256` | 5 | ECDSA P-256 private scalar (32 bytes) |
+| `ALG_ML_KEM_768` | 6 | ML-KEM-768 seed (64 bytes) |
+| `ALG_ML_DSA_65` | 7 | ML-DSA-65 signing seed (32 bytes) |
 
 ## Authenticated encryption
 
 | Function | Signature |
 | --- | --- |
-| `SealAesGcm` | `SealAesGcm(key, nonce, plaintext, aad AS Bytes) AS Bytes OR Error` |
-| `OpenAesGcm` | `OpenAesGcm(key, nonce, ciphertext, aad AS Bytes) AS Bytes OR Error` |
-| `SealChaCha20` | `SealChaCha20(key, nonce, plaintext, aad AS Bytes) AS Bytes OR Error` |
-| `OpenChaCha20` | `OpenChaCha20(key, nonce, ciphertext, aad AS Bytes) AS Bytes OR Error` |
+| `SealAesGcm` | `SealAesGcm(key AS Key, nonce, plaintext, aad AS Bytes) AS Bytes OR Error` |
+| `OpenAesGcm` | `OpenAesGcm(key AS Key, nonce, ciphertext, aad AS Bytes) AS Bytes OR Error` |
+| `SealChaCha20` | `SealChaCha20(key AS Key, nonce, plaintext, aad AS Bytes) AS Bytes OR Error` |
+| `OpenChaCha20` | `OpenChaCha20(key AS Key, nonce, ciphertext, aad AS Bytes) AS Bytes OR Error` |
 
 AES-256-GCM follows **NIST SP 800-38D**; ChaCha20-Poly1305 follows **RFC 7539**.
-Both take a **32-byte key** and a **12-byte nonce**, and both append a **16-byte
+Both take a **32-byte `Key`** and a **12-byte nonce**, and both append a **16-byte
 authentication tag** to the ciphertext. The additional authenticated data may be
 empty, but it is authenticated, not encrypted.
 
@@ -82,15 +99,14 @@ truncated tag all yield `Error` and no plaintext whatsoever — never a partial 
 unauthenticated result. `Seal` yields `Error` when the key or nonce length is
 wrong rather than padding or truncating it.
 
-A nonce must never be reused with the same key. The module does not and cannot
-enforce that for you; derive nonces from `HOST.Random` or a counter you control.
+A nonce must never be reused with the same key. Derive nonces using `Crypto.GenerateNonce(cipherAlgorithm)` or `Crypto.RandomBytes(12)` from the system CSPRNG, or maintain a strictly monotonic counter. Nonces must never be derived from pseudo-random number generators (`HOST.Random`).
 
 ## Message authentication and password hashing
 
 | Function | Signature |
 | --- | --- |
-| `HmacSha256` | `HmacSha256(key, data AS Bytes) AS Bytes` |
-| `VerifyHmacSha256` | `VerifyHmacSha256(key, data, tag AS Bytes) AS BOOLEAN` |
+| `HmacSha256` | `HmacSha256(key AS Key, data AS Bytes) AS Bytes` |
+| `VerifyHmacSha256` | `VerifyHmacSha256(key AS Key, data, tag AS Bytes) AS BOOLEAN` |
 | `Argon2id` | `Argon2id(password, salt AS Bytes, memoryKiB, iterations, parallelism AS INTEGER) AS Bytes OR Error` |
 
 HMAC-SHA-256 follows RFC 2104. **`VerifyHmacSha256` compares in constant time**: it
@@ -104,11 +120,11 @@ algorithm's accepted range are **rejected**, never clamped to something weaker.
 
 | Function | Signature |
 | --- | --- |
-| `Ed25519PublicKey` | `Ed25519PublicKey(seed AS Bytes) AS Bytes OR Error` |
-| `Ed25519Sign` | `Ed25519Sign(seed, message AS Bytes) AS Bytes OR Error` |
+| `Ed25519PublicKey` | `Ed25519PublicKey(key AS Key) AS Bytes OR Error` |
+| `Ed25519Sign` | `Ed25519Sign(key AS Key, message AS Bytes) AS Bytes OR Error` |
 | `Ed25519Verify` | `Ed25519Verify(publicKey, message, signature AS Bytes) AS BOOLEAN` |
-| `EcdsaP256PublicKey` | `EcdsaP256PublicKey(privateKey AS Bytes) AS Bytes OR Error` |
-| `EcdsaP256Sign` | `EcdsaP256Sign(privateKey, message AS Bytes) AS Bytes OR Error` |
+| `EcdsaP256PublicKey` | `EcdsaP256PublicKey(key AS Key) AS Bytes OR Error` |
+| `EcdsaP256Sign` | `EcdsaP256Sign(key AS Key, message AS Bytes) AS Bytes OR Error` |
 | `EcdsaP256Verify` | `EcdsaP256Verify(publicKey, message, signature AS Bytes) AS BOOLEAN` |
 
 Ed25519 keys are a 32-byte seed (RFC 8032). ECDSA P-256 keys are a 32-byte scalar;
@@ -123,11 +139,11 @@ message or a signature from another key — never an error resembling success.
 
 | Function | Signature |
 | --- | --- |
-| `MlKemKeypair` | `MlKemKeypair(seed AS Bytes) AS Bytes OR Error` — `publicKey \|\| privateKey` |
+| `MlKemKeypair` | `MlKemKeypair(seed AS Key) AS Bytes OR Error` — `publicKey \|\| privateKey` |
 | `MlKemEncapsulate` | `MlKemEncapsulate(publicKey AS Bytes) AS Bytes OR Error` — `ciphertext \|\| sharedSecret` |
-| `MlKemDecapsulate` | `MlKemDecapsulate(privateKey, ciphertext AS Bytes) AS Bytes OR Error` |
-| `MlDsaKeypair` | `MlDsaKeypair(seed AS Bytes) AS Bytes OR Error` — `verifyingKey \|\| seed` |
-| `MlDsaSign` | `MlDsaSign(privateKey, message AS Bytes) AS Bytes OR Error` |
+| `MlKemDecapsulate` | `MlKemDecapsulate(key AS Key, ciphertext AS Bytes) AS Bytes OR Error` |
+| `MlDsaKeypair` | `MlDsaKeypair(seed AS Key) AS Bytes OR Error` — `verifyingKey \|\| seed` |
+| `MlDsaSign` | `MlDsaSign(key AS Key, message AS Bytes) AS Bytes OR Error` |
 | `MlDsaVerify` | `MlDsaVerify(publicKey, message, signature AS Bytes) AS BOOLEAN` |
 | `Slice` | `Slice(data AS Bytes, start, length AS INTEGER) AS Bytes OR Error` |
 

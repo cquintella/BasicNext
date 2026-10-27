@@ -53,6 +53,11 @@ pub(crate) fn default_libraries(ffi_paths: &[PathBuf]) -> Providers {
         bn_lib_crypto::NAME,
         std::sync::Arc::new(|| Box::new(bn_lib_crypto::CryptoProvider::default())),
     );
+    #[cfg(feature = "lib-compress")]
+    libraries.register(
+        bn_lib_compress::NAME,
+        std::sync::Arc::new(|| Box::new(bn_lib_compress::CompressProvider::default())),
+    );
     #[cfg(feature = "lib-sqlite")]
     libraries.register(
         bn_lib_sqlite::NAME,

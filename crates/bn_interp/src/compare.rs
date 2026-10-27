@@ -127,7 +127,10 @@ pub(super) fn is_value(
             Value::LogEntry(_) => test == "BNLog.Entry" || test == "Entry",
             Value::LogLogger(_) => test == "BNLog.Logger" || test == "Logger",
             Value::Json(_) => test == "BNJson.Json" || test == "Json",
-            Value::CryptoBytes(_) => test == "BNCrypto.Bytes" || test == "Bytes",
+            Value::CryptoBytes(_) => test == "BNCrypto.Bytes" || test == "Bytes" || test == "BNCompress.Bytes",
+            Value::CryptoKey(_) => test == "BNCrypto.Key" || test == "Key",
+            Value::CompressBytes(_) => test == "BNCompress.Bytes" || test == "Bytes" || test == "BNCrypto.Bytes",
+            Value::CompressZip(_) => test == "BNCompress.ZipArchive" || test == "ZipArchive",
             Value::DispatchQueue(_) => test == "BNDispatch.Queue" || test == "Queue",
             Value::DispatchTicket(_) => test == "BNDispatch.Ticket" || test == "Ticket",
             Value::DispatchGroup(_) => test == "BNDispatch.Group" || test == "Group",
@@ -226,7 +229,25 @@ pub(super) fn value_matches_type(value: &Value, ty: &Type) -> bool {
             Type::Named(name)
             | Type::ImportedNamed { name, .. }
             | Type::ImportedTypeName { name, .. },
-        ) => name == "BNCrypto.Bytes" || name == "Bytes" || name.ends_with(".Bytes"),
+        ) => name == "BNCrypto.Bytes" || name == "Bytes" || name.ends_with(".Bytes") || name == "BNCompress.Bytes",
+        (
+            Value::CryptoKey(_),
+            Type::Named(name)
+            | Type::ImportedNamed { name, .. }
+            | Type::ImportedTypeName { name, .. },
+        ) => name == "BNCrypto.Key" || name == "Key" || name.ends_with(".Key"),
+        (
+            Value::CompressBytes(_),
+            Type::Named(name)
+            | Type::ImportedNamed { name, .. }
+            | Type::ImportedTypeName { name, .. },
+        ) => name == "BNCompress.Bytes" || name == "Bytes" || name.ends_with(".Bytes") || name == "BNCrypto.Bytes",
+        (
+            Value::CompressZip(_),
+            Type::Named(name)
+            | Type::ImportedNamed { name, .. }
+            | Type::ImportedTypeName { name, .. },
+        ) => name == "BNCompress.ZipArchive" || name == "ZipArchive" || name.ends_with(".ZipArchive"),
         (
             Value::DispatchQueue(_),
             Type::Named(name)

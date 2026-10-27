@@ -190,7 +190,8 @@ if (-not $repoRoot) {
     foreach ($AssetName in @(
             'bni-windows-x86_64.exe',
             'bnc-windows-x86_64.exe',
-            'bn_rt-windows-x86_64.lib'
+            'bn_rt-windows-x86_64.lib',
+            'bn_stdlib-windows-x86_64.lib'
         )) {
         $AssetPath = Join-Path $BootstrapDir $AssetName
         Receive-ReleaseAsset $Base $AssetName $AssetPath
@@ -210,6 +211,7 @@ if (-not $repoRoot) {
     Copy-Item (Join-Path $BootstrapDir 'bni-windows-x86_64.exe') (Join-Path $TargetRelease 'bni.exe')
     Copy-Item (Join-Path $BootstrapDir 'bnc-windows-x86_64.exe') (Join-Path $TargetRelease 'bnc.exe')
     Copy-Item (Join-Path $BootstrapDir 'bn_rt-windows-x86_64.lib') (Join-Path $TargetRelease 'bn_rt.lib')
+    Copy-Item (Join-Path $BootstrapDir 'bn_stdlib-windows-x86_64.lib') (Join-Path $TargetRelease 'bn_stdlib.lib')
     # The REPL ships as an asset from 0.6.10; an older tag that has the bnr
     # crate (0.6.9) builds it from the tag's source when cargo exists.
     $BnrAsset = 'bnr-windows-x86_64.exe'
@@ -250,6 +252,7 @@ $bniBin = Join-Path $repoRoot 'target\release\bni.exe'
 $bncBin = Join-Path $repoRoot 'target\release\bnc.exe'
 $bnrBin = Join-Path $repoRoot 'target\release\bnr.exe'
 $bnRtLib = Join-Path $repoRoot 'target\release\bn_rt.lib'
+$bnStdlibLib = Join-Path $repoRoot 'target\release\bn_stdlib.lib'
 foreach ($bin in @($bniBin, $bncBin)) {
     if (-not (Test-Path $bin)) { throw "missing binary '$bin' (build first, or drop -NoBuild)" }
 }
@@ -258,6 +261,13 @@ if (-not (Test-Path $bnRtLib)) {
         Write-Log "==> bn_rt.lib missing; building cargo -p bn_rt --release"
         cargo build -p bn_rt --release
         if ($LASTEXITCODE -ne 0) { throw "cargo build -p bn_rt failed" }
+    }
+}
+if ((-not (Test-Path $bnStdlibLib)) -and (Test-Path (Join-Path $repoRoot 'libraries\bn_stdlib'))) {
+    if (Get-Command cargo -ErrorAction SilentlyContinue) {
+        Write-Log "==> bn_stdlib.lib missing; building cargo -p bn_stdlib --release"
+        cargo build -p bn_stdlib --release
+        if ($LASTEXITCODE -ne 0) { throw "cargo build -p bn_stdlib failed" }
     }
 }
 if (-not (Test-Path $bnRtLib)) {
@@ -285,6 +295,10 @@ if (Test-Path $bnrBin) {
     Copy-Item $bnrBin $bnrDest -Force; Record-Installed $bnrDest
 }
 Copy-Item $bnRtLib $rtDest -Force; Record-Installed $rtDest
+$stdlibDest = Join-Path $libDir 'bn_stdlib.lib'
+if (Test-Path $bnStdlibLib) {
+    Copy-Item $bnStdlibLib $stdlibDest -Force; Record-Installed $stdlibDest
+}
 
 Get-ChildItem (Join-Path $repoRoot 'modules\bn\*.bn') | ForEach-Object {
     $dest = Join-Path $modDir $_.Name

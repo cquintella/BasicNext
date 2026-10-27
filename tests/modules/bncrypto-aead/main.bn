@@ -10,48 +10,62 @@
 IMPORT BNCrypto AS Crypto
 
 FUNCTION Start() AS VOID
-    LET key AS Crypto.Bytes = Crypto.FromText("0123456789abcdef0123456789abcdef")
+    LET keyRaw AS Crypto.Bytes = Crypto.FromText("0123456789abcdef0123456789abcdef")
+    LET keyAes AS Crypto.Key OR Error = Crypto.ImportKey(keyRaw, Crypto.ALG_AES_GCM_256)
+    LET keyChaCha AS Crypto.Key OR Error = Crypto.ImportKey(keyRaw, Crypto.ALG_CHACHA20_POLY1305)
     LET nonce AS Crypto.Bytes = Crypto.FromText("0123456789ab")
     LET plain AS Crypto.Bytes = Crypto.FromText("abc")
     LET aad AS Crypto.Bytes = Crypto.FromText("hdr")
 
-    LET sealedA AS Crypto.Bytes OR Error = Crypto.SealAesGcm(key, nonce, plain, aad)
-    IF sealedA IS Error THEN
-        PRINT "aes-seal-failed"
+    IF keyAes IS Error THEN
+        PRINT "aes-key-failed"
     ELSE
-        PRINT sealedA.ToHex()
-        LET openedA AS Crypto.Bytes OR Error = Crypto.OpenAesGcm(key, nonce, sealedA, aad)
-        IF openedA IS Error THEN
-            PRINT "aes-open-failed"
+        LET sealedA AS Crypto.Bytes OR Error = Crypto.SealAesGcm(keyAes, nonce, plain, aad)
+        IF sealedA IS Error THEN
+            PRINT "aes-seal-failed"
         ELSE
-            PRINT openedA.ToHex()
+            PRINT sealedA.ToHex()
+            LET openedA AS Crypto.Bytes OR Error = Crypto.OpenAesGcm(keyAes, nonce, sealedA, aad)
+            IF openedA IS Error THEN
+                PRINT "aes-open-failed"
+            ELSE
+                PRINT openedA.ToHex()
+            END IF
         END IF
     END IF
 
-    LET sealedC AS Crypto.Bytes OR Error = Crypto.SealChaCha20(key, nonce, plain, aad)
-    IF sealedC IS Error THEN
-        PRINT "chacha-seal-failed"
+    IF keyChaCha IS Error THEN
+        PRINT "chacha-key-failed"
     ELSE
-        PRINT sealedC.ToHex()
-        LET openedC AS Crypto.Bytes OR Error = Crypto.OpenChaCha20(key, nonce, sealedC, aad)
-        IF openedC IS Error THEN
-            PRINT "chacha-open-failed"
+        LET sealedC AS Crypto.Bytes OR Error = Crypto.SealChaCha20(keyChaCha, nonce, plain, aad)
+        IF sealedC IS Error THEN
+            PRINT "chacha-seal-failed"
         ELSE
-            PRINT openedC.ToHex()
+            PRINT sealedC.ToHex()
+            LET openedC AS Crypto.Bytes OR Error = Crypto.OpenChaCha20(keyChaCha, nonce, sealedC, aad)
+            IF openedC IS Error THEN
+                PRINT "chacha-open-failed"
+            ELSE
+                PRINT openedC.ToHex()
+            END IF
         END IF
     END IF
 
     // Opening with a different AAD must fail closed.
     LET wrong AS Crypto.Bytes = Crypto.FromText("xxx")
-    LET resealed AS Crypto.Bytes OR Error = Crypto.SealAesGcm(key, nonce, plain, aad)
-    IF resealed IS Error THEN
-        PRINT "reseal-failed"
+    IF keyAes IS Error THEN
+        PRINT "aes-key-failed"
     ELSE
-        LET tampered AS Crypto.Bytes OR Error = Crypto.OpenAesGcm(key, nonce, resealed, wrong)
-        IF tampered IS Error THEN
-            PRINT "tamper-rejected"
+        LET resealed AS Crypto.Bytes OR Error = Crypto.SealAesGcm(keyAes, nonce, plain, aad)
+        IF resealed IS Error THEN
+            PRINT "reseal-failed"
         ELSE
-            PRINT "tamper-accepted"
+            LET tampered AS Crypto.Bytes OR Error = Crypto.OpenAesGcm(keyAes, nonce, resealed, wrong)
+            IF tampered IS Error THEN
+                PRINT "tamper-rejected"
+            ELSE
+                PRINT "tamper-accepted"
+            END IF
         END IF
     END IF
 END FUNCTION

@@ -510,6 +510,7 @@ pub extern "C" fn bn_rt_policy_check(status: i32) {
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_policy_filesystem_sandboxed() -> i32 {
     *current_mut().fs_mut() = FsPolicy::denied();
+    let _ = current_mut().narrow_from_env(|name| std::env::var(name).ok());
     POLICY_OK
 }
 
@@ -522,6 +523,7 @@ pub extern "C" fn bn_rt_policy_filesystem_root(write: i32, path: *const c_char) 
         return POLICY_INVALID;
     };
     current_mut().fs_mut().add_root(write != 0, root);
+    let _ = current_mut().narrow_from_env(|name| std::env::var(name).ok());
     POLICY_OK
 }
 

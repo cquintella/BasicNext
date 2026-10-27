@@ -21,3 +21,4 @@ bn_stdlib = { path = "../bn_stdlib" }
 bn_source = { path = "../../crates/bn_source" }
 bn_types = { path = "../../crates/bn_types" }
 bn_value = { path = "../../crates/bn_value" }
+zeroize = { version = "1.9", features = ["zeroize_derive"] }

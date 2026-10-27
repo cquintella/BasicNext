@@ -398,6 +398,8 @@ pub(crate) fn lower_scalar_instruction(
                 // yields a zeroed header, and releasing that field traps.
                 let value = if *ty == Type::String {
                     crate::layout::string_payload_address(".bn_empty")
+                } else if matches!(ty, Type::Named(name) if name == "TIMEZONE") {
+                    crate::layout::string_payload_address(".bn_utc")
                 } else if function.kind == FunctionKind::Default {
                     let owner = function
                         .owner

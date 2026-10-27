@@ -5,7 +5,7 @@
 
 ## Book chapter 7 (0.4 / 0.3 text) is superseded
 
-[`docs/book/en/07_memory_management.md`](https://github.com/cquintella/basicnext-book/blob/main/en/07_memory_management.md)
+[`docs/book/en/10_memory.md`](https://github.com/cquintella/basicnext-book/blob/main/en/10_memory.md)
 still documents **manual** `NEW` / `DELETE` (0.3-era teaching). For Basic Next
 **0.5.0**, that chapter is **superseded** by the ARC contract in
 `language-0.5.0.md`. Do not treat book ch.7 as normative for 0.5.0 lifetime.

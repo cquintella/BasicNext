@@ -12,7 +12,7 @@ name = "bnr"
 path = "src/main.rs"
 
 [features]
-default = ["lib-math", "lib-json", "lib-log", "lib-data", "lib-dispatch", "lib-web", "lib-crypto", "lib-sqlite", "lib-ffi"]
+default = ["lib-math", "lib-json", "lib-log", "lib-data", "lib-dispatch", "lib-web", "lib-crypto", "lib-compress", "lib-sqlite", "lib-ffi"]
 lib-math = ["bn_interpret_driver/lib-math"]
 lib-json = ["bn_interpret_driver/lib-json"]
 lib-log = ["bn_interpret_driver/lib-log"]
@@ -20,6 +20,7 @@ lib-data = ["bn_interpret_driver/lib-data"]
 lib-dispatch = ["bn_interpret_driver/lib-dispatch"]
 lib-web = ["bn_interpret_driver/lib-web"]
 lib-crypto = ["bn_interpret_driver/lib-crypto"]
+lib-compress = ["bn_interpret_driver/lib-compress"]
 lib-sqlite = ["bn_interpret_driver/lib-sqlite"]
 lib-ffi = ["bn_interpret_driver/lib-ffi"]
 
