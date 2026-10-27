@@ -199,13 +199,13 @@ pub struct IfBranch {
     pub span: Span,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TypeReference {
     pub alternatives: Vec<TypeAtom>,
     pub span: Span,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TypeAtom {
     pub name: String,
     pub parts: Vec<String>,
@@ -213,7 +213,7 @@ pub struct TypeAtom {
     pub span: Span,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum VectorDimension {
     Literal { value: String, span: Span },
     Expression(Expression),
@@ -233,13 +233,13 @@ pub enum DeclarationKind {
     Interface,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Expression {
     pub kind: ExpressionKind,
     pub span: Span,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum ExpressionKind {
     Literal(Literal),
     Name {
@@ -302,7 +302,7 @@ pub enum ExpressionKind {
     },
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Literal {
     Integer(String),
     Float(String),
@@ -313,4 +313,64 @@ pub enum Literal {
     Null,
     NotAvailable,
     EndOfFile,
+}
+
+/// The binary operator of a compound assignment operator (`PlusAssign` is
+/// `Plus`), or `None` for a plain `=` or an unknown spelling.
+#[must_use]
+pub fn compound_binary_operator(operator: &str) -> Option<&'static str> {
+    match operator {
+        "PlusAssign" => Some("Plus"),
+        "MinusAssign" => Some("Minus"),
+        "StarAssign" => Some("Star"),
+        "SlashAssign" => Some("Slash"),
+        "PercentAssign" => Some("Percent"),
+        "PowerAssign" => Some("Power"),
+        _ => None,
+    }
+}
+
+impl Statement {
+    /// `target op= value` is `target = target op value` (0.6.md, "Compound
+    /// assignment"), so analysis applies the one rule of `=`. The statement
+    /// keeps the compound `operator` because lowering still evaluates the
+    /// place once and first. The left operand of the binary reads the place;
+    /// its span is the empty span just after the target, so the type the
+    /// analyzer gives that read (possibly narrowed) never overwrites the
+    /// target's.
+    #[must_use]
+    pub fn assignment(target: Expression, operator: String, value: Expression, span: Span) -> Self {
+        let Some(binary_operator) = compound_binary_operator(&operator) else {
+            return Self::Assignment {
+                target,
+                operator,
+                value,
+                span,
+            };
+        };
+        let read = Expression {
+            span: Span {
+                start: target.span.end,
+                end: target.span.end,
+            },
+            kind: target.kind.clone(),
+        };
+        let binary = Expression {
+            span: Span {
+                start: target.span.start,
+                end: value.span.end,
+            },
+            kind: ExpressionKind::Binary {
+                operator: binary_operator.into(),
+                left: Box::new(read),
+                right: Box::new(value),
+            },
+        };
+        Self::Assignment {
+            target,
+            operator,
+            value: binary,
+            span,
+        }
+    }
 }

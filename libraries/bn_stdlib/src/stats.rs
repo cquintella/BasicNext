@@ -32,33 +32,42 @@ pub(crate) fn vmax_i32(values: &[i32]) -> i32 {
     })
 }
 
-pub use bn_core_math::{Reduction, reduce, reduce_f64};
+pub use bn_core_math::{Reduction, Statistic, reduce, reduce_f64};
 
 #[cfg(test)]
 #[allow(clippy::float_cmp)]
 mod tests {
-    use super::{Reduction, reduce_f64};
+    use super::{Reduction, Statistic, reduce_f64};
 
     #[test]
     fn float_reductions_match_the_bnmath_contract() {
         let values = [1.0, 2.0, 2.0, 5.0];
-        assert!(matches!(reduce_f64("MEAN", &values), Reduction::Float(value) if value == 2.5));
-        assert!(matches!(reduce_f64("MEDIAN", &values), Reduction::Float(value) if value == 2.0));
         assert!(
-            matches!(reduce_f64("QUARTILE1", &values), Reduction::Float(value) if value == 1.5)
+            matches!(reduce_f64(Statistic::Mean, &values), Reduction::Float(value) if value == 2.5)
         );
         assert!(
-            matches!(reduce_f64("QUARTILE3", &values), Reduction::Float(value) if value == 3.5)
+            matches!(reduce_f64(Statistic::Median, &values), Reduction::Float(value) if value == 2.0)
         );
-        assert!(matches!(reduce_f64("MODE", &values), Reduction::Float(value) if value == 2.0));
+        assert!(
+            matches!(reduce_f64(Statistic::Quartile1, &values), Reduction::Float(value) if value == 1.5)
+        );
+        assert!(
+            matches!(reduce_f64(Statistic::Quartile3, &values), Reduction::Float(value) if value == 3.5)
+        );
+        assert!(
+            matches!(reduce_f64(Statistic::Mode, &values), Reduction::Float(value) if value == 2.0)
+        );
     }
 
     #[test]
     fn float_reductions_preserve_nan_and_mode_na_rules() {
         assert!(
-            matches!(reduce_f64("MEAN", &[f64::NAN, 1.0]), Reduction::Float(value) if value.is_nan())
+            matches!(reduce_f64(Statistic::Mean, &[f64::NAN, 1.0]), Reduction::Float(value) if value.is_nan())
         );
-        assert!(matches!(reduce_f64("MODE", &[1.0, 2.0]), Reduction::Na));
-        assert!(matches!(reduce_f64("MODE", &[]), Reduction::Na));
+        assert!(matches!(
+            reduce_f64(Statistic::Mode, &[1.0, 2.0]),
+            Reduction::Na
+        ));
+        assert!(matches!(reduce_f64(Statistic::Mode, &[]), Reduction::Na));
     }
 }

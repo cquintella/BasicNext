@@ -125,14 +125,14 @@ impl Executor<'_, '_> {
 
     pub(crate) fn set_member_value(
         &mut self,
-        values: &mut HashMap<ValueId, Value>,
+        values: &mut ValueSlots,
         object: ValueId,
         name: &str,
         field: Option<&bn_ir::FieldRef>,
         stored: Value,
         span: Span,
     ) -> Result<(), Diagnostic> {
-        match values.get_mut(&object) {
+        match values.get_mut(object) {
             Some(Value::Object { handle, .. }) => {
                 let handle = *handle;
                 self.objects
@@ -144,7 +144,7 @@ impl Executor<'_, '_> {
                 Ok(())
             }
             Some(Value::Record { .. }) => {
-                let Some(Value::Record { record }) = values.get_mut(&object) else {
+                let Some(Value::Record { record }) = values.get_mut(object) else {
                     return Err(runtime_error(
                         bn_diag::DiagId::INVALID_IR,
                         "record value disappeared",
@@ -175,7 +175,7 @@ impl Executor<'_, '_> {
     #[allow(clippy::too_many_arguments)] // Carries the resolved field and index operation without allocating a command object.
     pub(crate) fn set_member_index_value(
         &mut self,
-        values: &mut HashMap<ValueId, Value>,
+        values: &mut ValueSlots,
         object: ValueId,
         name: &str,
         field: Option<&bn_ir::FieldRef>,
@@ -183,7 +183,7 @@ impl Executor<'_, '_> {
         stored: Value,
         span: Span,
     ) -> Result<(), Diagnostic> {
-        match values.get_mut(&object) {
+        match values.get_mut(object) {
             Some(Value::Object { handle, .. }) => {
                 let mut target = self
                     .objects
@@ -449,7 +449,7 @@ impl Executor<'_, '_> {
                     self.default_value(element, &[], span)?
                 };
                 for length in dimensions.iter().rev() {
-                    value = Value::Vector(vec![value; *length]);
+                    value = Value::vector(vec![value; *length]);
                 }
                 Ok(value)
             }
@@ -522,7 +522,7 @@ impl Executor<'_, '_> {
             Value::String(text) => u64::try_from(text.len()).map_err(|_| integer_overflow(span))?,
             Value::Vector(elements) => {
                 let mut total = 0u64;
-                for element in elements {
+                for element in elements.iter() {
                     total = add_sizes(total, &self.size_of_value(element, span)?, span)?;
                 }
                 total

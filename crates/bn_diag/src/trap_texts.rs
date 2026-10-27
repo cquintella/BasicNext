@@ -47,6 +47,9 @@ pub const HOST_ARGS_CONTEXT: &str = "HOST.Args";
 pub const FOR_STEP_ZERO: &str = bn_catalog::frontend::MSG_FOR_STEP_CANNOT_BE_ZERO;
 /// "FLOAT64 value does not fit FLOAT32"
 pub const FLOAT64_TO_FLOAT32: &str = bn_catalog::frontend::MSG_FLOAT64_VALUE_DOES_NOT_FIT_FLOAT32;
+/// "the two vectors of a `BNMath` statistic differ in length"
+pub const STATISTIC_VECTORS_DIFFER: &str =
+    bn_catalog::frontend::MSG_STATISTIC_VECTORS_DIFFER_IN_LENGTH;
 /// "exit code must be in 0..255"
 pub const EXIT_CODE_RANGE: &str = bn_catalog::frontend::MSG_EXIT_CODE_MUST_BE_IN_0_255;
 
@@ -61,6 +64,10 @@ mod tests {
         assert_eq!(
             super::FLOAT64_TO_FLOAT32,
             bn_catalog::text("frontend", "msg.float64_value_does_not_fit_float32")
+        );
+        assert_eq!(
+            super::STATISTIC_VECTORS_DIFFER,
+            bn_catalog::text("frontend", "msg.statistic_vectors_differ_in_length")
         );
         assert_eq!(
             super::EXIT_CODE_RANGE,

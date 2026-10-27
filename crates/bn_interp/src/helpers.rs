@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::collections::HashMap;
+use crate::frame_storage::ValueSlots;
 
 use crate::temporal;
 use bn_diag::Diagnostic;
@@ -30,16 +30,12 @@ pub(super) fn find_block(function: &Function, id: BlockId) -> Result<&BasicBlock
         })
 }
 
-pub(super) fn set(values: &mut HashMap<ValueId, Value>, destination: ValueId, value: Value) {
+pub(super) fn set(values: &mut ValueSlots, destination: ValueId, value: Value) {
     values.insert(destination, value);
 }
 
-pub(super) fn value(
-    values: &HashMap<ValueId, Value>,
-    id: ValueId,
-    span: Span,
-) -> Result<&Value, Diagnostic> {
-    values.get(&id).ok_or_else(|| {
+pub(super) fn value(values: &ValueSlots, id: ValueId, span: Span) -> Result<&Value, Diagnostic> {
+    values.get(id).ok_or_else(|| {
         runtime_error(
             bn_diag::DiagId::INVALID_IR,
             format!("value %{} is undefined", id.0),

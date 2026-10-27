@@ -310,20 +310,67 @@ impl Analyzer {
         Ok(narrowed)
     }
 
-    pub(crate) fn replace_narrowing_fact(
+    /// An integer literal operand (`2`, `-2`) takes the floating-point type of
+    /// the other operand when its value fits exactly (0.6.md, "Numeric
+    /// operands"), so both backends see `FLOAT op FLOAT`. A literal that
+    /// does not fit keeps its integer type.
+    pub(crate) fn literal_takes_float_type(
+        &mut self,
+        operand: &Expression,
+        operand_type: &Type,
+        other_type: &Type,
+    ) {
+        let kind = match other_type {
+            Type::Float(kind) => *kind,
+            Type::FloatLiteral => FloatType::Float64,
+            _ => return,
+        };
+        if !matches!(operand_type, Type::IntegerLiteral(_)) {
+            return;
+        }
+        let (literal, text) = match &operand.kind {
+            ExpressionKind::Literal(Literal::Integer(text)) => (operand, text.clone()),
+            ExpressionKind::Unary {
+                operator,
+                operand: negated,
+            } if operator == "Minus" => match &negated.kind {
+                ExpressionKind::Literal(Literal::Integer(text)) => {
+                    (negated.as_ref(), format!("-{text}"))
+                }
+                _ => return,
+            },
+            _ => return,
+        };
+        if crate::types::literals::integer_literal_as_float(&text, kind).is_none() {
+            return;
+        }
+        let float = Type::Float(kind);
+        self.record_expression(literal.span, &float, None);
+        self.record_expression(operand.span, &float, None);
+    }
+
+    /// An assignment ends the narrowing of its target: only an `IS` test
+    /// narrows, as Swift's optionals (0.6.md, "`IS` narrowing"; BDFL
+    /// decision, 2026-10-26).
+    pub(crate) fn end_narrowing_of_target(
         target: &Expression,
-        assigned: &Type,
         locals: &mut HashMap<String, Symbol>,
     ) {
-        let ExpressionKind::Name { name } = &target.kind else {
-            return;
-        };
-        let Some(symbol) = locals.get_mut(name) else {
-            return;
-        };
-        if matches!(symbol.declared_ty, Type::Alternative(_)) {
-            symbol.ty = default_literal_type(assigned.clone());
-        } else {
+        if let ExpressionKind::Name { name } = &target.kind {
+            Self::end_narrowing_of(name, locals);
+        }
+    }
+
+    /// Ends the narrowing of every binding in `written` (the writes of a
+    /// nested block) that `locals` knows.
+    pub(crate) fn end_narrowings(written: &HashSet<String>, locals: &mut HashMap<String, Symbol>) {
+        for name in written {
+            Self::end_narrowing_of(name, locals);
+        }
+    }
+
+    fn end_narrowing_of(name: &str, locals: &mut HashMap<String, Symbol>) {
+        if let Some(symbol) = locals.get_mut(name) {
             symbol.ty = symbol.declared_ty.clone();
         }
     }

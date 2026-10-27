@@ -561,7 +561,7 @@ fn build_emits_float_print() {
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
-    assert!(String::from_utf8_lossy(&output.stdout).contains("fadd double 0.0, 3.75"));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("fadd double -0.0, 3.75"));
 }
 
 #[test]

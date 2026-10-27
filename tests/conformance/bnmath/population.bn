@@ -1,0 +1,30 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// BNMath.PVariance and BNMath.PStdev (math.md, "Descriptive statistics";
+// BDFL decision G-5, 2026-10-27). Expected output: population.expected:
+//   - [1, 2, 3, 4]: the mean is 2.5, the squared deviations sum to
+//     2.25 + 0.25 + 0.25 + 2.25 = 5, so PVariance = 5 / 4 = 1.25 and PStdev
+//     = SQRT(1.25) = 1.118033988749895 (bc: 1.1180339887498948482...);
+//     the same for the INTEGER vector, converted element by element;
+//   - one value has no spread (0.0); an empty vector has none (NAN);
+//   - an infinite value gives NAN, as for VARIANCE;
+//   - 1e9 + {4, 7, 13, 16}: the squared deviations sum to 90, so 90 / 4 =
+//     22.5, and SQRT(22.5) = 4.743416490252569.
+
+IMPORT BNMath AS Math
+
+FUNCTION Start() AS VOID
+    LET quad AS FLOAT[4] = [1.0, 2.0, 3.0, 4.0]
+    LET grades AS INTEGER[4] = [1, 2, 3, 4]
+    LET one AS FLOAT[1] = [7.0]
+    LET empty AS FLOAT[0] = []
+    LET infinite AS FLOAT[2] = [INF, 1.0]
+    LET shifted AS FLOAT[4] = [1000000004.0, 1000000007.0, 1000000013.0, 1000000016.0]
+    PRINT "quad", Math.PVariance(quad), Math.PStdev(quad), Math.PVariance(grades)
+    PRINT "small", Math.PVariance(one), Math.PStdev(one), Math.PVariance(empty)
+    PRINT "special", Math.PVariance(infinite), Math.PStdev(infinite)
+    PRINT "shifted", Math.PVariance(shifted), Math.PStdev(shifted)
+END FUNCTION

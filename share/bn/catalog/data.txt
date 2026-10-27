@@ -16,3 +16,4 @@ column.duplicate.message = duplicate column name "{name}"
 msg.dataframe_handle_was_already_deleted = DataFrame handle was already deleted
 msg.integer_out_of_range = integer out of range
 msg.bndata_dataframe_retain = BNData.DataFrame.Retain
+fill.not_integer.message = FillNA needs a whole number within INTEGER for the INTEGER column "{column}"

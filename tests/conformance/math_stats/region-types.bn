@@ -1,0 +1,26 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Conformance: descriptive statistics on a numeric region POINTER TO T[]
+// (math.md, "Descriptive statistics": a fixed-size vector or a region of an
+// integer or floating type; n is LEN of the region).
+// Expected output: region-types.expected, by hand:
+//   INT64 region [5000000000, 1, 3]: MEAN (5000000004 / 3) = 1666666668.0,
+//     MIN 1, MAX 5000000000 (element type kept, beyond INT32);
+//   FLOAT32 region [0.5, 1.5]: MEAN 1.0, MAX 1.5.
+
+IMPORT BNMath AS Math
+
+FUNCTION Start() AS VOID
+    LET wide AS POINTER TO INT64[] = NEW INT64[3]
+    wide[0] = 5000000000
+    wide[1] = 1
+    wide[2] = 3
+    LET single AS POINTER TO FLOAT32[] = NEW FLOAT32[2]
+    single[0] = 0.5
+    single[1] = 1.5
+    PRINT "INT64 region", Math.MEAN(wide), Math.MIN(wide), Math.MAX(wide)
+    PRINT "FLOAT32 region", Math.MEAN(single), Math.MAX(single)
+END FUNCTION

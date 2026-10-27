@@ -212,7 +212,7 @@ pub extern "C" fn bn_rt_random_seed(seed: i64) -> i32 {
         denied("HOST.Random");
         return 2;
     }
-    COMPILED_RANDOM_STATE.store(seed.cast_unsigned().max(1), Ordering::Relaxed);
+    COMPILED_RANDOM_STATE.store(bn_types::random::seed_state(seed), Ordering::Relaxed);
     0
 }
 
@@ -235,18 +235,14 @@ pub extern "C" fn bn_rt_random_next() -> f64 {
         }
     }
     loop {
-        let mut next = current;
-        next ^= next >> 12;
-        next ^= next << 25;
-        next ^= next >> 27;
-        next = next.wrapping_mul(0x2545_F491_4F6C_DD1D);
+        let next = bn_types::random::next_state(current);
         match COMPILED_RANDOM_STATE.compare_exchange_weak(
             current,
             next,
             Ordering::Relaxed,
             Ordering::Relaxed,
         ) {
-            Ok(_) => return (next >> 11) as f64 / 9_007_199_254_740_992.0,
+            Ok(_) => return bn_types::random::unit_interval(next),
             Err(observed) => current = observed,
         }
     }

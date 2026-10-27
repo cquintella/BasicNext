@@ -19,9 +19,11 @@ pub(crate) fn emit_constant_assignment(
             O::int(0),
             integer_constant(*number, &llvm_ty),
         ),
-        ConstantValue::Float(number) => {
-            (BinaryOp::FAdd, O::float(0.0), float_constant(*number, ty))
-        }
+        ConstantValue::Float(number) => (
+            BinaryOp::FAdd,
+            float_additive_identity(),
+            float_constant(*number, ty),
+        ),
         _ => unreachable!("validated scalar constant type"),
     };
     let inst = I::binary(op, llvm_ty, zero, constant);

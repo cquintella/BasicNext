@@ -144,6 +144,14 @@ These instance methods use the same algorithms and `NAN` / `NA` rules as
 `BNMath` descriptive statistics. The named column must be integer or float;
 otherwise `Error`.
 
+A cell that is `NA` (a missing datum) is left out of the statistic, as
+pandas `skipna=True` does (BDFL decision, 2026-10-26, D-3): `Mean` of
+`1.0`, `NA`, `3.0` is `2.0`. A column whose cells are all `NA` counts as
+empty: `Mean`, `Median`, `Quartile*`, `Range`, `Stdev` and `Variance` are
+`NAN`, `Mode` is `NA`, and `Min` / `Max` return the empty-column `Error`
+(G-3). `NAN` is a value, not a missing datum: a `NAN` cell propagates as in
+`BNMath`, so a column with `NA` and `NAN` gives `NAN`.
+
 | Method | Meaning |
 | --- | --- |
 | `Mean(name AS STRING) AS FLOAT OR Error` | Arithmetic mean. |
@@ -157,6 +165,26 @@ otherwise `Error`.
 | `Min(name AS STRING) AS FLOAT OR Error` | Minimum as `FLOAT`. |
 | `Max(name AS STRING) AS FLOAT OR Error` | Maximum as `FLOAT`. |
 | `ZScore(name AS STRING) AS Data.DataFrame OR Error` | New one-column `FLOAT` frame: `(x − mean) / Stdev` using sample `n−1`. `NA` cells stay `NA`. `NAN` in the column, `n<2`, or zero deviation yield `NAN` z-scores. Missing or non-numeric column → `Error`. |
+
+## Missing values (0.6.10)
+
+BDFL decisions D-3 (2026-10-26) and G-5 (2026-10-27). A missing column name
+is `Data.NOT_FOUND`, as everywhere in this module.
+
+| Method | Meaning |
+| --- | --- |
+| `CountNA(name AS STRING) AS INTEGER OR Error` | The number of `NA` cells in column `name`, of any type. |
+| `DropNA() AS Data.DataFrame OR Error` | A new frame with the same columns, without every row that has `NA` in any column; the row order is kept. The receiver is unchanged. |
+| `FillNA(name AS STRING, value AS FLOAT) AS VOID OR Error` | Replace, in place, every `NA` cell of the numeric column `name` with `value`. |
+
+`FillNA` keeps the column's type. A column whose other cells are `INTEGER`
+receives `value` as an `INTEGER`: `value` must then be a whole number within
+`INTEGER`, or the call is `Data.INVALID_ARGUMENT` and the column is
+unchanged. A column with a `FLOAT` cell receives `value` as `FLOAT`, `NAN`
+included. A `STRING` or `BOOLEAN` column is `Data.TYPE_MISMATCH`. A column
+whose cells are all `NA` has no type yet and receives `value` as `FLOAT`.
+(The error codes and the all-`NA` rule are derived from the module's error
+table, 2026-10-27, to be confirmed by the BDFL.)
 
 ## Copy-out interop with `BNMath`
 

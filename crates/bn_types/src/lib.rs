@@ -10,7 +10,9 @@ pub mod alternatives;
 pub mod class_model;
 pub mod error_codes;
 pub mod literals;
+pub mod numeric_abi;
 pub mod pointers;
+pub mod random;
 pub mod text;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]

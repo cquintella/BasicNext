@@ -15,6 +15,7 @@ with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.
 | `valid/start-exit-code.bn` | Accept | `Start` returning an operating-system exit code. |
 | `valid/multidimensional-vectors.bn` | Accept | Literal-dimension multidimensional vector type, nested literal, and chained indexing. |
 | `valid/function-values-and-control-flow.bn` | Accept | Function value type, call through a binding, signed `STEP`, `CONTINUE FOR`, and bare `RETURN` from `VOID`. |
+| `valid/for-variable-sibling-loops.bn` | Accept and run | A counted `FOR` (with and without `AS`) and a `FOR EACH` own their variable: sibling loops reuse the name, and a `LET` of that name after `END FOR` is not a duplicate. Sibling `FOR`, `FOR EACH` and `REPEAT` bodies may declare the same name. |
 | `valid/integer-widening-conversion.bn` | Accept | `INT16 AS INT32` is a permitted integral widening conversion. |
 | `valid/integer-narrowing-conversion.bn` | Accept | An explicit `INT32 AS INT16` conversion is valid; its range is checked at runtime. |
 | `valid/host-capabilities.bn` | Accept | `HOST.Args` command-line arguments, `HOST.Clock`, and pure UTC timestamp conversions. |
@@ -79,6 +80,8 @@ with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.
 | `invalid/module-constant-out-of-range.bn` | Reject (semantic) | Inferred `INT32` constant `0x80000000` is out of range. |
 | `invalid/module-constant-negative-unsigned.bn` | Reject (semantic) | `AS UINT32 = -1` is out of range. |
 | `invalid/float-binding-inexact-integer.bn` | Reject (semantic) | `16777217` is not exact in `FLOAT32`. |
+| `invalid/inexact-integer-literal-float.bn` | Reject (semantic) | `9007199254740993` (`2^53 + 1`) does not take the type of a `FLOAT` operand. |
+| `invalid/gcd-uint64-argument.bn` | Reject (semantic) | A `UINT64` argument to `BNMath.Gcd` may not fit `INT64`. |
 | `invalid/literal-ambiguous-numeric-alternative.bn` | Reject (semantic) | A literal in `INT8 OR INT16` has no default-type or single same-class alternative. |
 | `invalid/vector-literal-unrelated-element.bn` | Reject (semantic) | A vector literal element not assignable to the declared element type is `TYPE_MISMATCH` naming that element. |
 | `invalid/alternative-duplicate-member.bn` | Reject (semantic) | `INTEGER OR INT32` repeats a member after alias resolution. |
@@ -97,6 +100,12 @@ with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.
 | `invalid/untyped-let.bn` | Reject (syntax) | Mandatory `AS` on a binding. |
 | `invalid/invalid-lvalue.bn` | Reject (syntax) | Assignment target cannot be an expression. |
 | `invalid/cross-type-equality.bn` | Reject (semantic) | Equality does not coerce `STRING` to `BOOLEAN`. |
+| `invalid/for-variable-shadows-enclosing.bn` | Reject (semantic) | A `FOR` nested in a `FOR` of the same variable is `DUPLICATE_NAME`. |
+| `invalid/for-variable-redeclares-local.bn` | Reject (semantic) | A `FOR` variable named like a local of an enclosing block is `DUPLICATE_NAME`. |
+| `invalid/for-each-variable-shadows-parameter.bn` | Reject (semantic) | A `FOR EACH` variable named like a parameter is `DUPLICATE_NAME`. |
+| `invalid/for-body-binding-after-end-for.bn` | Reject (semantic) | A `LET` in a counted `FOR` body is not visible after `END FOR` (`NAME_NOT_FOUND`). |
+| `invalid/for-each-body-binding-after-end-for.bn` | Reject (semantic) | A `LET` in a `FOR EACH` body is not visible after `END FOR` (`NAME_NOT_FOUND`). |
+| `invalid/repeat-body-binding-after-end-repeat.bn` | Reject (semantic) | A `LET` in a `REPEAT` body is not visible after `END REPEAT` (`NAME_NOT_FOUND`). |
 | `invalid/invalid-stop-code.bn` | Reject (semantic) | `STOP` requires an `INTEGER` exit code from `0` through `255`. |
 | `invalid/out-of-range-exit-code.bn` | Reject (semantic) | `Start` exit codes are limited to `0` through `255`. |
 | `invalid/bare-stop.bn` | Reject (syntax) | `STOP` always requires an exit-code expression. |

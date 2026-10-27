@@ -1,0 +1,11 @@
+vector copy 9 1
+callee copy 9 100
+struct copy 1 5 2
+merge and loop 10 32
+temporaries 18
+loops 3 642
+strings FALSE á x
+order TRUE TRUE TRUE TRUE c b
+literals 768
+recursion 6765
+frames 1 2 1 2

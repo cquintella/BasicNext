@@ -1,0 +1,18 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// bni benchmark (bucket 0.6.10 F.0): fill, then read every element of a
+// 4000-element vector; reading must be linear in n.
+FUNCTION Start() AS VOID
+    LET a AS INTEGER[4000]
+    LET s AS INTEGER = 0
+    FOR j AS INTEGER = 0 TO 3999
+        a[j] = 1
+    END FOR
+    FOR k AS INTEGER = 0 TO 3999
+        s = s + a[k]
+    END FOR
+    PRINT s
+END FUNCTION

@@ -15,8 +15,8 @@ pub(crate) fn call_instruction_supported(
     module_functions: &std::collections::HashSet<&str>,
 ) -> Result<bool, String> {
     Ok(match functions.get(callee).copied() {
-        Some("$for_condition") => for_condition_supported(arguments, values),
-        Some("$for_fits") => for_fits_supported(arguments, values),
+        Some(bn_ir::names::FOR_CONDITION) => for_condition_supported(arguments, values),
+        Some(bn_ir::names::FOR_FITS) => for_fits_supported(arguments, values),
         Some(bn_ir::names::STOPPING | bn_ir::names::STOP_CODE) => arguments.is_empty(),
         Some("HOST.Random.Seed") => arguments.len() == 1,
         Some("HOST.Random.Random") => arguments.is_empty(),
@@ -362,6 +362,18 @@ pub(crate) fn call_instruction_supported(
                 bndata_dataframe_method(name),
                 Some("convert_integer" | "convert_float") if arguments.len() == 2
                     && values.get(&arguments[1]) == Some(&Type::String)
+            ) || matches!(
+                bndata_dataframe_method(name),
+                Some("count_na") if arguments.len() == 2
+                    && values.get(&arguments[1]) == Some(&Type::String)
+            ) || matches!(
+                bndata_dataframe_method(name),
+                Some("drop_na") if arguments.len() == 1
+            ) || matches!(
+                bndata_dataframe_method(name),
+                Some("fill_na") if arguments.len() == 3
+                    && values.get(&arguments[1]) == Some(&Type::String)
+                    && values.get(&arguments[2]).and_then(llvm_type).is_some_and(|ty| ty.is_integer() || ty.is_floating())
             )
         }
         Some(name) if is_bndata_function(name) => {

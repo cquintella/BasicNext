@@ -390,7 +390,6 @@ impl Analyzer {
                     default_span(),
                 )?;
             }
-            let saved_names = std::mem::take(&mut self.ended_loop_names);
             self.block(
                 statements,
                 &mut locals,
@@ -399,7 +398,6 @@ impl Analyzer {
                 name,
                 return_type.as_ref(),
             )?;
-            self.ended_loop_names = saved_names;
             self.current_class = previous_class;
             if *kind == DeclarationKind::Function
                 && let Some(signature) = signature

@@ -80,3 +80,7 @@ msg.session_start_not_found = executable module requires FUNCTION Start
 msg.input_prompt_must_be_string = INPUT prompt must be STRING
 msg.input_target = INPUT target
 msg.string_or_string_or_eof = STRING or STRING OR EOF
+msg.integer_arguments_that_fit_int64 = integer arguments that fit INT64
+msg.numeric_vector_and_numeric_probability = a numeric vector and a numeric probability
+msg.two_numeric_vectors = two numeric vectors
+msg.statistic_vectors_differ_in_length = the two vectors of a BNMath statistic differ in length

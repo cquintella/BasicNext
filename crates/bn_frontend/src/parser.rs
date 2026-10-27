@@ -158,30 +158,20 @@ fn float_literal_initializer(type_ref: &TypeReference, initializer: Expression) 
     if !atom.dimensions.is_empty() || !atom.parts.is_empty() {
         return initializer;
     }
-    let single_precision = match atom.name.as_str() {
-        "FLOAT32" => true,
-        "FLOAT" | "FLOAT64" => false,
+    let kind = match atom.name.as_str() {
+        "FLOAT32" => crate::types::FloatType::Float32,
+        "FLOAT" | "FLOAT64" => crate::types::FloatType::Float64,
         _ => return initializer,
     };
     let initializer = negative_literal(initializer);
     let ExpressionKind::Literal(Literal::Integer(text)) = &initializer.kind else {
         return initializer;
     };
-    let Some(value) = integer_literal_value(text) else {
+    let Some(float_text) = crate::types::literals::integer_literal_as_float(text, kind) else {
         return initializer;
     };
-    // Round-trip through the target width: equal only when no bits were lost.
-    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
-    let exact = if single_precision {
-        (value as f32) as i128 == value
-    } else {
-        (value as f64) as i128 == value
-    };
-    if !exact {
-        return initializer;
-    }
     Expression {
-        kind: ExpressionKind::Literal(Literal::Float(format!("{value}.0"))),
+        kind: ExpressionKind::Literal(Literal::Float(float_text)),
         span: initializer.span,
     }
 }

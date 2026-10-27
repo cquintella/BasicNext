@@ -1,0 +1,64 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// DataFrame.CountNA, DropNA and FillNA (bndata.md, "Missing values";
+// BDFL decisions D-3 and G-5). Expected output: na-helpers.expected, by
+// hand. The frame has the rows (a, 4, 1.5), (b, NA, 2.5), (c, 6, NA) and
+// (d, NA, 4.0):
+//   - CountNA: qty 2, price 1, name 0;
+//   - DropNA keeps only the row without NA, (a, 4, 1.5), and leaves the
+//     receiver as it was (CountNA of qty is still 2);
+//   - FillNA(qty, 0.0) gives 4, 0, 6, 0: no NA, INTEGER cells, Mean 2.5;
+//     FillNA(qty, 1.5) is INVALID_ARGUMENT (1): not a whole number;
+//   - FillNA(price, 9.5) gives 1.5, 2.5, 9.5, 4.0: Mean 17.5 / 4 = 4.375;
+//   - a STRING column is TYPE_MISMATCH (3), a missing one NOT_FOUND (2);
+//   - an all-NA column has no type yet and takes the value as FLOAT.
+
+IMPORT BNData AS Data
+
+FUNCTION Start() AS VOID
+    LET names AS STRING[4] = ["a", "b", "c", "d"]
+    LET quantities AS STRING[4] = ["4", "", "6", ""]
+    LET prices AS STRING[4] = ["1.5", "2.5", "", "4.0"]
+    LET table AS Data.DataFrame = NEW Data.DataFrame()
+    table.AddStringColumn("name", names)
+    table.AddStringColumn("qty", quantities)
+    table.AddStringColumn("price", prices)
+    table.ConvertToInteger("qty")
+    table.ConvertToFloat("price")
+    PRINT "count", table.CountNA("qty"), table.CountNA("price"), table.CountNA("name")
+
+    LET kept AS Data.DataFrame OR Error = table.DropNA()
+    IF kept IS Data.DataFrame THEN
+        PRINT "drop", kept.RowCount(), kept.GetString(0, "name"), kept.GetInteger(0, "qty"), kept.GetFloat(0, "price"), table.CountNA("qty")
+        RELEASE kept
+    END IF
+
+    table.FillNA("qty", 0.0)
+    PRINT "fill integer", table.CountNA("qty"), table.GetInteger(1, "qty"), table.Mean("qty")
+    LET fraction AS VOID OR Error = table.FillNA("qty", 1.5)
+    IF fraction IS Error THEN
+        PRINT "fraction", fraction.Code = Data.INVALID_ARGUMENT
+    END IF
+    table.FillNA("price", 9.5)
+    PRINT "fill float", table.GetFloat(2, "price"), table.Mean("price")
+    LET text AS VOID OR Error = table.FillNA("name", 0.0)
+    IF text IS Error THEN
+        PRINT "text", text.Code = Data.TYPE_MISMATCH
+    END IF
+    LET missing AS VOID OR Error = table.FillNA("nothing", 0.0)
+    IF missing IS Error THEN
+        PRINT "missing", missing.Code = Data.NOT_FOUND
+    END IF
+    RELEASE table
+
+    LET blanks AS STRING[2] = ["", ""]
+    LET empty AS Data.DataFrame = NEW Data.DataFrame()
+    empty.AddStringColumn("x", blanks)
+    empty.ConvertToFloat("x")
+    empty.FillNA("x", 2.0)
+    PRINT "all NA", empty.CountNA("x"), empty.GetFloat(0, "x")
+    RELEASE empty
+END FUNCTION

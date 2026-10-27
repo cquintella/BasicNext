@@ -81,8 +81,9 @@ scripts/build-native.sh hello.bn          # Linux, macOS
 It runs on machines with the same CPU features; no option changes a
 program's results (no fast-math).
 
-A program needs no project file: `bni hello.bn` or `bnc hello.bn` is enough. The manuals are
-[`bni(1)`](man/bni.1) and [`bnc(1)`](man/bnc.1).
+A program needs no project file: `bni hello.bn` or `bnc hello.bn` is enough; `bnr`
+opens the interactive REPL. The manuals are [`bni(1)`](man/bni.1),
+[`bnc(1)`](man/bnc.1) and [`bnr(1)`](man/bnr.1).
 
 ## Installation
 
@@ -93,8 +94,10 @@ curl -fsSL https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/i
 ```
 
 The script asks for a prefix (`$HOME/basicnext`, `/opt/basicnext`,
-`/usr/local`, or another path), then installs the latest release's `bni` and
-`bnc` (checksum-verified), the standard-library modules, the diagnostics
+`/usr/local`, or another path), then installs the latest release's `bni`,
+`bnc` and `bnr` (checksum-verified; for a release that ships no `bnr` binary,
+such as 0.6.9, it builds the REPL from that release's source when `cargo` is
+installed), the standard-library modules, the diagnostics
 catalog, and the man pages. It uses `sudo` only when the prefix is not
 writable, and builds from source with `cargo` when the release has no binary
 for your platform. Skip the menu with `--prefix DIR`; pin a release with
@@ -108,7 +111,9 @@ irm https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/install.
 
 The script installs to `%LOCALAPPDATA%\Programs\BasicNext` without administrator
 rights, or to `$env:BN_PREFIX`. It downloads the latest release's `bni.exe`,
-`bnc.exe`, and `bn_rt.lib` (checksum-verified against `SHA256SUMS`), the
+`bnc.exe`, `bnr.exe` and `bn_rt.lib` (checksum-verified against `SHA256SUMS`;
+without a `bnr.exe` asset, as in 0.6.9, it builds the REPL from source when
+`cargo` is installed), the
 standard-library modules, and the diagnostics catalog, updates the user `PATH`,
 and writes `%USERPROFILE%\.basicnext\uninstall.ps1`. Pin a release with
 `$env:BN_VERSION = 'v0.6.9'`.

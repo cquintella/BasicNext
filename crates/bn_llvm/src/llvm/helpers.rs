@@ -563,6 +563,14 @@ pub(crate) fn parse_float_constant(value: &str) -> Option<f64> {
 /// both widths; a 32-bit pattern is rejected by clang (known issue K34).
 /// The constant of a floating-point `value` of type `ty`; a `FLOAT32` value is
 /// rounded to single precision first, as LLVM requires of a `float` constant.
+/// The identity of floating-point addition, `-0.0`: `-0.0 + x` is `x` for
+/// every `x`, both zeros included, while `+0.0 + -0.0` is `+0.0`. A float
+/// constant or copy written as `fadd` with it, and a negation written as
+/// `fsub` from it, keep the sign of zero (math.md, "Numeric model").
+pub(crate) fn float_additive_identity() -> crate::ir::LlvmOperand {
+    crate::ir::LlvmOperand::float(-0.0)
+}
+
 pub(crate) fn float_constant(value: f64, ty: &Type) -> crate::ir::LlvmOperand {
     let value = match ty {
         Type::Float(FloatType::Float32) => f64::from(value as f32),

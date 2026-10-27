@@ -4,6 +4,8 @@
 mod migration_target;
 mod support;
 
+#[path = "gates/bni_performance.rs"]
+mod bni_performance;
 #[path = "gates/catalog_keys.rs"]
 mod catalog_keys;
 #[path = "gates/dependency_gate.rs"]

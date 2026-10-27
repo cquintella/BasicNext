@@ -373,6 +373,44 @@ pub(crate) fn validate_member_names(statements: &[Statement]) -> Result<(), Diag
     }
     Ok(())
 }
+/// The local bindings a block writes at any depth: the name target of an
+/// assignment or of an `INPUT`. A narrowing of one of them cannot outlive
+/// the block, nor survive into the next iteration of a loop body (0.6.md,
+/// "`IS` narrowing").
+pub(crate) fn written_bindings(statements: &[Statement]) -> HashSet<String> {
+    let mut written = HashSet::new();
+    collect_written_bindings(statements, &mut written);
+    written
+}
+
+fn collect_written_bindings(statements: &[Statement], written: &mut HashSet<String>) {
+    for statement in statements {
+        match statement {
+            Statement::Assignment { target, .. } | Statement::Input { target, .. } => {
+                if let ExpressionKind::Name { name } = &target.kind {
+                    written.insert(name.clone());
+                }
+            }
+            Statement::If {
+                branches,
+                otherwise,
+                ..
+            } => {
+                for branch in branches {
+                    collect_written_bindings(&branch.body.statements, written);
+                }
+                if let Some(block) = otherwise {
+                    collect_written_bindings(&block.statements, written);
+                }
+            }
+            Statement::While { body, .. }
+            | Statement::Repeat { body, .. }
+            | Statement::For { body, .. } => collect_written_bindings(&body.statements, written),
+            _ => {}
+        }
+    }
+}
+
 pub(crate) fn block_uses_self(statements: &[Statement]) -> bool {
     statements.iter().any(|statement| match statement {
         Statement::Assignment { target, value, .. } => {

@@ -3,12 +3,16 @@
     Basic Next installer for Windows.
 
 .DESCRIPTION
-    Installs the bni.exe (interpreter) and bnc.exe (compiler) binaries plus the
+    Installs the bni.exe (interpreter), bnc.exe (compiler) and bnr.exe (REPL)
+    binaries plus the
     runtime files they discover
     (stdlib .bn modules, diagnostics catalog, and native runtime lib) under a prefix:
 
         <Prefix>\bin\bni.exe
         <Prefix>\bin\bnc.exe
+        <Prefix>\bin\bnr.exe                    interactive REPL (a release from
+                                                  0.6.10 ships it; 0.6.9 builds it
+                                                  from source when cargo exists)
         <Prefix>\lib\bn_rt.lib                    native runtime for `bnc`
         <Prefix>\share\bn\modules\bn\*.bn         standard library modules
         <Prefix>\share\bn\diagnostics\en-US\*.ftl diagnostics catalog (optional;
@@ -206,6 +210,26 @@ if (-not $repoRoot) {
     Copy-Item (Join-Path $BootstrapDir 'bni-windows-x86_64.exe') (Join-Path $TargetRelease 'bni.exe')
     Copy-Item (Join-Path $BootstrapDir 'bnc-windows-x86_64.exe') (Join-Path $TargetRelease 'bnc.exe')
     Copy-Item (Join-Path $BootstrapDir 'bn_rt-windows-x86_64.lib') (Join-Path $TargetRelease 'bn_rt.lib')
+    # The REPL ships as an asset from 0.6.10; an older tag that has the bnr
+    # crate (0.6.9) builds it from the tag's source when cargo exists.
+    $BnrAsset = 'bnr-windows-x86_64.exe'
+    if (Get-Content $Checksums | Where-Object { $_ -match ('\s' + [regex]::Escape($BnrAsset) + '$') }) {
+        $BnrPath = Join-Path $BootstrapDir $BnrAsset
+        Receive-ReleaseAsset $Base $BnrAsset $BnrPath
+        Assert-ReleaseAsset $Checksums $BnrPath $BnrAsset
+        Copy-Item $BnrPath (Join-Path $TargetRelease 'bnr.exe')
+    } elseif ((Test-Path (Join-Path $repoRoot 'crates\bnr')) -and (Get-Command cargo -ErrorAction SilentlyContinue)) {
+        Write-Log "    no bnr asset in ${Tag}: building the REPL from its source (cargo build --release --locked -p bnr)"
+        Push-Location $repoRoot
+        try {
+            cargo build --release --locked -p bnr
+            if ($LASTEXITCODE -ne 0) { Write-Log '    warning: building bnr failed; installing without bnr' }
+        } finally {
+            Pop-Location
+        }
+    } else {
+        Write-Log "    note: no bnr asset in $Tag and no cargo (or no REPL in this tag); installing without bnr"
+    }
     $NoBuild = $true
 }
 Set-Location $repoRoot
@@ -224,6 +248,7 @@ if (-not $NoBuild) {
 
 $bniBin = Join-Path $repoRoot 'target\release\bni.exe'
 $bncBin = Join-Path $repoRoot 'target\release\bnc.exe'
+$bnrBin = Join-Path $repoRoot 'target\release\bnr.exe'
 $bnRtLib = Join-Path $repoRoot 'target\release\bn_rt.lib'
 foreach ($bin in @($bniBin, $bncBin)) {
     if (-not (Test-Path $bin)) { throw "missing binary '$bin' (build first, or drop -NoBuild)" }
@@ -255,6 +280,10 @@ $bncDest = Join-Path $binDir 'bnc.exe'
 $rtDest = Join-Path $libDir 'bn_rt.lib'
 Copy-Item $bniBin $bniDest -Force; Record-Installed $bniDest
 Copy-Item $bncBin $bncDest -Force; Record-Installed $bncDest
+$bnrDest = Join-Path $binDir 'bnr.exe'
+if (Test-Path $bnrBin) {
+    Copy-Item $bnrBin $bnrDest -Force; Record-Installed $bnrDest
+}
 Copy-Item $bnRtLib $rtDest -Force; Record-Installed $rtDest
 
 Get-ChildItem (Join-Path $repoRoot 'modules\bn\*.bn') | ForEach-Object {
@@ -274,6 +303,7 @@ Get-ChildItem $diagSrc -Recurse -File -ErrorAction SilentlyContinue | ForEach-Ob
 
 Write-Log "==> Installed:"
 Write-Log "    $bniDest, $bncDest"
+if (Test-Path $bnrDest) { Write-Log "    $bnrDest" }
 Write-Log "    $rtDest"
 Write-Log "    $modDir\, $diagDir\"
 
@@ -291,6 +321,7 @@ if (-not $NoPathUpdate) {
 Write-Log "==> Verifying"
 & (Join-Path $binDir 'bni.exe') --version
 & (Join-Path $binDir 'bnc.exe') --version
+if (Test-Path $bnrDest) { & $bnrDest --version }
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("bn-check-" + [System.Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 $check = Join-Path $tmp 'check.bn'

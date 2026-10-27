@@ -226,7 +226,7 @@ impl NetProvider {
                             "HOST.Net.UDPPacket",
                             vec![
                                 endpoint_value(packet.source()),
-                                Value::Vector(
+                                Value::vector(
                                     packet
                                         .bytes()
                                         .iter()
@@ -768,7 +768,7 @@ impl NetProvider {
                     Ok(addresses) => Ok(Value::Record {
                         record: RecordValue::new(
                             "HOST.Net.Addresses",
-                            vec![Value::Vector(
+                            vec![Value::vector(
                                 addresses
                                     .into_iter()
                                     .map(|address| Value::Record {

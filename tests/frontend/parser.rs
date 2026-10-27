@@ -64,6 +64,9 @@ fn syntax_error_fixtures_are_rejected_by_the_parser() {
     }
 }
 
+/// (compound operator, (binary operator, reads the target, adds 1)).
+type IncrementShape<'a> = (&'a str, Option<(&'a str, bool, bool)>);
+
 #[test]
 fn increment_statement_desugars_to_compound_assignment() {
     let source = SourceFile::new(
@@ -80,19 +83,42 @@ fn increment_statement_desugars_to_compound_assignment() {
     else {
         panic!("expected Start");
     };
-    let operators: Vec<(&str, bool)> = statements
+    // `t++` is `t += 1`, which is `t = t + 1` (0.6.md, "Compound
+    // assignment"): the statement keeps the compound operator, and its value
+    // is the binary whose left operand reads the target.
+    let shapes: Vec<IncrementShape<'_>> = statements
         .iter()
         .filter_map(|statement| match statement {
             Statement::Assignment {
-                operator, value, ..
+                target,
+                operator,
+                value,
+                ..
             } => Some((
                 operator.as_str(),
-                matches!(&value.kind, ExpressionKind::Literal(bn_frontend::ast::Literal::Integer(one)) if one == "1"),
+                match &value.kind {
+                    ExpressionKind::Binary {
+                        operator: binary,
+                        left,
+                        right,
+                    } => Some((
+                        binary.as_str(),
+                        format!("{:?}", left.kind) == format!("{:?}", target.kind),
+                        matches!(&right.kind, ExpressionKind::Literal(bn_frontend::ast::Literal::Integer(one)) if one == "1"),
+                    )),
+                    _ => None,
+                },
             )),
             _ => None,
         })
         .collect();
-    assert_eq!(operators, vec![("PlusAssign", true), ("MinusAssign", true)]);
+    assert_eq!(
+        shapes,
+        vec![
+            ("PlusAssign", Some(("Plus", true, true))),
+            ("MinusAssign", Some(("Minus", true, true)))
+        ]
+    );
 }
 
 #[test]

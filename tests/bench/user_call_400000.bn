@@ -1,0 +1,17 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// bni benchmark (bucket 0.6.10 F.0): 400000 user-function calls.
+FUNCTION Inc(n AS INTEGER) AS INTEGER
+    RETURN n + 1
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET s AS INTEGER = 0
+    FOR i AS INTEGER = 1 TO 400000
+        s = Inc(s)
+    END FOR
+    PRINT s
+END FUNCTION

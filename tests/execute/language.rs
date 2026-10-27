@@ -67,6 +67,64 @@ fn debug_control_can_terminate_before_user_instruction() {
     let _ = fs::remove_file(path);
 }
 
+/// Bucket 0.6.10 F.1 lock: a pause inside a hot counted loop sees the
+/// frame's bindings with the values of that iteration, after the dense
+/// frame slots replaced the per-call maps (F.2).
+#[test]
+fn debug_view_inside_a_hot_loop_shows_the_iteration_values() {
+    const LOOP_BODY_LINE: usize = 4;
+    const PAUSED_ITERATION: &str = "Integer(500, Int32)";
+    let path = unique_temp("debug-hot-loop.bn");
+    fs::write(
+        &path,
+        "FUNCTION Start() AS VOID\nLET total AS INTEGER = 0\nFOR i AS INTEGER = 1 TO 1000\ntotal = total + i\nEND FOR\nPRINT total\nEND FUNCTION\n",
+    )
+    .unwrap();
+    let graph = load(&path).unwrap();
+    let models = analyze_modules(&graph).unwrap();
+    let module = lower_graph(&graph, &models).unwrap();
+    let mut input = Cursor::new(Vec::<u8>::new());
+    let mut output = Vec::new();
+    let mut paused = None;
+    let mut control =
+        |_function: &str, _depth: usize, span: bn_source::Span, view: &bn_interp::DebugView| {
+            // The view names bindings by symbol id, so the lock reads their values.
+            let mut bindings = view
+                .variables
+                .iter()
+                .filter(|variable| variable.name.starts_with("symbol#"))
+                .map(|variable| variable.value.clone())
+                .collect::<Vec<_>>();
+            bindings.sort();
+            if span.start.line == LOOP_BODY_LINE
+                && bindings.iter().any(|value| value == PAUSED_ITERATION)
+            {
+                paused = Some(bindings);
+                return DebugDecision::Terminate;
+            }
+            DebugDecision::Continue
+        };
+    let error = execute_with_host_debug_control(
+        &module,
+        &mut input,
+        &mut output,
+        &fixed(Vec::new(), 0, 0),
+        &mut control,
+    )
+    .expect_err("debugger termination");
+    let _ = fs::remove_file(path);
+    assert_eq!(error.code, "DEBUG_TERMINATED");
+    // total holds 1 + … + 499 when the body of iteration 500 starts.
+    assert_eq!(
+        paused,
+        Some(vec![
+            "Integer(124750, Int32)".to_string(),
+            PAUSED_ITERATION.to_string()
+        ])
+    );
+    assert!(output.is_empty());
+}
+
 #[test]
 fn multi_binding_let_evaluates_left_to_right() {
     let source = "FUNCTION Start() AS VOID\nLET first, second AS INTEGER = 1, 2\nPRINT first, second\nEND FUNCTION\n";

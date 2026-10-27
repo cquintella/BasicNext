@@ -1,0 +1,29 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// BNMath.Skewness, Kurtosis, PSkewness and PKurtosis (math.md; BDFL
+// decision, 2026-10-27: type 2 G1 and the excess G2, as Excel SKEW and KURT;
+// type 1 g1 and g2). Expected output: shape.expected. The data are exact,
+// so bc gives the exact values: (2, 8, 0, 4, 1, 9, 9, 0) has G1
+// 0.330582180407974662..., G2 -2.098602258096086653..., g1
+// 0.265055412269857311..., g2 -1.666001075283850787...; (1, 2, 3, 4, 10)
+// has G1 1.697056274847714058..., g1 1.138419957660616559..., and the exact
+// G2 3.152 and g2 -0.212 (R's e1071 prints 3.1519999999999992 and
+// -0.21200000000000019). Each printed value is within two units in the
+// last place of the exact one. Below each size (3 for Skewness, 4 for
+// Kurtosis), for a constant vector and with an infinite value: NAN.
+
+IMPORT BNMath AS Math
+
+FUNCTION Start() AS VOID
+    LET spread AS FLOAT[8] = [2.0, 8.0, 0.0, 4.0, 1.0, 9.0, 9.0, 0.0]
+    LET skewed AS INTEGER[5] = [1, 2, 3, 4, 10]
+    LET pair AS FLOAT[2] = [1.0, 2.0]
+    LET flat AS FLOAT[3] = [4.0, 4.0, 4.0]
+    LET infinite AS FLOAT[4] = [1.0, 2.0, 3.0, INF]
+    PRINT "spread", Math.Skewness(spread), Math.Kurtosis(spread), Math.PSkewness(spread), Math.PKurtosis(spread)
+    PRINT "skewed", Math.Skewness(skewed), Math.Kurtosis(skewed), Math.PSkewness(skewed), Math.PKurtosis(skewed)
+    PRINT "nan", Math.Skewness(pair), Math.Kurtosis(flat), Math.PSkewness(flat), Math.PKurtosis(infinite)
+END FUNCTION

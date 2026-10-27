@@ -98,24 +98,24 @@ pub(crate) fn comparable(left: &Type, right: &Type) -> bool {
     compatible(left, right) || compatible(right, left) || numeric_result(left, right).is_some()
 }
 
-pub(crate) fn compound_operator(operator: &str) -> Option<&'static str> {
-    match operator {
-        "PlusAssign" => Some("Plus"),
-        "MinusAssign" => Some("Minus"),
-        "StarAssign" => Some("Star"),
-        "SlashAssign" => Some("Slash"),
-        "PercentAssign" => Some("Percent"),
-        "PowerAssign" => Some("Power"),
-        _ => None,
-    }
+/// An integer literal meets a float only when the integer is exactly that
+/// float (0.6.md, "Numeric operands"). Otherwise the pair is not a numeric
+/// combination: the caller reports `TYPE_MISMATCH`.
+fn exact_integer_literal_as_float(text: &str, kind: FloatType) -> Option<Type> {
+    crate::types::literals::integer_literal_as_float(text, kind).map(|_| Type::Float(kind))
 }
 
 pub(crate) fn numeric_result(left: &Type, right: &Type) -> Option<Type> {
     match (left, right) {
-        (Type::IntegerLiteral(_), Type::Float(kind))
-        | (Type::Float(kind), Type::IntegerLiteral(_)) => Some(Type::Float(*kind)),
-        (Type::IntegerLiteral(_) | Type::FloatLiteral, Type::FloatLiteral)
-        | (Type::FloatLiteral, Type::IntegerLiteral(_)) => Some(Type::Float(FloatType::Float64)),
+        (Type::IntegerLiteral(text), Type::Float(kind))
+        | (Type::Float(kind), Type::IntegerLiteral(text)) => {
+            exact_integer_literal_as_float(text, *kind)
+        }
+        (Type::IntegerLiteral(text), Type::FloatLiteral)
+        | (Type::FloatLiteral, Type::IntegerLiteral(text)) => {
+            exact_integer_literal_as_float(text, FloatType::Float64)
+        }
+        (Type::FloatLiteral, Type::FloatLiteral) => Some(Type::Float(FloatType::Float64)),
         (Type::Float(left), Type::Float(right)) => Some(Type::Float(
             if left == &FloatType::Float64 || right == &FloatType::Float64 {
                 FloatType::Float64

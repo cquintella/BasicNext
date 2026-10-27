@@ -1,0 +1,143 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// math_expressions.bn — operator precedence and well-known formulas,
+// written with literals. Each line prints the expected value and the
+// computed one.
+//
+// Precedence, loosest to tightest (0.6.md, "Operators"): OR, XOR, AND, IS,
+// = <>, < <= > >=, SHL SHR, + -, * / DIV %, unary NOT and -, ** (right
+// associative), then suffixes. Every case in the first part is chosen so
+// that a wrong precedence or associativity gives a different result.
+//
+// Expected values: exact ones are derived by hand in the comments; the
+// inexact FLOAT ones are the IEEE 754 binary64 results, printed as the
+// shortest decimal that reads back (0.6.md, "PRINT").
+//
+// Run from repo root: bni run examples/math_expressions.bn
+
+IMPORT BNMath AS Math
+
+FUNCTION CheckInteger(label AS STRING, expected AS INTEGER, got AS INTEGER) AS VOID
+    IF expected = got THEN
+        PRINT "PASS  ", label, "  expected=", expected, "  got=", got
+    ELSE
+        PRINT "FAIL  ", label, "  expected=", expected, "  got=", got
+    END IF
+END FUNCTION
+
+FUNCTION CheckFloat(label AS STRING, expected AS FLOAT, got AS FLOAT) AS VOID
+    IF expected = got THEN
+        PRINT "PASS  ", label, "  expected=", expected, "  got=", got
+    ELSE
+        PRINT "FAIL  ", label, "  expected=", expected, "  got=", got
+    END IF
+END FUNCTION
+
+FUNCTION CheckBoolean(label AS STRING, expected AS BOOLEAN, got AS BOOLEAN) AS VOID
+    IF expected = got THEN
+        PRINT "PASS  ", label, "  expected=", expected, "  got=", got
+    ELSE
+        PRINT "FAIL  ", label, "  expected=", expected, "  got=", got
+    END IF
+END FUNCTION
+
+FUNCTION Precedence() AS VOID
+    PRINT "--- precedence and associativity ---"
+    // * before +: 2 + 12, not 5 * 4.
+    CheckInteger("2 + 3 * 4", 14, 2 + 3 * 4)
+    CheckInteger("(2 + 3) * 4", 20, (2 + 3) * 4)
+    // ** is right associative: 2 ** 9, not 8 ** 2.
+    CheckInteger("2 ** 3 ** 2", 512, 2 ** 3 ** 2)
+    CheckInteger("(2 ** 3) ** 2", 64, (2 ** 3) ** 2)
+    // Unary minus is looser than **: -(2 ** 2).
+    CheckInteger("-2 ** 2", -4, -2 ** 2)
+    CheckInteger("(-2) ** 2", 4, (-2) ** 2)
+    CheckInteger("-3 ** 2", -9, -3 ** 2)
+    // A negative constant exponent makes ** a FLOAT64.
+    CheckFloat("2 ** -1", 0.5, 2 ** -1)
+    // Same level, left to right: (100 - 10) - 1, and (6) % 4.
+    CheckInteger("100 - 10 - 1", 89, 100 - 10 - 1)
+    CheckInteger("2 * 3 % 4", 2, 2 * 3 % 4)
+    CheckInteger("2 * (3 % 4)", 6, 2 * (3 % 4))
+    CheckFloat("100 / 10 / 2", 5.0, 100 / 10 / 2)
+    // / always divides as FLOAT64.
+    CheckFloat("7 / 2", 3.5, 7 / 2)
+    // Euclidean DIV and %: the remainder is never negative.
+    CheckInteger("-7 DIV 2", -4, -7 DIV 2)
+    CheckInteger("-7 % 2", 1, -7 % 2)
+    CheckInteger("7 DIV -2", -3, 7 DIV -2)
+    CheckInteger("7 % -2", 1, 7 % -2)
+    // a = (a DIV b) * b + a % b: 3 * 2 + 1.
+    CheckInteger("7 DIV 2 * 2 + 7 % 2", 7, 7 DIV 2 * 2 + 7 % 2)
+    // SHL is looser than +: 1 SHL 3, not 4 + 1.
+    CheckInteger("1 SHL 2 + 1", 8, 1 SHL 2 + 1)
+    // Bitwise on integers; AND is tighter than OR: 4 OR (2 AND 1).
+    CheckInteger("5 XOR 3", 6, 5 XOR 3)
+    CheckInteger("NOT 0", -1, NOT 0)
+    CheckInteger("4 OR 2 AND 1", 4, 4 OR 2 AND 1)
+    // Unary NOT is tighter than =: (NOT 1) = 2 is -2 = 2.
+    CheckBoolean("NOT 1 = 2", FALSE, NOT 1 = 2)
+    CheckBoolean("NOT (1 = 2)", TRUE, NOT (1 = 2))
+    // Comparison is tighter than AND, and < is tighter than =.
+    CheckBoolean("1 + 2 < 4 AND 3 > 2", TRUE, 1 + 2 < 4 AND 3 > 2)
+    CheckBoolean("1 < 2 = TRUE", TRUE, 1 < 2 = TRUE)
+    // AND is tighter than XOR: (FALSE AND TRUE) XOR TRUE.
+    CheckBoolean("FALSE AND TRUE XOR TRUE", TRUE, FALSE AND TRUE XOR TRUE)
+    // XOR is tighter than OR: (TRUE XOR TRUE) OR TRUE.
+    CheckBoolean("TRUE XOR TRUE OR TRUE", TRUE, TRUE XOR TRUE OR TRUE)
+    // Long expressions: 2 + 3 * 16 - (10 DIV 5) * 3 = 2 + 48 - 6.
+    CheckInteger("2 + 3 * 4 ** 2 - 10 DIV 5 * 3", 44, 2 + 3 * 4 ** 2 - 10 DIV 5 * 3)
+    // (5 * 3) ** 2 DIV 9 = 225 DIV 9.
+    CheckInteger("((2 + 3) * (7 - 4)) ** 2 DIV 9", 25, ((2 + 3) * (7 - 4)) ** 2 DIV 9)
+    // 4.0 * 8.0 / 4.0 - (-1.0) = 8.0 + 1.0.
+    CheckFloat("(1.5 + 2.5) * 2.0 ** 3 / 4.0 - -1.0", 9.0, (1.5 + 2.5) * 2.0 ** 3 / 4.0 - -1.0)
+END FUNCTION
+
+FUNCTION Formulas() AS VOID
+    PRINT "--- well-known formulas ---"
+    // Gauss: n (n + 1) / 2 for n = 100.
+    CheckInteger("Gauss sum 1..100", 5050, 100 * (100 + 1) DIV 2)
+    // Sum of squares: n (n + 1) (2n + 1) / 6 for n = 10: 10 * 11 * 21 / 6.
+    CheckInteger("sum of squares 1..10", 385, 10 * (10 + 1) * (2 * 10 + 1) DIV 6)
+    // Nicomachus: the sum of cubes 1..n is (n (n + 1) / 2) ** 2 = 55 ** 2.
+    CheckInteger("sum of cubes 1..10", 3025, (10 * (10 + 1) DIV 2) ** 2)
+    // Euler's n ** 2 + n + 41 at n = 40 is 41 ** 2, its first composite.
+    CheckInteger("Euler polynomial n = 40", 1681, 40 ** 2 + 40 + 41)
+    // Fermat number F4 = 2 ** (2 ** 4) + 1.
+    CheckInteger("Fermat F4", 65537, 2 ** 2 ** 4 + 1)
+    // Mersenne prime M13 = 2 ** 13 - 1.
+    CheckInteger("Mersenne M13", 8191, 2 ** 13 - 1)
+    // Pythagoras: the hypotenuse of a 3-4-5 triangle.
+    CheckFloat("hypotenuse of 3 and 4", 5.0, Math.SQRT(3.0 * 3.0 + 4.0 * 4.0))
+    // Quadratic formula for x ** 2 - 5x + 6 = 0 (a = 1, b = -5, c = 6).
+    CheckFloat("x ** 2 - 5x + 6, root +", 3.0, (5.0 + Math.SQRT(25.0 - 4.0 * 1.0 * 6.0)) / (2.0 * 1.0))
+    CheckFloat("x ** 2 - 5x + 6, root -", 2.0, (5.0 - Math.SQRT(25.0 - 4.0 * 1.0 * 6.0)) / (2.0 * 1.0))
+    // Celsius to Fahrenheit: C * 9 / 5 + 32.
+    CheckFloat("100 C in F", 212.0, 100.0 * 9.0 / 5.0 + 32.0)
+    CheckFloat("-40 C in F", -40.0, -40.0 * 9.0 / 5.0 + 32.0)
+    CheckFloat("37 C in F", 98.6, 37.0 * 9.0 / 5.0 + 32.0)
+    // Circle area pi r ** 2 for r = 2 with pi = 3.14159.
+    CheckFloat("circle area, r = 2", 12.56636, 3.14159 * 2.0 ** 2)
+    // Golden ratio (1 + sqrt 5) / 2 and sqrt 2.
+    CheckFloat("golden ratio", 1.618033988749895, (1.0 + Math.SQRT(5.0)) / 2.0)
+    CheckFloat("square root of 2", 1.4142135623730951, Math.SQRT(2.0))
+    // Free fall g t ** 2 / 2 for t = 2 s.
+    CheckFloat("free fall, 2 s", 19.62, 9.81 * 2.0 ** 2 / 2.0)
+    // Body mass index m / h ** 2: 70 kg, 1.75 m.
+    CheckFloat("body mass index", 22.857142857142858, 70.0 / 1.75 ** 2)
+    // Kinetic energy m v ** 2 / 2 for m = 2, v = 3.
+    CheckFloat("kinetic energy", 9.0, 0.5 * 2.0 * 3.0 ** 2)
+    // The arithmetic mean of three grades.
+    CheckFloat("mean of 85, 90, 78", 84.33333333333333, (85.0 + 90.0 + 78.0) / 3.0)
+    // Binary floating point: 0.1 + 0.2 is not 0.3.
+    CheckFloat("0.1 + 0.2", 0.30000000000000004, 0.1 + 0.2)
+    CheckBoolean("0.1 + 0.2 = 0.3", FALSE, 0.1 + 0.2 = 0.3)
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    Precedence()
+    Formulas()
+END FUNCTION

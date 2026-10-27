@@ -274,6 +274,8 @@ fn semantic_fixtures_are_rejected() {
         "tests/grammar/invalid/module-constant-out-of-range.bn",
         "tests/grammar/invalid/module-constant-negative-unsigned.bn",
         "tests/grammar/invalid/float-binding-inexact-integer.bn",
+        "tests/grammar/invalid/inexact-integer-literal-float.bn",
+        "tests/grammar/invalid/gcd-uint64-argument.bn",
         "tests/grammar/invalid/float-binding-integer-variable.bn",
         "tests/grammar/invalid/as-string-from-alternative.bn",
         "tests/grammar/invalid/literal-ambiguous-numeric-alternative.bn",

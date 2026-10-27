@@ -357,7 +357,10 @@ impl Analyzer {
                     Ok(Type::Boolean)
                 } else {
                     let right_type = self.expression(right, locals)?;
-                    binary_type(operator, &left_type, &right_type, expression)
+                    let result = binary_type(operator, &left_type, &right_type, expression)?;
+                    self.literal_takes_float_type(left, &left_type, &right_type);
+                    self.literal_takes_float_type(right, &right_type, &left_type);
+                    Ok(result)
                 }
             }
             ExpressionKind::Call { callee, arguments } => {
@@ -458,8 +461,8 @@ impl Analyzer {
                 // expression has the target's type (prefix: new value,
                 // postfix: old value — a lowering concern).
                 // Same target rules as a compound assignment. `assignment_target`
-                // also resets narrowing facts on the local, which a numeric
-                // target never carries, so a scratch copy keeps `locals` shared.
+                // takes `&mut`, and this expression only reads `locals`, so it
+                // checks a scratch copy.
                 let mut scratch = locals.clone();
                 let target_type = self.assignment_target(target, &mut scratch)?;
                 if numeric_result(&target_type, &target_type).is_none() {

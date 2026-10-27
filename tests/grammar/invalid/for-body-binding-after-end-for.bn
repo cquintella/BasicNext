@@ -1,0 +1,14 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// The body of a counted FOR is a block: a binding declared inside is not
+// visible after END FOR (0.6.md, "Scopes and bindings"): NAME_NOT_FOUND.
+FUNCTION Start() AS VOID
+    FOR j AS INTEGER = 1 TO 2
+        LET y AS INTEGER = j
+        PRINT y
+    END FOR
+    PRINT y
+END FUNCTION

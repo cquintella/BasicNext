@@ -3,7 +3,7 @@
 // with transactional rollback on runtime errors (W1–W5).
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashMap},
     io::{BufRead, Write},
     sync::{
         Arc,
@@ -17,8 +17,8 @@ use bn_runtime::Heap;
 use bn_value::{Handle, Value};
 
 use crate::{
-    ClassInit, Executor, Flow, HostEnv, Instance, default_span, function_index, provider::Provider,
-    runtime_error, stack_address, stack_budget,
+    ClassInit, Executor, Flow, FramePool, HostEnv, IdSet, Instance, default_span, function_index,
+    provider::Provider, runtime_error, stack_address, stack_budget,
 };
 
 /// Result of an executed interactive submission.
@@ -169,7 +169,7 @@ impl InteractiveSession {
 
         // 2. Prepare restored symbols
         let mut session_bindings = HashMap::new();
-        let mut session_restored_symbols = HashSet::new();
+        let mut session_restored_symbols = IdSet::default();
         for (name, symbol_id) in variable_symbol_map {
             if let Some(val) = self.state.variable_values.get(name) {
                 session_bindings.insert(*symbol_id, val.clone());
@@ -210,6 +210,7 @@ impl InteractiveSession {
             emitter: None,
             call_depth: 0,
             ownership_frames: Vec::new(),
+            frame_pool: FramePool::default(),
             session_bindings,
             session_restored_symbols,
             session_captured_symbols: Some(HashMap::new()),

@@ -33,6 +33,14 @@ pub extern "C" fn bn_rt_math_imax(left: i64, right: i64) -> i64 {
     left.max(right)
 }
 
+/// `BNMath.Gcd` as a magnitude (at most `2^63`), its bits returned as an
+/// `i64`; the caller widens them unsigned and checks the `INT64` range.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_math_gcd(a: i64, b: i64) -> i64 {
+    bn_core_math::gcd_magnitude(a, b).cast_signed()
+}
+
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_math_tohour(milliseconds: i64) -> i32 {
@@ -98,6 +106,8 @@ unary_f64!(bn_rt_math_asin, f64::asin);
 unary_f64!(bn_rt_math_acos, f64::acos);
 unary_f64!(bn_rt_math_atan, f64::atan);
 unary_f64!(bn_rt_math_sqrt, f64::sqrt);
+unary_f64!(bn_rt_math_degree_to_rad, bn_core_math::degrees_to_radians);
+unary_f64!(bn_rt_math_rad_to_degree, bn_core_math::radians_to_degrees);
 
 binary_f64!(bn_rt_math_pow, f64::powf);
 binary_f64!(bn_rt_math_atan2, f64::atan2);
@@ -123,22 +133,12 @@ pub extern "C" fn bn_rt_math_vmin_i32(ptr: *const i32, len: i32, trap: *const c_
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_math_vmin_f64(ptr: *const f64, len: i32, trap: *const c_char) -> f64 {
     empty_reduction(len, trap);
-    float_slice(ptr, len)
-        .iter()
-        .copied()
-        .reduce(|left, right| {
-            if left.is_nan() || right.is_nan() {
-                f64::NAN
-            } else {
-                left.min(right)
-            }
-        })
-        .unwrap_or_else(|| {
-            math::fail(
-                "INDEX_OUT_OF_BOUNDS",
-                "BNMath reduction received an empty vector",
-            )
-        })
+    bn_core_math::vmin_f64(float_slice(ptr, len)).unwrap_or_else(|| {
+        math::fail(
+            "INDEX_OUT_OF_BOUNDS",
+            "BNMath reduction received an empty vector",
+        )
+    })
 }
 
 #[allow(unsafe_code)]
@@ -152,25 +152,15 @@ pub extern "C" fn bn_rt_math_vmax_i32(ptr: *const i32, len: i32, trap: *const c_
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_math_vmax_f64(ptr: *const f64, len: i32, trap: *const c_char) -> f64 {
     empty_reduction(len, trap);
-    float_slice(ptr, len)
-        .iter()
-        .copied()
-        .reduce(|left, right| {
-            if left.is_nan() || right.is_nan() {
-                f64::NAN
-            } else {
-                left.max(right)
-            }
-        })
-        .unwrap_or_else(|| {
-            math::fail(
-                "INDEX_OUT_OF_BOUNDS",
-                "BNMath reduction received an empty vector",
-            )
-        })
+    bn_core_math::vmax_f64(float_slice(ptr, len)).unwrap_or_else(|| {
+        math::fail(
+            "INDEX_OUT_OF_BOUNDS",
+            "BNMath reduction received an empty vector",
+        )
+    })
 }
 
-fn empty_reduction(len: i32, trap: *const c_char) {
+pub(crate) fn empty_reduction(len: i32, trap: *const c_char) {
     if len <= 0 {
         math::fail_at(
             trap,
@@ -180,8 +170,8 @@ fn empty_reduction(len: i32, trap: *const c_char) {
     }
 }
 
-fn reduce_i32(name: &str, ptr: *const i32, len: i32) -> f64 {
-    match stats::reduce(name, stats::i32_slice(ptr, len)) {
+fn reduce_i32(statistic: stats::Statistic, ptr: *const i32, len: i32) -> f64 {
+    match stats::reduce(statistic, stats::i32_slice(ptr, len)) {
         stats::Reduction::Float(value) => value,
         stats::Reduction::Na => f64::NAN,
     }
@@ -190,49 +180,49 @@ fn reduce_i32(name: &str, ptr: *const i32, len: i32) -> f64 {
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_math_mean_i32(ptr: *const i32, len: i32) -> f64 {
-    reduce_i32("MEAN", ptr, len)
+    reduce_i32(stats::Statistic::Mean, ptr, len)
 }
 
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_math_median_i32(ptr: *const i32, len: i32) -> f64 {
-    reduce_i32("MEDIAN", ptr, len)
+    reduce_i32(stats::Statistic::Median, ptr, len)
 }
 
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_math_quartile1_i32(ptr: *const i32, len: i32) -> f64 {
-    reduce_i32("QUARTILE1", ptr, len)
+    reduce_i32(stats::Statistic::Quartile1, ptr, len)
 }
 
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_math_quartile3_i32(ptr: *const i32, len: i32) -> f64 {
-    reduce_i32("QUARTILE3", ptr, len)
+    reduce_i32(stats::Statistic::Quartile3, ptr, len)
 }
 
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_math_range_i32(ptr: *const i32, len: i32) -> f64 {
-    reduce_i32("RANGE", ptr, len)
+    reduce_i32(stats::Statistic::Range, ptr, len)
 }
 
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_math_stdev_i32(ptr: *const i32, len: i32) -> f64 {
-    reduce_i32("STDEV", ptr, len)
+    reduce_i32(stats::Statistic::Stdev, ptr, len)
 }
 
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_math_variance_i32(ptr: *const i32, len: i32) -> f64 {
-    reduce_i32("VARIANCE", ptr, len)
+    reduce_i32(stats::Statistic::Variance, ptr, len)
 }
 
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_math_mode_i32(ptr: *const i32, len: i32, out: *mut f64) -> i32 {
-    match stats::reduce("MODE", stats::i32_slice(ptr, len)) {
+    match stats::reduce(stats::Statistic::Mode, stats::i32_slice(ptr, len)) {
         stats::Reduction::Na => 1,
         stats::Reduction::Float(value) => {
             if !out.is_null() {
@@ -244,8 +234,8 @@ pub extern "C" fn bn_rt_math_mode_i32(ptr: *const i32, len: i32, out: *mut f64) 
     }
 }
 
-fn reduce_slice_f64(name: &str, ptr: *const f64, len: i32) -> stats::Reduction {
-    stats::reduce_f64(name, float_slice(ptr, len))
+fn reduce_slice_f64(statistic: stats::Statistic, ptr: *const f64, len: i32) -> stats::Reduction {
+    stats::reduce_f64(statistic, float_slice(ptr, len))
 }
 
 #[allow(unsafe_code)]
@@ -258,11 +248,11 @@ fn float_slice<'a>(ptr: *const f64, len: i32) -> &'a [f64] {
 }
 
 macro_rules! float_reduction {
-    ($export:ident, $name:literal) => {
+    ($export:ident, $statistic:ident) => {
         #[allow(unsafe_code)]
         #[unsafe(no_mangle)]
         pub extern "C" fn $export(ptr: *const f64, len: i32) -> f64 {
-            match reduce_slice_f64($name, ptr, len) {
+            match reduce_slice_f64(stats::Statistic::$statistic, ptr, len) {
                 stats::Reduction::Float(value) => value,
                 stats::Reduction::Na => f64::NAN,
             }
@@ -270,18 +260,18 @@ macro_rules! float_reduction {
     };
 }
 
-float_reduction!(bn_rt_math_mean_f64, "MEAN");
-float_reduction!(bn_rt_math_median_f64, "MEDIAN");
-float_reduction!(bn_rt_math_quartile1_f64, "QUARTILE1");
-float_reduction!(bn_rt_math_quartile3_f64, "QUARTILE3");
-float_reduction!(bn_rt_math_range_f64, "RANGE");
-float_reduction!(bn_rt_math_stdev_f64, "STDEV");
-float_reduction!(bn_rt_math_variance_f64, "VARIANCE");
+float_reduction!(bn_rt_math_mean_f64, Mean);
+float_reduction!(bn_rt_math_median_f64, Median);
+float_reduction!(bn_rt_math_quartile1_f64, Quartile1);
+float_reduction!(bn_rt_math_quartile3_f64, Quartile3);
+float_reduction!(bn_rt_math_range_f64, Range);
+float_reduction!(bn_rt_math_stdev_f64, Stdev);
+float_reduction!(bn_rt_math_variance_f64, Variance);
 
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_math_mode_f64(ptr: *const f64, len: i32, out: *mut f64) -> i32 {
-    match reduce_slice_f64("MODE", ptr, len) {
+    match reduce_slice_f64(stats::Statistic::Mode, ptr, len) {
         stats::Reduction::Na => 1,
         stats::Reduction::Float(value) => {
             if !out.is_null() {

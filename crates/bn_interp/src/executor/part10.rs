@@ -65,7 +65,7 @@ impl Executor<'_, '_> {
         &mut self,
         element: &Type,
         arguments: &[ValueId],
-        values: &HashMap<ValueId, Value>,
+        values: &ValueSlots,
         span: Span,
     ) -> Result<Value, Diagnostic> {
         let count = if let Some(argument) = arguments.first() {
@@ -143,14 +143,7 @@ impl Executor<'_, '_> {
                 let index = checked_index(index, length, "region", span)?;
                 self.memory.get(*handle, index, span).cloned()
             }
-            Value::String(text) => {
-                let index = checked_index(index, text.chars().count(), "string", span)?;
-                Ok(text
-                    .chars()
-                    .nth(index)
-                    .map(|character| Value::String(shared_string(character.to_string())))
-                    .expect("checked string index"))
-            }
+            Value::String(text) => string_character(text, index, span),
             Value::HostArgs => {
                 let arguments = &self.host.arguments;
                 let context = bn_diag::trap_texts::HOST_ARGS_CONTEXT;
@@ -198,6 +191,7 @@ impl Executor<'_, '_> {
                 Ok(())
             }
             Value::Vector(vector) => {
+                let vector = std::sync::Arc::make_mut(vector);
                 let index = checked_index(index, vector.len(), "vector", span)?;
                 self.set_index(&mut vector[index], remaining, stored, span)
             }
@@ -214,6 +208,26 @@ impl Executor<'_, '_> {
 /// `index` as a position in a sequence of `length` elements, or
 /// `INDEX_OUT_OF_BOUNDS` naming the index as written (negative ones too) and
 /// the length; the native trap reports the same facts.
+/// What an index error on a `STRING` names as its context.
+const STRING_INDEX_CONTEXT: &str = "string";
+
+/// `text[index]`, one Unicode scalar value: by byte when the text is ASCII,
+/// otherwise in one pass; the scalar count is computed only for the error
+/// (bucket 0.6.10 F.6).
+fn string_character(text: &str, index: i128, span: Span) -> Result<Value, Diagnostic> {
+    if text.is_ascii() {
+        let index = checked_index(index, text.len(), STRING_INDEX_CONTEXT, span)?;
+        return Ok(Value::String(shared_string(&text[index..=index])));
+    }
+    usize::try_from(index)
+        .ok()
+        .and_then(|position| text.chars().nth(position))
+        .map(|character| Value::String(shared_string(character.to_string())))
+        .ok_or_else(|| {
+            super::index_out_of_bounds(index, text.chars().count(), STRING_INDEX_CONTEXT, span)
+        })
+}
+
 fn checked_index(
     index: i128,
     length: usize,

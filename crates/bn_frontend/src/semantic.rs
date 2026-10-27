@@ -365,9 +365,6 @@ struct Analyzer {
     host_aliases: HashMap<String, String>,
     /// Local `STRUCT` fields in declaration order, keyed by the struct name.
     struct_fields: HashMap<String, Vec<RecordMember>>,
-    /// `FOR` names that have left their loop. The name is not visible, and
-    /// declaring it again in the same function is `DUPLICATE_NAME` (B2).
-    ended_loop_names: HashSet<String>,
     /// Struct names whose layout is on the stack, so a cycle is a
     /// `TYPE_MISMATCH` instead of a recursive walk.
     layout_active: Vec<String>,

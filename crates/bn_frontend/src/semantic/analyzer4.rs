@@ -149,6 +149,10 @@ impl Analyzer {
         self.declare_local(locals, variable, declared, true, span)
     }
 
+    /// Checks a write target and returns the type it stores (a local's
+    /// declared type). It leaves the target's narrowing alone: the value is
+    /// analyzed first, and the caller ends the narrowing after the write
+    /// (0.6.md, "`IS` narrowing": "from that point").
     pub(crate) fn assignment_target(
         &mut self,
         expression: &Expression,
@@ -174,9 +178,6 @@ impl Analyzer {
                     ));
                 }
                 self.record_expression(expression.span, &symbol.declared_ty, Some(symbol.id));
-                if let Some(local) = locals.get_mut(name) {
-                    local.ty = local.declared_ty.clone();
-                }
                 Ok(symbol.declared_ty)
             }
             ExpressionKind::Member { object, name } => {

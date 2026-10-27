@@ -112,12 +112,12 @@ The table below catalogs ownership and lifetime for all symbols declared in `BN_
 | Symbol Group | Symbols | Parameter Ownership | Return / Out-Parameter Ownership | Invalidation / Lifetime |
 | --- | --- | --- | --- | --- |
 | **Execution Policy** | `bn_rt_policy_init(version, ceiling)`, `bn_rt_policy_check(status)` (emitted `Start` stops the process on a non-zero init status), `bn_rt_policy_filesystem_sandboxed()`, `bn_rt_policy_filesystem_root(write, path)` | `version`, `ceiling`, and `write` scalars copied; `path` is a NUL-terminated borrowed UTF-8 pointer for the call | Return code `i32` (0 = OK) | Process-wide policy can only narrow. Sandboxing clears prior roots; each accepted root is pinned by the runtime and remains owned until process exit. |
-| **DataFrame Lifecycle & Transforms** | `bn_rt_dataframe_create`, `bn_rt_dataframe_close`, `bn_rt_dataframe_row_count`, `bn_rt_dataframe_column_count`, `bn_rt_dataframe_add_*`, `bn_rt_dataframe_append_*`, `bn_rt_dataframe_convert_*`, `bn_rt_dataframe_copy_*`, `bn_rt_dataframe_get_*`, `bn_rt_dataframe_join`, `bn_rt_dataframe_read_csv`, `bn_rt_dataframe_write_csv`, `bn_rt_dataframe_reduce`, `bn_rt_dataframe_retain`, `bn_rt_dataframe_select`, `bn_rt_dataframe_set_*`, `bn_rt_dataframe_slice`, `bn_rt_dataframe_transpose`, `bn_rt_dataframe_zscore`, `bn_rt_dataframe_column_name_owned` | Column names, string views, CSV paths borrowed `ptr` for duration of call; handle `u64` copied | Out pointer receives owned `u64` handle or count/value scalar; status `i32` (0 = OK) | `bn_rt_dataframe_close` destroys frame in registry; subsequent calls on closed handle fail with invalid handle status |
+| **DataFrame Lifecycle & Transforms** | `bn_rt_dataframe_create`, `bn_rt_dataframe_close`, `bn_rt_dataframe_row_count`, `bn_rt_dataframe_column_count`, `bn_rt_dataframe_add_*`, `bn_rt_dataframe_append_*`, `bn_rt_dataframe_convert_*`, `bn_rt_dataframe_count_na`, `bn_rt_dataframe_drop_na`, `bn_rt_dataframe_fill_na`, `bn_rt_dataframe_copy_*`, `bn_rt_dataframe_get_*`, `bn_rt_dataframe_join`, `bn_rt_dataframe_read_csv`, `bn_rt_dataframe_write_csv`, `bn_rt_dataframe_reduce`, `bn_rt_dataframe_retain`, `bn_rt_dataframe_select`, `bn_rt_dataframe_set_*`, `bn_rt_dataframe_slice`, `bn_rt_dataframe_transpose`, `bn_rt_dataframe_zscore`, `bn_rt_dataframe_column_name_owned` | Column names, string views, CSV paths borrowed `ptr` for duration of call; handle `u64` copied | Out pointer receives owned `u64` handle or count/value scalar; status `i32` (0 = OK) | `bn_rt_dataframe_close` destroys frame in registry; subsequent calls on closed handle fail with invalid handle status |
 | **Console & Clock** | `bn_rt_clock_now`, `bn_rt_clock_timer`, `bn_rt_console_cls`, `bn_rt_console_beep`, `bn_rt_console_print_at`, `bn_rt_console_num_cols`, `bn_rt_console_num_rows` | Scalars copied; string `ptr` in `print_at` borrowed | Timestamp `i64` or status `i32` | No retained state; ephemeral duration of call |
 | **Network Endpoints & Handles** | `bn_rt_net_address_parse`, `bn_rt_net_address_is_*`, `bn_rt_net_cidr_parse`, `bn_rt_net_cidr_contains`, `bn_rt_net_tcp_set_timeouts`, `bn_rt_net_tcp_shutdown_*`, `bn_rt_net_ping`, `bn_rt_net_reverse`, `bn_rt_net_neighbor`, `bn_rt_net_resolve`, `bn_rt_net_addresses_*`, `bn_rt_net_handle_close` | String `ptr` borrowed; out pointers caller-allocated | Out pointer populated; handles returned by value | Address lists freed by `bn_rt_net_addresses_free`; socket handles closed by `bn_rt_net_handle_close` |
 | **TCP / UDP Streams** | `bn_rt_net_tcp_accept`, `bn_rt_net_tcp_connect`, `bn_rt_net_tcp_listen_with_backlog`, `bn_rt_net_tcp_listener_local_endpoint`, `bn_rt_net_tcp_read`, `bn_rt_net_tcp_stream_*_endpoint`, `bn_rt_net_tcp_write`, `bn_rt_net_udp_bind`, `bn_rt_net_udp_local_endpoint`, `bn_rt_net_udp_packet_*`, `bn_rt_net_udp_receive_handle`, `bn_rt_net_udp_send_to` | For write/send: buffer `ptr` borrowed read-only; for `tcp_read` and `udp_packet_copy_to`: buffer `ptr` is caller-allocated storage populated by callee; handles copied | Out pointer receives bytes transferred or new stream handle | Streams/listeners invalidated by `bn_rt_net_handle_close`; UDP packet views invalidated by next receive on same handle |
 | **Dispatch & Concurrency** | `bn_rt_dispatch_queue_*`, `bn_rt_dispatch_submit`, `bn_rt_dispatch_await`, `bn_rt_dispatch_cancel`, `bn_rt_dispatch_ticket_*`, `bn_rt_dispatch_group_*`, `bn_rt_dispatch_barrier_*`, `bn_rt_dispatch_semaphore_*`, `bn_rt_dispatch_mutex_*` | Function pointer and context `ptr` borrowed; queue/ticket handles copied | Ticket handle or completion status returned | Tickets closed by `bn_rt_dispatch_ticket_close`; synchronization primitives closed by matching `*_close`. Note: `bn_rt_dispatch_error_free` is exported by `bn_rt` for freeing error structs, pending emitted call generation under T.K22 |
-| **BNMath Scalars & Temporal** | `bn_rt_math_iabs`, `bn_rt_math_isign`, `bn_rt_math_imin`, `bn_rt_math_imax`, `bn_rt_math_fabs`, `bn_rt_math_fsign`, `bn_rt_math_floor`, `bn_rt_math_ceil`, `bn_rt_math_trunc`, `bn_rt_math_exp`, `bn_rt_math_log*`, `bn_rt_math_sin`, `bn_rt_math_cos`, `bn_rt_math_tan`, `bn_rt_math_asin`, `bn_rt_math_acos`, `bn_rt_math_atan*`, `bn_rt_math_sqrt`, `bn_rt_math_pow`, `bn_rt_math_hypot`, `bn_rt_math_fmin`, `bn_rt_math_fmax`, `bn_rt_math_round`, `bn_rt_math_fma`, `bn_rt_math_todate`, `bn_rt_math_totime`, `bn_rt_math_totimestamp`, `bn_rt_math_tohour`, `bn_rt_math_toweekday`, `bn_rt_math_val`, `bn_rt_temporal_date_parse`, `bn_rt_temporal_time_parse`, `bn_rt_temporal_timestamp_parse`, `bn_rt_temporal_timestamp_format`, `bn_rt_temporal_timezone_offset`, `bn_rt_temporal_timezone_is_dst`, `bn_rt_temporal_timestamp_at_zone`, `bn_rt_temporal_timestamp_from_local` | Scalars copied by value | Return value computed and returned by value | Pure mathematical and temporal functions; no heap or persistent lifetime |
+| **BNMath Scalars & Temporal** | `bn_rt_math_iabs`, `bn_rt_math_isign`, `bn_rt_math_imin`, `bn_rt_math_imax`, `bn_rt_math_fabs`, `bn_rt_math_fsign`, `bn_rt_math_floor`, `bn_rt_math_ceil`, `bn_rt_math_trunc`, `bn_rt_math_exp`, `bn_rt_math_log*`, `bn_rt_math_sin`, `bn_rt_math_cos`, `bn_rt_math_tan`, `bn_rt_math_asin`, `bn_rt_math_acos`, `bn_rt_math_atan*`, `bn_rt_math_sqrt`, `bn_rt_math_degree_to_rad`, `bn_rt_math_rad_to_degree`, `bn_rt_math_pow`, `bn_rt_math_hypot`, `bn_rt_math_gcd`, `bn_rt_math_fmin`, `bn_rt_math_fmax`, `bn_rt_math_round`, `bn_rt_math_fma`, `bn_rt_math_todate`, `bn_rt_math_totime`, `bn_rt_math_totimestamp`, `bn_rt_math_tohour`, `bn_rt_math_toweekday`, `bn_rt_math_val`, `bn_rt_math_vector_statistic`, `bn_rt_math_vector_quantile`, `bn_rt_math_vector_covariance`, `bn_rt_math_vector_correlation`, `bn_rt_math_vector_mode`, `bn_rt_math_vector_min_integer`, `bn_rt_math_vector_max_integer`, `bn_rt_math_vector_min_float`, `bn_rt_math_vector_max_float`, `bn_rt_temporal_date_parse`, `bn_rt_temporal_time_parse`, `bn_rt_temporal_timestamp_parse`, `bn_rt_temporal_timestamp_format`, `bn_rt_temporal_timezone_offset`, `bn_rt_temporal_timezone_is_dst`, `bn_rt_temporal_timestamp_at_zone`, `bn_rt_temporal_timestamp_from_local` | Scalars copied by value | Return value computed and returned by value | Pure mathematical and temporal functions; no heap or persistent lifetime |
 | **BNMath Vector Reductions** | `bn_rt_math_vmin_*`, `bn_rt_math_vmax_*`, `bn_rt_math_mean_*`, `bn_rt_math_median_*`, `bn_rt_math_quartile1_*`, `bn_rt_math_quartile3_*`, `bn_rt_math_range_*`, `bn_rt_math_stdev_*`, `bn_rt_math_variance_*`, `bn_rt_math_mode_*` | Array `ptr` borrowed for call; length `i32` copied | Scalar reduction value returned; mode writes into caller-owned buffer | Read-only slice access; callee neither mutates nor frees the buffer |
 | **String Operations** | `bn_rt_str_len`, `bn_rt_str_index_utf8`, `bn_rt_str_char_utf8`, `bn_rt_str_from_packed`, `bn_rt_str_asc`, `bn_rt_str_cmp`, `bn_rt_str_eq`, `bn_rt_str_concat`, `bn_rt_str_to_lower`, `bn_rt_str_to_upper`, `bn_rt_print_str`, `bn_rt_print_date`, `bn_rt_print_time`, `bn_rt_print_float`, `bn_rt_print_float32` | `ptr` borrowed for call duration | Scalar result; an indexed character is a fresh STRING built from the packed scalar (`bn_rt_str_from_packed`) | Operations on immutable string buffers. `PRINT` of a STRING uses the header length. `bn_rt_str_cmp` returns `-1`, `0` or `1` in UTF-8 byte order, which is Unicode scalar order |
 | **Scalar Text (`AS STRING`)** | `bn_rt_text_int(i64)`, `bn_rt_text_uint(i64)`, `bn_rt_text_float(double)`, `bn_rt_text_float32(double)` | Scalars copied; narrower integers sign- or zero-extended to 64 bits; `FLOAT32` widened to `double` | Owned STRING `ptr` (16-byte header with count 1 and length, payload, trailing NUL), same allocation as `bn_rt_str_to_upper` | Text is `bn_types::text`, shared with the interpreter and `PRINT`; `BOOLEAN` selects the `TRUE`/`FALSE` constants without a call |
@@ -287,6 +287,9 @@ bn_rt_dataframe_add_string
 bn_rt_dataframe_append_columns
 bn_rt_dataframe_append_rows
 bn_rt_dataframe_convert_float
+bn_rt_dataframe_count_na
+bn_rt_dataframe_drop_na
+bn_rt_dataframe_fill_na
 bn_rt_dataframe_convert_integer
 bn_rt_dataframe_copy_float
 bn_rt_dataframe_copy_integer
@@ -439,6 +442,7 @@ bn_rt_math_atan
 bn_rt_math_atan2
 bn_rt_math_ceil
 bn_rt_math_cos
+bn_rt_math_degree_to_rad
 bn_rt_math_exp
 bn_rt_math_fabs
 bn_rt_math_floor
@@ -447,6 +451,7 @@ bn_rt_math_fmax
 bn_rt_math_fmin
 bn_rt_math_fsign
 bn_rt_math_hypot
+bn_rt_math_gcd
 bn_rt_math_iabs
 bn_rt_math_imax
 bn_rt_math_imin
@@ -465,6 +470,7 @@ bn_rt_math_quartile1_f64
 bn_rt_math_quartile1_i32
 bn_rt_math_quartile3_f64
 bn_rt_math_quartile3_i32
+bn_rt_math_rad_to_degree
 bn_rt_math_range_f64
 bn_rt_math_range_i32
 bn_rt_math_round
@@ -482,6 +488,15 @@ bn_rt_math_trunc
 bn_rt_math_val
 bn_rt_math_variance_f64
 bn_rt_math_variance_i32
+bn_rt_math_vector_max_float
+bn_rt_math_vector_max_integer
+bn_rt_math_vector_min_float
+bn_rt_math_vector_min_integer
+bn_rt_math_vector_mode
+bn_rt_math_vector_statistic
+bn_rt_math_vector_quantile
+bn_rt_math_vector_covariance
+bn_rt_math_vector_correlation
 bn_rt_math_vmax_f64
 bn_rt_math_vmax_i32
 bn_rt_math_vmin_f64

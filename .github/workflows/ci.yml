@@ -8,8 +8,8 @@
 #   publish  On a v* tag: SHA256SUMS, man pages, and the GitHub Release.
 #
 # Asset names are the contract of scripts/install.sh and scripts/install.ps1:
-# bni-<platform>[.exe], bnc-<platform>[.exe], libbn_rt-<platform>.a,
-# bn_rt-windows-x86_64.lib, SHA256SUMS, bni.1, bnc.1.
+# bni-<platform>[.exe], bnc-<platform>[.exe], bnr-<platform>[.exe], libbn_rt-<platform>.a,
+# bn_rt-windows-x86_64.lib, SHA256SUMS, bni.1, bnc.1, bnr.1.
 #
 # Third-party actions are pinned by commit SHA; the comment names the release.
 # LLVM is pinned to 22.1.8 on every OS (docs/project/usage.md requires 22).
@@ -157,7 +157,7 @@ jobs:
         run: |
           set -euo pipefail
           rustup target add ${{ matrix.target }}
-          cargo build --release --locked --target ${{ matrix.target }} -p bni -p bnc --bin bni --bin bnc
+          cargo build --release --locked --target ${{ matrix.target }} -p bni -p bnc -p bnr --bin bni --bin bnc --bin bnr
           cargo build --release --locked --target ${{ matrix.target }} -p bn_rt -p bn_stdlib
       - name: Stage assets
         shell: bash
@@ -168,12 +168,14 @@ jobs:
           if [[ "${{ matrix.target }}" == *-windows-* ]]; then
             cp "$out/bni.exe" "dist/bni-${{ matrix.platform }}.exe"
             cp "$out/bnc.exe" "dist/bnc-${{ matrix.platform }}.exe"
+            cp "$out/bnr.exe" "dist/bnr-${{ matrix.platform }}.exe"
             cp "$out/bn_rt.lib" "dist/bn_rt-${{ matrix.platform }}.lib"
           else
             cp "$out/bni" "dist/bni-${{ matrix.platform }}"
             cp "$out/bnc" "dist/bnc-${{ matrix.platform }}"
+            cp "$out/bnr" "dist/bnr-${{ matrix.platform }}"
             cp "$out/libbn_rt.a" "dist/libbn_rt-${{ matrix.platform }}.a"
-            chmod +x dist/bni-* dist/bnc-*
+            chmod +x dist/bni-* dist/bnc-* dist/bnr-*
           fi
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -206,12 +208,15 @@ jobs:
           mkdir -p target/release
           cp dist/bni-linux-x86_64 target/release/bni
           cp dist/bnc-linux-x86_64 target/release/bnc
+          cp dist/bnr-linux-x86_64 target/release/bnr
           cp dist/libbn_rt-linux-x86_64.a target/release/libbn_rt.a
-          chmod +x target/release/bni target/release/bnc
+          chmod +x target/release/bni target/release/bnc target/release/bnr
           prefix="$RUNNER_TEMP/bn"
           BN_STATE_DIR="$RUNNER_TEMP/bn-state" scripts/install.sh --no-build --prefix "$prefix"
           test -f "$prefix/share/man/man1/bni.1"
           test -f "$prefix/share/man/man1/bnc.1"
+          test -f "$prefix/share/man/man1/bnr.1"
+          "$prefix/bin/bnr" --version
           printf 'IMPORT BNMath AS M\nFUNCTION Start() AS VOID\nPRINT M.ABS(-7.0)\nEND FUNCTION\n' > "$RUNNER_TEMP/check.bn"
           out=$("$prefix/bin/bni" run "$RUNNER_TEMP/check.bn")
           [[ "$out" == "7.0" ]] || { echo "::error::installed bni printed '$out'"; exit 1; }
@@ -256,6 +261,8 @@ jobs:
           "IMPORT BNMath AS M`nFUNCTION Start() AS VOID`nPRINT M.ABS(-7.0)`nEND FUNCTION" | Set-Content -NoNewline -Path $check
           $out = & "$prefix\bin\bni.exe" run $check
           if ("$out".Trim() -ne '7.0') { throw "installed bni printed '$out'" }
+          & "$prefix\bin\bnr.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw "installed bnr --version exited with $LASTEXITCODE" }
           powershell -NoProfile -ExecutionPolicy Bypass -File "$env:BN_STATE_DIR\uninstall.ps1"
           if ($LASTEXITCODE -ne 0) { throw "uninstall.ps1 exited with $LASTEXITCODE" }
           if (Get-ChildItem $prefix -Recurse -File) { throw 'uninstall left files' }
@@ -276,6 +283,8 @@ jobs:
           "IMPORT BNMath AS M`nFUNCTION Start() AS VOID`nPRINT M.ABS(-7.0)`nEND FUNCTION" | Set-Content -NoNewline -Path $check
           $out = & "$prefix\bin\bni.exe" run $check
           if ("$out".Trim() -ne '7.0') { throw "installed bni printed '$out'" }
+          & "$prefix\bin\bnr.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw "installed bnr --version exited with $LASTEXITCODE" }
           powershell -NoProfile -ExecutionPolicy Bypass -File "$env:BN_STATE_DIR\uninstall.ps1"
           if ($LASTEXITCODE -ne 0) { throw "uninstall.ps1 exited with $LASTEXITCODE" }
           if (Get-ChildItem $prefix -Recurse -File) { throw 'uninstall left files' }
@@ -297,7 +306,7 @@ jobs:
       - name: Man pages and checksums
         run: |
           set -euo pipefail
-          cp man/bni.1 man/bnc.1 dist/
+          cp man/bni.1 man/bnc.1 man/bnr.1 dist/
           cd dist
           sha256sum * > SHA256SUMS
           cat SHA256SUMS
@@ -309,4 +318,4 @@ jobs:
           tag="$GITHUB_REF_NAME"
           gh release create "$tag" dist/* --verify-tag \
             --title "Basic Next $tag" \
-            --notes "Prebuilt bni (interpreter) and bnc (compiler) from ${GITHUB_SHA:0:7}."
+            --notes "Prebuilt bni (interpreter), bnc (compiler) and bnr (REPL) from ${GITHUB_SHA:0:7}."

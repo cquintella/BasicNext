@@ -1,0 +1,24 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Conformance: descriptive statistics accept a vector of any integer or
+// floating type (math.md, "Descriptive statistics": "T is an integer or
+// floating type"); integers convert to FLOAT element by element, and the
+// one-argument MIN/MAX keep the element type.
+// Expected output: vector-types.expected, by hand:
+//   INT64 [1, 2, 3, 4]: MEAN 2.5, MIN 1, MAX 4, MEDIAN 2.5;
+//   FLOAT32 [1.5, 2.5]: MEAN 2.0, MIN 1.5;
+//   BYTE [9, 3, 6]: MEAN 6.0, MIN 3, MAX 9, RANGE 6.0.
+
+IMPORT BNMath AS Math
+
+FUNCTION Start() AS VOID
+    LET wide AS INT64[4] = [1, 2, 3, 4]
+    LET single AS FLOAT32[2] = [1.5, 2.5]
+    LET bytes AS BYTE[3] = [9, 3, 6]
+    PRINT "INT64", Math.MEAN(wide), Math.MIN(wide), Math.MAX(wide), Math.MEDIAN(wide)
+    PRINT "FLOAT32", Math.MEAN(single), Math.MIN(single)
+    PRINT "BYTE", Math.MEAN(bytes), Math.MIN(bytes), Math.MAX(bytes), Math.RANGE(bytes)
+END FUNCTION

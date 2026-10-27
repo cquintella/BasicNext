@@ -1,0 +1,5 @@
+cancellation 0.5
+non-finite INF -INF NAN NAN
+overflow INF INF TRUE
+variance NAN NAN INF INF
+welford 30.0 1000000010.0

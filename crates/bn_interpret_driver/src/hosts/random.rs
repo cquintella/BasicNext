@@ -41,27 +41,28 @@ impl Provider for RandomProvider {
         match member {
             "Random" => {
                 require_arity(name, arguments, 0, span)?;
-                let mut state = core
-                    .host()
-                    .random_state()
-                    .load(std::sync::atomic::Ordering::Relaxed);
-                state ^= state >> 12;
-                state ^= state << 25;
-                state ^= state >> 27;
-                state = state.wrapping_mul(0x2545_F491_4F6C_DD1D);
+                let state = bn_types::random::next_state(
+                    core.host()
+                        .random_state()
+                        .load(std::sync::atomic::Ordering::Relaxed),
+                );
                 core.host()
                     .random_state()
                     .store(state, std::sync::atomic::Ordering::Relaxed);
                 Ok(Value::Float(
-                    (state >> 11) as f64 / 9_007_199_254_740_992.0,
+                    bn_types::random::unit_interval(state),
                     FloatType::Float64,
                 ))
             }
             "Seed" => {
                 require_arity(name, arguments, 1, span)?;
                 let (seed, _) = integer(&arguments[0], span)?;
+                // `Seed` takes the value as INT64 (host.md); a wider literal was
+                // rejected by analysis, so the low 64 bits are that value.
+                #[allow(clippy::cast_possible_truncation)]
+                let seed = seed as i64;
                 core.host().random_state().store(
-                    seed as u64 | u64::from(seed == 0),
+                    bn_types::random::seed_state(seed),
                     std::sync::atomic::Ordering::Relaxed,
                 );
                 Ok(Value::Null)

@@ -1,0 +1,13 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// A FOR variable may not reuse a local declared in an enclosing block:
+// DUPLICATE_NAME (0.6.md, "Scopes and bindings").
+FUNCTION Start() AS VOID
+    LET j AS INTEGER = 0
+    FOR j AS INTEGER = 1 TO 2
+        PRINT j
+    END FOR
+END FUNCTION

@@ -1,0 +1,42 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Conformance: BNMath descriptive statistics (math.md, "Descriptive
+// statistics"). Only cases whose result does not depend on the summation
+// algorithm (D-2 changes it): empty and n < 2, NAN propagation, MODE ties,
+// Tukey quartiles, RANGE, MIN/MAX, and means whose partial sums are exact.
+// Expected output: descriptive.expected, derived by hand from math.md:
+//   - empty MEAN/MEDIAN/QUARTILE*/RANGE -> NAN; empty MODE -> NA;
+//     STDEV/VARIANCE with n < 2 -> NAN; QUARTILE* with n = 1 -> NAN (G-2);
+//   - NAN in the data propagates, MODE included;
+//   - MODE: unique most frequent value, a tie is NA;
+//   - MEDIAN: middle element, or the mean of the two central ones;
+//   - QUARTILE1/3: median of the lower/upper half, the median element
+//     excluded when n is odd: [1..7] -> 2 and 6; [1, 2, 3, 4] -> 1.5, 3.5;
+//   - RANGE = MAX - MIN as FLOAT; one-argument MIN/MAX keep the element type.
+
+IMPORT BNMath AS Math
+
+FUNCTION Start() AS VOID
+    LET empty AS FLOAT[0] = []
+    LET one AS FLOAT[1] = [7.0]
+    LET withNan AS FLOAT[3] = [1.0, NAN, 3.0]
+    LET quad AS FLOAT[4] = [1.0, 2.0, 3.0, 4.0]
+    LET seven AS FLOAT[7] = [7.0, 1.0, 6.0, 2.0, 5.0, 3.0, 4.0]
+    LET grades AS INTEGER[4] = [1, 2, 2, 5]
+    LET tie AS FLOAT[4] = [1.0, 1.0, 2.0, 2.0]
+    LET nanTie AS FLOAT[4] = [NAN, NAN, 1.0, 1.0]
+    LET spread AS INTEGER[3] = [3, -1, 10]
+
+    PRINT "empty", Math.MEAN(empty), Math.MEDIAN(empty), Math.QUARTILE1(empty), Math.QUARTILE3(empty), Math.RANGE(empty), Math.MODE(empty)
+    PRINT "n = 1", Math.MEAN(one), Math.MEDIAN(one), Math.QUARTILE1(one), Math.QUARTILE3(one), Math.STDEV(one), Math.VARIANCE(one), Math.MODE(one)
+    PRINT "n = 0 spread", Math.STDEV(empty), Math.VARIANCE(empty)
+    PRINT "NAN", Math.MEAN(withNan), Math.MEDIAN(withNan), Math.RANGE(withNan), Math.STDEV(withNan), Math.MODE(nanTie)
+    PRINT "quad", Math.MEAN(quad), Math.MEDIAN(quad), Math.QUARTILE1(quad), Math.QUARTILE3(quad), Math.RANGE(quad)
+    PRINT "seven", Math.MEAN(seven), Math.MEDIAN(seven), Math.QUARTILE1(seven), Math.QUARTILE3(seven)
+    PRINT "integers", Math.MEAN(grades), Math.MEDIAN(grades), Math.MODE(grades), Math.MIN(grades), Math.MAX(grades)
+    PRINT "tie", Math.MODE(tie)
+    PRINT "spread", Math.RANGE(spread), Math.MIN(spread), Math.MAX(spread)
+END FUNCTION

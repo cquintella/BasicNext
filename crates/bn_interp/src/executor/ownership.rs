@@ -58,7 +58,7 @@ impl Executor<'_, '_> {
                 .map(|_| ())
                 .map_err(|error| arc_error(error, span)),
             Value::Vector(values) => {
-                for value in values {
+                for value in values.iter() {
                     self.retain_owned_value(value, span)?;
                 }
                 Ok(())
@@ -111,7 +111,9 @@ impl Executor<'_, '_> {
                 Ok(())
             }
             Value::Vector(values) => {
-                for value in values {
+                // Each logical copy owns its retains, so it releases each element once,
+                // whether or not the elements are physically shared.
+                for value in values.iter().cloned() {
                     self.release_owned_value(value, span)?;
                 }
                 Ok(())

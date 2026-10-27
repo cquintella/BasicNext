@@ -1,0 +1,70 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// The variable of a counted FOR and of a FOR EACH belongs to the loop
+// (0.6.md, "Scopes and bindings"): sibling loops may reuse its name, and a
+// later declaration of that name in the enclosing block is not a duplicate.
+FUNCTION Start() AS VOID
+    LET total AS INTEGER = 0
+    FOR j AS INTEGER = 1 TO 3
+        total += j
+    END FOR
+    FOR j AS INTEGER = 10 TO 30 STEP 10
+        total += j
+    END FOR
+    PRINT total
+
+    FOR k = 1 TO 2
+        total += k
+    END FOR
+    FOR k = 3 TO 4
+        total += k
+    END FOR
+    PRINT total
+
+    LET word AS STRING = ""
+    FOR EACH c AS STRING IN "ab"
+        word = word + c
+    END FOR
+    FOR EACH c AS STRING IN "cd"
+        word = word + c
+    END FOR
+    PRINT word
+
+    IF total > 0 THEN
+        FOR m AS INTEGER = 1 TO 2
+            total += m
+        END FOR
+    END IF
+    FOR m AS INTEGER = 1 TO 2
+        total += m
+    END FOR
+    PRINT total
+
+    FOR n AS INTEGER = 1 TO 2
+        total += n
+    END FOR
+    LET n AS INTEGER = 100
+    PRINT total + n
+
+    // A loop body is a block: sibling bodies may declare the same name.
+    FOR p AS INTEGER = 1 TO 2
+        LET step AS INTEGER = p * 10
+        total += step
+    END FOR
+    FOR EACH c AS STRING IN "x"
+        LET step AS STRING = c
+        word = word + step
+    END FOR
+    LET rounds AS INTEGER = 0
+    REPEAT
+        LET step AS INTEGER = 1000
+        total += step
+        rounds += 1
+    UNTIL rounds = 2
+    END REPEAT
+    LET step AS INTEGER = 1
+    PRINT total + step, word
+END FUNCTION

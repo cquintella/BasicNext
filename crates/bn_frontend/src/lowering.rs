@@ -9,6 +9,7 @@ use crate::{
     ast::{
         Block as AstBlock, DeclarationKind, DestructuringBinding, Expression, ExpressionKind,
         ForHeader, FunctionSignature, Item, Literal, Program, Statement, TypeAtom, TypeReference,
+        compound_binary_operator,
     },
     diagnostic::Diagnostic,
     module_graph::{ModuleGraph, ModuleId as FrontendModuleId, StandardModule},
@@ -624,13 +625,13 @@ use program_lowering::{
 #[path = "lowering/helpers.rs"]
 mod helpers;
 use helpers::{
-    assignment_operator, capability_constant, class_ir_name, clock_import_span,
-    console_import_span, constant, destructor_name, display_type, env_import_span,
-    exec_import_span, filesystem_import_span, host_capability_constant, ir_error,
-    is_bnmath_constant_owner, is_host_or_builtin_owner, is_namespace_type, is_numeric_type_name,
-    is_user_class_name, math_constant, module_constant, module_id_from_prefix, named_or_void,
-    namespace_function, network_import_span, pointer_test_with_identity, random_import_span,
-    standard_import_span, static_class_name, type_at, type_test_name, user_class_name,
+    capability_constant, class_ir_name, clock_import_span, console_import_span, destructor_name,
+    display_type, env_import_span, exec_import_span, filesystem_import_span,
+    host_capability_constant, ir_error, is_bnmath_constant_owner, is_host_or_builtin_owner,
+    is_namespace_type, is_numeric_type_name, is_user_class_name, math_constant, module_constant,
+    module_id_from_prefix, named_or_void, namespace_function, network_import_span,
+    pointer_test_with_identity, random_import_span, standard_import_span, static_class_name,
+    type_at, type_test_name, typed_literal_constant, user_class_name,
 };
 fn default_span() -> Span {
     Span {

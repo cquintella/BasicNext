@@ -1,0 +1,34 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Conformance: column statistics leave NA cells out (bndata.md, "Statistics
+// on a column"; D-3, pandas skipna=True); a column of NA cells only counts
+// as empty (G-3). An empty cell becomes NA in ConvertToFloat (bndata.md).
+// Expected output: na-statistics.expected, by hand:
+//   ["1", "", "3"] -> [1.0, NA, 3.0]: Mean 2.0, Median 2.0, Min 1.0,
+//     Max 3.0, Range 2.0;
+//   ["", ""] -> [NA, NA]: Mean NAN, Median NAN, Mode NA, Min is an Error.
+
+IMPORT BNData AS Data
+
+FUNCTION Start() AS VOID
+    LET someText AS STRING[3] = ["1", "", "3"]
+    LET noneText AS STRING[2] = ["", ""]
+    LET some AS Data.DataFrame = NEW Data.DataFrame()
+    some.AddStringColumn("x", someText)
+    some.ConvertToFloat("x")
+    LET none AS Data.DataFrame = NEW Data.DataFrame()
+    none.AddStringColumn("x", noneText)
+    none.ConvertToFloat("x")
+    PRINT "some NA", some.Mean("x"), some.Median("x"), some.Min("x"), some.Max("x"), some.Range("x")
+    LET mode AS FLOAT OR NA OR Error = none.Mode("x")
+    PRINT "all NA", none.Mean("x"), none.Median("x"), mode
+    LET least AS FLOAT OR Error = none.Min("x")
+    IF least IS Error THEN
+        PRINT "all NA Min is an Error"
+    END IF
+    RELEASE some
+    RELEASE none
+END FUNCTION

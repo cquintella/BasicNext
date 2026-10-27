@@ -1,0 +1,19 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// BNMath.Euler and BNMath.Pi (math.md, "Mathematical constants"; BDFL
+// decisions, 2026-10-26). Expected output: constants.expected, by hand:
+//   - each is the IEEE 754 binary64 value nearest to e and to pi, printed as
+//     the shortest decimal that reads back (2.718281828459045, bits
+//     0x4005BF0A8B145769; 3.141592653589793, bits 0x400921FB54442D18);
+//   - each is a FLOAT: multiplying by 1.0 keeps it, and it compares equal to
+//     its own literal.
+
+IMPORT BNMath AS Math
+
+FUNCTION Start() AS VOID
+    PRINT Math.Euler, Math.Euler * 1.0, Math.Euler = 2.718281828459045
+    PRINT Math.Pi, Math.Pi * 1.0, Math.Pi = 3.141592653589793
+END FUNCTION

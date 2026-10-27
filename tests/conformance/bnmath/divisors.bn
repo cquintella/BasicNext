@@ -1,0 +1,26 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// BNMath.Gcd and BNMath.Lcm (math.md, "Integer divisors"; BDFL decision,
+// 2026-10-27). Expected output: divisors.expected, by hand:
+//   - Gcd is the largest integer dividing both, never negative:
+//     12 = 2*2*3 and 18 = 2*3*3 share 2*3 = 6; 17 and 5 are coprime (1);
+//     the sign is dropped (-12, 18 -> 6); Gcd(0, b) = |b| and Gcd(0, 0) = 0;
+//     Gcd(MIN_INT64, 2) = 2, since -2^63 is even;
+//   - Lcm is the smallest non-negative common multiple: 4 and 6 -> 12;
+//     -4 and 6 -> 12; a zero argument gives 0; Lcm(MAX_INT64, 1) = MAX_INT64;
+//   - the arguments may be any integer type that holds in INT64 (INTEGER,
+//     BYTE here), and the result is INT64.
+
+IMPORT BNMath AS Math
+
+FUNCTION Start() AS VOID
+    LET small AS INTEGER = -12
+    LET tiny AS BYTE = 18
+    LET lowest AS INT64 = -9223372036854775807 - 1
+    LET highest AS INT64 = 9223372036854775807
+    PRINT "gcd", Math.Gcd(12, 18), Math.Gcd(17, 5), Math.Gcd(small, tiny), Math.Gcd(0, -7), Math.Gcd(0, 0), Math.Gcd(lowest, 2)
+    PRINT "lcm", Math.Lcm(4, 6), Math.Lcm(-4, 6), Math.Lcm(0, 5), Math.Lcm(highest, 1)
+END FUNCTION

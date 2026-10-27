@@ -1,0 +1,31 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Conformance: DataFrame Min and Max use the BNMath NAN rule (bndata.md,
+// "Statistics on a column": "the same algorithms and NAN / NA rules as
+// BNMath"; math.md: "NAN in the data propagates").
+// Expected output: min-max-nan.expected, by hand:
+//   [3.0, -1.0, 2.0] -> Min -1.0, Max 3.0, as BNMath.MIN / MAX;
+//   [1.0, NAN, 3.0]  -> NAN for Min, Max and BNMath.MIN;
+//   [NAN, NAN]       -> NAN for Min and Max (never INF or -INF).
+
+IMPORT BNData AS Data
+IMPORT BNMath AS Math
+
+FUNCTION Start() AS VOID
+    LET plain AS FLOAT[3] = [3.0, -1.0, 2.0]
+    LET mixed AS FLOAT[3] = [1.0, NAN, 3.0]
+    LET allNan AS FLOAT[2] = [NAN, NAN]
+    LET table AS Data.DataFrame = NEW Data.DataFrame()
+    table.AddFloatColumn("plain", plain)
+    table.AddFloatColumn("mixed", mixed)
+    LET nans AS Data.DataFrame = NEW Data.DataFrame()
+    nans.AddFloatColumn("all", allNan)
+    PRINT "plain", table.Min("plain"), table.Max("plain"), Math.MIN(plain), Math.MAX(plain)
+    PRINT "mixed", table.Min("mixed"), table.Max("mixed"), Math.MIN(mixed), Math.MAX(mixed)
+    PRINT "all NAN", nans.Min("all"), nans.Max("all"), Math.MIN(allNan), Math.MAX(allNan)
+    RELEASE table
+    RELEASE nans
+END FUNCTION

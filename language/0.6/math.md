@@ -93,6 +93,53 @@ non-integral exponent.
 return `NAN` for finite arguments outside `[-1, 1]`; `ATAN` accepts every
 floating value. `ATAN2` uses the signs of zero to select the correct quadrant.
 
+### Mathematical constants (0.6.10)
+
+| Member | Kind and result |
+| --- | --- |
+| `BNMath.Pi` | Attribute (`EXPORT CONST`), `FLOAT`: the IEEE 754 binary64 value nearest to π, `3.141592653589793`. |
+| `BNMath.Euler` | Attribute (`EXPORT CONST`), `FLOAT`: the IEEE 754 binary64 value nearest to e, `2.718281828459045`. |
+
+BDFL decisions, 2026-10-26: the constants are attributes in the object
+style, named `Pi` and `Euler` (not `PI` or `E`). Each literal is the
+shortest decimal that reads back as that binary64 value, so `bni` and `bnc`
+hold the same bits on every platform.
+
+### Integer divisors (0.6.10)
+
+| Member | Kind and result |
+| --- | --- |
+| `BNMath.Gcd(a, b)` | Method, `(a AS INT64, b AS INT64) AS INT64`: the greatest common divisor, the largest integer that divides both, never negative. `Gcd(a, 0)` is `|a|` and `Gcd(0, 0)` is `0`. |
+| `BNMath.Lcm(a, b)` | Method, `(a AS INT64, b AS INT64) AS INT64`: the least common multiple, the smallest non-negative integer that both divide, `|a| / Gcd(a, b) * |b|`. A zero argument gives `0`. |
+
+BDFL decision, 2026-10-27 (bucket 0.6.10, G-5). An argument may be of any
+integer type whose values all fit `INT64` (every signed type, `BYTE`,
+`UINT16`, `UINT32`); a `UINT64` argument is a `TYPE_MISMATCH`, as it may not
+fit (write `AS INT64`). The result is computed exactly; a result outside
+`INT64` stops the program with `NUMERIC_OVERFLOW`, naming the exact value:
+`Gcd(MIN_INT64, 0)` is `2^63`, and `Lcm(2^62, 3)` is `3 · 2^62`. Both
+backends give the same results and diagnostics.
+
+### Angle conversions (0.6.10)
+
+| Member | Kind and result |
+| --- | --- |
+| `BNMath.DegreeToRad(degrees)` | Method; `FLOAT32` or `FLOAT`, same type. Degrees to radians. |
+| `BNMath.RadToDegree(radians)` | Method; `FLOAT32` or `FLOAT`, same type. Radians to degrees. |
+
+BDFL decision, 2026-10-26: new `BNMath` members follow the language's
+object style (an attribute and methods, as `df.Mean`), and the mathematics
+is exact to the binary64 model. Each method is one multiplication by a fixed
+ratio, so the result is the same on every backend and platform:
+`DegreeToRad(x)` is `x * r`, where `r` is the binary64 value of
+`BNMath.Pi / 180.0` (`0.017453292519943295`), and `RadToDegree(x)` is
+`x * d`, where `d` is the binary64 value of `180.0 / BNMath.Pi`
+(`57.29577951308232`). The product is computed in binary64 and rounded to
+`FLOAT32` for a `FLOAT32` argument, as for the other functions here. `NAN`
+propagates, infinities keep their sign, and a zero keeps its sign.
+`DegreeToRad(180.0)` is `BNMath.Pi` and `RadToDegree(BNMath.Pi)` is `180.0`.
+
+
 ## Stable compound functions
 
 | Function | Signature and result |
@@ -239,19 +286,105 @@ region's element count.
 | `BNMath.MODE(values)` | Unique most-frequent value as `FLOAT OR NA`. Tie or empty → `NA`. |
 | `BNMath.STDEV(values)` | Sample standard deviation (`n−1`) as `FLOAT`. |
 | `BNMath.VARIANCE(values)` | Sample variance (`n−1`) as `FLOAT`. |
+| `BNMath.PVariance(values)` | Population variance (`n`) as `FLOAT` (0.6.10). |
+| `BNMath.PStdev(values)` | Population standard deviation, the `SQRT` of `PVariance`, as `FLOAT` (0.6.10). |
+| `BNMath.Skewness(values)` | Sample skewness G1 (type 2, Excel `SKEW`), as `FLOAT` (0.6.10). |
+| `BNMath.Kurtosis(values)` | Sample excess kurtosis G2 (type 2, Excel `KURT`), as `FLOAT` (0.6.10). |
+| `BNMath.PSkewness(values)`, `BNMath.PKurtosis(values)` | Population skewness g1 and excess kurtosis g2 (type 1), as `FLOAT` (0.6.10). |
+| `BNMath.Quantile(values, p)` | The `p` quantile, R type 7 (linear interpolation), as `FLOAT` (0.6.10). |
+| `BNMath.Covariance(x, y)` | Sample covariance (`n−1`) of two vectors of the same length, as `FLOAT` (0.6.10). |
+| `BNMath.Correlation(x, y)` | Pearson correlation of two vectors of the same length, as `FLOAT` in `[−1, 1]` (0.6.10). |
 | `BNMath.RANGE(values)` | `MAX(values) − MIN(values)` as `FLOAT`. |
 | `BNMath.MIN(values)` / `BNMath.MAX(values)` | One argument: min/max of the vector, element type. Two arguments: existing scalar `MIN(a, b)`. |
 
 `NAN` in the data propagates. Empty `MEAN` / `MEDIAN` / `QUARTILE*` /
 `RANGE` → `NAN`. Empty one-argument `MIN`/`MAX` raises
 `INDEX_OUT_OF_BOUNDS`, regardless of the numeric element type. `STDEV` /
-`VARIANCE` with `n<2` → `NAN`.
+`VARIANCE` with `n<2` → `NAN`. `PStdev` / `PVariance` with `n<1` → `NAN`;
+with one value they are `0.0` (BDFL decision G-5, 2026-10-27).
+
+#### Order, summation and overflow (0.6.10)
+
+BDFL decisions D-2, G-1 and G-11, 2026-10-26. `MEAN`, `VARIANCE`, `STDEV` and
+`RANGE` read the values in index order and neither sort nor copy
+them. Only `MEDIAN`, `QUARTILE1`, `QUARTILE3` and `MODE` sort a copy.
+
+- `MEAN` resolves the non-finite values first: any `NAN` gives `NAN`; `INF`
+  and `-INF` together give `NAN`; otherwise an `INF` gives `INF` and a
+  `-INF` gives `-INF`. With finite values, `MEAN` is the compensated
+  (Neumaier) sum in index order, divided by `n`. A sum that overflows gives
+  `INF` or `-INF`, with the sign of the overflow: `MEAN([MAX_FLOAT,
+  MAX_FLOAT])` is `INF`. The result therefore follows the index order:
+  `[MAX_FLOAT, MAX_FLOAT, -MAX_FLOAT]` overflows and gives `INF`, while
+  `[-MAX_FLOAT, MAX_FLOAT, MAX_FLOAT]` gives `MAX_FLOAT / 3`. The
+  compensation recovers what a plain sum loses: `MEAN([1e16, 1, -1e16, 1])`
+  is `0.5`.
+- `VARIANCE` uses the corrected two-pass algorithm (Chan, Golub and
+  LeVeque; BDFL decision G-11, 2026-10-26): with `m` the `MEAN` of the
+  values and `d = x − m` for each value in index order, the variance is
+  `(Σd² − (Σd)² / n) / (n − 1)`, both sums compensated as `MEAN`'s.
+  `STDEV` is the `SQRT` of `VARIANCE`. An infinite value gives `NAN`. With
+  finite values, as for `MEAN`, a sum that overflows gives `INF` (BDFL
+  decision, 2026-10-26): `VARIANCE([MAX_FLOAT, -MAX_FLOAT])` is `INF`, and
+  so are `VARIANCE([MAX_FLOAT, MAX_FLOAT])`, whose mean overflows, and
+  `VARIANCE([1e154, -1e154, 1e154, -1e154])`, whose squares overflow,
+  although their true variances (`0` and about `1.33e308`) are finite.
+- `PVariance` and `PStdev` are the same algorithm with `n` in place of
+  `n − 1`, and the same rules for infinite values and overflow.
+- `RANGE` is the maximum minus the minimum, both taken in one pass.
+
+Only `+`, `−`, `×`, `÷` and `SQRT` are used, each correctly rounded, with no
+fused multiply-add, so the four reductions give the same bits on every
+platform and on both backends.
 
 Quartile algorithm (Tukey hinges): sort a copy into non-decreasing order.
 `MEDIAN` is the middle element when `n` is odd, or the mean of the two
 central elements when `n` is even (that mean is `FLOAT`). `QUARTILE1` is
 the median of the lower half; `QUARTILE3` is the median of the upper half.
 When `n` is odd the overall median element is excluded from both halves.
+
+`Quantile(values, p)` is R's type 7 (`quantile(x, p, type = 7)`, R 4.5.1;
+BDFL decision G-5, 2026-10-27). `p` is any numeric argument, read as
+`FLOAT`. Sort a copy `x[1] ≤ … ≤ x[n]`; let `index = 1 + (n − 1) · p`,
+`lo = FLOOR(index)` and `hi = CEIL(index)` (R applies no fuzz to type 7).
+The result is `x[lo]`, or, when
+`index > lo` and `x[hi] ≠ x[lo]`, `(1 − h) · x[lo] + h · x[hi]` with
+`h = index − lo`. An empty vector, a `NAN` value, and a `p` that is `NAN`
+or outside `[0, 1]` give `NAN` (R stops with an error for the last).
+Infinite values take part as in R: the quantile between `−INF` and `INF`
+is `NAN`.
+
+`Covariance(x, y)` and `Correlation(x, y)` (BDFL decisions G-5 and the
+overflow rules, 2026-10-27) take two numeric vectors or regions of the
+same length, of any element types; different lengths stop the program
+with `VECTOR_LENGTH_MISMATCH`. With `d = x − MEAN(x)` and
+`e = y − MEAN(y)` in index order, the covariance is the corrected
+two-pass `(Σde − Σd · Σe / n) / (n − 1)`, every sum compensated, and the
+correlation is that co-moment divided by the square roots of the two
+corrected sums of squares, then held in `[−1, 1]` (as R's `cor`, against
+the last rounding). `n < 2`, a `NAN` or infinite value, and for
+`Correlation` a vector whose values are all equal give `NAN`. When a sum
+overflows, the sums are taken again on the values scaled by a power of
+two, which is exact: `Covariance` then gives its true value, or `INF` or
+`-INF` with the true sign when that value is beyond `MAX_FLOAT`
+(`Covariance([MAX_FLOAT, -MAX_FLOAT], [-MAX_FLOAT, MAX_FLOAT])` is
+`-INF`), and `Correlation`, which no scaling changes, always gives its
+true value.
+
+The shape statistics (BDFL decision, 2026-10-27) use the deviations
+`d = x − MEAN(x)` of the values and the sums `S2 = Σd² − (Σd)² / n`,
+`S3 = Σd³`, `S4 = Σd⁴`, each compensated: `PSkewness` is
+`g1 = √n · S3 / S2^(3/2)`; `Skewness` is `G1 = g1 · √(n(n − 1)) / (n − 2)`
+and needs `n ≥ 3`; `PKurtosis` is `g2 = (n · S4 − 3 · S2²) / S2²`;
+`Kurtosis` is `G2 = (n − 1)((n + 1)(n · S4 − 3 · S2²) + 6 · S2²) /
+((n − 2)(n − 3) · S2²)`, the same as `((n + 1) g2 + 6)(n − 1) / ((n − 2)(n − 3))`,
+and needs `n ≥ 4`. These forms keep exact sums exact (`PKurtosis` of
+`1, 2, 3, 4, 10` is `-0.212`). Below the size, with a zero variance or with
+an infinite value the result is `NAN`. The shape does not change when every
+value is multiplied by the same positive number, so the values are first
+scaled by the power of two that brings the largest magnitude near 1: exact,
+and no sum overflows (derived from the `Correlation` rule, 2026-10-27; to be
+confirmed by the BDFL).
 
 `MODE` converts each element to `FLOAT` and counts exact `FLOAT` equality.
 As with every descriptive reduction, any `NAN` input propagates to `NAN`;

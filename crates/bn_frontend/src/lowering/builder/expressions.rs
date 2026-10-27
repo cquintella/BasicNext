@@ -35,7 +35,7 @@ impl Builder<'_> {
             ExpressionKind::Increment { .. } => unreachable!("handled above"),
             ExpressionKind::Literal(literal) => Instruction::Constant {
                 destination,
-                value: constant(literal),
+                value: typed_literal_constant(literal, &ty),
                 ty,
                 span: expression.span,
             },
@@ -563,8 +563,11 @@ impl Builder<'_> {
         prefix: bool,
         span: Span,
     ) -> Result<ValueId, Diagnostic> {
+        // The place is evaluated once: read and written through it (0.6.md,
+        // "Evaluation order").
         let ty = type_at(self.model, target.span)?;
-        let old = self.expression(target)?;
+        let place = self.resolve_place(target)?;
+        let old = self.read_place_as(&place, target)?;
         let one = self.value();
         self.emit(Instruction::Constant {
             destination: one,
@@ -582,10 +585,10 @@ impl Builder<'_> {
             operator: if delta > 0 { "Plus" } else { "Minus" }.into(),
             left: old,
             right: one,
-            ty,
+            ty: ty.clone(),
             span,
         });
-        self.store_to_target(target, new, span)?;
+        self.assign_place(place, new, &ty, span)?;
         Ok(if prefix { new } else { old })
     }
 }

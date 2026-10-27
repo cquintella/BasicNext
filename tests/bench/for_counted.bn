@@ -1,0 +1,13 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// bni benchmark (bucket 0.6.10 F.0): a counted FOR of 2 000 000 additions.
+FUNCTION Start() AS VOID
+    LET s AS INTEGER = 0
+    FOR i AS INTEGER = 1 TO 2000000
+        s = s + 1
+    END FOR
+    PRINT s
+END FUNCTION

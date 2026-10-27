@@ -23,6 +23,7 @@ pub mod crypto_error;
 pub mod data_error;
 mod dataframe;
 mod dataframe_abi;
+mod dataframe_na_abi;
 mod dispatch_abi;
 pub mod dispatch_error;
 pub mod dispatch_sync;
@@ -40,6 +41,7 @@ pub(crate) mod json_abi;
 mod log_abi;
 mod math;
 mod math_abi;
+mod math_vector_abi;
 #[cfg(feature = "sqlite")]
 pub(crate) mod sqlite_abi;
 #[cfg(feature = "sqlite")]
@@ -49,12 +51,13 @@ mod stats;
 pub use bn_core_log::{Level as LogLevel, Record as LogRecord};
 pub use crypto_abi::*;
 pub use dataframe::{
-    ConvertedCell, DataFrameColumn, DataFrameJoin, DataFrameJoinConfig, DataFrameResource,
-    DataProvider, StandardDataProvider, add_dataframe_column, append_columns, append_rows,
-    column_name, conversion_failed, convert_cell, convert_dataframe_column, copy_dataframe_column,
-    copy_integer_element, dataframe_reduce_column, frame_from_csv_rows, get_dataframe_cell,
-    join_dataframes, select_dataframe, set_column_label, slice_dataframe, transpose_dataframe,
-    zscore_column,
+    CellKind, ConvertedCell, DataFrameColumn, DataFrameJoin, DataFrameJoinConfig,
+    DataFrameResource, DataProvider, FillCells, StandardDataProvider, add_dataframe_column,
+    append_columns, append_rows, column_name, conversion_failed, convert_cell,
+    convert_dataframe_column, copy_dataframe_column, copy_integer_element, count_not_available,
+    dataframe_reduce_column, drop_not_available, fill_not_available, frame_from_csv_rows,
+    get_dataframe_cell, join_dataframes, select_dataframe, set_column_label, slice_dataframe,
+    transpose_dataframe, zscore_column,
 };
 pub use dataframe_abi::*;
 pub use dispatch_abi::*;

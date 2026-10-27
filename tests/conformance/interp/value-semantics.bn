@@ -1,0 +1,102 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Conformance lock for the bni performance work (bucket 0.6.10 F.1):
+// value semantics and control flow an interpreter rewrite could break.
+// Expected output: value-semantics.expected, by hand from 0.6.md:
+//   - vectors and STRUCTs are values: a copy never sees later writes
+//     ("Values and copies"), nor does the caller see a callee's copy;
+//   - a value merged after IF/ELSE and carried around a loop is the one of
+//     the path taken;
+//   - a long expression keeps every temporary of this evaluation:
+//     (3 + 1) * (3 + 2) - 3 * 3 + ((3 - 1) * (3 + 4)) DIV 2 = 20 - 9 + 7;
+//   - FOR AS INT8 125 TO 127 runs three times, STEP -2 descends;
+//   - STRINGs order by Unicode scalar value (0.6.md), so "á" (U+00E1) < "b"
+//     is FALSE; s[0] of "áb" is "á"; "" + "x" is "x";
+//   - "é" (U+00E9) < "ê" (U+00EA), "z" < "á", a prefix sorts first, and
+//     U+1F600 > U+FFFD (four UTF-8 bytes against three); "abc"[2] is "c"
+//     and "áb"[1] is "b";
+//   - 0xFF + 0b1 = 256 in each iteration;
+//   - Fib(20) = 6765 through recursion;
+//   - a call frame reused for another function shows none of its values:
+//     One(), Two(), One(), Two() print 1 2 1 2.
+
+STRUCT Point
+    X AS INTEGER
+    Y AS INTEGER
+END STRUCT
+
+FUNCTION Bumped(v AS INTEGER[3]) AS INTEGER[3]
+    LET copy AS INTEGER[3] = v
+    copy[0] = 100
+    RETURN copy
+END FUNCTION
+
+FUNCTION Fib(n AS INTEGER) AS INTEGER
+    IF n < 2 THEN
+        RETURN n
+    END IF
+    RETURN Fib(n - 1) + Fib(n - 2)
+END FUNCTION
+
+FUNCTION One() AS INTEGER
+    RETURN 1
+END FUNCTION
+
+FUNCTION Two() AS INTEGER
+    RETURN 2
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET a AS INTEGER[3] = [1, 2, 3]
+    LET b AS INTEGER[3] = a
+    a[0] = 9
+    PRINT "vector copy", a[0], b[0]
+    LET c AS INTEGER[3] = Bumped(a)
+    PRINT "callee copy", a[0], c[0]
+
+    LET p AS Point = [1, 2]
+    LET q AS Point = p
+    q.X = 5
+    PRINT "struct copy", p.X, q.X, p.Y
+
+    LET merged AS INTEGER = 0
+    IF a[0] > 5 THEN
+        merged = 10
+    ELSE
+        merged = 20
+    END IF
+    LET carried AS INTEGER = 1
+    FOR i AS INTEGER = 1 TO 5
+        carried = carried * 2
+    END FOR
+    PRINT "merge and loop", merged, carried
+
+    LET x AS INTEGER = 3
+    PRINT "temporaries", (x + 1) * (x + 2) - (x * x) + (x - 1) * (x + 4) DIV 2
+
+    LET small AS INTEGER = 0
+    FOR k AS INT8 = 125 TO 127
+        small = small + 1
+    END FOR
+    LET down AS STRING = ""
+    FOR j AS INTEGER = 6 TO 1 STEP -2
+        down = down + j AS STRING
+    END FOR
+    PRINT "loops", small, down
+
+    LET word AS STRING = "áb"
+    PRINT "strings", "á" < "b", word[0], "" + "x"
+    PRINT "order", "é" < "ê", "z" < "á", "a" < "ab", "😀" > "�", "abc"[2], word[1]
+
+    LET total AS INTEGER = 0
+    FOR n AS INTEGER = 1 TO 3
+        total = total + 0xFF + 0b1
+    END FOR
+    PRINT "literals", total
+
+    PRINT "recursion", Fib(20)
+    PRINT "frames", One(), Two(), One(), Two()
+END FUNCTION

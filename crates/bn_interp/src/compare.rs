@@ -60,7 +60,7 @@ pub fn equals(left: &Value, right: &Value) -> bool {
             left.len() == right.len()
                 && left
                     .iter()
-                    .zip(right)
+                    .zip(right.iter())
                     .all(|(left, right)| equals(left, right))
         }
         _ => false,

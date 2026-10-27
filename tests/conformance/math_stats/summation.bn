@@ -1,0 +1,41 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// math.md "Order, summation and overflow" (BDFL decisions D-2 and G-1,
+// 2026-10-26). Expected output: summation.expected, derived by hand:
+//   - cancellation: the exact sum of 1e16, 1, -1e16, 1 is 2, so MEAN is
+//     0.5; a plain left-to-right sum loses the first 1 against 1e16 (0.25),
+//     and 0.6.9 summed the sorted copy (0.0);
+//   - non-finite values: an INF gives INF, a -INF gives -INF, INF with -INF
+//     gives NAN, a NAN gives NAN;
+//   - overflow in index order: MAX + MAX overflows (INF); -MAX + MAX is 0,
+//     then + MAX is MAX, so the mean is MAX / 3 (compared, not printed);
+//   - the variance: an infinite value gives NAN; [MAX, -MAX] has the true
+//     variance 2 * MAX^2, above MAX, so INF; STDEV is its SQRT, INF;
+//   - Welford's classic case: 1e9 + {4, 7, 13, 16} has the variance 30
+//     exactly (the mean is 1e9 + 10, the squared deviations sum to 90).
+// 1e16 and 1e9 are written in full: the language has no exponent literal.
+
+IMPORT BNMath AS Math
+
+FUNCTION Start() AS VOID
+    LET big AS FLOAT = Math.MAX_FLOAT
+    LET cancel AS FLOAT[4] = [10000000000000000.0, 1.0, -10000000000000000.0, 1.0]
+    LET up AS FLOAT[2] = [INF, 1.0]
+    LET down AS FLOAT[2] = [-INF, 1.0]
+    LET both AS FLOAT[3] = [INF, 1.0, -INF]
+    LET withNan AS FLOAT[2] = [INF, NAN]
+    LET overflow AS FLOAT[2] = [big, big]
+    LET overflowFirst AS FLOAT[3] = [big, big, -big]
+    LET cancelFirst AS FLOAT[3] = [-big, big, big]
+    LET spread AS FLOAT[2] = [big, -big]
+    LET welford AS FLOAT[4] = [1000000004.0, 1000000007.0, 1000000013.0, 1000000016.0]
+
+    PRINT "cancellation", Math.MEAN(cancel)
+    PRINT "non-finite", Math.MEAN(up), Math.MEAN(down), Math.MEAN(both), Math.MEAN(withNan)
+    PRINT "overflow", Math.MEAN(overflow), Math.MEAN(overflowFirst), Math.MEAN(cancelFirst) = big / 3.0
+    PRINT "variance", Math.VARIANCE(up), Math.STDEV(down), Math.VARIANCE(spread), Math.STDEV(spread)
+    PRINT "welford", Math.VARIANCE(welford), Math.MEAN(welford)
+END FUNCTION

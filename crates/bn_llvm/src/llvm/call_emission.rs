@@ -44,10 +44,10 @@ pub(crate) fn lower_call_instruction(
         .copied()
         .expect("validated callee")
     {
-        "$for_condition" => {
+        bn_ir::names::FOR_CONDITION => {
             lower_for_condition(text, block_id, *destination, arguments, analysis, state);
         }
-        "$for_fits" => {
+        bn_ir::names::FOR_FITS => {
             lower_for_fits(text, *destination, arguments, analysis);
         }
         name if is_bndata_dataframe_call(module, name) => {
@@ -194,6 +194,15 @@ pub(crate) fn lower_call_instruction(
                     *destination,
                     arguments,
                     "bn_rt_dataframe_convert_float",
+                    analysis,
+                ),
+                "count_na" => lower_bndata_count_na(text, *destination, arguments, analysis),
+                "fill_na" => lower_bndata_fill_na(text, *destination, arguments, analysis),
+                "drop_na" => lower_bndata_transform(
+                    text,
+                    *destination,
+                    arguments,
+                    "bn_rt_dataframe_drop_na",
                     analysis,
                 ),
                 _ => unreachable!("validated BNData DataFrame method"),

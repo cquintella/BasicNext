@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
 # Basic Next installer for Linux and macOS.
 #
-# Installs the `bni` (interpreter) and `bnc` (compiler) binaries plus the
+# Installs the `bni` (interpreter), `bnc` (compiler) and `bnr` (REPL) binaries plus the
 # runtime files they discover
 # (stdlib .bn modules, diagnostics catalog, man pages, native runtime lib)
 # under a FHS prefix:
 #
 #   $PREFIX/bin/bni                             interpreter, check, lsp, dap
 #   $PREFIX/bin/bnc                             compiler
+#   $PREFIX/bin/bnr                             interactive REPL (releases from
+#                                               0.6.10; skipped when a tag has none)
 #   $PREFIX/lib/libbn_rt.a                      native runtime for `bnc`
 #   $PREFIX/share/bn/modules/bn/*.bn            standard library modules
 #   $PREFIX/share/bn/diagnostics/en-US/*.ftl    diagnostics catalog (optional;
 #                                               an identical catalog is embedded)
-#   $PREFIX/share/man/man1/{bni,bnc}.1          Unix manual pages
+#   $PREFIX/share/man/man1/{bni,bnc,bnr}.1      Unix manual pages
 #
 # `bni` finds modules/bn and the catalog by walking upward from its own location,
 # and finds libbn_rt.a next to the binary, in $PREFIX/, or in $PREFIX/lib/
@@ -225,6 +227,24 @@ if ((_bootstrap)); then
       else
         log "    note: no libbn_rt-$os-$arch.a asset in $tag (will try cargo -p bn_rt if available)"
       fi
+      # The REPL ships as an asset from 0.6.10; for an older tag that has the
+      # bnr crate (0.6.9) it is built from the tag's source when cargo exists.
+      if curl -fsL -o "$src/target/release/bnr" "$base/bnr-$os-$arch" 2>/dev/null; then
+        expected=$(awk -v n="bnr-$os-$arch" '$2 == n { print $1 }' "$work/SHA256SUMS")
+        actual=$(sum "$src/target/release/bnr")
+        [[ -n "$expected" && "$expected" == "$actual" ]] \
+          || { echo "error: SHA256 mismatch for bnr-$os-$arch (expected ${expected:-<absent>}, got $actual)" >&2; exit 1; }
+        chmod +x "$src/target/release/bnr"
+      else
+        rm -f "$src/target/release/bnr"
+        if [[ -d "$src/crates/bnr" ]] && command -v cargo >/dev/null 2>&1; then
+          log "    no bnr asset in $tag: building the REPL from its source (cargo build --release --locked -p bnr)"
+          (cd "$src" && cargo build --release --locked -p bnr) \
+            || log "    warning: building bnr failed; installing without bnr"
+        else
+          log "    note: no bnr asset in $tag and no cargo (or no REPL in this tag); installing without bnr"
+        fi
+      fi
       log "    checksums OK"
       prebuilt=1
     else
@@ -307,6 +327,12 @@ for name in $binaries; do
   $SUDO install -m 0755 "$repo_root/target/release/$name" "$bindir/$name"
   record "$bindir/$name"
 done
+# The REPL, when this tree or release has it.
+if [[ -x "$repo_root/target/release/bnr" ]]; then
+  $SUDO install -m 0755 "$repo_root/target/release/bnr" "$bindir/bnr"
+  record "$bindir/bnr"
+  binaries="$binaries bnr"
+fi
 
 # Native runtime for `bnc` (arch-specific staticlib). Discovered as
 # $PREFIX/lib/libbn_rt.a when bnc lives in $PREFIX/bin (bn_compile_driver::toolchain).
@@ -334,9 +360,11 @@ while IFS= read -r -d '' f; do
   record "$dest"
 done < <(find "$repo_root/share/bn/diagnostics" -type f -print0 2>/dev/null)
 
-# Man pages (whichever this tree has: bni.1/bnc.1 in 0.6, bn.1 in 0.5). They
+# Man pages (whichever this tree has: bni.1/bnc.1/bnr.1 in 0.6, bn.1 in 0.5). They
 # live in man/ from 0.6.2 and in docs/man/ in older release tarballs.
-for page in bni bnc bn; do
+for page in bni bnc bnr bn; do
+  # bnr.1 only with the REPL it documents.
+  [[ $page == bnr && ! -x "$bindir/bnr" ]] && continue
   for mansrc in "$repo_root/man" "$repo_root/docs/man"; do
     if [[ -f "$mansrc/$page.1" ]]; then
       $SUDO install -m 0644 "$mansrc/$page.1" "$mandir/$page.1"
@@ -356,6 +384,9 @@ log "    $diagdir/, $mandir/"
 log "==> Verifying"
 "$bindir/$interpreter" --version | tee -a "$INSTALL_LOG"
 "$bindir/bnc" --version | tee -a "$INSTALL_LOG"
+if [[ -x "$bindir/bnr" ]]; then
+  "$bindir/bnr" --version | tee -a "$INSTALL_LOG"
+fi
 tmp=$(mktemp -d)
 printf 'IMPORT BNMath AS M\nFUNCTION Start() AS VOID\nPRINT M.ABS(-7.0)\nEND FUNCTION\n' > "$tmp/check.bn"
 if out=$(cd "$tmp" && "$bindir/$interpreter" run check.bn 2>&1) && [[ "$out" == "7.0" ]]; then

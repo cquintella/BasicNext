@@ -53,6 +53,9 @@ declare i32 @bn_rt_dataframe_append_columns(i64, i64, ptr)
 declare i32 @bn_rt_dataframe_join(i64, i64, ptr, ptr, i32, ptr)
 declare i32 @bn_rt_dataframe_convert_integer(i64, ptr)
 declare i32 @bn_rt_dataframe_convert_float(i64, ptr)
+declare i32 @bn_rt_dataframe_count_na(i64, ptr, ptr)
+declare i32 @bn_rt_dataframe_drop_na(i64, ptr)
+declare i32 @bn_rt_dataframe_fill_na(i64, ptr, double)
 declare ptr @bn_rt_dataframe_column_name_owned(i64, i32)
 declare i32 @bn_rt_dataframe_close(i64)
 declare i32 @bn_rt_dataframe_retain(i64)
@@ -287,8 +290,8 @@ b0:
   %v0 = add i32 0, 1
   %v1 = add i8 0, 2
   %v2 = add i64 0, 3
-  %v3 = fadd float 0.0, 1.5
-  %v4 = fadd double 0.0, 2.5
+  %v3 = fadd float -0.0, 1.5
+  %v4 = fadd double -0.0, 2.5
   %v5 = or i1 0, 1
   br i1 %v5, label %b1, label %b2
 b1:

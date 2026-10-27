@@ -19,6 +19,7 @@ pub mod temporal;
 mod allocation;
 mod collections;
 mod compare;
+mod frame_storage;
 mod helpers;
 mod numeric;
 pub mod provider;
@@ -48,6 +49,7 @@ pub use {index_out_of_bounds as index_out_of_bounds_pub, runtime_error as runtim
 
 use allocation::{add_sizes, display_element, pointer_element_default, pointer_element_size};
 use compare::{equals, is_host_file_method, is_host_file_type, is_value, value_matches_type};
+use frame_storage::{FramePool, IdMap, IdSet, ValueSlots};
 use helpers::{
     constant_value, default_function_owner, empty_named, find_block, require_arity, set, value,
 };
@@ -351,13 +353,33 @@ struct Instance {
     fields: Box<[Value]>,
 }
 
-/// The bindings of one call that ownership needs at run time.
-#[derive(Default)]
-struct OwnershipFrame {
+/// The bindings of one call that ownership needs at run time. Every `Load`
+/// asks both questions, so neither may hash with `SipHash` (bucket 0.6.10 F.2).
+struct OwnershipFrame<'a> {
     /// Ended by `RELEASE` (`EndBinding`) and not stored again.
-    released_symbols: std::collections::HashSet<SymbolId>,
-    /// `AS WEAK` locals, which read `NULL` once their object is gone.
-    weak_symbols: std::collections::HashSet<SymbolId>,
+    released_symbols: IdSet<SymbolId>,
+    /// `AS WEAK` locals, which read `NULL` once their object is gone: the
+    /// function's own set, borrowed for the call (F.5).
+    weak_symbols: &'a std::collections::HashSet<SymbolId>,
+}
+
+impl<'a> OwnershipFrame<'a> {
+    fn new(weak_symbols: &'a std::collections::HashSet<SymbolId>) -> Self {
+        Self {
+            released_symbols: IdSet::default(),
+            weak_symbols,
+        }
+    }
+
+    fn is_released(&self, symbol: SymbolId) -> bool {
+        self.released_symbols.contains(&symbol)
+    }
+
+    /// Most functions have no `AS WEAK` local; their empty set answers
+    /// without hashing.
+    fn is_weak(&self, symbol: SymbolId) -> bool {
+        !self.weak_symbols.is_empty() && self.weak_symbols.contains(&symbol)
+    }
 }
 
 pub(crate) struct Executor<'a, 'debug> {
@@ -382,9 +404,10 @@ pub(crate) struct Executor<'a, 'debug> {
     pub(crate) debug_control: Option<DebugControl<'debug>>,
     pub(crate) emitter: Option<&'debug mut EventEmitter>,
     pub(crate) call_depth: usize,
-    pub(crate) ownership_frames: Vec<OwnershipFrame>,
+    pub(crate) ownership_frames: Vec<OwnershipFrame<'a>>,
+    pub(crate) frame_pool: FramePool,
     pub(crate) session_bindings: HashMap<SymbolId, Value>,
-    pub(crate) session_restored_symbols: std::collections::HashSet<SymbolId>,
+    pub(crate) session_restored_symbols: IdSet<SymbolId>,
     pub(crate) session_captured_symbols: Option<HashMap<SymbolId, Value>>,
     pub(crate) cancel_flag: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
@@ -437,8 +460,9 @@ impl<'a, 'debug> Executor<'a, 'debug> {
             emitter,
             call_depth: 0,
             ownership_frames: Vec::new(),
+            frame_pool: FramePool::default(),
             session_bindings: HashMap::new(),
-            session_restored_symbols: std::collections::HashSet::new(),
+            session_restored_symbols: IdSet::default(),
             session_captured_symbols: None,
             cancel_flag: None,
         }

@@ -14,6 +14,24 @@ impl Executor<'_, '_> {
         arguments: Vec<Value>,
         span: Span,
     ) -> Result<Value, Diagnostic> {
+        // The language intrinsics first: a counted FOR calls two of them on
+        // every iteration, and none has a dot, a `HOST.` or `#` prefix, or a
+        // temporal name, so no later test would claim them (bucket 0.6.10 F.4).
+        if name == bn_ir::names::STOPPING {
+            let code = self.stop_code.take();
+            self.unwinding = code;
+            return Ok(Value::Boolean(code.is_some()));
+        }
+        if name == bn_ir::names::STOP_CODE {
+            let code = self.unwinding.take().unwrap_or(0);
+            return Ok(Value::Integer(code, IntegerType::Int32));
+        }
+        if matches!(name, "ASC" | "CHAR" | "TOLOWER" | "TOUPPER")
+            || name == bn_ir::names::FOR_CONDITION
+            || name == bn_ir::names::FOR_FITS
+        {
+            return builtin(name, &arguments, span);
+        }
         if let Some(rest) = name.strip_prefix("HOST.") {
             if let Some((capability, member)) = rest.split_once('.')
                 && self.hosts.contains_key(capability)
@@ -36,21 +54,6 @@ impl Executor<'_, '_> {
         }
         if is_temporal_builtin(name) {
             return temporal_call(name, &arguments, span);
-        }
-        if name == bn_ir::names::STOPPING {
-            let code = self.stop_code.take();
-            self.unwinding = code;
-            return Ok(Value::Boolean(code.is_some()));
-        }
-        if name == bn_ir::names::STOP_CODE {
-            let code = self.unwinding.take().unwrap_or(0);
-            return Ok(Value::Integer(code, IntegerType::Int32));
-        }
-        if matches!(name, "ASC" | "CHAR" | "TOLOWER" | "TOUPPER")
-            || name == "$for_condition"
-            || name == "$for_fits"
-        {
-            return builtin(name, &arguments, span);
         }
         let (name, super_call) = name
             .strip_prefix("@super:")

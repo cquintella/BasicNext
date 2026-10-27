@@ -5,8 +5,8 @@ impl Executor<'_, '_> {
     pub fn instruction(
         &mut self,
         instruction: &Instruction,
-        symbols: &mut HashMap<SymbolId, Value>,
-        values: &mut HashMap<ValueId, Value>,
+        symbols: &mut IdMap<SymbolId, Value>,
+        values: &mut ValueSlots,
     ) -> Result<(), Diagnostic> {
         match instruction {
             Instruction::Retain {
@@ -78,7 +78,16 @@ impl Executor<'_, '_> {
                 value: constant,
                 ty,
                 span,
-            } => set(values, *destination, constant_value(constant, ty, *span)?),
+            } => {
+                // SSA: only this instruction writes `destination`, and no
+                // instruction changes a scalar, a text or a name in place
+                // (`get_mut` reaches records and objects only), so a slot
+                // set earlier in this frame already holds the constant. A
+                // loop parses and allocates it once (bucket 0.6.10 F.7).
+                if values.get(*destination).is_none() {
+                    set(values, *destination, constant_value(constant, ty, *span)?);
+                }
+            }
             Instruction::Default {
                 destination,
                 ty,
@@ -89,7 +98,7 @@ impl Executor<'_, '_> {
                 let mut evaluated = dimensions.clone();
                 for dimension in dynamic_dimensions {
                     let value = integer(
-                        values.get(dimension).ok_or_else(|| {
+                        values.get(*dimension).ok_or_else(|| {
                             runtime_error(
                                 bn_diag::DiagId::UNINITIALIZED_VALUE,
                                 "vector dimension is unavailable",
@@ -131,15 +140,12 @@ impl Executor<'_, '_> {
                 span,
                 ..
             } => {
-                let (released, weak) =
-                    self.ownership_frames
-                        .last()
-                        .map_or((false, false), |frame| {
-                            (
-                                frame.released_symbols.contains(symbol),
-                                frame.weak_symbols.contains(symbol),
-                            )
-                        });
+                let (released, weak) = self
+                    .ownership_frames
+                    .last()
+                    .map_or((false, false), |frame| {
+                        (frame.is_released(*symbol), frame.is_weak(*symbol))
+                    });
                 if released {
                     return Err(runtime_error(
                         bn_diag::DiagId::USE_AFTER_RELEASE,
@@ -194,14 +200,14 @@ impl Executor<'_, '_> {
                         span: *span,
                     });
                 }
-                let replaced = symbols
-                    .insert(*symbol, stored.clone())
-                    .unwrap_or(Value::Null);
+                // The value moves into the binding; only a REPL session that
+                // captures top-level bindings needs a second copy.
                 if self.call_depth == 0
                     && let Some(captured) = &mut self.session_captured_symbols
                 {
-                    captured.insert(*symbol, stored);
+                    captured.insert(*symbol, stored.clone());
                 }
+                let replaced = symbols.insert(*symbol, stored).unwrap_or(Value::Null);
                 if let Some(previous) = previous {
                     set(values, *previous, replaced);
                 }
@@ -287,12 +293,18 @@ impl Executor<'_, '_> {
                         *span,
                     ));
                 };
-                let name = name.clone();
-                let arguments = arguments
-                    .iter()
-                    .map(|argument| value(values, *argument, *span).cloned())
-                    .collect::<Result<Vec<_>, _>>()?;
-                let result = self.call_named(&name, arguments, *span)?;
+                let result = if let Some(result) =
+                    super::borrowed_intrinsic(name, arguments, values, *span)
+                {
+                    result?
+                } else {
+                    let name = name.clone();
+                    let arguments = arguments
+                        .iter()
+                        .map(|argument| value(values, *argument, *span).cloned())
+                        .collect::<Result<Vec<_>, _>>()?;
+                    self.call_named(&name, arguments, *span)?
+                };
                 // A call that stopped returns nothing; only the STOP path of
                 // the IR sees its result (0.6.md, "`STOP`").
                 let result = if self.stop_code.is_some() {
@@ -396,7 +408,7 @@ impl Executor<'_, '_> {
                     .iter()
                     .map(|element| value(values, *element, *span).cloned())
                     .collect::<Result<Vec<_>, _>>()?;
-                set(values, *destination, Value::Vector(vector));
+                set(values, *destination, Value::vector(vector));
             }
             Instruction::Index {
                 destination,

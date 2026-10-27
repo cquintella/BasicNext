@@ -109,6 +109,20 @@ impl Builder<'_> {
         })
     }
 
+    /// Reads a resolved place with the types the analyzer gave `read`, the
+    /// read of that same place in a compound assignment (a narrowed binding
+    /// is read as its member type). Evaluates nothing again.
+    pub(super) fn read_place_as(
+        &mut self,
+        place: &Place<'_>,
+        read: &Expression,
+    ) -> Result<ValueId, Diagnostic> {
+        match place {
+            Place::Direct { place, .. } => self.read_direct(place, read),
+            Place::Through(_) => self.read_place(place),
+        }
+    }
+
     /// Reads the value a resolved place holds, evaluating nothing again.
     fn read_place(&mut self, place: &Place<'_>) -> Result<ValueId, Diagnostic> {
         match place {

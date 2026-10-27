@@ -74,13 +74,20 @@ fn binary(
         };
     }
     if let (Value::String(left), Value::String(right)) = (left, right) {
-        let order = left.chars().cmp(right.chars());
+        // UTF-8 byte order is Unicode scalar order (0.6.md), so the bytes
+        // compare without decoding; only an ordering operator asks for it.
+        let order = || left.as_bytes().cmp(right.as_bytes());
         return match operator {
-            "Plus" => Ok(Value::String(shared_string(format!("{left}{right}")))),
-            "Less" => Ok(Value::Boolean(order.is_lt())),
-            "LessEqual" => Ok(Value::Boolean(order.is_le())),
-            "Greater" => Ok(Value::Boolean(order.is_gt())),
-            "GreaterEqual" => Ok(Value::Boolean(order.is_ge())),
+            "Plus" => {
+                let mut joined = String::with_capacity(left.len() + right.len());
+                joined.push_str(left);
+                joined.push_str(right);
+                Ok(Value::String(shared_string(joined)))
+            }
+            "Less" => Ok(Value::Boolean(order().is_lt())),
+            "LessEqual" => Ok(Value::Boolean(order().is_le())),
+            "Greater" => Ok(Value::Boolean(order().is_gt())),
+            "GreaterEqual" => Ok(Value::Boolean(order().is_ge())),
             _ => Err(super::type_mismatch(
                 bn_catalog::text("frontend", "msg.plus_or_an_ordering_operator"),
                 operator,
@@ -460,35 +467,71 @@ fn checked_integer(value: Option<i128>, ty: &Type, span: Span) -> Result<Value, 
     Ok(Value::Integer(value, kind))
 }
 
+/// `$for_condition(current, end, step)`: the counted `FOR` test, read from
+/// borrowed operands so the loop never copies them (bucket 0.6.10 F.4).
+pub(crate) fn for_condition(
+    current: &Value,
+    end: &Value,
+    step: &Value,
+    span: Span,
+) -> Result<Value, Diagnostic> {
+    let current = integer(current, span)?.0;
+    let end = integer(end, span)?.0;
+    let step = integer(step, span)?.0;
+    if step == 0 {
+        return Err(runtime_error(
+            bn_diag::DiagId::INVALID_FOR_STEP,
+            bn_diag::trap_texts::FOR_STEP_ZERO,
+            span,
+        ));
+    }
+    Ok(Value::Boolean(if step > 0 {
+        current <= end
+    } else {
+        current >= end
+    }))
+}
+
+/// `$for_fits(current, step)`: `current + step` stays inside `current`'s type.
+pub(crate) fn for_fits(current: &Value, step: &Value, span: Span) -> Result<Value, Diagnostic> {
+    let (current, kind) = integer(current, span)?;
+    let (step, _) = integer(step, span)?;
+    let fits = current.checked_add(step).is_some_and(|sum| {
+        let (minimum, maximum) = integer_range(kind);
+        (minimum..=maximum).contains(&sum)
+    });
+    Ok(Value::Boolean(fits))
+}
+
+/// The counted-`FOR` intrinsics read their operands where they are, with no
+/// argument vector (bucket 0.6.10 F.4); `None` for any other callee.
+pub(crate) fn borrowed_intrinsic(
+    name: &str,
+    arguments: &[ValueId],
+    values: &ValueSlots,
+    span: Span,
+) -> Option<Result<Value, Diagnostic>> {
+    let operand = |index: usize| value(values, arguments[index], span);
+    match name {
+        bn_ir::names::FOR_CONDITION => Some(
+            operand(0).and_then(|current| for_condition(current, operand(1)?, operand(2)?, span)),
+        ),
+        bn_ir::names::FOR_FITS => {
+            Some(operand(0).and_then(|current| for_fits(current, operand(1)?, span)))
+        }
+        _ => None,
+    }
+}
+
 /// Language globals (`ASC`, `CHAR`, `TOLOWER`, `TOUPPER`) and the
 /// `$for_condition` intrinsic. Library functions live behind the provider
 /// seam (the `bn` crate's `libraries`), never here.
 fn builtin(name: &str, arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
-    if name == "$for_condition" {
-        let current = integer(&arguments[0], span)?.0;
-        let end = integer(&arguments[1], span)?.0;
-        let step = integer(&arguments[2], span)?.0;
-        if step == 0 {
-            return Err(runtime_error(
-                bn_diag::DiagId::INVALID_FOR_STEP,
-                bn_diag::trap_texts::FOR_STEP_ZERO,
-                span,
-            ));
-        }
-        return Ok(Value::Boolean(if step > 0 {
-            current <= end
-        } else {
-            current >= end
-        }));
+    if name == bn_ir::names::FOR_CONDITION {
+        return for_condition(&arguments[0], &arguments[1], &arguments[2], span);
     }
-    if name == "$for_fits" {
-        let (current, kind) = integer(&arguments[0], span)?;
-        let (step, _) = integer(&arguments[1], span)?;
-        let fits = current.checked_add(step).is_some_and(|sum| {
-            let (minimum, maximum) = integer_range(kind);
-            (minimum..=maximum).contains(&sum)
-        });
-        return Ok(Value::Boolean(fits));
+    if name == bn_ir::names::FOR_FITS {
+        return for_fits(&arguments[0], &arguments[1], span);
     }
     if name == "ASC" {
         let Value::String(text) = &arguments[0] else {

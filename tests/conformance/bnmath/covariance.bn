@@ -1,0 +1,47 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// BNMath.Covariance and BNMath.Correlation (math.md, "Descriptive
+// statistics"; BDFL decisions G-5 and the overflow rules, 2026-10-27).
+// Expected output: covariance.expected:
+//   - the data are exact, so bc gives the exact results: the covariances
+//     3.8333333333333335 (11.5 / 3) and 10.0 are correctly rounded (as in
+//     R 4.5.1); the correlations 11.5 / sqrt(5 * 26.75) and 1 / (2 sqrt 2)
+//     print 0.9943767126843689 (the correctly rounded value; R prints
+//     ...369) and 0.35355339059327373 (one unit below; the mean 2.8 is not
+//     a binary64 value; R prints ...38); perfect lines give 1.0 and -1.0;
+//     1e9 + {4, 7, 13, 16} with (1, 2, 3, 4): 7.0;
+//   - an INTEGER vector with a FLOAT vector is allowed;
+//   - n < 2, a NAN or infinite value, or a constant vector (correlation)
+//     give NAN;
+//   - overflow: (MAX, -MAX) with itself has the true covariance 2 * MAX^2,
+//     so INF, and with (-MAX, MAX) -INF (the sign kept); their correlations
+//     are exactly 1.0 and -1.0, computed on the scaled values.
+
+IMPORT BNMath AS Math
+
+FUNCTION Start() AS VOID
+    LET x AS FLOAT[4] = [1.0, 2.0, 3.0, 4.0]
+    LET y AS FLOAT[4] = [2.0, 4.0, 6.0, 9.0]
+    LET minusY AS FLOAT[4] = [-2.0, -4.0, -6.0, -9.0]
+    LET tens AS INTEGER[5] = [10, 20, 30, 40, 50]
+    LET digits AS FLOAT[5] = [3.0, 1.0, 4.0, 1.0, 5.0]
+    LET line AS FLOAT[3] = [1.0, 2.0, 3.0]
+    LET up AS FLOAT[3] = [2.0, 4.0, 6.0]
+    LET down AS FLOAT[3] = [6.0, 4.0, 2.0]
+    LET shifted AS FLOAT[4] = [1000000004.0, 1000000007.0, 1000000013.0, 1000000016.0]
+    LET one AS FLOAT[1] = [1.0]
+    LET withNan AS FLOAT[3] = [1.0, NAN, 3.0]
+    LET withInf AS FLOAT[3] = [1.0, INF, 3.0]
+    LET flat AS FLOAT[3] = [5.0, 5.0, 5.0]
+    LET big AS FLOAT = Math.MAX_FLOAT
+    LET wide AS FLOAT[2] = [big, -big]
+    LET flipped AS FLOAT[2] = [-big, big]
+    PRINT "r", Math.Covariance(x, y), Math.Correlation(x, y), Math.Covariance(x, minusY), Math.Correlation(x, minusY)
+    PRINT "mixed", Math.Covariance(tens, digits), Math.Correlation(tens, digits)
+    PRINT "lines", Math.Correlation(line, up), Math.Correlation(line, down), Math.Covariance(shifted, x)
+    PRINT "nan", Math.Covariance(one, one), Math.Correlation(withNan, line), Math.Covariance(withInf, line), Math.Correlation(flat, line)
+    PRINT "overflow", Math.Covariance(wide, wide), Math.Covariance(wide, flipped), Math.Correlation(wide, wide), Math.Correlation(wide, flipped)
+END FUNCTION

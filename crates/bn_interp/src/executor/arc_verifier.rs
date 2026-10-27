@@ -70,7 +70,7 @@ fn count_references(value: &Value, held: &mut HashMap<u64, u64>) {
             *held.entry(id_of(*handle).bits()).or_insert(0) += 1;
         }
         Value::Vector(values) => {
-            for value in values {
+            for value in values.iter() {
                 count_references(value, held);
             }
         }

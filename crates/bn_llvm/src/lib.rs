@@ -858,7 +858,9 @@ use bndata_ops::{
 };
 #[path = "llvm/bndata_convert.rs"]
 mod bndata_convert;
-use bndata_convert::{lower_bndata_convert, lower_bndata_slice};
+use bndata_convert::{
+    lower_bndata_convert, lower_bndata_count_na, lower_bndata_fill_na, lower_bndata_slice,
+};
 #[path = "llvm/log_emission.rs"]
 mod log_emission;
 use log_emission::{
@@ -1002,10 +1004,10 @@ mod platform_stdio;
 use arc::{REGION_HEADER_BYTES, held_object, is_class_type, is_region_type, object_class};
 use helpers::{
     bncrypto_method, carries_bncrypto_bytes, class_init_flag, coerce_return_operand,
-    coerce_to_type, emit_input_runtime, extend_to_i64, float_constant, instruction_name,
-    integer_constant, integer_kind, is_bncrypto_bytes_type, is_unsigned, parse_float_constant,
-    parse_integer, sanitize_symbol, static_global_name, unsupported_call_detail,
-    unsupported_instruction, unsupported_instruction_detail,
+    coerce_to_type, emit_input_runtime, extend_to_i64, float_additive_identity, float_constant,
+    instruction_name, integer_constant, integer_kind, is_bncrypto_bytes_type, is_unsigned,
+    parse_float_constant, parse_integer, sanitize_symbol, static_global_name,
+    unsupported_call_detail, unsupported_instruction, unsupported_instruction_detail,
 };
 #[cfg(feature = "json")]
 use helpers::{bnjson_member, carries_bnjson};

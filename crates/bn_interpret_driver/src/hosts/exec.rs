@@ -81,7 +81,7 @@ fn exec_run(
     // Policy and argument rules live in `bn_host_exec::run`, shared with
     // the native runtime.
     let mut values = Vec::with_capacity(args.len());
-    for arg in args {
+    for arg in args.iter() {
         let Value::String(value) = arg else {
             return Err(type_mismatch(
                 "STRING",

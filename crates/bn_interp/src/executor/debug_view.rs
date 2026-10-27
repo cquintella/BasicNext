@@ -16,17 +16,14 @@ impl Executor<'_, '_> {
     /// The frame's bindings and values, and the core's live objects.
     pub(crate) fn debug_view(
         &self,
-        symbols: &HashMap<SymbolId, Value>,
-        values: &HashMap<ValueId, Value>,
+        symbols: &IdMap<SymbolId, Value>,
+        values: &ValueSlots,
     ) -> DebugView {
-        let weak = self
-            .ownership_frames
-            .last()
-            .map(|frame| &frame.weak_symbols);
+        let frame = self.ownership_frames.last();
         let mut variables = symbols
             .iter()
             .map(|(symbol, value)| {
-                let is_weak = weak.is_some_and(|weak| weak.contains(symbol));
+                let is_weak = frame.is_some_and(|frame| frame.is_weak(*symbol));
                 self.debug_variable(format!("symbol#{}", symbol.value()), value, is_weak)
             })
             .collect::<Vec<_>>();

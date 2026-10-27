@@ -5,10 +5,81 @@
 
 //! Statistical and vector reductions for `BNMath` (R5).
 
+use crate::shape::{self, Estimator};
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Reduction {
     Float(f64),
     Na,
+}
+
+/// A descriptive statistic of `BNMath` (math.md, "Descriptive statistics"),
+/// named by its `BNMath` member. The native ABI passes it as a code from
+/// `bn_types::numeric_abi`, which the runtime turns back into a name.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Statistic {
+    Mean,
+    Median,
+    Quartile1,
+    Quartile3,
+    Range,
+    Stdev,
+    Variance,
+    Mode,
+    PopulationVariance,
+    PopulationStdev,
+    Skewness,
+    Kurtosis,
+    PopulationSkewness,
+    PopulationKurtosis,
+}
+
+impl Statistic {
+    const ALL: [Self; 14] = [
+        Self::Mean,
+        Self::Median,
+        Self::Quartile1,
+        Self::Quartile3,
+        Self::Range,
+        Self::Stdev,
+        Self::Variance,
+        Self::Mode,
+        Self::PopulationVariance,
+        Self::PopulationStdev,
+        Self::Skewness,
+        Self::Kurtosis,
+        Self::PopulationSkewness,
+        Self::PopulationKurtosis,
+    ];
+
+    /// The `BNMath` member name.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Mean => "MEAN",
+            Self::Median => "MEDIAN",
+            Self::Quartile1 => "QUARTILE1",
+            Self::Quartile3 => "QUARTILE3",
+            Self::Range => "RANGE",
+            Self::Stdev => "STDEV",
+            Self::Variance => "VARIANCE",
+            Self::Mode => "MODE",
+            Self::PopulationVariance => "PVariance",
+            Self::PopulationStdev => "PStdev",
+            Self::Skewness => "Skewness",
+            Self::Kurtosis => "Kurtosis",
+            Self::PopulationSkewness => "PSkewness",
+            Self::PopulationKurtosis => "PKurtosis",
+        }
+    }
+
+    /// The statistic a `BNMath` member name denotes.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|statistic| statistic.name() == name)
+    }
 }
 
 #[must_use]
@@ -43,126 +114,301 @@ pub fn vmax_f64(values: &[f64]) -> Option<f64> {
     })
 }
 
+/// The additive identity of IEEE 754: `-0.0 + x` is `x` for every `x`,
+/// including `-0.0`, which a `+0.0` start would turn into `+0.0`.
+const ADDITIVE_IDENTITY: f64 = -0.0;
+
 #[must_use]
-#[allow(clippy::cast_precision_loss)]
-pub fn reduce(name: &str, values: &[i32]) -> Reduction {
-    let numbers = values
-        .iter()
-        .map(|value| f64::from(*value))
-        .collect::<Vec<_>>();
-    reduce_f64(name, &numbers)
+pub fn reduce(statistic: Statistic, values: &[i32]) -> Reduction {
+    reduce_numbers(statistic, values)
 }
 
 #[must_use]
-#[allow(clippy::cast_precision_loss, clippy::float_cmp)]
-pub fn reduce_f64(name: &str, values: &[f64]) -> Reduction {
-    let mut numbers = values.to_vec();
-    if numbers.iter().any(|value| value.is_nan()) {
+pub fn reduce_f64(statistic: Statistic, values: &[f64]) -> Reduction {
+    if values.iter().any(|value| value.is_nan()) {
         return Reduction::Float(f64::NAN);
     }
-    if name == "MODE" && numbers.is_empty() {
-        return Reduction::Na;
+    reduce_numbers(statistic, values)
+}
+
+/// One statistic of `values`, which hold no `NAN`. `MEAN`, `VARIANCE`,
+/// `STDEV` and `RANGE` read the values in index order without a copy; the
+/// order statistics sort a copy (math.md, "Order, summation and overflow").
+fn reduce_numbers<T: Copy + Into<f64>>(statistic: Statistic, values: &[T]) -> Reduction {
+    match statistic {
+        Statistic::Mean => Reduction::Float(mean(values)),
+        Statistic::Variance => Reduction::Float(variance(values, SAMPLE_CORRECTION)),
+        Statistic::Stdev => Reduction::Float(variance(values, SAMPLE_CORRECTION).sqrt()),
+        Statistic::PopulationVariance => Reduction::Float(variance(values, POPULATION_CORRECTION)),
+        Statistic::PopulationStdev => {
+            Reduction::Float(variance(values, POPULATION_CORRECTION).sqrt())
+        }
+        Statistic::Skewness => Reduction::Float(shape::skewness(values, Estimator::Sample)),
+        Statistic::Kurtosis => Reduction::Float(shape::kurtosis(values, Estimator::Sample)),
+        Statistic::PopulationSkewness => {
+            Reduction::Float(shape::skewness(values, Estimator::Population))
+        }
+        Statistic::PopulationKurtosis => {
+            Reduction::Float(shape::kurtosis(values, Estimator::Population))
+        }
+        Statistic::Range => Reduction::Float(range(values)),
+        Statistic::Median => Reduction::Float(median(&sorted_copy(values))),
+        Statistic::Quartile1 => Reduction::Float(lower_hinge(&sorted_copy(values))),
+        Statistic::Quartile3 => Reduction::Float(upper_hinge(&sorted_copy(values))),
+        Statistic::Mode => mode_of_sorted(&sorted_copy(values)),
     }
-    if numbers.is_empty() || (matches!(name, "STDEV" | "VARIANCE") && numbers.len() < 2) {
-        return Reduction::Float(f64::NAN);
+}
+
+/// Neumaier's compensated sum of finite values. Once the sum overflows it
+/// keeps the infinity it reached: the compensation term would be
+/// `INF - INF`, which turns the total into `NAN`.
+pub(crate) struct CompensatedSum {
+    sum: f64,
+    compensation: f64,
+    overflow: Option<f64>,
+}
+
+impl CompensatedSum {
+    pub(crate) const fn new() -> Self {
+        Self {
+            sum: ADDITIVE_IDENTITY,
+            compensation: ADDITIVE_IDENTITY,
+            overflow: None,
+        }
     }
-    if matches!(name, "QUARTILE1" | "QUARTILE3") && numbers.len() < 2 {
-        return Reduction::Float(f64::NAN);
-    }
-    numbers.sort_by(f64::total_cmp);
-    let median = |xs: &[f64]| {
-        if xs.len() % 2 == 1 {
-            xs[xs.len() / 2]
+
+    pub(crate) fn add(&mut self, value: f64) {
+        if self.overflow.is_some() {
+            return;
+        }
+        let next = self.sum + value;
+        if !next.is_finite() {
+            self.overflow = Some(next);
+            return;
+        }
+        self.compensation += if self.sum.abs() >= value.abs() {
+            (self.sum - next) + value
         } else {
-            xs[xs.len() / 2 - 1].midpoint(xs[xs.len() / 2])
-        }
-    };
-    match name {
-        "MEAN" => Reduction::Float(numbers.iter().sum::<f64>() / numbers.len() as f64),
-        "MEDIAN" => Reduction::Float(median(&numbers)),
-        "QUARTILE1" => Reduction::Float(median(&numbers[..numbers.len() / 2])),
-        "QUARTILE3" => Reduction::Float(median(&numbers[numbers.len().div_ceil(2)..])),
-        "RANGE" => Reduction::Float(numbers[numbers.len() - 1] - numbers[0]),
-        "VARIANCE" | "STDEV" => {
-            let mean = numbers.iter().sum::<f64>() / numbers.len() as f64;
-            let variance = numbers
-                .iter()
-                .map(|value| (value - mean).powi(2))
-                .sum::<f64>()
-                / (numbers.len() - 1) as f64;
-            Reduction::Float(if name == "STDEV" {
-                variance.sqrt()
-            } else {
-                variance
-            })
-        }
-        "MODE" => {
-            let mut best = None;
-            let mut count = 0;
-            let mut tie = false;
-            for &value in &numbers {
-                let seen = numbers
-                    .iter()
-                    .filter(|candidate| **candidate == value)
-                    .count();
-                if seen > count {
-                    best = Some(value);
-                    count = seen;
-                    tie = false;
-                } else if seen == count && best != Some(value) {
-                    tie = true;
-                }
-            }
-            if tie {
-                Reduction::Na
-            } else {
-                Reduction::Float(best.unwrap_or(f64::NAN))
-            }
-        }
-        _ => Reduction::Float(f64::NAN),
+            (value - next) + self.sum
+        };
+        self.sum = next;
+    }
+
+    /// A zero compensation leaves the sum, and its sign of zero, unchanged.
+    #[allow(clippy::float_cmp)]
+    pub(crate) fn total(&self) -> f64 {
+        self.overflow.unwrap_or(if self.compensation == 0.0 {
+            self.sum
+        } else {
+            self.sum + self.compensation
+        })
     }
 }
 
-#[cfg(test)]
-#[allow(clippy::float_cmp)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn float_reductions_match_the_bnmath_contract() {
-        let values = [1.0, 2.0, 2.0, 5.0];
-        assert!(matches!(reduce_f64("MEAN", &values), Reduction::Float(value) if value == 2.5));
-        assert!(matches!(reduce_f64("MEDIAN", &values), Reduction::Float(value) if value == 2.0));
-        assert!(
-            matches!(reduce_f64("QUARTILE1", &values), Reduction::Float(value) if value == 1.5)
-        );
-        assert!(
-            matches!(reduce_f64("QUARTILE3", &values), Reduction::Float(value) if value == 3.5)
-        );
-        assert!(matches!(reduce_f64("MODE", &values), Reduction::Float(value) if value == 2.0));
+/// G-1, in one pass: infinities decide first (`INF` with `-INF` is `NAN`);
+/// otherwise the compensated sum of the finite values over `n`.
+#[allow(clippy::cast_precision_loss)] // n beyond 2^53 values is not addressable
+#[allow(clippy::float_cmp)] // an infinity is one exact value
+fn mean<T: Copy + Into<f64>>(values: &[T]) -> f64 {
+    if values.is_empty() {
+        return f64::NAN;
     }
-
-    #[test]
-    fn float_reductions_preserve_nan_and_mode_na_rules() {
-        assert!(
-            matches!(reduce_f64("MEAN", &[f64::NAN, 1.0]), Reduction::Float(value) if value.is_nan())
-        );
-        assert!(matches!(reduce_f64("MODE", &[1.0, 2.0]), Reduction::Na));
-        assert!(matches!(reduce_f64("MODE", &[]), Reduction::Na));
+    let mut sum = CompensatedSum::new();
+    let (mut positive_infinity, mut negative_infinity) = (false, false);
+    for value in values {
+        let value: f64 = (*value).into();
+        if value == f64::INFINITY {
+            positive_infinity = true;
+        } else if value == f64::NEG_INFINITY {
+            negative_infinity = true;
+        } else {
+            sum.add(value);
+        }
     }
+    match (positive_infinity, negative_infinity) {
+        (true, true) => f64::NAN,
+        (true, false) => f64::INFINITY,
+        (false, true) => f64::NEG_INFINITY,
+        (false, false) => sum.total() / values.len() as f64,
+    }
+}
 
-    #[test]
-    fn min_max_reductions() {
-        let ints = [5, -2, 10, 0];
-        assert_eq!(vmin_i32(&ints), Some(-2));
-        assert_eq!(vmax_i32(&ints), Some(10));
-        assert_eq!(vmin_i32(&[]), None);
-        assert_eq!(vmax_i32(&[]), None);
+/// Bessel's correction of the sample variance and standard deviation: the
+/// divisor is `n - 1`.
+const SAMPLE_CORRECTION: usize = 1;
 
-        let floats = [5.0, -2.5, 10.0, 0.0];
-        assert_eq!(vmin_f64(&floats), Some(-2.5));
-        assert_eq!(vmax_f64(&floats), Some(10.0));
-        assert_eq!(vmin_f64(&[]), None);
-        assert_eq!(vmax_f64(&[]), None);
+/// The population variance and standard deviation divide by `n`.
+const POPULATION_CORRECTION: usize = 0;
+
+/// The variance with divisor `n - correction`: `NAN` unless `n` exceeds
+/// `correction`, or with an infinite value; otherwise the corrected
+/// two-pass algorithm, and `INF` when any of its sums overflows, as `MEAN`
+/// (math.md, G-1 and G-11).
+fn variance<T: Copy + Into<f64>>(values: &[T], correction: usize) -> f64 {
+    if values.len() <= correction || values.iter().any(|value| (*value).into().is_infinite()) {
+        return f64::NAN;
+    }
+    corrected_two_pass(values, correction).unwrap_or(f64::INFINITY)
+}
+
+/// The corrected two-pass variance: with `d = x - mean`,
+/// `(Σd² - (Σd)² / n) / (n - correction)`, every sum compensated. The
+/// `(Σd)²` term removes the error of the mean. `None` when an intermediate
+/// value overflows.
+#[allow(clippy::cast_precision_loss)] // n beyond 2^53 values is not addressable
+fn corrected_two_pass<T: Copy + Into<f64>>(values: &[T], correction: usize) -> Option<f64> {
+    // Chan, Golub and LeVeque, "Algorithms for computing the sample
+    // variance", The American Statistician 37 (1983).
+    let count = values.len() as f64;
+    let mut sum = CompensatedSum::new();
+    for value in values {
+        sum.add((*value).into());
+    }
+    let mean = sum.total() / count;
+    if !mean.is_finite() {
+        return None;
+    }
+    let mut squares = CompensatedSum::new();
+    let mut deviations = CompensatedSum::new();
+    for value in values {
+        let deviation = (*value).into() - mean;
+        squares.add(deviation * deviation);
+        deviations.add(deviation);
+    }
+    let (squares, deviations) = (squares.total(), deviations.total());
+    let deviation_correction = deviations * deviations / count;
+    let divisor = (values.len() - correction) as f64;
+    (squares.is_finite() && deviation_correction.is_finite())
+        .then(|| (squares - deviation_correction) / divisor)
+}
+
+/// `MAX - MIN` in one pass, ordered as the sort is (`-0.0` below `0.0`);
+/// `NAN` when empty.
+fn range<T: Copy + Into<f64>>(values: &[T]) -> f64 {
+    let mut numbers = values.iter().map(|value| (*value).into());
+    let Some(first) = numbers.next() else {
+        return f64::NAN;
+    };
+    let (minimum, maximum) = numbers.fold((first, first), |(minimum, maximum), value: f64| {
+        (
+            if value.total_cmp(&minimum).is_lt() {
+                value
+            } else {
+                minimum
+            },
+            if value.total_cmp(&maximum).is_gt() {
+                value
+            } else {
+                maximum
+            },
+        )
+    });
+    maximum - minimum
+}
+
+fn sorted_copy<T: Copy + Into<f64>>(values: &[T]) -> Vec<f64> {
+    let mut sorted = values
+        .iter()
+        .map(|value| (*value).into())
+        .collect::<Vec<f64>>();
+    sorted.sort_by(f64::total_cmp);
+    sorted
+}
+
+/// The middle element, or the midpoint of the two middle ones; `NAN` when
+/// empty.
+fn median(sorted: &[f64]) -> f64 {
+    let middle = sorted.len() / 2;
+    match sorted.len() {
+        0 => f64::NAN,
+        length if length % 2 == 1 => sorted[middle],
+        _ => sorted[middle - 1].midpoint(sorted[middle]),
+    }
+}
+
+/// `QUARTILE1`, Tukey's lower hinge: the median of the lower half, which
+/// leaves out the overall median when `n` is odd; `NAN` below two values.
+fn lower_hinge(sorted: &[f64]) -> f64 {
+    if sorted.len() < 2 {
+        return f64::NAN;
+    }
+    median(&sorted[..sorted.len() / 2])
+}
+
+/// `QUARTILE3`, Tukey's upper hinge; `NAN` below two values.
+fn upper_hinge(sorted: &[f64]) -> f64 {
+    if sorted.len() < 2 {
+        return f64::NAN;
+    }
+    median(&sorted[sorted.len().div_ceil(2)..])
+}
+
+/// The unique most frequent value of `sorted` (ascending, no `NAN`), or
+/// `NA` on a tie, in one pass over its runs of equal values. Equality is
+/// FLOAT `==`, so `-0.0` and `0.0` are one run (math.md: "counts exact FLOAT
+/// equality"); a run is represented by its first value.
+#[allow(clippy::float_cmp)] // exact FLOAT equality is the MODE contract
+fn mode_of_sorted(sorted: &[f64]) -> Reduction {
+    let mut best: Option<(f64, usize)> = None;
+    let mut tie = false;
+    let mut index = 0;
+    while index < sorted.len() {
+        let value = sorted[index];
+        let run = sorted[index..]
+            .iter()
+            .take_while(|candidate| **candidate == value)
+            .count();
+        match best {
+            Some((_, count)) if run == count => tie = true,
+            Some((_, count)) if run < count => {}
+            _ => {
+                best = Some((value, run));
+                tie = false;
+            }
+        }
+        index += run;
+    }
+    match best {
+        Some((value, _)) if !tie => Reduction::Float(value),
+        _ => Reduction::Na,
+    }
+}
+
+/// `BNMath.Quantile` of `INTEGER` values (math.md, R type 7).
+#[must_use]
+pub fn quantile(values: &[i32], p: f64) -> f64 {
+    quantile_of(values, p)
+}
+
+/// `BNMath.Quantile` of `FLOAT` values: `NAN` when a value is `NAN`.
+#[must_use]
+pub fn quantile_f64(values: &[f64], p: f64) -> f64 {
+    if values.iter().any(|value| value.is_nan()) {
+        return f64::NAN;
+    }
+    quantile_of(values, p)
+}
+
+/// R's type 7 (`quantile.default`, R 4.5.1, whose fuzz is 0 for type 7):
+/// `index = 1 + (n - 1) p`, `lo = floor(index)`, `hi = ceil(index)`, and
+/// `(1 - h) x[lo] + h x[hi]` when the two differ; `NAN` for an empty vector
+/// or a `p` outside `[0, 1]`.
+#[allow(clippy::cast_precision_loss)] // n beyond 2^53 values is not addressable
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // whole numbers in 1..=n
+#[allow(clippy::float_cmp)] // R compares the two order statistics exactly
+fn quantile_of<T: Copy + Into<f64>>(values: &[T], p: f64) -> f64 {
+    if values.is_empty() || !(0.0..=1.0).contains(&p) {
+        return f64::NAN;
+    }
+    let sorted = sorted_copy(values);
+    let index = 1.0 + (sorted.len() - 1) as f64 * p;
+    let lower = index.floor() as usize;
+    let upper = index.ceil() as usize;
+    let (low, high) = (sorted[lower - 1], sorted[upper - 1]);
+    if index > lower as f64 && high != low {
+        let weight = index - lower as f64;
+        (1.0 - weight) * low + weight * high
+    } else {
+        low
     }
 }

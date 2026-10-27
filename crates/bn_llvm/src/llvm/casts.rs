@@ -434,7 +434,9 @@ fn emit_same_type_copy(
     let inst = match llvm_ty {
         T::I1 => I::binary(BinaryOp::Or, T::I1, O::bool(false), v(value)),
         T::Ptr => I::gep(T::I8, v(value), vec![(T::I64, O::int(0))]),
-        T::Float | T::Double => I::binary(BinaryOp::FAdd, llvm_ty, O::float(0.0), v(value)),
+        T::Float | T::Double => {
+            I::binary(BinaryOp::FAdd, llvm_ty, float_additive_identity(), v(value))
+        }
         other => I::binary(BinaryOp::Add, other, O::int(0), v(value)),
     };
     text.assign(format!("v{}", destination.0), inst);

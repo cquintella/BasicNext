@@ -157,29 +157,14 @@ impl Analyzer {
                 }
                 Statement::Assignment {
                     target,
-                    operator,
                     value,
                     span,
+                    ..
                 } => {
+                    // A compound assignment arrives as `target = target op value`
+                    // (`ast::Statement::assignment`): one rule for both forms.
                     let target_type = self.assignment_target(target, locals)?;
-                    let value_type = self.expression_as(value, &target_type, locals)?;
-                    let result_type = if operator == "Assign" {
-                        value_type
-                    } else {
-                        binary_type(
-                            compound_operator(operator).ok_or_else(|| {
-                                type_mismatch(
-                                    "known assignment operator",
-                                    "unknown operator",
-                                    "assignment",
-                                    *span,
-                                )
-                            })?,
-                            &target_type,
-                            &value_type,
-                            value,
-                        )?
-                    };
+                    let result_type = self.expression_as(value, &target_type, locals)?;
                     if !self.compatible(&target_type, &result_type) {
                         return Err(
                             if pointer_literal_length_mismatch(&target_type, &result_type) {
@@ -202,13 +187,20 @@ impl Analyzer {
                             },
                         );
                     }
-                    Self::replace_narrowing_fact(target, &result_type, locals);
+                    Self::end_narrowing_of_target(target, locals);
                 }
                 Statement::If {
                     branches,
                     otherwise,
                     ..
                 } => {
+                    let mut written = otherwise
+                        .as_ref()
+                        .map(|block| written_bindings(&block.statements))
+                        .unwrap_or_default();
+                    for branch in branches {
+                        written.extend(written_bindings(&branch.body.statements));
+                    }
                     let mut remaining_locals = locals.clone();
                     let mut taken_exits = true;
                     for branch in branches {
@@ -227,6 +219,9 @@ impl Analyzer {
                         remaining_locals =
                             self.narrowed_locals(&branch.condition, &remaining_locals, false)?;
                     }
+                    // Every branch left and there is no ELSE: only the path
+                    // that took no branch continues, and it wrote nothing.
+                    let only_untaken_path_continues = otherwise.is_none() && taken_exits;
                     if let Some(Block { statements, .. }) = otherwise {
                         self.block(
                             statements,
@@ -236,15 +231,22 @@ impl Analyzer {
                             declaration_name,
                             return_type,
                         )?;
-                    } else if taken_exits {
+                    }
+                    if only_untaken_path_continues {
                         *locals = remaining_locals;
+                    } else {
+                        Self::end_narrowings(&written, locals);
                     }
                 }
                 Statement::While {
                     condition, body, ..
                 } => {
-                    self.require_boolean(condition, locals)?;
-                    let mut body_locals = self.narrowed_locals(condition, locals, true)?;
+                    let written = written_bindings(&body.statements);
+                    let mut entry_locals = locals.clone();
+                    Self::end_narrowings(&written, &mut entry_locals);
+                    self.require_boolean(condition, &entry_locals)?;
+                    let mut body_locals = self.narrowed_locals(condition, &entry_locals, true)?;
+                    Self::end_narrowings(&written, locals);
                     loops.push("WHILE");
                     self.block(
                         &body.statements,
@@ -259,39 +261,44 @@ impl Analyzer {
                 Statement::Repeat {
                     condition, body, ..
                 } => {
+                    // A later iteration starts after the body's writes.
+                    let written = written_bindings(&body.statements);
+                    Self::end_narrowings(&written, locals);
+                    let mut body_locals = locals.clone();
                     loops.push("REPEAT");
                     self.block(
                         &body.statements,
-                        locals,
+                        &mut body_locals,
                         loops,
                         declaration_kind,
                         declaration_name,
                         return_type,
                     )?;
                     loops.pop();
-                    self.require_boolean(condition, locals)?;
+                    // `UNTIL` belongs to the block and sees the body's
+                    // bindings, which end with the statement (0.6.md,
+                    // "Scopes and bindings").
+                    self.require_boolean(condition, &body_locals)?;
                 }
                 Statement::For { header, body, .. } => {
-                    let variable = match header {
-                        ForHeader::Counted { variable, .. } | ForHeader::Each { variable, .. } => {
-                            variable.clone()
-                        }
-                    };
-                    self.for_header(header, locals)?;
+                    // The loop variable and the body are one block: both end
+                    // at END FOR (0.6.md, "Scopes and bindings"). The header
+                    // runs once, before any write of the body.
+                    let written = written_bindings(&body.statements);
+                    let mut loop_locals = locals.clone();
+                    self.for_header(header, &mut loop_locals)?;
+                    Self::end_narrowings(&written, &mut loop_locals);
+                    Self::end_narrowings(&written, locals);
                     loops.push("FOR");
                     self.block(
                         &body.statements,
-                        locals,
+                        &mut loop_locals,
                         loops,
                         declaration_kind,
                         declaration_name,
                         return_type,
                     )?;
                     loops.pop();
-                    // The name stays reserved for the function (no shadowing)
-                    // and is not visible after END FOR (B2).
-                    locals.remove(&variable);
-                    self.ended_loop_names.insert(variable);
                 }
                 Statement::Control { kind, target, span } => {
                     if !matches!(kind.as_str(), "EXIT" | "CONTINUE")
@@ -362,6 +369,7 @@ impl Analyzer {
                             *span,
                         ));
                     }
+                    Self::end_narrowing_of_target(target, locals);
                 }
                 Statement::ClearScreen { span, .. } | Statement::Beep { span, .. } => {
                     return Err(name_not_found(
@@ -428,7 +436,6 @@ impl Analyzer {
                     } else {
                         DeclarationKind::Function
                     };
-                    let saved_names = std::mem::take(&mut self.ended_loop_names);
                     let mut member_locals = HashMap::new();
                     if !*is_static {
                         self.declare_local(
@@ -472,7 +479,6 @@ impl Analyzer {
                         declaration_name,
                         return_type.as_ref(),
                     )?;
-                    self.ended_loop_names = saved_names;
                     if let Some(signature) = signature
                         && (!self.is_standard_module || !body.statements.is_empty())
                     {

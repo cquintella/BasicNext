@@ -122,6 +122,9 @@ pub(crate) fn is_bndata_dataframe_call(_module: &Module, name: &str) -> bool {
                 | "FullJoin"
                 | "ConvertToInteger"
                 | "ConvertToFloat"
+                | "CountNA"
+                | "DropNA"
+                | "FillNA"
         )
     )
 }
@@ -192,6 +195,9 @@ pub(crate) fn bndata_dataframe_method(name: &str) -> Option<&'static str> {
         "FullJoin" => Some("full_join"),
         "ConvertToInteger" => Some("convert_integer"),
         "ConvertToFloat" => Some("convert_float"),
+        "CountNA" => Some("count_na"),
+        "DropNA" => Some("drop_na"),
+        "FillNA" => Some("fill_na"),
         _ => None,
     }
 }

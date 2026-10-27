@@ -16,6 +16,7 @@
 )]
 
 mod dataframe;
+mod missing;
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -528,6 +529,12 @@ impl DataProvider {
                     Err(failure) => Ok(failed(name, &failure)),
                 }
             }
+            "CountNA" => missing::count(name, frame, arguments, span),
+            "FillNA" => missing::fill(name, frame, arguments, span),
+            "DropNA" => {
+                let kept = missing::drop(name, frame, arguments, span)?;
+                Ok(Value::DataFrame(self.insert_frame(kept)))
+            }
             "ZScore" => {
                 require_arity(name, arguments, 2, span)?;
                 let Value::String(column_name) = &arguments[1] else {
@@ -823,7 +830,7 @@ impl DataProvider {
             ));
         };
         let values = match &arguments[2] {
-            Value::Vector(values) => values.clone(),
+            Value::Vector(values) => (**values).clone(),
             Value::Pointer { handle, .. } => (0..core.memory().len(*handle, span)?)
                 .map(|index| core.memory().get(*handle, index, span).cloned())
                 .collect::<Result<Vec<_>, _>>()?,

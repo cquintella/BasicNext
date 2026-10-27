@@ -62,11 +62,11 @@ pub(crate) const MODULE_PREFIX: char = '#';
 pub const INTRINSICS: &[&str] = &[FOR_CONDITION, FOR_FITS, STOPPING, STOP_CODE];
 
 /// `FOR` loop test: `$for_condition(current, end, step)`.
-pub(crate) const FOR_CONDITION: &str = "$for_condition";
+pub const FOR_CONDITION: &str = "$for_condition";
 
 /// `$for_fits(current, step)`: `current + step` stays inside `current`'s type.
 /// A counted `FOR` ends instead of overflowing (0.6.md, control flow, C3).
-pub(crate) const FOR_FITS: &str = "$for_fits";
+pub const FOR_FITS: &str = "$for_fits";
 
 /// `$stopping()` (`BOOLEAN`): a `STOP` ran in the call just made, so this
 /// function releases its locals and stops too (0.6.md, "`STOP`").

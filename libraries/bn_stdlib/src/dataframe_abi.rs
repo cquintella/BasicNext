@@ -38,7 +38,7 @@ pub const BN_DATAFRAME_DUPLICATE_COLUMN: BNDataFrameStatus = BN_DATAFRAME_INVALI
 pub const BN_DATAFRAME_COLUMN_LENGTH_MISMATCH: BNDataFrameStatus = BN_DATAFRAME_INVALID_ARGUMENT;
 pub const BN_DATAFRAME_POLICY_DENIED: BNDataFrameStatus = BN_DATAFRAME_IO_FAILED;
 
-fn failed(operation: &str, failure: &DataFailure) -> BNDataFrameStatus {
+pub(crate) fn failed(operation: &str, failure: &DataFailure) -> BNDataFrameStatus {
     crate::set_error_report(
         failure.code(),
         operation,
@@ -126,7 +126,7 @@ fn registry() -> std::sync::Arc<Registry> {
     bn_core_copy::table::<Registry>()
 }
 
-fn next_handle() -> BNDataFrameHandle {
+pub(crate) fn next_handle() -> BNDataFrameHandle {
     let handle = registry().next.fetch_add(1, Ordering::Relaxed);
     registry()
         .holders
@@ -136,7 +136,7 @@ fn next_handle() -> BNDataFrameHandle {
     handle
 }
 
-fn input_string(pointer: *const c_char) -> Option<String> {
+pub(crate) fn input_string(pointer: *const c_char) -> Option<String> {
     if pointer.is_null() {
         return None;
     }
@@ -448,7 +448,9 @@ pub extern "C" fn bn_rt_dataframe_reduce(
     }
 }
 
-fn with_frames<T>(operation: impl FnOnce(&mut HashMap<BNDataFrameHandle, Frame>) -> T) -> T {
+pub(crate) fn with_frames<T>(
+    operation: impl FnOnce(&mut HashMap<BNDataFrameHandle, Frame>) -> T,
+) -> T {
     operation(
         &mut registry()
             .frames

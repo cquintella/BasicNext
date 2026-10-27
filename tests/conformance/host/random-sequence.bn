@@ -1,0 +1,24 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Conformance: HOST.Random after Seed(n) is the xorshift64* sequence of
+// host.md, "Random (0.2)", on both backends.
+// Expected output: random-sequence.expected, from an independent program that
+// follows host.md step by step (scratchpad rnd/main.rs, bucket 0.6.10 E.0):
+// state = n as INT64 reinterpreted unsigned, 0 -> 1; each Random(): x ^= x >>
+// 12; x ^= x << 25; x ^= x >> 27; x *= 0x2545F4914F6CDD1D (wrapping); the
+// result is the top 53 bits / 2^53. Seed(0) is the state 1; Seed(-1) is the
+// all-ones state.
+
+IMPORT HOST.Random AS R
+
+FUNCTION Start() AS VOID
+    R.Seed(42)
+    PRINT R.Random(), R.Random(), R.Random()
+    R.Seed(0)
+    PRINT R.Random(), R.Random(), R.Random()
+    R.Seed(-1)
+    PRINT R.Random(), R.Random(), R.Random()
+END FUNCTION

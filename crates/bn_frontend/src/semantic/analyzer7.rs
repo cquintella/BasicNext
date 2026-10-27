@@ -12,7 +12,8 @@ impl Analyzer {
         span: Span,
     ) -> Result<Type, Diagnostic> {
         let expected_count = match name {
-            "MIN" | "MAX" | "ROUND" | "POW" | "ATAN2" | "HYPOT" | "TOTIMESTAMP" => 2,
+            "MIN" | "MAX" | "ROUND" | "POW" | "ATAN2" | "HYPOT" | "TOTIMESTAMP" | "Gcd" | "Lcm"
+            | "Quantile" | "Covariance" | "Correlation" => 2,
             "FMA" => 3,
             _ => 1,
         };
@@ -60,10 +61,22 @@ impl Analyzer {
         }
         if matches!(
             name,
-            "MEAN" | "MEDIAN" | "QUARTILE1" | "QUARTILE3" | "MODE" | "STDEV" | "VARIANCE" | "RANGE"
+            "MEAN"
+                | "MEDIAN"
+                | "QUARTILE1"
+                | "QUARTILE3"
+                | "MODE"
+                | "STDEV"
+                | "VARIANCE"
+                | "RANGE"
+                | "PVariance"
+                | "PStdev"
+                | "Skewness"
+                | "Kurtosis"
+                | "PSkewness"
+                | "PKurtosis"
         ) {
-            let valid = matches!(types[0], Type::Vector { ref element, .. } if is_numeric(element))
-                || matches!(types[0], Type::Pointer { ref element, .. } if is_numeric(element));
+            let valid = is_numeric_vector_or_region(&types[0]);
             if !valid {
                 return Err(type_mismatch(
                     "numeric vector",
@@ -124,6 +137,39 @@ impl Analyzer {
             }
             return Ok(default_literal_type(types[0].clone()));
         }
+        if matches!(name, "Covariance" | "Correlation") {
+            if !types.iter().all(is_numeric_vector_or_region) {
+                return Err(type_mismatch(
+                    bn_catalog::text("frontend", "msg.two_numeric_vectors"),
+                    types.iter().map(display).collect::<Vec<_>>().join(", "),
+                    format!("BNMath.{name}"),
+                    span,
+                ));
+            }
+            return Ok(Type::Float(FloatType::Float64));
+        }
+        if name == "Quantile" {
+            if !is_numeric_vector_or_region(&types[0]) || !is_numeric(&types[1]) {
+                return Err(type_mismatch(
+                    bn_catalog::text("frontend", "msg.numeric_vector_and_numeric_probability"),
+                    types.iter().map(display).collect::<Vec<_>>().join(", "),
+                    format!("BNMath.{name}"),
+                    span,
+                ));
+            }
+            return Ok(Type::Float(FloatType::Float64));
+        }
+        if matches!(name, "Gcd" | "Lcm") {
+            if !types.iter().all(holds_in_int64) {
+                return Err(type_mismatch(
+                    bn_catalog::text("frontend", "msg.integer_arguments_that_fit_int64"),
+                    types.iter().map(display).collect::<Vec<_>>().join(", "),
+                    format!("BNMath.{name}"),
+                    span,
+                ));
+            }
+            return Ok(Type::Integer(IntegerType::Int64));
+        }
         if matches!(name, "ABS" | "MIN" | "MAX" | "SIGN") {
             let mut result = types[0].clone();
             for ty in &types[1..] {
@@ -183,7 +229,7 @@ impl Analyzer {
         constant: bool,
         span: Span,
     ) -> Result<(), Diagnostic> {
-        if locals.contains_key(name) || self.ended_loop_names.contains(name) {
+        if locals.contains_key(name) {
             return Err(duplicate_name(name, span));
         }
         let symbol = self.symbol(ty, constant);
@@ -542,4 +588,20 @@ fn split_top<'a>(tokens: &'a [String], separator: &str) -> Vec<&'a [String]> {
     }
     parts.push(&tokens[start..]);
     parts
+}
+
+/// Whether every value of `ty` is an `INT64` value: the argument rule of
+/// `BNMath.Gcd` and `BNMath.Lcm` (math.md, "Integer divisors").
+fn holds_in_int64(ty: &Type) -> bool {
+    match ty {
+        Type::Integer(kind) => *kind != IntegerType::UInt64,
+        Type::IntegerLiteral(text) => integer_literal_fits(text, IntegerType::Int64),
+        _ => false,
+    }
+}
+
+/// A one-argument descriptive statistic's operand: a numeric vector or a
+/// numeric region (math.md, "Descriptive statistics").
+fn is_numeric_vector_or_region(ty: &Type) -> bool {
+    matches!(ty, Type::Vector { element, .. } | Type::Pointer { element, .. } if is_numeric(element))
 }

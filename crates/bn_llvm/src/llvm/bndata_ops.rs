@@ -1,7 +1,7 @@
 #![allow(clippy::wildcard_imports)]
 use super::bndata_columns::emit_handle_operand;
 use super::*;
-use crate::ir::{CastOp, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
+use crate::ir::{CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
 use crate::layout::vector_ty;
 
 fn v(id: ValueId) -> O {
@@ -73,6 +73,7 @@ pub(crate) fn lower_bndata_reduce(
     emit_handle_operand(text, analysis, format!("dfredhandle{dest}"), arguments[0]);
     text.assign(format!("dfredout{dest}"), I::alloca(T::Double));
     text.assign(format!("dfredna{dest}"), I::alloca(T::I8));
+    text.emit(I::store(T::I8, O::int(0), r("na")));
     let args = vec![
         (T::I64, r("handle")),
         (T::Ptr, v(arguments[1])),
@@ -87,12 +88,29 @@ pub(crate) fn lower_bndata_reduce(
     text.assign(format!("dfredval{dest}"), I::load(T::Double, r("out")));
     let bits = I::cast(CastOp::BitCast, T::Double, r("val"), T::I64);
     text.assign(format!("dfredbits{dest}"), bits);
+    // `Mode` answers NA through `out_na` (bndata.md): the result then holds
+    // the NA sentinel, as every `… OR NA` value does, and never the unset
+    // `out` slot. The flag starts at 0, so no other reduction reads garbage.
+    text.assign(format!("dfrednaflag{dest}"), I::load(T::I8, r("na")));
+    text.assign(
+        format!("dfredisna{dest}"),
+        I::icmp(ICmpCond::Ne, T::I8, r("naflag"), O::int(0)),
+    );
+    text.assign(
+        format!("dfredvalueptr{dest}"),
+        I::select(
+            r("isna"),
+            T::Ptr,
+            crate::layout::string_payload(".bn_na"),
+            O::null(),
+        ),
+    );
     emit_status_result(
         text,
         destination,
         &O::reg(format!("dfredrc{dest}")),
         None,
-        &O::null(),
+        &r("valueptr"),
         &O::reg(format!("dfredbits{dest}")),
     );
 }

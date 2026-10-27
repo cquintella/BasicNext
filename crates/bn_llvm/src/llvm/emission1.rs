@@ -632,7 +632,7 @@ pub(crate) fn lower_scalar_instruction(
                         let copy = I::binary(
                             BinaryOp::FAdd,
                             layout,
-                            O::float(0.0),
+                            float_additive_identity(),
                             O::reg(format!("v{}", source.0)),
                         );
                         text.assign(format!("v{}", destination.0), copy);
@@ -731,8 +731,12 @@ pub(crate) fn lower_scalar_instruction(
                     } else {
                         BinaryOp::FSub
                     };
-                    let value =
-                        I::binary(op, layout, O::float(0.0), O::reg(format!("v{}", operand.0)));
+                    let value = I::binary(
+                        op,
+                        layout,
+                        float_additive_identity(),
+                        O::reg(format!("v{}", operand.0)),
+                    );
                     text.assign(format!("v{}", destination.0), value);
                 }
                 ("NOT", T::I1) => {

@@ -1,0 +1,17 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Parameters count as declared at the top of the body, so a FOR EACH
+// variable with a parameter's name is DUPLICATE_NAME (0.6.md, "Scopes and
+// bindings").
+FUNCTION Spell(c AS STRING) AS VOID
+    FOR EACH c AS STRING IN "ab"
+        PRINT c
+    END FOR
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    Spell("x")
+END FUNCTION

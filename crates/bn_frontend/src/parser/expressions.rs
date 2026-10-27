@@ -1,6 +1,11 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 
+/// The binding level of `**`. A unary `-` or `NOT` parses its operand from
+/// this level, so the operand takes in a power: `-2 ** 2` is `-(2 ** 2)`
+/// (`0.6.ebnf` `unary-expression`; 0.6.md "Operators").
+const POWER_PRECEDENCE: u8 = 10;
+
 pub(crate) struct ExpressionParser<'a> {
     pub(crate) tokens: &'a [Token],
     pub(crate) index: usize,
@@ -264,7 +269,7 @@ impl<'a> ExpressionParser<'a> {
         }
         if self.keyword("NOT") || self.symbol(Symbol::Minus) {
             let token = self.take();
-            let operand = self.expression(11)?;
+            let operand = self.expression(POWER_PRECEDENCE)?;
             let end = operand.span.end;
             return Ok(Expression {
                 kind: ExpressionKind::Unary {
@@ -572,7 +577,7 @@ impl<'a> ExpressionParser<'a> {
             ) => (5, false),
             TokenKind::Symbol(Symbol::Plus | Symbol::Minus) => (7, false),
             TokenKind::Symbol(Symbol::Star | Symbol::Slash | Symbol::Percent) => (8, false),
-            TokenKind::Symbol(Symbol::Power) => (10, true),
+            TokenKind::Symbol(Symbol::Power) => (POWER_PRECEDENCE, true),
             _ => return None,
         };
         Some(value)

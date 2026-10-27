@@ -20,7 +20,7 @@ use bn_interp::{
 use bn_types::{FloatType, IntegerType};
 
 mod reduce;
-use reduce::reduce_vector;
+use reduce::{association, quantile, reduce_vector};
 
 pub const NAME: &str = "BNMath";
 
@@ -119,10 +119,45 @@ fn math(
     }
     if matches!(
         math_name,
-        "MEAN" | "MEDIAN" | "QUARTILE1" | "QUARTILE3" | "MODE" | "STDEV" | "VARIANCE" | "RANGE"
+        "MEAN"
+            | "MEDIAN"
+            | "QUARTILE1"
+            | "QUARTILE3"
+            | "MODE"
+            | "STDEV"
+            | "VARIANCE"
+            | "RANGE"
+            | "PVariance"
+            | "PStdev"
+            | "Skewness"
+            | "Kurtosis"
+            | "PSkewness"
+            | "PKurtosis"
     ) || (matches!(math_name, "MIN" | "MAX") && arguments.len() == 1)
     {
         return reduce_vector(math_name, &arguments[0], span, memory);
+    }
+    if matches!(math_name, "Covariance" | "Correlation") {
+        return association(math_name, &arguments[0], &arguments[1], span, memory);
+    }
+    if math_name == "Quantile" {
+        return quantile(&arguments[0], &arguments[1], span, memory);
+    }
+    if matches!(math_name, "Gcd" | "Lcm") {
+        // Semantic analysis admits only integer types that fit INT64. The
+        // exact result is returned; its conversion to the INT64 result type
+        // reports a value that does not fit (math.md, "Integer divisors").
+        let operand = |index: usize| {
+            integer(&arguments[index], span)
+                .map(|(value, _)| i64::try_from(value).expect("a Gcd/Lcm argument fits INT64"))
+        };
+        let (a, b) = (operand(0)?, operand(1)?);
+        let exact = if math_name == "Gcd" {
+            i128::from(bn_core_math::gcd_magnitude(a, b))
+        } else {
+            bn_core_math::lcm_exact(a, b)
+        };
+        return Ok(Value::Integer(exact, IntegerType::Int64));
     }
     if matches!(math_name, "ABS" | "MIN" | "MAX" | "SIGN")
         && arguments
@@ -170,6 +205,8 @@ fn math(
         "ACOS" => numbers[0].acos(),
         "ATAN" => numbers[0].atan(),
         "ATAN2" => numbers[0].atan2(numbers[1]),
+        "DegreeToRad" => bn_core_math::degrees_to_radians(numbers[0]),
+        "RadToDegree" => bn_core_math::radians_to_degrees(numbers[0]),
         "SQRT" => numbers[0].sqrt(),
         "HYPOT" => numbers[0].hypot(numbers[1]),
         "FMA" => numbers[0].mul_add(numbers[1], numbers[2]),

@@ -1,0 +1,13 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// A UINT64 value may not fit INT64, so BNMath.Gcd does not take it
+// (math.md, "Integer divisors"): TYPE_MISMATCH; write AS INT64.
+IMPORT BNMath AS Math
+
+FUNCTION Start() AS VOID
+    LET count AS UINT64 = 12
+    PRINT Math.Gcd(count, 18)
+END FUNCTION

@@ -51,15 +51,15 @@ impl<'a> Parser<'a> {
             } else {
                 "MinusAssign"
             };
-            return Ok(Statement::Assignment {
+            return Ok(Statement::assignment(
                 target,
-                operator: operator.into(),
-                value: Expression {
+                operator.into(),
+                Expression {
                     kind: ExpressionKind::Literal(crate::ast::Literal::Integer("1".into())),
                     span: operator_token.span,
                 },
                 span,
-            });
+            ));
         }
         let mut field_start = 0;
         while matches!(line.get(field_start).map(|token| &token.kind), Some(TokenKind::Keyword(word)) if matches!(word.as_str(), "PUBLIC" | "PRIVATE" | "PROTECTED" | "STATIC"))
@@ -309,12 +309,12 @@ impl<'a> Parser<'a> {
                     self.error("an assignment target must be an identifier, member, or index")
                 );
             }
-            Ok(Statement::Assignment {
+            Ok(Statement::assignment(
                 target,
-                operator: text(&line[operator]),
-                value: self.expression_in(&line[operator + 1..])?,
+                text(&line[operator]),
+                self.expression_in(&line[operator + 1..])?,
                 span,
-            })
+            ))
         } else {
             let expression = self.expression_in(line)?;
             if !matches!(expression.kind, ExpressionKind::Call { .. }) {

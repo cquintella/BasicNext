@@ -15,10 +15,13 @@ pub fn shared_string(value: impl Into<SharedString>) -> SharedString {
 ///
 /// Field spellings and IR identities deliberately do not enter this crate: the
 /// frontend resolves them to checked slots before execution.
+/// A `STRUCT` value. Its fields are shared copy-on-write: copying a record is
+/// cheap, and a write through `get_mut` or `replace` copies the fields only
+/// while another copy still shares them (0.6.md, "Values and copies").
 #[derive(Clone, Debug)]
 pub struct RecordValue {
     type_name: SharedString,
-    fields: Box<[Value]>,
+    fields: Arc<Vec<Value>>,
 }
 
 impl RecordValue {
@@ -26,7 +29,7 @@ impl RecordValue {
     pub fn new(type_name: impl Into<SharedString>, fields: Vec<Value>) -> Self {
         Self {
             type_name: type_name.into(),
-            fields: fields.into_boxed_slice(),
+            fields: Arc::new(fields),
         }
     }
 
@@ -51,11 +54,11 @@ impl RecordValue {
     }
 
     pub fn get_mut(&mut self, slot: usize) -> Option<&mut Value> {
-        self.fields.get_mut(slot)
+        Arc::make_mut(&mut self.fields).get_mut(slot)
     }
 
     pub fn replace(&mut self, slot: usize, value: Value) -> Option<Value> {
-        self.fields
+        Arc::make_mut(&mut self.fields)
             .get_mut(slot)
             .map(|field| std::mem::replace(field, value))
     }
@@ -66,12 +69,14 @@ impl RecordValue {
     }
 
     pub fn iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut Value> {
-        self.fields.iter_mut()
+        Arc::make_mut(&mut self.fields).iter_mut()
     }
 
     #[must_use]
     pub fn into_fields(self) -> Box<[Value]> {
-        self.fields
+        Arc::try_unwrap(self.fields)
+            .unwrap_or_else(|shared| (*shared).clone())
+            .into_boxed_slice()
     }
 }
 
@@ -104,7 +109,10 @@ pub enum Value {
     Float(f64, FloatType),
     Boolean(bool),
     String(SharedString),
-    Vector(Vec<Value>),
+    /// A vector value, shared copy-on-write: a copy shares the elements, and
+    /// `Arc::make_mut` copies them before a write while another copy shares them
+    /// (0.6.md, "Values and copies").
+    Vector(Arc<Vec<Value>>),
     Function(SharedString),
     Type(SharedString),
     Null,
@@ -163,6 +171,12 @@ pub struct ErrorDetail {
 }
 
 impl Value {
+    /// A vector value holding `elements`.
+    #[must_use]
+    pub fn vector(elements: Vec<Value>) -> Self {
+        Self::Vector(Arc::new(elements))
+    }
+
     /// An `Error` with `code` and `message`. `Operation` and `Cause` stay
     /// empty until the producer's domain supplies them (bucket 0.6.2b R4-R8).
     #[must_use]

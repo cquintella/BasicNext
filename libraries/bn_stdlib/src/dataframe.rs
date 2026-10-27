@@ -5,7 +5,9 @@
 //! Runtime-owned CSV parsing used by the `BNData` provider.
 
 mod checked;
+mod na;
 pub use checked::{frame_from_csv_rows, slice_dataframe};
+pub use na::{CellKind, FillCells, count_not_available, drop_not_available, fill_not_available};
 
 use crate::data_error::DataFailure;
 
@@ -523,12 +525,12 @@ pub fn zscore_column<T: Clone>(
     let (mean, stdev) = if numeric.is_empty() {
         (f64::NAN, f64::NAN)
     } else {
-        use super::stats::{Reduction, reduce_f64};
-        let m = match reduce_f64("MEAN", &numeric) {
+        use super::stats::{Reduction, Statistic, reduce_f64};
+        let m = match reduce_f64(Statistic::Mean, &numeric) {
             Reduction::Float(val) => val,
             Reduction::Na => f64::NAN,
         };
-        let s = match reduce_f64("STDEV", &numeric) {
+        let s = match reduce_f64(Statistic::Stdev, &numeric) {
             Reduction::Float(val) => val,
             Reduction::Na => f64::NAN,
         };
@@ -571,7 +573,7 @@ pub fn dataframe_reduce_column<T>(
     method: &str,
     to_f64: impl Fn(&T) -> Result<Option<f64>, DataFailure>,
 ) -> Result<super::stats::Reduction, DataFailure> {
-    use super::stats::{Reduction, reduce_f64};
+    use super::stats::{Reduction, Statistic, reduce_f64};
     let Some(column) = frame
         .columns
         .iter()
@@ -588,32 +590,34 @@ pub fn dataframe_reduce_column<T>(
     if matches!(method, "Min" | "Max") && numeric.is_empty() {
         return Err(DataFailure::EmptyNumericColumn);
     }
-    let math_name = match method {
-        "Quartile1" => "QUARTILE1",
-        "Quartile3" => "QUARTILE3",
-        "Stdev" => "STDEV",
-        "Variance" => "VARIANCE",
-        "Mean" => "MEAN",
-        "Median" => "MEDIAN",
-        "Mode" => "MODE",
-        "Range" => "RANGE",
-        "Min" => "MIN",
-        "Max" => "MAX",
+    // The same algorithms and NAN rules as BNMath (bndata.md, "Statistics
+    // on a column"): Min and Max propagate NAN as BNMath.MIN / MAX do.
+    let statistic = match method {
+        "Min" | "Max" => {
+            let extreme = if method == "Min" {
+                bn_core_math::vmin_f64(&numeric)
+            } else {
+                bn_core_math::vmax_f64(&numeric)
+            };
+            return Ok(Reduction::Float(
+                extreme.expect("an empty column was rejected above"),
+            ));
+        }
+        "Quartile1" => Statistic::Quartile1,
+        "Quartile3" => Statistic::Quartile3,
+        "Stdev" => Statistic::Stdev,
+        "Variance" => Statistic::Variance,
+        "Mean" => Statistic::Mean,
+        "Median" => Statistic::Median,
+        "Mode" => Statistic::Mode,
+        "Range" => Statistic::Range,
         _ => {
             return Err(DataFailure::InvalidArgument(format!(
                 "unknown reduction method {method}"
             )));
         }
     };
-    if math_name == "MIN" {
-        let min_val = numeric.iter().copied().fold(f64::INFINITY, f64::min);
-        Ok(Reduction::Float(min_val))
-    } else if math_name == "MAX" {
-        let max_val = numeric.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-        Ok(Reduction::Float(max_val))
-    } else {
-        Ok(reduce_f64(math_name, &numeric))
-    }
+    Ok(reduce_f64(statistic, &numeric))
 }
 
 /// Copies typed values from a named column into an output slice using an adapter closure.

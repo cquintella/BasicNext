@@ -100,7 +100,6 @@ pub(crate) fn analyze_with_modules_mode(
         type_alias_uses: std::cell::RefCell::default(),
         host_aliases: HashMap::new(),
         struct_fields: HashMap::new(),
-        ended_loop_names: HashSet::new(),
         layout_active: Vec::new(),
         recursive_struct: None,
     };

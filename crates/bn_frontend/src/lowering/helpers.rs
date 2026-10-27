@@ -42,6 +42,18 @@ pub(crate) fn constant(literal: &Literal) -> Constant {
     }
 }
 
+/// The IR constant of `literal` as analysis typed it: an integer literal that
+/// took a floating-point operand's type (0.6.md, "Numeric operands") is that
+/// floating-point value.
+pub(crate) fn typed_literal_constant(literal: &Literal, ty: &Type) -> Constant {
+    if let (Literal::Integer(text), Type::Float(kind)) = (literal, ty)
+        && let Some(float_text) = crate::types::literals::integer_literal_as_float(text, *kind)
+    {
+        return Constant::Float(float_text);
+    }
+    constant(literal)
+}
+
 pub(crate) fn module_constant(value: &crate::semantic::ConstantValue) -> Constant {
     match value {
         crate::semantic::ConstantValue::Integer(value) => Constant::Integer(value.clone()),
@@ -51,18 +63,6 @@ pub(crate) fn module_constant(value: &crate::semantic::ConstantValue) -> Constan
         crate::semantic::ConstantValue::Null => Constant::Null,
         crate::semantic::ConstantValue::NotAvailable => Constant::NotAvailable,
         crate::semantic::ConstantValue::EndOfFile => Constant::EndOfFile,
-    }
-}
-
-pub(crate) fn assignment_operator(operator: &str) -> Result<&'static str, Diagnostic> {
-    match operator {
-        "PlusAssign" => Ok("Plus"),
-        "MinusAssign" => Ok("Minus"),
-        "StarAssign" => Ok("Star"),
-        "SlashAssign" => Ok("Slash"),
-        "PercentAssign" => Ok("Percent"),
-        "PowerAssign" => Ok("Power"),
-        _ => Err(ir_error("unknown assignment operator", default_span())),
     }
 }
 

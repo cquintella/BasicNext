@@ -23,6 +23,28 @@ pub fn parse_integer(text: &str) -> Option<i128> {
     }
 }
 
+/// Integer literal `text` (optionally negative) as the text of a
+/// floating-point literal of `kind`, when its value is exactly representable
+/// in `kind`. A literal takes the floating-point type it meets only when it
+/// fits (0.6.md, "Numeric operands"; for bindings, "Integer literals for
+/// floating-point bindings (C2)"). `None` when it does not fit or is
+/// malformed.
+#[must_use]
+pub fn integer_literal_as_float(text: &str, kind: FloatType) -> Option<String> {
+    let (negative, digits) = text
+        .strip_prefix('-')
+        .map_or((false, text), |digits| (true, digits));
+    let magnitude = parse_integer(digits)?;
+    let value = if negative { -magnitude } else { magnitude };
+    // Round-trip through the target width: equal only when no bits were lost.
+    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+    let exact = match kind {
+        FloatType::Float32 => (value as f32) as i128 == value,
+        FloatType::Float64 => (value as f64) as i128 == value,
+    };
+    exact.then(|| format!("{value}.0"))
+}
+
 /// Integer or floating point: the class a numeric literal belongs to.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NumericClass {

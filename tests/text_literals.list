@@ -618,7 +618,6 @@ crates/bn_frontend/src/lowering/helpers.rs	identifier	MIN_UINT32
 crates/bn_frontend/src/lowering/helpers.rs	identifier	MIN_UINT64
 crates/bn_frontend/src/lowering/helpers.rs	prose	HOST.{name} cannot be lowered
 crates/bn_frontend/src/lowering/helpers.rs	prose	type information is missing for IR lowering
-crates/bn_frontend/src/lowering/helpers.rs	prose	unknown assignment operator
 crates/bn_frontend/src/lowering/lowering_callable.rs	prose	destructor has no receiver
 crates/bn_frontend/src/lowering/lowering_callable.rs	prose	implicit SUPER call has no receiver
 crates/bn_frontend/src/module_graph.rs	identifier	BNCrypto.bn
@@ -788,14 +787,12 @@ crates/bn_frontend/src/semantic/analyzer3.rs	prose	binding initializer
 crates/bn_frontend/src/semantic/analyzer3.rs	prose	cannot assign {} to {}
 crates/bn_frontend/src/semantic/analyzer3.rs	prose	cannot assign {} to {}
 crates/bn_frontend/src/semantic/analyzer3.rs	prose	constructor/destructor return
-crates/bn_frontend/src/semantic/analyzer3.rs	prose	known assignment operator
 crates/bn_frontend/src/semantic/analyzer3.rs	prose	missing initializer
 crates/bn_frontend/src/semantic/analyzer3.rs	prose	missing initializer
 crates/bn_frontend/src/semantic/analyzer3.rs	prose	no SELF access
 crates/bn_frontend/src/semantic/analyzer3.rs	prose	non-INTEGER value
 crates/bn_frontend/src/semantic/analyzer3.rs	prose	statement is unreachable after control flow leaves this path
 crates/bn_frontend/src/semantic/analyzer3.rs	prose	the CLS or BEEP statement
-crates/bn_frontend/src/semantic/analyzer3.rs	prose	unknown operator
 crates/bn_frontend/src/semantic/analyzer3.rs	prose	vector dimension does not fit INTEGER
 crates/bn_frontend/src/semantic/analyzer3.rs	prose	vector dimension must be a non-negative integer
 crates/bn_frontend/src/semantic/analyzer3.rs	prose	vector dimension must be a non-negative integer

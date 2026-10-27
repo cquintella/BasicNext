@@ -76,6 +76,9 @@ signatures! {
     DATAFRAME_COLUMN_COUNT = "bn_rt_dataframe_column_count"(I64, Ptr) -> I32;
     DATAFRAME_COLUMN_NAME_OWNED = "bn_rt_dataframe_column_name_owned"(I64, I32) -> Ptr;
     DATAFRAME_CONVERT_FLOAT = "bn_rt_dataframe_convert_float"(I64, Ptr) -> I32;
+    DATAFRAME_COUNT_NA = "bn_rt_dataframe_count_na"(I64, Ptr, Ptr) -> I32;
+    DATAFRAME_DROP_NA = "bn_rt_dataframe_drop_na"(I64, Ptr) -> I32;
+    DATAFRAME_FILL_NA = "bn_rt_dataframe_fill_na"(I64, Ptr, Double) -> I32;
     DATAFRAME_CONVERT_INTEGER = "bn_rt_dataframe_convert_integer"(I64, Ptr) -> I32;
     DATAFRAME_COPY_FLOAT = "bn_rt_dataframe_copy_float"(I64, Ptr, Ptr, I32) -> I32;
     DATAFRAME_COPY_INTEGER = "bn_rt_dataframe_copy_integer"(I64, Ptr, Ptr, I32) -> I32;
@@ -214,6 +217,7 @@ signatures! {
     MATH_ATAN2 = "bn_rt_math_atan2"(Double, Double) -> Double;
     MATH_CEIL = "bn_rt_math_ceil"(Double) -> Double;
     MATH_COS = "bn_rt_math_cos"(Double) -> Double;
+    MATH_DEGREE_TO_RAD = "bn_rt_math_degree_to_rad"(Double) -> Double;
     MATH_EXP = "bn_rt_math_exp"(Double) -> Double;
     MATH_FABS = "bn_rt_math_fabs"(Double) -> Double;
     MATH_FLOOR = "bn_rt_math_floor"(Double) -> Double;
@@ -222,6 +226,7 @@ signatures! {
     MATH_FMIN = "bn_rt_math_fmin"(Double, Double) -> Double;
     MATH_FSIGN = "bn_rt_math_fsign"(Double) -> Double;
     MATH_HYPOT = "bn_rt_math_hypot"(Double, Double) -> Double;
+    MATH_GCD = "bn_rt_math_gcd"(I64, I64) -> I64;
     MATH_IABS = "bn_rt_math_iabs"(I64) -> I64;
     MATH_IMAX = "bn_rt_math_imax"(I64, I64) -> I64;
     MATH_IMIN = "bn_rt_math_imin"(I64, I64) -> I64;
@@ -236,6 +241,7 @@ signatures! {
     MATH_MODE_F64 = "bn_rt_math_mode_f64"(Ptr, I32, Ptr) -> I32;
     MATH_MODE_I32 = "bn_rt_math_mode_i32"(Ptr, I32, Ptr) -> I32;
     MATH_POW = "bn_rt_math_pow"(Double, Double) -> Double;
+    MATH_RAD_TO_DEGREE = "bn_rt_math_rad_to_degree"(Double) -> Double;
     MATH_QUARTILE1_F64 = "bn_rt_math_quartile1_f64"(Ptr, I32) -> Double;
     MATH_QUARTILE1_I32 = "bn_rt_math_quartile1_i32"(Ptr, I32) -> Double;
     MATH_QUARTILE3_F64 = "bn_rt_math_quartile3_f64"(Ptr, I32) -> Double;
@@ -269,6 +275,15 @@ signatures! {
     MATH_VMAX_I32 = "bn_rt_math_vmax_i32"(Ptr, I32, Ptr) -> I32;
     MATH_VMIN_F64 = "bn_rt_math_vmin_f64"(Ptr, I32, Ptr) -> Double;
     MATH_VMIN_I32 = "bn_rt_math_vmin_i32"(Ptr, I32, Ptr) -> I32;
+    MATH_VECTOR_MAX_FLOAT = "bn_rt_math_vector_max_float"(Ptr, I32, I32, Ptr) -> Double;
+    MATH_VECTOR_MAX_INTEGER = "bn_rt_math_vector_max_integer"(Ptr, I32, I32, Ptr) -> I64;
+    MATH_VECTOR_MIN_FLOAT = "bn_rt_math_vector_min_float"(Ptr, I32, I32, Ptr) -> Double;
+    MATH_VECTOR_MIN_INTEGER = "bn_rt_math_vector_min_integer"(Ptr, I32, I32, Ptr) -> I64;
+    MATH_VECTOR_MODE = "bn_rt_math_vector_mode"(Ptr, I32, I32, Ptr) -> I32;
+    MATH_VECTOR_STATISTIC = "bn_rt_math_vector_statistic"(Ptr, I32, I32, I32) -> Double;
+    MATH_VECTOR_QUANTILE = "bn_rt_math_vector_quantile"(Ptr, I32, I32, Double) -> Double;
+    MATH_VECTOR_COVARIANCE = "bn_rt_math_vector_covariance"(Ptr, I32, I32, Ptr, I32, I32, Ptr) -> Double;
+    MATH_VECTOR_CORRELATION = "bn_rt_math_vector_correlation"(Ptr, I32, I32, Ptr, I32, I32, Ptr) -> Double;
     NET_ADDRESS_IS_IPV4 = "bn_rt_net_address_is_ipv4"(Ptr) -> I32;
     NET_ADDRESS_IS_IPV6 = "bn_rt_net_address_is_ipv6"(Ptr) -> I32;
     NET_ADDRESS_IS_LINK_LOCAL = "bn_rt_net_address_is_link_local"(Ptr) -> I32;
@@ -407,7 +422,8 @@ declarations! {
     DATAFRAME_SET_LABEL DATAFRAME_REDUCE DATAFRAME_ZSCORE DATAFRAME_COPY_INTEGER
     DATAFRAME_COPY_FLOAT DATAFRAME_SELECT DATAFRAME_SLICE DATAFRAME_TRANSPOSE
     DATAFRAME_APPEND_ROWS DATAFRAME_APPEND_COLUMNS DATAFRAME_JOIN DATAFRAME_CONVERT_INTEGER
-    DATAFRAME_CONVERT_FLOAT DATAFRAME_COLUMN_NAME_OWNED DATAFRAME_CLOSE DATAFRAME_RETAIN FILE_OPEN FILE_NEW
+    DATAFRAME_CONVERT_FLOAT DATAFRAME_COUNT_NA DATAFRAME_DROP_NA DATAFRAME_FILL_NA
+    DATAFRAME_COLUMN_NAME_OWNED DATAFRAME_CLOSE DATAFRAME_RETAIN FILE_OPEN FILE_NEW
     FILE_CLOSE FILE_RELEASE FILE_RETAIN FILE_READ_ALL FILE_READ_LINE FILE_WRITE FILE_WRITE_LINE
     FILE_READ_BYTES FILE_WRITE_BYTES FS_EXISTS FS_DELETE_FILE DATAFRAME_READ_CSV
     DATAFRAME_WRITE_CSV LOG_CLIENT_ACCESS LOG_LOGGER_NEW LOG_LOGGER_WRITE LOG_LOGGER_ACCESS LOG_LOGGER_SET_LEVEL
@@ -457,12 +473,15 @@ declarations! {
     BN_RT_MATH_DECLARATIONS =
     MATH_IABS MATH_ISIGN MATH_IMIN MATH_IMAX MATH_TOHOUR MATH_TOWEEKDAY MATH_VAL MATH_FABS
     MATH_FSIGN MATH_FLOOR MATH_CEIL MATH_TRUNC MATH_EXP MATH_LOG MATH_LOG10 MATH_LOG2 MATH_SIN
-    MATH_COS MATH_TAN MATH_ASIN MATH_ACOS MATH_ATAN MATH_SQRT MATH_POW MATH_ATAN2 MATH_HYPOT
+    MATH_COS MATH_TAN MATH_ASIN MATH_ACOS MATH_ATAN MATH_SQRT MATH_DEGREE_TO_RAD MATH_RAD_TO_DEGREE MATH_POW
+    MATH_ATAN2 MATH_HYPOT MATH_GCD
     MATH_FMIN MATH_FMAX MATH_ROUND MATH_FMA MATH_VMIN_I32 MATH_VMAX_I32 MATH_VMIN_F64
     MATH_VMAX_F64 MATH_MEAN_I32 MATH_MEDIAN_I32 MATH_QUARTILE1_I32 MATH_QUARTILE3_I32
     MATH_RANGE_I32 MATH_STDEV_I32 MATH_VARIANCE_I32 MATH_MODE_I32 MATH_MEAN_F64 MATH_MEDIAN_F64
     MATH_QUARTILE1_F64 MATH_QUARTILE3_F64 MATH_RANGE_F64 MATH_STDEV_F64 MATH_VARIANCE_F64
-    MATH_MODE_F64 MATH_TODATE MATH_TOTIME MATH_TOTIMESTAMP
+    MATH_MODE_F64 MATH_TODATE MATH_TOTIME MATH_TOTIMESTAMP MATH_VECTOR_STATISTIC MATH_VECTOR_QUANTILE MATH_VECTOR_COVARIANCE
+    MATH_VECTOR_CORRELATION MATH_VECTOR_MODE
+    MATH_VECTOR_MIN_INTEGER MATH_VECTOR_MAX_INTEGER MATH_VECTOR_MIN_FLOAT MATH_VECTOR_MAX_FLOAT
     TEMPORAL_DATE_PARSE TEMPORAL_TIME_PARSE TEMPORAL_TIMESTAMP_PARSE TEMPORAL_TIMESTAMP_FORMAT
     TEMPORAL_TIMEZONE_OFFSET TEMPORAL_TIMEZONE_IS_DST TEMPORAL_TIMESTAMP_AT_ZONE TEMPORAL_TIMESTAMP_FROM_LOCAL
     ;

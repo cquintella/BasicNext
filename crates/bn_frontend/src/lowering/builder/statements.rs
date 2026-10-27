@@ -80,22 +80,17 @@ impl Builder<'_> {
                 value,
                 span,
             } => {
-                let mut result = self.expression(value)?;
-                self.patch_await_type(result, type_at(self.model, target.span)?);
-                if operator != "Assign" {
-                    let left = self.expression(target)?;
-                    let destination = self.value();
-                    self.emit(Instruction::Binary {
-                        destination,
-                        operator: assignment_operator(operator)?.into(),
-                        left,
-                        right: result,
-                        ty: type_at(self.model, target.span)?,
-                        span: *span,
-                    });
-                    result = destination;
+                if compound_binary_operator(operator).is_some() {
+                    self.compound_assignment(target, value, *span)?;
+                } else {
+                    // The place first, then the value (0.6.md, "Evaluation
+                    // order"); the write uses that one place.
+                    let target_type = type_at(self.model, target.span)?;
+                    let place = self.resolve_place(target)?;
+                    let result = self.expression(value)?;
+                    self.patch_await_type(result, target_type.clone());
+                    self.assign_place(place, result, &target_type, *span)?;
                 }
-                self.store_to_target(target, result, *span)?;
             }
             Statement::Print { values, span } => {
                 let values = values
@@ -199,6 +194,40 @@ impl Builder<'_> {
     /// Stores `value` into the assignment target `target` (binding, element,
     /// member, field, static, or a place below a `STRUCT` value). Shared by
     /// assignment statements and increment-expressions (0.6.1 S1').
+    /// `target op= b`, which the parser wrote as `target = (target) op b`
+    /// (`ast::Statement::assignment`). The place is evaluated once and first,
+    /// then read, then `b` (0.6.md, "Evaluation order", "Compound
+    /// assignment"); the read and the write use that one place.
+    fn compound_assignment(
+        &mut self,
+        target: &Expression,
+        value: &Expression,
+        span: Span,
+    ) -> Result<(), Diagnostic> {
+        let ExpressionKind::Binary {
+            operator,
+            left: read,
+            right,
+        } = &value.kind
+        else {
+            panic!("the parser writes a compound assignment with a binary value");
+        };
+        let place = self.resolve_place(target)?;
+        let current = self.read_place_as(&place, read)?;
+        let operand = self.expression(right)?;
+        let result = self.value();
+        self.emit(Instruction::Binary {
+            destination: result,
+            operator: operator.clone(),
+            left: current,
+            right: operand,
+            ty: type_at(self.model, value.span)?,
+            span,
+        });
+        let target_type = type_at(self.model, target.span)?;
+        self.assign_place(place, result, &target_type, span)
+    }
+
     pub(crate) fn store_to_target(
         &mut self,
         target: &Expression,

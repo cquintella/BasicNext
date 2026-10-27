@@ -284,7 +284,7 @@ impl Builder<'_> {
                 self.current = condition_block;
                 let current = self.load(symbol, variable_type.clone(), span);
                 let condition = self.value();
-                let for_condition = self.function_constant("$for_condition", span);
+                let for_condition = self.function_constant(bn_ir::names::FOR_CONDITION, span);
                 self.emit(Instruction::Call {
                     destination: condition,
                     callee: for_condition,
@@ -310,7 +310,7 @@ impl Builder<'_> {
                 self.current = next_block;
                 let current = self.load(symbol, variable_type.clone(), span);
                 let fits = self.value();
-                let for_fits = self.function_constant("$for_fits", span);
+                let for_fits = self.function_constant(bn_ir::names::FOR_FITS, span);
                 self.emit(Instruction::Call {
                     destination: fits,
                     callee: for_fits,

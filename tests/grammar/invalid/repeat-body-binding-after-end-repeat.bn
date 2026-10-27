@@ -1,0 +1,16 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// The body of a REPEAT is a block: a binding declared inside is not
+// visible after END REPEAT (0.6.md, "Scopes and bindings"): NAME_NOT_FOUND.
+FUNCTION Start() AS VOID
+    LET count AS INTEGER = 0
+    REPEAT
+        LET y AS INTEGER = 5
+        count += 1
+    UNTIL count > 1
+    END REPEAT
+    PRINT y
+END FUNCTION

@@ -1,10 +1,10 @@
 #![allow(clippy::wildcard_imports, clippy::too_many_lines)]
 use super::*;
 
-impl Executor<'_, '_> {
+impl<'a> Executor<'a, '_> {
     pub fn function(
         &mut self,
-        function: &Function,
+        function: &'a Function,
         arguments: Vec<Value>,
     ) -> Result<Flow, Diagnostic> {
         if arguments.len() != function.parameters.len() {
@@ -25,22 +25,15 @@ impl Executor<'_, '_> {
         } else {
             Vec::new()
         };
-        let mut symbols = function
-            .parameters
-            .iter()
-            .copied()
-            .zip(arguments)
-            .collect::<HashMap<_, _>>();
+        let (mut symbols, mut values) = self.frame_pool.take();
+        symbols.extend(function.parameters.iter().copied().zip(arguments));
         if self.call_depth == 0 {
             symbols.extend(self.session_bindings.drain());
         }
         // Parameters are borrowed: the lowering emits every ownership
         // operation, so a call only tracks which bindings ended.
-        let mut values = HashMap::new();
-        self.ownership_frames.push(OwnershipFrame {
-            weak_symbols: function.weak_symbols.clone(),
-            ..OwnershipFrame::default()
-        });
+        self.ownership_frames
+            .push(OwnershipFrame::new(&function.weak_symbols));
         if let Some(emitter) = self.emitter.as_deref_mut() {
             emitter.emit(&Event::FunctionEntry {
                 function: function.name.clone(),
@@ -168,6 +161,8 @@ impl Executor<'_, '_> {
                         for (sym, val) in symbols {
                             captured.insert(sym, val);
                         }
+                    } else {
+                        self.frame_pool.give_back(symbols, values);
                     }
                     return Ok(Flow::Return(returned));
                 }
@@ -182,6 +177,7 @@ impl Executor<'_, '_> {
                             return_value: Some(format!("Stop({code})")),
                         });
                     }
+                    self.frame_pool.give_back(symbols, values);
                     return Ok(Flow::Stop(code));
                 }
             }
