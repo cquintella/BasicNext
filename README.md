@@ -7,9 +7,12 @@
 [![CI](https://github.com/cquintella/BasicNext/actions/workflows/ci.yml/badge.svg)](https://github.com/cquintella/BasicNext/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/cquintella/BasicNext)](https://github.com/cquintella/BasicNext/releases/latest)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](LICENSE.md)
+[![Website: basicnext.org](https://img.shields.io/badge/website-basicnext.org-blue)](http://basicnext.org)
 
 An object-oriented, general-purpose programming language designed to reduce
 cognitive load and turn ideas into clear, cross-platform software.
+
+Official website: [http://basicnext.org](http://basicnext.org)
 
 Basic Next combines BASIC-inspired readability, explicit types, and host
 capabilities without prescribing a framework or architecture. Clear,
@@ -162,6 +165,17 @@ From a checkout, `cargo run -p bni -- run <file>` uses this tree's toolchain.
 
 ## Release notes
 
+### 0.6.10
+
+- **Numerics & Descriptive Statistics (`BNMath`, `BNData`)**:
+  - Stable, non-allocating vector reductions: compensated (Neumaier) `MEAN` and corrected two-pass `VARIANCE` and `STDEV` passing NIST StRD benchmarks (NumAcc1–4).
+  - New statistical functions: R type 7 `BNMath.Quantile`, sample and population `Skewness` / `Kurtosis`, sample `Covariance` and Pearson `Correlation`, exact `Gcd` and `Lcm` on `INT64`.
+  - Missing value operations in `BNData`: `DataFrame.CountNA`, `DropNA`, and `FillNA`.
+- **Language & Type Semantics**:
+  - Block scope strictly enforced for loop bodies (`FOR`, `FOR EACH`, `REPEAT`), ending lifetime at loop termination.
+  - Swift-like alternative narrowing: variables narrow strictly via `IS`, with assignment properly resetting narrowed types.
+  - Verified operator precedence for power (`-2 ** 2` is `-4`), compound assignment places evaluated exactly once (`t = t op b`), and strict non-coercion of inexact integer literals to float.
+
 ### 0.6.9
 
 - **Interactive REPL (`bnr`) stabilization**: dedicated 64MB execution thread matching interpreter stack budget, resolving stack exhaustion on recursion; entry point encapsulation via `__session_entry` synthesis, eliminating recursion and symbol collision with user-defined `FUNCTION Start()`; variable persistence across REPL turns for ARC-managed types (`STRING`, `OBJECT`, `VECTOR`); clean transparent panic propagation on thread join (`resume_unwind`); line-by-line injection test suite passing all 16 canonical examples with full `bni` parity.
@@ -204,6 +218,7 @@ From a checkout, `cargo run -p bni -- run <file>` uses this tree's toolchain.
 
 ## Documentation
 
+- [Official Website](http://basicnext.org): releases, documentation, and news.
 - [Language specification 0.6](language/0.6/0.6.md), with its
   [grammar](language/0.6/0.6.ebnf) and [keywords](language/0.6/keywords.md):
   the normative contract.
