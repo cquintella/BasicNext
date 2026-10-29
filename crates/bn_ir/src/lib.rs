@@ -18,7 +18,7 @@ pub use model::{
     Function, FunctionKind, Instruction, Module, ModuleId, SymbolId, Terminator, ValueId,
 };
 pub(crate) use validate::instruction_uses;
-pub use validate::{instruction_result, validate};
+pub use validate::{instruction_result, validate, yields_new_string};
 
 pub use bn_types::{FloatType, IntegerType, PointerLength, Type, class_model::ClassModel};
 

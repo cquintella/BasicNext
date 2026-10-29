@@ -25,6 +25,7 @@ use index::index_result_matches;
 pub use operands::instruction_result;
 pub(crate) use operands::instruction_uses;
 use operands::{instruction_defines, instruction_type};
+pub use ownership::yields_new_string;
 #[cfg(test)]
 pub(crate) use upcast::call_types_compatible;
 use upcast::{

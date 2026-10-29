@@ -20,7 +20,7 @@ use super::support;
 use std::time::Duration;
 
 #[cfg(unix)]
-use support::matrix::sanitizer_failures;
+use support::matrix::{leak_failures, sanitizer_failures};
 use support::{
     TestDir, bnc, bni,
     matrix::{Cell, KnownFailures, run_matrix, selected},
@@ -562,5 +562,95 @@ fn native_ownership_runs_clean_under_address_sanitizer() {
     });
     assert!(cells.len() > 30, "only {} programs", cells.len());
     let failures = sanitizer_failures(&cells, "ownership-asan");
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// Every way a program makes a STRING buffer of its own (a concatenation,
+/// `AS STRING` of a number, a function returning one), held every way
+/// (`LET`, assignment, a temporary nobody stores, `RETURN`), next to the
+/// shapes that share a buffer (`AS STRING` of a STRING, a parameter, a
+/// literal). R1 (2026-10-29): a stored concatenation kept one reference too
+/// many and never freed its buffer.
+const STRING_CELLS: &[(&str, &str, &str)] = &[
+    (
+        "concatenation held by LET",
+        "LET s AS STRING = \"hello\"\n    LET a AS STRING = s + \"!\"\n    PRINT a",
+        "hello!\n",
+    ),
+    (
+        "concatenation nobody stores",
+        "LET s AS STRING = \"hello\"\n    PRINT LEN(s + \"!\")",
+        "6\n",
+    ),
+    (
+        "concatenation assigned over a buffer",
+        "LET s AS STRING = \"a\" + \"b\"\n    s = s + \"c\"\n    s = s + s\n    PRINT s",
+        "abcabc\n",
+    ),
+    (
+        "nested concatenation",
+        "LET s AS STRING = \"x\"\n    LET a AS STRING = s + \"-\" + s + \"-\" + s\n    PRINT a",
+        "x-x-x\n",
+    ),
+    (
+        "number AS STRING",
+        "LET n AS INTEGER = 42\n    LET a AS STRING = n AS STRING\n    LET f AS STRING = 2.5 AS STRING\n    PRINT a + f + (TRUE AS STRING)",
+        "422.5TRUE\n",
+    ),
+    (
+        "STRING AS STRING shares the buffer",
+        "LET s AS STRING = \"a\" + \"b\"\n    LET a AS STRING = s AS STRING\n    PRINT a, s",
+        "ab ab\n",
+    ),
+    (
+        "returned local, parameter and literal",
+        "PRINT Local(), Same(Local()), Either(TRUE), Either(FALSE)",
+        "ab ab xy lit\n",
+    ),
+];
+
+const STRING_FUNCTIONS: &str = "FUNCTION Local() AS STRING
+    LET s AS STRING = \"a\" + \"b\"
+    RETURN s
+END FUNCTION
+
+FUNCTION Same(p AS STRING) AS STRING
+    RETURN p
+END FUNCTION
+
+FUNCTION Either(fresh AS BOOLEAN) AS STRING
+    IF fresh THEN
+        RETURN \"x\" + \"y\"
+    END IF
+    RETURN \"lit\"
+END FUNCTION
+
+";
+
+fn string_cells() -> Vec<Cell> {
+    STRING_CELLS
+        .iter()
+        .map(|(name, body, expected)| Cell {
+            name: (*name).to_owned(),
+            source: format!(
+                "{STRING_FUNCTIONS}FUNCTION Start() AS VOID\n    {body}\nEND FUNCTION\n"
+            ),
+            expected: (*expected).to_owned(),
+        })
+        .collect()
+}
+
+#[test]
+fn string_buffers_print_the_same_on_both_backends() {
+    let directory = TestDir::new("string-ownership-matrix").expect("create directory");
+    run_matrix(&string_cells(), &directory, &[], &[]);
+}
+
+/// A native program frees every STRING buffer it made: nothing is left
+/// unreachable at exit (R1).
+#[cfg(unix)]
+#[test]
+fn native_strings_leave_no_buffer_behind() {
+    let failures = leak_failures(&string_cells(), "string-leaks");
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

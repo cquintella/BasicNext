@@ -169,6 +169,8 @@ pub fn run_matrix(
 const SANITIZED_TIMEOUT: Duration = Duration::from_secs(120);
 const ADDRESS_SANITIZER_CLANG: &str =
     "#!/bin/sh\nexec clang -fsanitize=address -fno-omit-frame-pointer \"$@\"\n";
+const WITHOUT_LEAK_DETECTION: &str = "detect_leaks=0";
+const WITH_LEAK_DETECTION: &str = "detect_leaks=1";
 
 /// Builds every cell natively with `AddressSanitizer` (through the
 /// `[toolchain]` clang of `bnc`'s `config.toml`) and runs it. Returns one
@@ -178,6 +180,19 @@ const ADDRESS_SANITIZER_CLANG: &str =
 /// lives until the process ends, by the language rules.
 #[cfg(unix)]
 pub fn sanitizer_failures(cells: &[Cell], label: &str) -> Vec<String> {
+    sanitized_failures(cells, label, WITHOUT_LEAK_DETECTION)
+}
+
+/// As [`sanitizer_failures`], with leak detection on: a cell also fails when
+/// a heap block is unreachable at exit. Only for cells that keep nothing in
+/// a `STATIC`.
+#[cfg(unix)]
+pub fn leak_failures(cells: &[Cell], label: &str) -> Vec<String> {
+    sanitized_failures(cells, label, WITH_LEAK_DETECTION)
+}
+
+#[cfg(unix)]
+fn sanitized_failures(cells: &[Cell], label: &str, sanitizer_options: &str) -> Vec<String> {
     use std::os::unix::fs::PermissionsExt;
     let directory = TestDir::new(label).expect("create test directory");
     let wrapper = directory.join("asan-clang");
@@ -211,7 +226,7 @@ pub fn sanitizer_failures(cells: &[Cell], label: &str) -> Vec<String> {
             continue;
         }
         let mut ran = run(
-            std::process::Command::new(&artifact).env("ASAN_OPTIONS", "detect_leaks=0"),
+            std::process::Command::new(&artifact).env("ASAN_OPTIONS", sanitizer_options),
             None,
             SANITIZED_TIMEOUT,
         )
@@ -220,6 +235,7 @@ pub fn sanitizer_failures(cells: &[Cell], label: &str) -> Vec<String> {
         let stderr = String::from_utf8_lossy(&ran.stderr);
         if !ran.status.success()
             || stderr.contains("AddressSanitizer")
+            || stderr.contains("LeakSanitizer")
             || String::from_utf8_lossy(&ran.stdout) != cell.expected
         {
             failures.push(format!("{}: {stderr}", cell.name));

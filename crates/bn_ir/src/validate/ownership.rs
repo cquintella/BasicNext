@@ -6,12 +6,13 @@
 //! The ownership balance rule (proposal `arc-shared-core-0.6.5`, `GC-IR`),
 //! checked when a module uses explicit ownership. A value of an ARC kind is
 //! *owned* when it carries one strong reference: `Allocate`, a call
-//! returning an ARC value, `Retain`, `Take`, and a write's `previous` produce
-//! one. Every owned value is consumed exactly once on every path — by
-//! `Release`, by an ARC write (which takes the value it stores), or by
-//! `RETURN` — and nothing reads it after that. A borrowed value (a `Load`,
-//! a field, a parameter) is never consumed. `STOP` ends the process, so
-//! values still owned there are not a leak.
+//! returning an ARC value, a new STRING (`yields_new_string`), `Retain`,
+//! `Take`, and a write's `previous` produce one. Every owned value is
+//! consumed exactly once on every path — by `Release`, by an ARC write
+//! (which takes the value it stores), or by `RETURN` — and nothing reads it
+//! after that. A borrowed value (a `Load`, a field, a parameter) is never
+//! consumed. `STOP` ends the process, so values still owned there are not a
+//! leak.
 
 use std::collections::{BTreeSet, HashMap, VecDeque};
 
@@ -121,6 +122,23 @@ fn consumed(
         .collect()
 }
 
+/// Whether `instruction` yields a STRING buffer of its own: a concatenation,
+/// or `AS STRING` of a value whose type (`source`) is not STRING. Its one
+/// reference belongs to the value (R1, 2026-10-29: read as borrowed, a store
+/// retained it and the first reference leaked). `AS STRING` of a STRING is
+/// the same buffer. A backend that folds the result to a constant hands out
+/// an immortal literal, which a release leaves alone.
+#[must_use]
+pub fn yields_new_string(instruction: &Instruction, source: Option<&Type>) -> bool {
+    match instruction {
+        Instruction::Binary { ty, .. } => matches!(ty, Type::String),
+        Instruction::Cast { ty, .. } => {
+            matches!(ty, Type::String) && !matches!(source, Some(Type::String))
+        }
+        _ => false,
+    }
+}
+
 /// Whether the value an instruction defines is owned.
 fn produces_owned(
     module: &Module,
@@ -146,6 +164,13 @@ fn produces_owned(
                     .is_some_and(|object| matches!(object, Type::HostArgs | Type::String))
         }
         Instruction::Retain { .. } => true,
+        Instruction::Binary { .. } | Instruction::Cast { .. } => {
+            let source = match instruction {
+                Instruction::Cast { value, .. } => value_types.get(value),
+                _ => None,
+            };
+            yields_new_string(instruction, source)
+        }
         _ => {
             instruction_defines(instruction).is_some()
                 && matches!(

@@ -38,6 +38,8 @@
     "bn::test/frontend::host_fs_directories::the_lifecycle_fixture_type_checks",
     "bn::test/frontend::host_fs_directories::wrong_arity_argument_or_result_is_a_type_mismatch",
     "bn_lsp::lib/bn_lsp::tests::completion_lists_the_directory_members_and_codes",
+    "bn::test/values::ownership_matrix::string_buffers_print_the_same_on_both_backends",
+    "bn::test/values::ownership_matrix::native_strings_leave_no_buffer_behind",
     "bn_rt::rlib/bn_rt::secure_fs::entries::tests::only_owner_bits_are_private",
     "bn_rt::rlib/bn_rt::file::entries::tests::system_kinds_map_to_the_entry_failures",
     "bn_rt::rlib/bn_rt::file_abi::tests::directory_exports_check_their_pointers",

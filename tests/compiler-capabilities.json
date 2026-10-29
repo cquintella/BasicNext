@@ -265,6 +265,7 @@
         "Binary",
         "Constant",
         "Print",
+        "Release",
         "Unary"
       ],
       "type_constraints": [

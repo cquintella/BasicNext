@@ -172,12 +172,24 @@ impl Builder<'_> {
                 | Instruction::Vector { .. }
                 | Instruction::Default { .. }
                 | Instruction::Input { .. }
-        ) || host_argument)
+        ) || host_argument
+            || self.makes_new_string(instruction))
             && self.is_arc(ty);
         self.value_types.insert(value, ty.clone());
         if owned {
             self.owned.push((value, instruction.span()));
         }
+    }
+
+    /// Whether `instruction` yields a STRING buffer of its own
+    /// (`bn_ir::yields_new_string`): a store moves it and an unstored result
+    /// is released at the end of its statement.
+    fn makes_new_string(&self, instruction: &Instruction) -> bool {
+        let source = match instruction {
+            Instruction::Cast { value, .. } => self.value_types.get(value),
+            _ => None,
+        };
+        bn_ir::yields_new_string(instruction, source)
     }
 
     /// The owned form of `value`, to be consumed by a store or `RETURN`: an
