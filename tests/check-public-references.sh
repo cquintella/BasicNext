@@ -48,8 +48,11 @@ files() {
     if git -C "$root" rev-parse --show-prefix > /dev/null 2>&1; then
         git -C "$root" ls-files
     else
-        # Without git (a source copy), every file but the history.
-        (cd "$root" && find . -type f -not -path './.git/*')
+        # Without git (a source copy), every file but the history and the
+        # build output, which is not source and may run to gigabytes.
+        (cd "$root" && find . -type f -not -path './.git/*' -not -path './target/*' \
+            -not -path './fuzz/target/*' -not -path './fuzz/corpus/*' \
+            -not -path './fuzz/artifacts/*')
     fi | grep -Ev "$NOT_SCANNED" | tr '\n' '\0'
 }
 
