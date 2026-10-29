@@ -341,7 +341,10 @@ fn lower_unvalidated(program: &Program, model: &SemanticModel) -> Result<Module,
         env_import: env_import_span(program),
         bnlog_import: standard_import_span(program, "BNLog"),
         bnweb_import: standard_import_span(program, "BNWeb"),
-        bncompress_import: standard_import_span(program, "BNCompress"),
+        bncompress_import: standard_import_span(
+            program,
+            bn_catalog::text("modules", "module.compress"),
+        ),
         bnsqlite_import: standard_import_span(program, "BNSqlite"),
         bnffi_import: standard_import_span(program, "BNFfi"),
     };
@@ -458,8 +461,7 @@ fn lower_graph_unvalidated(
         );
         collect_semantic_record_layouts(model, &prefix, &mut pending_layouts);
         qualify::qualify_layouts(&mut pending_layouts, &prefix, &declared);
-        let mut lowered =
-            lower_program(&loaded.program, model, loaded.id, &prefix, &method_names)?;
+        let mut lowered = lower_program(&loaded.program, model, loaded.id, &prefix, &method_names)?;
         qualify::qualify_functions(&mut lowered, &prefix, &declared);
         functions.extend(lowered);
     }
@@ -501,10 +503,12 @@ fn lower_graph_unvalidated(
         .modules
         .iter()
         .find_map(|module| standard_import_span(&module.program, "BNWeb"));
-    let bncompress_import = graph
-        .modules
-        .iter()
-        .find_map(|module| standard_import_span(&module.program, "BNCompress"));
+    let bncompress_import = graph.modules.iter().find_map(|module| {
+        standard_import_span(
+            &module.program,
+            bn_catalog::text("modules", "module.compress"),
+        )
+    });
     let bnsqlite_import = graph
         .modules
         .iter()
@@ -654,12 +658,12 @@ use program_lowering::{
 mod helpers;
 use helpers::{
     capability_constant, class_ir_name, clock_import_span, console_import_span, destructor_name,
-    display_type, env_import_span, exec_import_span, filesystem_import_span,
+    display_type, env_import_span, exec_import_span, filesystem_import_span, folded_constant,
     host_capability_constant, ir_error, is_bnmath_constant_owner, is_host_or_builtin_owner,
     is_namespace_type, is_numeric_type_name, is_user_class_name, math_constant, module_constant,
-    named_or_void, namespace_function, network_import_span,
-    pointer_test_with_identity, random_import_span, standard_import_span, static_class_name,
-    type_at, type_test_name, typed_literal_constant, user_class_name,
+    named_or_void, namespace_function, network_import_span, pointer_test_with_identity,
+    random_import_span, standard_import_span, static_class_name, type_at, type_test_name,
+    typed_literal_constant, user_class_name,
 };
 fn default_span() -> Span {
     Span {

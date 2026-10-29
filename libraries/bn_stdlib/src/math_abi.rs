@@ -110,6 +110,12 @@ unary_f64!(bn_rt_math_degree_to_rad, bn_core_math::degrees_to_radians);
 unary_f64!(bn_rt_math_rad_to_degree, bn_core_math::radians_to_degrees);
 
 binary_f64!(bn_rt_math_pow, f64::powf);
+binary_f64!(bn_rt_math_student_t, bn_core_math::student_t_cdf);
+binary_f64!(bn_rt_math_student_t_pvalue, bn_core_math::student_t_pvalue);
+binary_f64!(
+    bn_rt_math_student_t_quantile,
+    bn_core_math::student_t_quantile
+);
 binary_f64!(bn_rt_math_atan2, f64::atan2);
 binary_f64!(bn_rt_math_hypot, f64::hypot);
 binary_f64!(bn_rt_math_fmin, math::fmin);

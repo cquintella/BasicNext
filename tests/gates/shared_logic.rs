@@ -26,6 +26,7 @@ const INTERPRETER_SIDE: &[&str] = &[
     "crates/bn_interpret_driver/src",
     "crates/bn_host_fs/src",
     "crates/bn_host_net/src",
+    "libraries/bn_lib_compress/src",
     "libraries/bn_lib_crypto/src",
     "libraries/bn_lib_data/src",
     "libraries/bn_lib_dispatch/src",

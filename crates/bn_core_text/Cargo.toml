@@ -11,6 +11,7 @@ publish = false
 path = "src/lib.rs"
 
 [dependencies]
+bn_catalog = { path = "../bn_catalog" }
 bn_types = { path = "../bn_types" }
 
 [lints]

@@ -20,7 +20,7 @@ use bn_interp::{
 use bn_types::{FloatType, IntegerType};
 
 mod reduce;
-use reduce::{association, quantile, reduce_vector};
+use reduce::{algebraic, association, quantile, reduce_vector};
 
 pub const NAME: &str = "BNMath";
 
@@ -137,8 +137,24 @@ fn math(
     {
         return reduce_vector(math_name, &arguments[0], span, memory);
     }
-    if matches!(math_name, "Covariance" | "Correlation") {
+    if matches!(math_name, "Sum" | "Product") {
+        return algebraic(math_name, &arguments[0], span, memory);
+    }
+    if matches!(math_name, "Covariance" | "Correlation" | "Dot") {
         return association(math_name, &arguments[0], &arguments[1], span, memory);
+    }
+    if matches!(
+        math_name,
+        "StudentT" | "StudentTPvalue" | "StudentTQuantile"
+    ) {
+        let t = number_as_float(&arguments[0], span)?;
+        let df = number_as_float(&arguments[1], span)?;
+        let result = match math_name {
+            "StudentT" => bn_core_math::student_t_cdf(t, df),
+            "StudentTPvalue" => bn_core_math::student_t_pvalue(t, df),
+            _ => bn_core_math::student_t_quantile(t, df),
+        };
+        return Ok(Value::Float(result, FloatType::Float64));
     }
     if math_name == "Quantile" {
         return quantile(&arguments[0], &arguments[1], span, memory);

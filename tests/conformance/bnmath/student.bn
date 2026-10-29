@@ -1,0 +1,19 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// BNMath.StudentT, StudentTPvalue and StudentTQuantile (math.md,
+// "Student's t"). Integer arguments are numeric. df = 0 is NAN.
+// The quantile at 0, 1/2 and 1 is -INF, 0 and INF. A positive infinite
+// df is the standard normal.
+
+IMPORT BNMath AS Math
+
+FUNCTION Start() AS VOID
+    PRINT "cdf", Math.StudentT(0.0, 10.0), Math.StudentT(1.0, 1.0), Math.StudentT(1, 5)
+    PRINT "p", Math.StudentTPvalue(0.0, 10.0), Math.StudentTPvalue(1.0, 1.0)
+    PRINT "q", Math.StudentTQuantile(0.5, 10.0), Math.StudentTQuantile(0.0, 10.0), Math.StudentTQuantile(1.0, 10.0)
+    PRINT "normal", Math.StudentT(0.0, INF), Math.StudentTQuantile(0.975, INF)
+    PRINT "nan", Math.StudentT(1.0, 0.0), Math.StudentTQuantile(1.5, 10.0)
+END FUNCTION

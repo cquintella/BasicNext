@@ -64,6 +64,12 @@ pub(crate) fn bnmath_method<'a>(module: &Module, name: &'a str) -> Option<&'a st
                 | "Quantile"
                 | "Covariance"
                 | "Correlation"
+                | "Dot"
+                | "Sum"
+                | "Product"
+                | "StudentT"
+                | "StudentTPvalue"
+                | "StudentTQuantile"
                 | "MODE"
                 | "POW"
                 | "ATAN2"
@@ -111,8 +117,12 @@ pub(crate) fn bnmath_call_supported(
         "Quantile" => {
             arguments.len() == 2 && is_supported_numeric_vector(args[0]) && numeric_arg(args[1])
         }
-        "Covariance" | "Correlation" => {
+        "Covariance" | "Correlation" | "Dot" => {
             arguments.len() == 2 && args.iter().all(|ty| is_supported_numeric_vector(ty))
+        }
+        "Sum" | "Product" if arguments.len() == 1 => is_supported_numeric_vector(args[0]),
+        "StudentT" | "StudentTPvalue" | "StudentTQuantile" => {
+            arguments.len() == 2 && numeric_arg(args[0]) && numeric_arg(args[1])
         }
         _ => false,
     }
@@ -209,8 +219,11 @@ pub(crate) fn lower_bnmath_call(
         {
             lower_vector_math(text, destination, method, arguments[0], types[0], state);
         }
+        "Sum" | "Product" => {
+            lower_vector_math(text, destination, method, arguments[0], types[0], state);
+        }
         "Quantile" => lower_quantile(text, destination, arguments, types.as_slice()),
-        "Covariance" | "Correlation" => {
+        "Dot" | "Covariance" | "Correlation" => {
             lower_association(
                 text,
                 destination,
@@ -218,6 +231,20 @@ pub(crate) fn lower_bnmath_call(
                 arguments,
                 types.as_slice(),
                 state,
+            );
+        }
+        "StudentT" | "StudentTPvalue" | "StudentTQuantile" => {
+            let result_ty = analysis
+                .values
+                .get(&destination)
+                .expect("validated BNMath result type");
+            lower_float_math(
+                text,
+                destination,
+                method,
+                arguments,
+                types.as_slice(),
+                result_ty,
             );
         }
         "Gcd" | "Lcm" => {
@@ -345,10 +372,10 @@ fn lower_association(
         .try_into()
         .expect("two vectors, three operands each");
     let operands = [x_ptr, x_len, x_element, y_ptr, y_len, y_element, mismatch];
-    let call = if method == "Covariance" {
-        MATH_VECTOR_COVARIANCE.call(operands)
-    } else {
-        MATH_VECTOR_CORRELATION.call(operands)
+    let call = match method {
+        "Covariance" => MATH_VECTOR_COVARIANCE.call(operands),
+        "Dot" => MATH_VECTOR_DOT.call(operands),
+        _ => MATH_VECTOR_CORRELATION.call(operands),
     };
     text.assign(format!("v{dest}"), call);
 }
@@ -451,6 +478,17 @@ fn lower_vector_math(
                 &Type::NotAvailable,
                 &Type::Float(FloatType::Float64),
                 reg(format!("modebits{dest}")),
+            );
+        }
+        "Sum" | "Product" => {
+            let function = if method == "Sum" {
+                &MATH_VECTOR_SUM
+            } else {
+                &MATH_VECTOR_PRODUCT
+            };
+            text.assign(
+                format!("v{dest}"),
+                function.call([data, length, element_code]),
             );
         }
         "MEAN" | "MEDIAN" | "QUARTILE1" | "QUARTILE3" | "RANGE" | "STDEV" | "VARIANCE"
@@ -795,6 +833,9 @@ fn lower_float_math(
         match method {
             "POW" => &MATH_POW,
             "ATAN2" => &MATH_ATAN2,
+            "StudentT" => &MATH_STUDENT_T,
+            "StudentTPvalue" => &MATH_STUDENT_T_PVALUE,
+            "StudentTQuantile" => &MATH_STUDENT_T_QUANTILE,
             "HYPOT" => &MATH_HYPOT,
             "MIN" => &MATH_FMIN,
             "MAX" => &MATH_FMAX,

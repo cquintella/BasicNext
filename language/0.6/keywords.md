@@ -145,18 +145,13 @@ ship with O3, `OVERRIDE` semantics with O2.
 `IMPORT HOST.Env AS <alias>`; `Env`, `Get`, `Has` are identifiers on host types,
 not keywords.
 
-### Case-insensitive identifier reservation (BDFL decision, 2026-10-20)
+### Reserved words are exact uppercase (BDFL decision, 2026-10-28)
 
-Keywords in Basic Next remain exact uppercase in grammar productions (`FOR`, `IF`, `WHILE`, etc.).
+Keywords in Basic Next are exact uppercase in grammar productions (`FOR`, `IF`, `WHILE`, etc.).
 
-To eliminate ambiguity and prevent lexical collision, any spelling of a reserved word under ASCII case-insensitive comparison (e.g. `for`, `For`, `fOR`, `foR`) is a **reserved identifier**. Reserved identifiers are prohibited as names for:
-* Variables and constants (`LET`, `CONST`)
-* Functions, parameters, and return aliases
-* Classes, structs, and interfaces
-* Fields, methods, and properties
-* Module aliases (`IMPORT ... AS alias`)
+Only the exact uppercase spelling of a reserved word is reserved: `NEW`, `ASYNC`, `RELEASE`, `STRING`, `LEN`, `DATE` and `TIME` cannot name a binding, function, parameter, type, member or module alias, and the parser rejects them where a name is expected. Any other spelling is an ordinary identifier: `New`, `Release`, `String`, `Len`, `Date`, `Time` and `while` are valid names, and the standard library declares several of them (`BNDispatch`, `BNLog`, `BNWeb`, `BNString`, `BNFfi`, `temporal.md`).
 
-Declaring or binding an identifier whose name matches a reserved word in any letter case is a static error diagnosed as `RESERVED_IDENTIFIER`.
+This revokes the case-insensitive reservation of 2026-10-20 (`RESERVED_IDENTIFIER`), which would have invalidated those standard-library names and was never implemented.
 
 Toolchain note: root `build.rs` reads this registry and
 `language/0.6/0.6.ebnf` (package version 0.6.0). ARC/migration notes live in this tree

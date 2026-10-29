@@ -1,0 +1,28 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Writing through a parameter that refers to the heap (an object, a pointer
+// region, an object inside a vector) changes the referenced value, not the
+// constant parameter (0.6.md, "Parameter immutability and place mutation").
+CLASS Box
+    PUBLIC value AS INTEGER = 0
+
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+FUNCTION Fill(box AS Box, boxes AS Box[1], region AS POINTER TO INTEGER[]) AS VOID
+    box.value = 1
+    boxes[0].value = 2
+    region[0] = 3
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET single AS Box = NEW Box()
+    LET many AS Box[1] = [NEW Box()]
+    LET region AS POINTER TO INTEGER[] = NEW INTEGER[1]
+    Fill(single, many, region)
+    PRINT single.value, many[0].value, region[0]
+END FUNCTION

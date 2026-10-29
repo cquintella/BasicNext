@@ -18,6 +18,7 @@ bn_catalog = { path = "../../crates/bn_catalog" }
 bn_core_compress = { path = "../bn_core_compress" }
 bn_diag = { path = "../../crates/bn_diag" }
 bn_interp = { path = "../../crates/bn_interp" }
+bn_rt = { path = "../../crates/bn_rt" }
 bn_source = { path = "../../crates/bn_source" }
 bn_types = { path = "../../crates/bn_types" }
 bn_value = { path = "../../crates/bn_value" }

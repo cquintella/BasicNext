@@ -1318,17 +1318,8 @@ impl Diagnostic {
 
     #[must_use]
     pub fn render(&self, source: &SourceFile) -> String {
-        let position = self.span.start;
-        format!(
-            "error[{code}]: {message}\n --> {name}:{line}:{column}\n  |\n{line:>3} | {text}\n  | {padding}^",
-            code = self.code,
-            message = self.message,
-            name = source.name,
-            line = position.line,
-            column = position.column,
-            text = source.line(position.line),
-            padding = " ".repeat(position.column.saturating_sub(1))
-        )
+        let (excerpt, _) = excerpt(source, self.span.start, "");
+        format!("error[{}]: {}{excerpt}", self.code, self.message)
     }
 }
 
@@ -1344,7 +1335,7 @@ fn render_catalog_diagnostic(source: &SourceFile, rendered: &RenderedDiagnostic)
             code = rendered.code,
             title = rendered.title,
             message = rendered.message,
-        ) + &explanation(rendered);
+        ) + &explanation(rendered, 1);
     }
     let position = rendered.labels.first().map_or(
         Position {
@@ -1361,8 +1352,9 @@ fn render_catalog_diagnostic(source: &SourceFile, rendered: &RenderedDiagnostic)
         .first()
         .and_then(|label| label.text.as_deref())
         .unwrap_or("");
+    let (excerpt, width) = excerpt(source, position, label);
     format!(
-        "{severity}[{code}]: {title}: {message}\n --> {name}:{line}:{column}\n  |\n{line:>3} | {text}\n  | {padding}^{label}",
+        "{severity}[{code}]: {title}: {message}",
         severity = match rendered.severity {
             Severity::Error => "error",
             Severity::Warning => "warning",
@@ -1370,30 +1362,37 @@ fn render_catalog_diagnostic(source: &SourceFile, rendered: &RenderedDiagnostic)
         code = rendered.code,
         title = rendered.title,
         message = rendered.message,
+    ) + &excerpt
+        + &explanation(rendered, width)
+}
+
+/// The source excerpt under a diagnostic's first line, and its gutter width: as
+/// wide as the line number, so every `|` lines up and `^` is under the column.
+fn excerpt(source: &SourceFile, position: Position, label: &str) -> (String, usize) {
+    let width = position.line.to_string().len();
+    let gutter = " ".repeat(width);
+    let label = format!("{}{label}", if label.is_empty() { "" } else { " " });
+    let text = format!(
+        "\n{gutter}--> {name}:{line}:{column}\n{gutter} |\n{line:>width$} | {text}\n{gutter} | {padding}^{label}",
         name = source.name,
         line = position.line,
         column = position.column,
         text = source.line(position.line),
         padding = " ".repeat(position.column.saturating_sub(1)),
-        label = if label.is_empty() {
-            String::new()
-        } else {
-            format!(" {label}")
-        },
-    ) + &explanation(rendered)
+    );
+    (text, width)
 }
 
-/// The catalog's causes and help after the source excerpt, one line each
+/// The catalog's causes and help, one line each, indented to the gutter `width`
 /// (docs/architecture/diagnostics.md, "Every diagnostic explains itself").
-fn explanation(rendered: &RenderedDiagnostic) -> String {
+fn explanation(rendered: &RenderedDiagnostic, width: usize) -> String {
+    use std::fmt::Write as _;
     let mut text = String::new();
     for cause in &rendered.causes {
-        text.push_str("\n  = cause: ");
-        text.push_str(cause);
+        let _ = write!(text, "\n{:width$} = cause: {cause}", "");
     }
     if let Some(help) = &rendered.help {
-        text.push_str("\n  = help: ");
-        text.push_str(help);
+        let _ = write!(text, "\n{:width$} = help: {help}", "");
     }
     text
 }

@@ -1,0 +1,16 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// An element of a fixed vector parameter is part of the constant parameter
+// (0.6.md, "Parameter immutability and place mutation").
+FUNCTION Reset(values AS INTEGER[3]) AS INTEGER
+    values[0] = 0
+    RETURN values[0]
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET data AS INTEGER[3] = [1, 2, 3]
+    PRINT Reset(data)
+END FUNCTION

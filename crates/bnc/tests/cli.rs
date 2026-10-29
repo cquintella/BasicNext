@@ -512,6 +512,8 @@ fn build_emits_multiple_integer_prints() {
     assert!(llvm.contains("add i64 0, 3"));
 }
 
+// A constant with no destination is INT32 (0.6.md, "Integer constants without
+// a destination").
 #[test]
 fn build_constant_folds_integer_expression() {
     let output = bnc()
@@ -519,7 +521,7 @@ fn build_constant_folds_integer_expression() {
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
-    assert!(String::from_utf8_lossy(&output.stdout).contains("add i64 0, 14"));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("add i32 0, 14"));
 }
 
 #[test]
@@ -529,7 +531,7 @@ fn build_constant_folds_unary_integer_expression() {
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
-    assert!(String::from_utf8_lossy(&output.stdout).contains("add i64 0, -5"));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("add i32 0, -5"));
 }
 
 #[test]

@@ -1,0 +1,22 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Any other spelling of a reserved word is an identifier (keywords.md,
+// "Reserved words are exact uppercase").
+STRUCT Span
+    Date AS INTEGER = 0
+    Time AS INTEGER = 0
+END STRUCT
+
+FUNCTION Release(Len AS INTEGER) AS INTEGER
+    RETURN Len + 1
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET New AS INTEGER = 1
+    LET while AS INTEGER = 2
+    LET String AS Span = [3, 4]
+    PRINT New + while, Release(String.Date), String.Time
+END FUNCTION

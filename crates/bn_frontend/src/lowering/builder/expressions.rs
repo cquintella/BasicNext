@@ -30,6 +30,15 @@ impl Builder<'_> {
             return self.struct_literal(expression, values, &ty);
         }
         let destination = self.value();
+        if let Some(value) = folded_constant(expression, &ty) {
+            self.emit(Instruction::Constant {
+                destination,
+                value,
+                ty,
+                span: expression.span,
+            });
+            return Ok(destination);
+        }
         let instruction = match &expression.kind {
             ExpressionKind::Super => unreachable!("semantic analysis rejects bare SUPER"),
             ExpressionKind::Increment { .. } => unreachable!("handled above"),
@@ -57,9 +66,7 @@ impl Builder<'_> {
                             .find(|((_, n), _)| n == name)
                             .map(|(_, v)| v)
                     });
-                if is_constant
-                    && let Some(value) = constant_value
-                {
+                if is_constant && let Some(value) = constant_value {
                     Instruction::Constant {
                         destination,
                         value: module_constant(value),

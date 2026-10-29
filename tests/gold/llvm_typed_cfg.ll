@@ -7,8 +7,11 @@
 @.bn_true = private unnamed_addr constant { i64, i64, [5 x i8] } { i64 -1, i64 4, [5 x i8] c"TRUE\00" }, align 8
 @.bn_false = private unnamed_addr constant { i64, i64, [6 x i8] } { i64 -1, i64 5, [6 x i8] c"FALSE\00" }, align 8
 @.bn_empty = private unnamed_addr constant { i64, i64, [1 x i8] } { i64 -1, i64 0, [1 x i8] c"\00" }, align 8
+@.bn_utc = private unnamed_addr constant { i64, i64, [4 x i8] } { i64 -1, i64 3, [4 x i8] c"UTC\00" }, align 8
 @.bn_asc_error = private unnamed_addr constant { i64, i64, [32 x i8] } { i64 -1, i64 31, [32 x i8] c"ASC requires a non-empty STRING\00" }, align 8
 @.bn_char_error = private unnamed_addr constant { i64, i64, [34 x i8] } { i64 -1, i64 33, [34 x i8] c"CHAR code is not a Unicode scalar\00" }, align 8
+@.bn_asc_operation = private unnamed_addr constant { i64, i64, [4 x i8] } { i64 -1, i64 3, [4 x i8] c"ASC\00" }, align 8
+@.bn_char_operation = private unnamed_addr constant { i64, i64, [5 x i8] } { i64 -1, i64 4, [5 x i8] c"CHAR\00" }, align 8
 @.bn_eof = private constant { i64, i64, [4 x i8] } { i64 -1, i64 3, [4 x i8] c"EOF\00" }, align 8
 @.bn_argc = private global i32 0
 @.bn_argv = private global ptr null
@@ -136,6 +139,37 @@ declare i32 @bn_rt_crypto_key_release(i64)
 declare i32 @bn_rt_crypto_key_retain(i64)
 declare i32 @bn_rt_crypto_key_zeroize(i64)
 declare i32 @bn_rt_crypto_random_bytes(i64, ptr)
+declare i32 @bn_rt_compress_deflate(i64, ptr)
+declare i32 @bn_rt_compress_inflate(i64, ptr)
+declare i32 @bn_rt_compress_gzip(i64, ptr)
+declare i32 @bn_rt_compress_gunzip(i64, ptr)
+declare i32 @bn_rt_compress_deflate_text(ptr, ptr)
+declare i32 @bn_rt_compress_inflate_text(i64, ptr)
+declare i32 @bn_rt_compress_gzip_text(ptr, ptr)
+declare i32 @bn_rt_compress_gunzip_text(i64, ptr)
+declare i32 @bn_rt_compress_bytes_from_hex(ptr, ptr)
+declare i64 @bn_rt_compress_bytes_from_text(ptr)
+declare i64 @bn_rt_compress_bytes_length(i64)
+declare i32 @bn_rt_compress_bytes_release(i64)
+declare i32 @bn_rt_compress_bytes_retain(i64)
+declare ptr @bn_rt_compress_bytes_to_hex(i64)
+declare i32 @bn_rt_compress_bytes_to_text(i64, ptr)
+declare i32 @bn_rt_zip_create(ptr, ptr)
+declare i32 @bn_rt_zip_open(ptr, ptr)
+declare i32 @bn_rt_zip_add_file(i64, ptr, ptr)
+declare i32 @bn_rt_zip_add_text(i64, ptr, ptr)
+declare i32 @bn_rt_zip_add_stored_text(i64, ptr, ptr)
+declare i32 @bn_rt_zip_add_bytes(i64, ptr, i64)
+declare i32 @bn_rt_zip_add_stored_bytes(i64, ptr, i64)
+declare i32 @bn_rt_zip_extract_all(i64, ptr)
+declare i32 @bn_rt_zip_extract_file(i64, ptr, ptr)
+declare i32 @bn_rt_zip_extract_text(i64, ptr, ptr)
+declare i32 @bn_rt_zip_extract_bytes(i64, ptr, ptr)
+declare i64 @bn_rt_zip_entry_count(i64)
+declare i32 @bn_rt_zip_entry_name(i64, i64, ptr)
+declare i32 @bn_rt_zip_close(i64)
+declare i32 @bn_rt_zip_retain(i64)
+declare i32 @bn_rt_zip_release(i64)
 declare i32 @bn_rt_sqlite_open(ptr, ptr)
 declare i32 @bn_rt_sqlite_open_read_only(ptr, ptr)
 declare i32 @bn_rt_sqlite_open_existing(ptr, ptr)

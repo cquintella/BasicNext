@@ -450,12 +450,9 @@ fn same_numeric_kind(value: &Value, ty: &Type) -> bool {
 fn checked_integer(value: Option<i128>, ty: &Type, span: Span) -> Result<Value, Diagnostic> {
     let value =
         value.ok_or_else(|| numeric_overflow(bn_diag::trap_texts::PERFORMING_INTEGER_OP, span))?;
-    // A literal-typed result is a constant semantic analysis folded and
-    // checked against its destination (`LET x AS INT64 = -9223372036854775808`);
-    // the store converts it, as for a `Constant` (known issue K33).
-    if matches!(ty, Type::IntegerLiteral(_)) {
-        return Ok(Value::Integer(value, IntegerType::Int32));
-    }
+    // Lowering folds every operation on integer constants that keeps a
+    // literal type into one `Constant`, so an operation always has a sized
+    // type here (0.6.md, "Integer constants without a destination").
     let kind = integer_kind(ty).unwrap_or(IntegerType::Int32);
     let (minimum, maximum) = integer_range(kind);
     if !(minimum..=maximum).contains(&value) {
@@ -549,9 +546,10 @@ fn builtin(name: &str, arguments: &[Value], span: Span) -> Result<Value, Diagnos
             || {
                 Value::error_report(
                     1,
-                    "ASC",
+                    bn_core_text::builtin::asc_operation(),
                     bn_diag::trap_texts::ASC_EMPTY_STRING.to_string(),
-                    "string is empty".to_string(),
+                    bn_core_text::builtin::failure_cause(bn_core_text::builtin::asc_operation())
+                        .to_string(),
                 )
             },
             |c| Value::Integer(i128::from(u32::from(c)), IntegerType::Int32),
@@ -566,9 +564,12 @@ fn builtin(name: &str, arguments: &[Value], span: Span) -> Result<Value, Diagnos
                 || {
                     Value::error_report(
                         1,
-                        "CHAR",
+                        bn_core_text::builtin::char_operation(),
                         bn_diag::trap_texts::CHAR_NOT_UNICODE.to_string(),
-                        "code point is outside Unicode scalar range".to_string(),
+                        bn_core_text::builtin::failure_cause(
+                            bn_core_text::builtin::char_operation(),
+                        )
+                        .to_string(),
                     )
                 },
                 |c| Value::String(shared_string(c.to_string())),

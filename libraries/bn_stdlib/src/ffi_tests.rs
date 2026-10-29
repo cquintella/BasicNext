@@ -42,7 +42,6 @@ mod tests {
 
     #[test]
     fn test_handle_result_reuses_and_frees_child_handle() {
-        let baseline = active_record_count();
         let hr = allocate_record(
             TYPE_HANDLE_RESULT,
             CValuePayload::HandleResult(Some(std::ptr::without_provenance_mut(0x1234))),
@@ -53,8 +52,11 @@ mod tests {
             child1, child2,
             "HandleResult.Value() must reuse child handle"
         );
+        // The record table is shared by the tests that run in parallel, so the
+        // check reads these two handles, not a global count.
+        assert!(get_record(hr).is_some());
         assert!(get_record(child1).is_some());
-        assert!(active_record_count() >= baseline + 2);
+        assert_ne!(hr, child1);
 
         release_record(hr);
         assert!(get_record(hr).is_none());

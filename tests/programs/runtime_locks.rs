@@ -46,6 +46,74 @@ const LOCKS: &[Lock] = &[
         code: Some("NUMERIC_OVERFLOW"),
         stdout: "",
     },
+    // An integer constant with no destination is INT32 arithmetic (0.6.md,
+    // "Integer constants without a destination"; bucket 0.6.11 S5.2).
+    Lock {
+        name: "int32-constant-plus-one",
+        program: "    PRINT 2147483647 + 1\n",
+        code: Some("NUMERIC_OVERFLOW"),
+        stdout: "",
+    },
+    Lock {
+        name: "int32-constant-power",
+        program: "    PRINT 10 ** 30\n",
+        code: Some("NUMERIC_OVERFLOW"),
+        stdout: "",
+    },
+    Lock {
+        name: "int32-constant-comparison",
+        program: "    PRINT 1\n    PRINT 10 ** 30 > 1\n",
+        code: Some("NUMERIC_OVERFLOW"),
+        stdout: "1\n",
+    },
+    Lock {
+        name: "constant-with-a-destination",
+        program: "    LET x AS INT64 = 2 ** 40\n    PRINT x, -2147483648, 2 ** 10, NOT 5, 1 SHL 3\n",
+        code: None,
+        stdout: "1099511627776 -2147483648 1024 -6 8\n",
+    },
+    Lock {
+        name: "int32-constant-quotient",
+        program: "    PRINT 1\n    PRINT 2147483647 * 2 DIV 2\n",
+        code: Some("NUMERIC_OVERFLOW"),
+        stdout: "1\n",
+    },
+    Lock {
+        name: "int32-constant-bitwise",
+        program: "    PRINT 1\n    PRINT 2147483647 * 2 XOR 1\n",
+        code: Some("NUMERIC_OVERFLOW"),
+        stdout: "1\n",
+    },
+    Lock {
+        name: "int32-constant-division-operand",
+        program: "    PRINT 1\n    PRINT 2147483647 * 2 / 2\n",
+        code: Some("NUMERIC_OVERFLOW"),
+        stdout: "1\n",
+    },
+    // An integer constant takes a floating-point operand's type (0.6.md,
+    // "Numeric operands"; BDFL decision, 2026-10-28).
+    Lock {
+        name: "constant-takes-the-float-type",
+        program: "    PRINT 2 * 3 + 1.5, 2 + 2, 2 + 2.0, 2.0 + 2, -2 + 2, -(2 * 3) * 0.5\n",
+        code: None,
+        stdout: "7.5 4 4.0 4.0 0 -3.0\n",
+    },
+    // The destination checks the exact value of the whole constant, so an
+    // intermediate past it does not matter.
+    Lock {
+        name: "folded-quotient-with-a-destination",
+        program: "    LET q AS INT64 = 2 ** 70 DIV 2 ** 10\n    LET h AS INT32 = 3000000000 DIV 2\n    LET m AS BYTE = 255 AND 15\n    PRINT q, h, m, (-5) DIV 3, -7 % 2\n",
+        code: None,
+        stdout: "1152921504606846976 1500000000 15 -2 1\n",
+    },
+    // Only the exact uppercase spelling is reserved (keywords.md, bucket
+    // 0.6.11 S5.4).
+    Lock {
+        name: "mixed-case-reserved-spellings",
+        program: "    LET New AS INTEGER = 1\n    LET while AS INTEGER = 2\n    LET Date AS INTEGER = 3\n    PRINT New + while + Date\n",
+        code: None,
+        stdout: "6\n",
+    },
     Lock {
         name: "div-by-zero",
         program: "    LET z AS INTEGER = 0\n    PRINT 7 DIV z\n",
@@ -86,7 +154,7 @@ const LOCKS: &[Lock] = &[
 
 /// `BNMath` failures on both backends: `Gcd` / `Lcm` results that do not fit `INT64` (math.md, "Integer
 /// divisors"): `Gcd(MIN_INT64, 0)` is `2^63`, and `Lcm(2^62, 3)` is
-/// `3 * 2^62`; `Covariance` / `Correlation` of vectors of different lengths.
+/// `3 * 2^62`; `Covariance` / `Correlation` / `Dot` of vectors of different lengths.
 const BNMATH_LOCKS: &[Lock] = &[
     Lock {
         name: "gcd-of-min-int64",
@@ -109,6 +177,12 @@ const BNMATH_LOCKS: &[Lock] = &[
     Lock {
         name: "correlation-length-mismatch",
         program: "    LET a AS FLOAT[2] = [1.0, 2.0]\n    LET b AS FLOAT[3] = [1.0, 2.0, 3.0]\n    PRINT Math.Correlation(a, b)\n",
+        code: Some("VECTOR_LENGTH_MISMATCH"),
+        stdout: "",
+    },
+    Lock {
+        name: "dot-length-mismatch",
+        program: "    LET a AS FLOAT[2] = [1.0, 2.0]\n    LET b AS FLOAT[3] = [1.0, 2.0, 3.0]\n    PRINT Math.Dot(a, b)\n",
         code: Some("VECTOR_LENGTH_MISMATCH"),
         stdout: "",
     },

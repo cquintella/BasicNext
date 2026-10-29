@@ -43,9 +43,9 @@ impl Analyzer {
                     if let Some(value) = constant_integer(expression) {
                         let (minimum, maximum) = integer_range(kind);
                         if !(minimum..=maximum).contains(&value) {
-                            return Err(type_mismatch(
-                                display(&declared),
-                                value.to_string(),
+                            return Err(integer_out_of_range(
+                                kind,
+                                &value.to_string(),
                                 bn_catalog::text("frontend", "msg.counted_for_bound"),
                                 expression.span,
                             ));
@@ -135,9 +135,9 @@ impl Analyzer {
         let (declared, span) = if let Some(type_ref) = type_ref {
             let declared = self.resolve_reference(type_ref);
             if !self.compatible(&declared, &element) {
-                return Err(type_mismatch(
-                    display(&declared),
-                    display(&element),
+                return Err(value_mismatch(
+                    &declared,
+                    &element,
                     "FOR EACH binding",
                     type_ref.span,
                 ));
@@ -181,6 +181,7 @@ impl Analyzer {
                 Ok(symbol.declared_ty)
             }
             ExpressionKind::Member { object, name } => {
+                self.reject_parameter_component(object, expression, locals)?;
                 let ty = self.expression(expression, locals)?;
                 let object_type = self.expression(object, locals)?;
                 if !self.member_mutable(&object_type, name) {
@@ -202,6 +203,7 @@ impl Analyzer {
                 ))
             }
             ExpressionKind::Index { object, .. } => {
+                self.reject_parameter_component(object, expression, locals)?;
                 let object_type = self.expression(object, locals)?;
                 if object_type == Type::String {
                     return Err(type_mismatch(
@@ -221,6 +223,54 @@ impl Analyzer {
             )),
         }
     }
+    /// A write into `container` (a field or element store) that lands inside a
+    /// parameter's own value is `TYPE_MISMATCH` (0.6.md, "Parameter
+    /// immutability and place mutation"): the path from the parameter to the
+    /// target crosses only value types (`STRUCT`, fixed or open vectors). A
+    /// path through an object or a pointer region writes to the heap and stays
+    /// allowed.
+    fn reject_parameter_component(
+        &mut self,
+        container: &Expression,
+        target: &Expression,
+        locals: &HashMap<String, Symbol>,
+    ) -> Result<(), Diagnostic> {
+        match self.parameter_owning(container, locals)? {
+            Some(name) => Err(type_mismatch(
+                bn_catalog::text("frontend", "msg.mutable_binding"),
+                bn_catalog::fill("frontend", "msg.parameter_component", &[("name", &name)]),
+                bn_catalog::text("frontend", "msg.assignment_target"),
+                target.span,
+            )),
+            None => Ok(()),
+        }
+    }
+
+    /// The parameter whose value storage holds `container`, if every step from
+    /// the parameter to it is a value type.
+    fn parameter_owning(
+        &mut self,
+        container: &Expression,
+        locals: &HashMap<String, Symbol>,
+    ) -> Result<Option<String>, Diagnostic> {
+        let container_type = self.expression(container, locals)?;
+        let is_value = matches!(container_type, Type::Vector { .. })
+            || self.struct_field_list(&container_type).is_some();
+        if !is_value {
+            return Ok(None);
+        }
+        match &container.kind {
+            ExpressionKind::Name { name } => Ok(self
+                .lookup(name, locals)
+                .filter(|symbol| symbol.parameter)
+                .map(|_| name.clone())),
+            ExpressionKind::Member { object, .. } | ExpressionKind::Index { object, .. } => {
+                self.parameter_owning(object, locals)
+            }
+            _ => Ok(None),
+        }
+    }
+
     pub(crate) fn require_boolean(
         &mut self,
         expression: &Expression,
@@ -244,6 +294,13 @@ impl Analyzer {
         expected: &Type,
         locals: &HashMap<String, Symbol>,
     ) -> Result<Type, Diagnostic> {
+        if float32_destination(expected) {
+            check_float_literal(
+                expression,
+                FloatType::Float32,
+                bn_catalog::text("frontend", "msg.float32_value"),
+            )?;
+        }
         if let ExpressionKind::Vector { values } = &expression.kind
             && let Some(fields) = self.struct_field_list(expected)
         {
@@ -262,12 +319,28 @@ impl Analyzer {
                 dimensions,
             },
         ) = (&expression.kind, expected)
-            && let Some(shape) = vector_shape(expression)
+            && let Some(shape) = self.declared_vector_shape(expression, element, dimensions.len())
             && shape.len() == dimensions.len()
         {
             return self.vector_literal_as(expression, element, &shape, locals);
         }
         self.expression(expression, locals)
+    }
+
+    /// The shape of a vector literal for a declared vector of `rank`
+    /// dimensions: for `STRUCT` elements only the declared dimensions are
+    /// measured, because the brackets below them are `STRUCT` literals.
+    fn declared_vector_shape(
+        &self,
+        expression: &Expression,
+        element: &Type,
+        rank: usize,
+    ) -> Option<Vec<usize>> {
+        if self.struct_field_list(element).is_some() {
+            vector_shape_to_depth(expression, rank)
+        } else {
+            vector_shape(expression)
+        }
     }
 
     /// A vector literal with a declared destination (0.6.md, "Vector literals
@@ -295,11 +368,14 @@ impl Analyzer {
                 if shape.len() > 1 {
                     self.vector_literal_as(value, element, &shape[1..], locals)?;
                 } else {
-                    let actual = self.expression(value, locals)?;
+                    // An element is an assignment to the element type, so a
+                    // `STRUCT` element may be a bracket literal (0.6.md,
+                    // "STRUCT literals").
+                    let actual = self.expression_as(value, element, locals)?;
                     if !self.compatible(element, &actual) {
-                        return Err(type_mismatch(
-                            display(element),
-                            display(&actual),
+                        return Err(value_mismatch(
+                            element,
+                            &actual,
                             VECTOR_LITERAL_ELEMENT,
                             value.span,
                         ));
@@ -340,9 +416,9 @@ impl Analyzer {
         for (value, field) in values.iter().zip(fields) {
             let actual = self.expression_as(value, &field.ty, locals)?;
             if !self.compatible(&field.ty, &actual) {
-                return Err(type_mismatch(
-                    display(&field.ty),
-                    display(&actual),
+                return Err(value_mismatch(
+                    &field.ty,
+                    &actual,
                     bn_catalog::text("frontend", "msg.struct_literal_element"),
                     value.span,
                 ));

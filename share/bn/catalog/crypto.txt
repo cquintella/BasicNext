@@ -6,3 +6,6 @@ open.tag.cause = the authentication tag does not verify: the ciphertext, AAD, ke
 
 # Messages moved out of Rust source (text-literal gate).
 msg.bncrypto_bytes_was_already_released = BNCrypto.Bytes was already released
+random.length.message = cannot generate {length} random bytes
+random.length.cause = the length must be from 0 through {limit} bytes
+msg.bncrypto_key_was_already_released = BNCrypto.Key was already released

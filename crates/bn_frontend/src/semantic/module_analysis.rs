@@ -102,6 +102,7 @@ pub(crate) fn analyze_with_modules_mode(
         struct_fields: HashMap::new(),
         layout_active: Vec::new(),
         recursive_struct: None,
+        destructured_fields: Vec::new(),
     };
     analyzer.declare_imported_interfaces();
     analyzer.declare_globals(program)?;
@@ -151,6 +152,7 @@ pub(crate) fn analyze_with_modules_mode(
             fields
         },
         host_aliases: analyzer.host_aliases,
+        destructured_fields: analyzer.destructured_fields,
     };
     let mut warnings = analyzer.warnings;
     if collect_warnings {
@@ -234,6 +236,7 @@ fn unused_binding_warnings(program: &Program, model: &SemanticModel) -> Vec<Diag
         .expressions
         .iter()
         .filter_map(|expression| expression.member_target.as_ref())
+        .chain(&model.destructured_fields)
         .filter_map(|target| Some((target.owner.as_deref()?, target.name.as_str())))
         .collect::<HashSet<_>>();
     let mut candidates = Vec::new();

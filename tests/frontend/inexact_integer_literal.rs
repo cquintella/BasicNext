@@ -3,9 +3,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! An integer literal takes a floating-point operand's type only when the
-//! value is exact (0.6.md, "Numeric operands"; BDFL decision, 2026-10-26,
-//! A.5d). `2^53 + 1` is not a `FLOAT`. `AS FLOAT` still rounds.
+//! An integer constant takes a floating-point operand's type only when the
+//! value is exact (0.6.md, "Numeric operands"; BDFL decisions, 2026-10-26,
+//! A.5d, and 2026-10-28). `2^53 + 1` is not a `FLOAT`. `AS FLOAT` still rounds.
 
 use bn_frontend::lexer::lex;
 use bn_frontend::parser::parse;
@@ -27,7 +27,7 @@ fn analysis_code(body: &str) -> Result<(), String> {
 }
 
 /// `2^53 + 1` and `2^24 + 1` are the first integers past an exact power of two.
-const INEXACT: [(&str, &str); 8] = [
+const INEXACT: [(&str, &str); 9] = [
     (
         "FLOAT times 2^53 + 1",
         "LET f AS FLOAT = 1.0\nPRINT f * 9007199254740993\n",
@@ -57,11 +57,15 @@ const INEXACT: [(&str, &str); 8] = [
         "hexadecimal past 2^53",
         "LET f AS FLOAT = 1.0\nPRINT f * 0x20000000000001\n",
     ),
+    (
+        "constant expression past 2^53",
+        "LET f AS FLOAT = 1.0\nPRINT f * (9007199254740993 * 1)\n",
+    ),
 ];
 
 /// The same forms with the last exact integer, and the conversions this
 /// decision does not change.
-const EXACT_OR_EXPLICIT: [(&str, &str); 7] = [
+const EXACT_OR_EXPLICIT: [(&str, &str); 8] = [
     ("FLOAT times 2", "LET f AS FLOAT = 1.5\nPRINT f * 2\n"),
     (
         "FLOAT times 2^53",
@@ -81,8 +85,12 @@ const EXACT_OR_EXPLICIT: [(&str, &str); 7] = [
         "LET f AS FLOAT = 9007199254740993 AS FLOAT\nPRINT f\n",
     ),
     (
+        "integer constant expression plus float literal",
+        "PRINT 2 * 3 + 1.5\n",
+    ),
+    (
         "negative constant exponent stays the power rule",
-        "PRINT 9007199254740993 ** -1\n",
+        "LET n AS INT64 = 9007199254740993\nPRINT n ** -1\n",
     ),
 ];
 

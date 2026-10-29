@@ -155,22 +155,9 @@ pub extern "C" fn bn_rt_error_wrap(
     }
     let msg = text(value);
     let op = text(operation);
-    let (op, cause) = if op.is_empty() {
-        if msg.starts_with("ASC") {
-            ("ASC", "string is empty")
-        } else if msg.starts_with("CHAR") {
-            ("CHAR", "code point is outside Unicode scalar range")
-        } else {
-            (op, "")
-        }
-    } else if op == "ASC" {
-        ("ASC", "string is empty")
-    } else if op == "CHAR" {
-        ("CHAR", "code point is outside Unicode scalar range")
-    } else {
-        (op, "")
-    };
-    new_record(1, msg, op, cause)
+    // The emitting call names its operation; text built-ins take their cause
+    // from the shared rule (bn_core_text::builtin), as the interpreter does.
+    new_record(1, msg, op, bn_core_text::builtin::failure_cause(op))
 }
 
 /// `Error.Code` of a record from `bn_rt_error_take` (1 for any other pointer).

@@ -43,6 +43,7 @@ fn syntax_error_fixtures_are_rejected_by_the_parser() {
         "tests/grammar/invalid/import-host-bare.bn",
         "tests/grammar/invalid/mismatched-end.bn",
         "tests/grammar/invalid/untyped-let.bn",
+        "tests/grammar/invalid/uppercase-reserved-binding-name.bn",
         "tests/grammar/invalid/invalid-lvalue.bn",
         "tests/grammar/invalid/bare-stop.bn",
         "tests/grammar/invalid/bare-continue.bn",

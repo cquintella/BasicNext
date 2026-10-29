@@ -15,7 +15,7 @@ use std::{
     time::Duration,
 };
 
-use super::secure_fs::{OpenMode, RootedDir};
+use super::secure_fs::{OpenMode, RootedDir, denied};
 
 pub(crate) const POLICY_CLOCK: u64 = 1 << 0;
 pub const POLICY_CONSOLE: u64 = 1 << 1;
@@ -65,7 +65,7 @@ impl Scope {
                 .filter(|root| root.contains(path))
                 .max_by_key(|root| root.path().components().count())
                 .map(Some)
-                .ok_or_else(|| io::Error::new(io::ErrorKind::PermissionDenied, FS_OUTSIDE_POLICY)),
+                .ok_or_else(|| denied(FS_OUTSIDE_POLICY)),
         }
     }
 }
@@ -166,10 +166,7 @@ impl FsPolicy {
     pub fn open(&self, path: &Path, mode: OpenMode) -> io::Result<File> {
         let write = mode != OpenMode::Read;
         if write && self.read_only {
-            return Err(io::Error::new(
-                io::ErrorKind::PermissionDenied,
-                FS_WRITES_DENIED,
-            ));
+            return Err(denied(FS_WRITES_DENIED));
         }
         let scope = if write { &self.write } else { &self.read };
         match scope.root_for(path)? {
@@ -198,14 +195,28 @@ impl FsPolicy {
     /// the path is outside the write roots.
     pub fn remove_file(&self, path: &Path) -> io::Result<()> {
         if self.read_only {
-            return Err(io::Error::new(
-                io::ErrorKind::PermissionDenied,
-                FS_WRITES_DENIED,
-            ));
+            return Err(denied(FS_WRITES_DENIED));
         }
         match self.write.root_for(path)? {
             Some(root) => root.remove_file(path),
             None => std::fs::remove_file(path),
+        }
+    }
+
+    /// Creates the directory `path` and its missing ancestors inside the write
+    /// roots, never through a symlink (`RootedDir::create_dir_all`).
+    ///
+    /// # Errors
+    ///
+    /// Propagates the I/O error; `PermissionDenied` when writes are denied,
+    /// the path is outside the write roots, or it traverses a symlink.
+    pub fn create_dir_all(&self, path: &Path) -> io::Result<()> {
+        if self.read_only {
+            return Err(denied(FS_WRITES_DENIED));
+        }
+        match self.write.root_for(path)? {
+            Some(root) => root.create_dir_all(path),
+            None => std::fs::create_dir_all(path),
         }
     }
 }

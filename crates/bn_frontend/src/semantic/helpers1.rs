@@ -126,6 +126,9 @@ pub(crate) fn constant_integer(expression: &Expression) -> Option<i128> {
                 "Star" => left.checked_mul(right),
                 "DIV" if right != 0 => left.checked_div_euclid(right),
                 "Percent" if right != 0 => left.checked_rem_euclid(right),
+                "AND" => Some(left & right),
+                "OR" => Some(left | right),
+                "XOR" => Some(left ^ right),
                 "Power" if right >= 0 => left.checked_pow(u32::try_from(right).ok()?),
                 "SHL" if (0..128).contains(&right) => left.checked_shl(u32::try_from(right).ok()?),
                 "SHR" if (0..128).contains(&right) => left.checked_shr(u32::try_from(right).ok()?),
@@ -387,12 +390,23 @@ pub(crate) fn integer_literal(expression: &Expression) -> Option<i64> {
 /// The context a vector literal element names in a `TYPE_MISMATCH`.
 pub(crate) const VECTOR_LITERAL_ELEMENT: &str = "vector literal element";
 pub(crate) fn vector_shape(expression: &Expression) -> Option<Vec<usize>> {
+    vector_shape_to_depth(expression, usize::MAX)
+}
+
+/// The shape of a bracket literal down to `depth` levels of brackets; the
+/// brackets below that depth belong to the elements (a `STRUCT` literal
+/// inside a vector of `STRUCT`s) and are not measured. `None` when a measured
+/// level is not rectangular.
+pub(crate) fn vector_shape_to_depth(expression: &Expression, depth: usize) -> Option<Vec<usize>> {
     let ExpressionKind::Vector { values } = &expression.kind else {
         return Some(Vec::new());
     };
+    if depth == 0 {
+        return Some(Vec::new());
+    }
     let mut element_shape = None;
     for value in values {
-        let shape = vector_shape(value)?;
+        let shape = vector_shape_to_depth(value, depth - 1)?;
         if let Some(expected) = &element_shape {
             if expected != &shape {
                 return None;

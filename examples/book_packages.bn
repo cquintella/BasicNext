@@ -8,9 +8,11 @@
 // docs/book/en/toc.md, converts them to XHTML 5, and writes a complete
 // EPUB 3 (with an EPUB 2 toc.ncx fallback): generated cover with the
 // official logo, preface, table of contents, chapters, appendices, CSS,
-// images and metadata. The ZIP container is written by this program with
-// STORED entries and CRC-32 computed here, so nothing outside Basic Next
-// is needed.
+// images and metadata. Chapters are read with HOST.FileSystem.ReadAll.
+// Pages are STRING. The ZIP container is BNCompress: the EPUB mimetype
+// entry is stored uncompressed, and every other entry is DEFLATE. The
+// edition identifier is BNCrypto.SHA256 of the edition name. The logo
+// is stored with ZipArchive.AddFile and referenced from the cover.
 //
 // Usage, from the repository root:
 //   bni run examples/book_packages.bn -- [bookDir] [outputDir] [version]
@@ -19,6 +21,9 @@
 
 IMPORT HOST.FileSystem AS FS
 IMPORT HOST.Clock AS Clock
+IMPORT BNCompress AS Compress
+IMPORT BNCrypto AS Crypto
+IMPORT BNString AS S
 
 CONST DEFAULT_BOOK_DIR AS STRING = "docs/book/en"
 CONST DEFAULT_OUTPUT_DIR AS STRING = "."
@@ -38,16 +43,19 @@ CONST ROLE_PREFACE AS STRING = "preface"
 CONST ROLE_CHAPTER AS STRING = "chapter"
 CONST ROLE_APPENDICES AS STRING = "appendices"
 CONST ROLE_APPENDIX AS STRING = "appendix"
+CONST TEXT_PIECE AS INTEGER = 512
 
 // ---------------------------------------------------------------------------
-// Text helpers. STRING has no slice syntax and no method namespace, so the
-// usual operations are written once here on top of LEN, indexing and +.
+// STRING is a sequence of Unicode scalars: LEN, s[i], FOR EACH, ASC, CHAR,
+// TOLOWER and TOUPPER. There is no slice and no method on STRING, so a
+// slice or a search is a loop over those operations.
 // ---------------------------------------------------------------------------
 
-FUNCTION Newline() AS STRING
+// CHAR is the language's newline. A string literal cannot hold one.
+FUNCTION LineFeed() AS STRING
     LET lineFeed AS STRING OR Error = CHAR(10)
     IF lineFeed IS Error THEN
-        RETURN " "
+        RETURN ""
     END IF
     RETURN lineFeed
 END FUNCTION
@@ -314,6 +322,21 @@ CLASS StringList
     PUBLIC FUNCTION CONSTRUCTOR()
     END FUNCTION
 
+    // Drop the chain one node at a time. Releasing `head` directly would
+    // release each `following` from inside the previous node's destructor,
+    // and a chapter is deeper than the call stack.
+    PUBLIC FUNCTION DESTRUCTOR()
+        SELF.tail = NULL
+        SELF.cursor = NULL
+        LET node AS StringNode OR NULL = SELF.head
+        SELF.head = NULL
+        WHILE node IS StringNode
+            LET next AS StringNode OR NULL = node.following
+            node.following = NULL
+            node = next
+        END WHILE
+    END FUNCTION
+
     PUBLIC FUNCTION Count() AS INTEGER
         RETURN SELF.used
     END FUNCTION
@@ -400,21 +423,23 @@ CLASS StringList
     END FUNCTION
 END CLASS
 
+// BNString.Tokenizer is the standard split. An empty separator is refused.
 FUNCTION SplitOn(text AS STRING, separator AS STRING) AS StringList
     LET parts AS StringList = NEW StringList()
-    LET current AS STRING = ""
-    LET at AS INTEGER = 0
-    WHILE at < LEN(text)
-        IF MatchesAt(text, separator, at) THEN
-            parts.Add(current)
-            current = ""
-            at += LEN(separator)
+    LET tokens AS S.Tokenizer OR NULL = S.Tokenizer.New(text, separator)
+    IF tokens IS NULL THEN
+        parts.Add(text)
+        RETURN parts
+    END IF
+    LET finished AS BOOLEAN = FALSE
+    WHILE NOT finished
+        LET part AS STRING OR EOF = tokens.Next()
+        IF part IS STRING THEN
+            parts.Add(part)
         ELSE
-            current += text[at]
-            at += 1
+            finished = TRUE
         END IF
     END WHILE
-    parts.Add(current)
     RETURN parts
 END FUNCTION
 
@@ -432,355 +457,76 @@ FUNCTION NormalizePath(path AS STRING) AS STRING
     RETURN kept.Join("/")
 END FUNCTION
 
-// ---------------------------------------------------------------------------
-// Bytes: growable byte buffer with little-endian and UTF-8 writers.
+// Documents are STRING. `+` copies its left operand, so a page is stored
+// in pieces and joined once, when BNCompress.AddText asks for it.
 // ---------------------------------------------------------------------------
 
-CLASS ByteBuffer
-    PRIVATE bytes AS POINTER TO BYTE[] = NEW BYTE[4096]
-    PRIVATE used AS INTEGER = 0
+CLASS Text
+    PRIVATE chunks AS StringList = NEW StringList()
+    PRIVATE piece AS STRING = ""
 
     PUBLIC FUNCTION CONSTRUCTOR()
     END FUNCTION
 
-    PUBLIC FUNCTION Size() AS INTEGER
-        RETURN SELF.used
-    END FUNCTION
-
-    PUBLIC FUNCTION Region() AS POINTER TO BYTE[]
-        RETURN SELF.bytes
-    END FUNCTION
-
-    PUBLIC FUNCTION ByteAt(index AS INTEGER) AS BYTE
-        RETURN SELF.bytes[index]
-    END FUNCTION
-
-    PRIVATE FUNCTION Reserve(extra AS INTEGER) AS VOID
-        LET needed AS INTEGER = SELF.used + extra
-        IF needed <= LEN(SELF.bytes) THEN
-            RETURN
+    PUBLIC FUNCTION Add(text AS STRING) AS VOID
+        SELF.piece += text
+        IF LEN(SELF.piece) >= TEXT_PIECE THEN
+            SELF.chunks.Add(SELF.piece)
+            SELF.piece = ""
         END IF
-        LET capacity AS INTEGER = LEN(SELF.bytes) * 2
-        WHILE capacity < needed
-            capacity *= 2
-        END WHILE
-        LET grown AS POINTER TO BYTE[] = NEW BYTE[capacity]
-        FOR index = 0 TO SELF.used - 1
-            grown[index] = SELF.bytes[index]
+    END FUNCTION
+
+    PUBLIC FUNCTION Line(text AS STRING) AS VOID
+        SELF.Add(text + LineFeed())
+    END FUNCTION
+
+    PUBLIC FUNCTION Content() AS STRING
+        LET all AS STRING = ""
+        FOR index = 0 TO SELF.chunks.Count() - 1
+            all += SELF.chunks.Get(index)
         END FOR
-        SELF.bytes = grown
-    END FUNCTION
-
-    PUBLIC FUNCTION AppendByte(value AS INTEGER) AS VOID
-        SELF.Reserve(1)
-        SELF.bytes[SELF.used] = (value AND 255) AS BYTE
-        SELF.used += 1
-    END FUNCTION
-
-    PUBLIC FUNCTION AppendUInt16(value AS INTEGER) AS VOID
-        SELF.AppendByte(value)
-        SELF.AppendByte(value SHR 8)
-    END FUNCTION
-
-    PUBLIC FUNCTION AppendUInt32(value AS UINT32) AS VOID
-        FOR shift = 0 TO 24 STEP 8
-            SELF.AppendByte(((value SHR shift) AND 255) AS INTEGER)
-        END FOR
-    END FUNCTION
-
-    PUBLIC FUNCTION AppendRegion(region AS POINTER TO BYTE[], count AS INTEGER) AS VOID
-        SELF.Reserve(count)
-        FOR index = 0 TO count - 1
-            SELF.bytes[SELF.used + index] = region[index]
-        END FOR
-        SELF.used += count
-    END FUNCTION
-
-    PUBLIC FUNCTION AppendText(text AS STRING) AS VOID
-        FOR EACH ch IN text
-            SELF.AppendCodePoint(CodeOf(ch))
-        END FOR
-    END FUNCTION
-
-    PUBLIC FUNCTION AppendLine(text AS STRING) AS VOID
-        SELF.AppendText(text)
-        SELF.AppendByte(10)
-    END FUNCTION
-
-    PRIVATE FUNCTION AppendCodePoint(code AS INTEGER) AS VOID
-        IF code < 0 THEN
-            RETURN
-        ELSE IF code < 128 THEN
-            SELF.AppendByte(code)
-        ELSE IF code < 2048 THEN
-            SELF.AppendByte(192 OR (code SHR 6))
-            SELF.AppendByte(128 OR (code AND 63))
-        ELSE IF code < 65536 THEN
-            SELF.AppendByte(224 OR (code SHR 12))
-            SELF.AppendByte(128 OR ((code SHR 6) AND 63))
-            SELF.AppendByte(128 OR (code AND 63))
-        ELSE
-            SELF.AppendByte(240 OR (code SHR 18))
-            SELF.AppendByte(128 OR ((code SHR 12) AND 63))
-            SELF.AppendByte(128 OR ((code SHR 6) AND 63))
-            SELF.AppendByte(128 OR (code AND 63))
-        END IF
+        RETURN all + SELF.piece
     END FUNCTION
 END CLASS
 
-FUNCTION TextBytes(text AS STRING) AS ByteBuffer
-    LET buffer AS ByteBuffer = NEW ByteBuffer()
-    buffer.AppendText(text)
-    RETURN buffer
+FUNCTION AddDeflated(archive AS Compress.ZipArchive, name AS STRING, content AS Text) AS VOID OR Error
+    RETURN archive.AddText(name, content.Content())
 END FUNCTION
 
-FUNCTION ReadBinaryFile(path AS STRING) AS ByteBuffer OR Error
-    LET opened AS FS.File OR Error = FS.Open(path, FS.READ)
-    IF opened IS Error THEN
-        RETURN opened
-    END IF
-    LET content AS ByteBuffer = NEW ByteBuffer()
-    LET chunk AS POINTER TO BYTE[] = NEW BYTE[65536]
-    LET finished AS BOOLEAN = FALSE
-    WHILE NOT finished
-        LET got AS INTEGER OR EOF OR Error = opened.ReadBytes(chunk)
-        IF got IS Error THEN
-            opened.Close()
-            RETURN got
-        ELSE IF got IS INTEGER THEN
-            content.AppendRegion(chunk, got)
-        ELSE
-            finished = TRUE
-        END IF
-    END WHILE
-    opened.Close()
-    RETURN content
-END FUNCTION
-
+// One ReadAll, then a slice per line. Mid copies each line once.
 FUNCTION ReadTextLines(path AS STRING) AS StringList OR Error
     LET opened AS FS.File OR Error = FS.Open(path, FS.READ)
     IF opened IS Error THEN
         RETURN opened
     END IF
+    LET whole AS STRING OR Error = opened.ReadAll()
+    LET closed AS VOID OR Error = opened.Close()
+    IF whole IS Error THEN
+        RETURN whole
+    END IF
+    IF closed IS Error THEN
+        RETURN closed
+    END IF
     LET lines AS StringList = NEW StringList()
-    LET finished AS BOOLEAN = FALSE
-    WHILE NOT finished
-        LET line AS STRING OR EOF OR Error = opened.ReadLine()
-        IF line IS Error THEN
-            opened.Close()
-            RETURN line
-        ELSE IF line IS STRING THEN
-            lines.Add(TrimRight(line))
-        ELSE
-            finished = TRUE
+    LET start AS INTEGER = 0
+    LET at AS INTEGER = 0
+    LET feed AS STRING = LineFeed()
+    WHILE at < LEN(whole)
+        LET ch AS STRING = whole[at]
+        IF ch = feed OR CodeOf(ch) = 13 THEN
+            lines.Add(TrimRight(Mid(whole, start, at - start)))
+            IF CodeOf(ch) = 13 AND at + 1 < LEN(whole) AND whole[at + 1] = feed THEN
+                at += 1
+            END IF
+            start = at + 1
         END IF
+        at += 1
     END WHILE
-    opened.Close()
+    IF start < LEN(whole) THEN
+        lines.Add(TrimRight(Mid(whole, start, LEN(whole) - start)))
+    END IF
     RETURN lines
 END FUNCTION
-
-FUNCTION Base64Into(source AS ByteBuffer, target AS ByteBuffer) AS VOID
-    LET alphabet AS STRING = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-    LET at AS INTEGER = 0
-    WHILE at < source.Size()
-        LET remaining AS INTEGER = source.Size() - at
-        LET b0 AS INTEGER = source.ByteAt(at) AS INTEGER
-        LET b1 AS INTEGER = 0
-        LET b2 AS INTEGER = 0
-        IF remaining > 1 THEN b1 = source.ByteAt(at + 1) AS INTEGER
-        IF remaining > 2 THEN b2 = source.ByteAt(at + 2) AS INTEGER
-        LET group AS INTEGER = (b0 SHL 16) OR (b1 SHL 8) OR b2
-        target.AppendText(alphabet[(group SHR 18) AND 63])
-        target.AppendText(alphabet[(group SHR 12) AND 63])
-        IF remaining > 1 THEN
-            target.AppendText(alphabet[(group SHR 6) AND 63])
-        ELSE
-            target.AppendText("=")
-        END IF
-        IF remaining > 2 THEN
-            target.AppendText(alphabet[group AND 63])
-        ELSE
-            target.AppendText("=")
-        END IF
-        at += 3
-    END WHILE
-END FUNCTION
-
-// ---------------------------------------------------------------------------
-// ZIP container (PKWARE APPNOTE): STORED entries, CRC-32 (IEEE 802.3).
-// ---------------------------------------------------------------------------
-
-CLASS Crc32
-    PRIVATE table AS POINTER TO UINT32[] = NEW UINT32[256]
-
-    PUBLIC FUNCTION CONSTRUCTOR()
-        FOR slot = 0 TO 255
-            LET value AS UINT32 = slot AS UINT32
-            FOR bit = 1 TO 8
-                IF (value AND 1) = 1 THEN
-                    value = 0xEDB88320 XOR (value SHR 1)
-                ELSE
-                    value = value SHR 1
-                END IF
-            END FOR
-            SELF.table[slot] = value
-        END FOR
-    END FUNCTION
-
-    PUBLIC FUNCTION Of(buffer AS ByteBuffer) AS UINT32
-        LET crc AS UINT32 = 0xFFFFFFFF
-        LET data AS POINTER TO BYTE[] = buffer.Region()
-        FOR index = 0 TO buffer.Size() - 1
-            LET slot AS INTEGER = ((crc XOR (data[index] AS UINT32)) AND 255) AS INTEGER
-            crc = SELF.table[slot] XOR (crc SHR 8)
-        END FOR
-        RETURN crc XOR 0xFFFFFFFF
-    END FUNCTION
-END CLASS
-
-STRUCT DosStamp
-    dosTime AS INTEGER
-    dosDate AS INTEGER
-END STRUCT
-
-// rfc3339 is "YYYY-MM-DDTHH:MM:SS.mmmZ" as produced by Timestamp.Format.
-FUNCTION DosStampOf(rfc3339 AS STRING) AS DosStamp
-    LET year AS INTEGER = DigitsValue(rfc3339, 0, 4)
-    LET month AS INTEGER = DigitsValue(rfc3339, 5, 2)
-    LET day AS INTEGER = DigitsValue(rfc3339, 8, 2)
-    LET hour AS INTEGER = DigitsValue(rfc3339, 11, 2)
-    LET minute AS INTEGER = DigitsValue(rfc3339, 14, 2)
-    LET second AS INTEGER = DigitsValue(rfc3339, 17, 2)
-    LET stamp AS DosStamp = [(hour SHL 11) OR (minute SHL 5) OR (second DIV 2), ((year - 1980) SHL 9) OR (month SHL 5) OR day]
-    RETURN stamp
-END FUNCTION
-
-CLASS ZipEntry
-    PUBLIC name AS STRING = ""
-    PUBLIC crc AS UINT32 = 0
-    PUBLIC size AS INTEGER = 0
-    PUBLIC offset AS INTEGER = 0
-    PUBLIC following AS ZipEntry OR NULL = NULL
-
-    PUBLIC FUNCTION CONSTRUCTOR(name AS STRING, crc AS UINT32, size AS INTEGER, offset AS INTEGER)
-        SELF.name = name
-        SELF.crc = crc
-        SELF.size = size
-        SELF.offset = offset
-    END FUNCTION
-END CLASS
-
-CLASS ZipWriter
-    PRIVATE target AS FS.File = NEW FS.File()
-    PRIVATE stamp AS DosStamp
-    PRIVATE checksum AS Crc32 = NEW Crc32()
-    PRIVATE written AS INTEGER = 0
-    PRIVATE entryCount AS INTEGER = 0
-    PRIVATE firstEntry AS ZipEntry OR NULL = NULL
-    PRIVATE lastEntry AS ZipEntry OR NULL = NULL
-
-    PUBLIC FUNCTION CONSTRUCTOR(target AS FS.File, stamp AS DosStamp)
-        SELF.target = target
-        SELF.stamp = stamp
-    END FUNCTION
-
-    PUBLIC STATIC FUNCTION Create(path AS STRING, stamp AS DosStamp) AS ZipWriter OR Error
-        LET opened AS FS.File OR Error = FS.Open(path, FS.WRITE)
-        IF opened IS Error THEN
-            RETURN opened
-        END IF
-        RETURN NEW ZipWriter(opened, stamp)
-    END FUNCTION
-
-    PUBLIC FUNCTION AddStored(name AS STRING, content AS ByteBuffer) AS VOID OR Error
-        LET entry AS ZipEntry = NEW ZipEntry(name, SELF.checksum.Of(content), content.Size(), SELF.written)
-        LET header AS ByteBuffer = NEW ByteBuffer()
-        header.AppendUInt32(0x04034B50)
-        header.AppendUInt16(20)
-        SELF.AppendCommonFields(header, entry)
-        header.AppendRegion(TextBytes(name).Region(), TextBytes(name).Size())
-        LET headerWritten AS VOID OR Error = SELF.WriteBuffer(header)
-        IF headerWritten IS Error THEN
-            RETURN headerWritten
-        END IF
-        LET contentWritten AS VOID OR Error = SELF.WriteBuffer(content)
-        IF contentWritten IS Error THEN
-            RETURN contentWritten
-        END IF
-        SELF.Remember(entry)
-        RETURN
-    END FUNCTION
-
-    PUBLIC FUNCTION Finish() AS VOID OR Error
-        LET directoryStart AS INTEGER = SELF.written
-        LET directory AS ByteBuffer = NEW ByteBuffer()
-        LET node AS ZipEntry OR NULL = SELF.firstEntry
-        WHILE node IS ZipEntry
-            SELF.AppendDirectoryRecord(directory, node)
-            node = node.following
-        END WHILE
-        LET directorySize AS INTEGER = directory.Size()
-        directory.AppendUInt32(0x06054B50)
-        directory.AppendUInt16(0)
-        directory.AppendUInt16(0)
-        directory.AppendUInt16(SELF.entryCount)
-        directory.AppendUInt16(SELF.entryCount)
-        directory.AppendUInt32(directorySize AS UINT32)
-        directory.AppendUInt32(directoryStart AS UINT32)
-        directory.AppendUInt16(0)
-        LET directoryWritten AS VOID OR Error = SELF.WriteBuffer(directory)
-        IF directoryWritten IS Error THEN
-            SELF.target.Close()
-            RETURN directoryWritten
-        END IF
-        RETURN SELF.target.Close()
-    END FUNCTION
-
-    PRIVATE FUNCTION AppendCommonFields(buffer AS ByteBuffer, entry AS ZipEntry) AS VOID
-        buffer.AppendUInt16(0)
-        buffer.AppendUInt16(0)
-        buffer.AppendUInt16(SELF.stamp.dosTime)
-        buffer.AppendUInt16(SELF.stamp.dosDate)
-        buffer.AppendUInt32(entry.crc)
-        buffer.AppendUInt32(entry.size AS UINT32)
-        buffer.AppendUInt32(entry.size AS UINT32)
-        buffer.AppendUInt16(TextBytes(entry.name).Size())
-        buffer.AppendUInt16(0)
-    END FUNCTION
-
-    PRIVATE FUNCTION AppendDirectoryRecord(buffer AS ByteBuffer, entry AS ZipEntry) AS VOID
-        buffer.AppendUInt32(0x02014B50)
-        buffer.AppendUInt16(20)
-        buffer.AppendUInt16(20)
-        SELF.AppendCommonFields(buffer, entry)
-        buffer.AppendUInt16(0)
-        buffer.AppendUInt16(0)
-        buffer.AppendUInt16(0)
-        buffer.AppendUInt32(0)
-        buffer.AppendUInt32(entry.offset AS UINT32)
-        buffer.AppendText(entry.name)
-    END FUNCTION
-
-    PRIVATE FUNCTION WriteBuffer(buffer AS ByteBuffer) AS VOID OR Error
-        LET result AS VOID OR Error = SELF.target.WriteBytes(buffer.Region(), buffer.Size())
-        IF result IS Error THEN
-            RETURN result
-        END IF
-        SELF.written += buffer.Size()
-        RETURN
-    END FUNCTION
-
-    PRIVATE FUNCTION Remember(entry AS ZipEntry) AS VOID
-        LET tail AS ZipEntry OR NULL = SELF.lastEntry
-        IF tail IS ZipEntry THEN
-            tail.following = entry
-        ELSE
-            SELF.firstEntry = entry
-        END IF
-        SELF.lastEntry = entry
-        SELF.entryCount += 1
-    END FUNCTION
-END CLASS
 
 // ---------------------------------------------------------------------------
 // Book model: resources, headings, parts and link rewriting.
@@ -884,7 +630,7 @@ CLASS BookPart
     PUBLIC label AS STRING = ""
     PUBLIC role AS STRING = ""
     PUBLIC headings AS HeadingCollector = NEW HeadingCollector()
-    PUBLIC page AS ByteBuffer = NEW ByteBuffer()
+    PUBLIC page AS Text = NEW Text()
     PUBLIC following AS BookPart OR NULL = NULL
 
     PUBLIC FUNCTION CONSTRUCTOR(sourceName AS STRING, label AS STRING, role AS STRING)
@@ -1264,8 +1010,8 @@ END FUNCTION
 
 // ---------------------------------------------------------------------------
 // Block Markdown: headings, paragraphs, fenced code, lists, block quotes,
-// callouts, GFM tables and thematic breaks. Output goes straight into a
-// ByteBuffer because repeated STRING concatenation is quadratic.
+// callouts, GFM tables and thematic breaks. The HTML is a Text: pieces of
+// STRING, joined once per page.
 // ---------------------------------------------------------------------------
 
 FUNCTION IsFence(line AS STRING) AS BOOLEAN
@@ -1409,10 +1155,10 @@ CLASS MarkdownConverter
     PRIVATE position AS INTEGER = 0
     PRIVATE links AS LinkRewriter = NEW LinkRewriter("", NEW StringList(), NEW ResourceRegistry())
     PRIVATE headings AS HeadingCollector = NEW HeadingCollector()
-    PRIVATE out AS ByteBuffer = NEW ByteBuffer()
+    PRIVATE out AS Text = NEW Text()
     PRIVATE tight AS BOOLEAN = FALSE
 
-    PUBLIC FUNCTION CONSTRUCTOR(lines AS StringList, links AS LinkRewriter, headings AS HeadingCollector, out AS ByteBuffer, tight AS BOOLEAN)
+    PUBLIC FUNCTION CONSTRUCTOR(lines AS StringList, links AS LinkRewriter, headings AS HeadingCollector, out AS Text, tight AS BOOLEAN)
         SELF.lines = lines
         SELF.links = links
         SELF.headings = headings
@@ -1435,7 +1181,7 @@ CLASS MarkdownConverter
     END FUNCTION
 
     PRIVATE FUNCTION Emit(html AS STRING) AS VOID
-        SELF.out.AppendLine(html)
+        SELF.out.Line(html)
     END FUNCTION
 
     PRIVATE FUNCTION ConvertNested(blockLines AS StringList, tightBlock AS BOOLEAN) AS VOID
@@ -1503,18 +1249,18 @@ CLASS MarkdownConverter
         IF language <> "" THEN
             classes = " class=\"language-" + EscapeXml(TOLOWER(language)) + "\""
         END IF
-        SELF.out.AppendText("<pre" + classes + "><code" + classes + ">")
+        SELF.out.Add("<pre" + classes + "><code" + classes + ">")
         SELF.position += 1
         LET firstLine AS BOOLEAN = TRUE
         WHILE SELF.HasLine() AND NOT StartsWith(TrimLeft(SELF.Current()), fence)
             IF NOT firstLine THEN
-                SELF.out.AppendByte(10)
+                SELF.out.Add(LineFeed())
             END IF
             LET codeLine AS STRING = RemoveIndentation(SELF.Current(), indent)
             IF highlight THEN
-                SELF.out.AppendText(HighlightBasicLine(codeLine))
+                SELF.out.Add(HighlightBasicLine(codeLine))
             ELSE
-                SELF.out.AppendText(EscapeXml(codeLine))
+                SELF.out.Add(EscapeXml(codeLine))
             END IF
             firstLine = FALSE
             SELF.position += 1
@@ -1653,7 +1399,7 @@ CLASS MarkdownConverter
                 gathering = FALSE
             END IF
         END WHILE
-        SELF.out.AppendText("<li>")
+        SELF.out.Add("<li>")
         SELF.ConvertNested(itemLines, NOT loose)
         SELF.Emit("</li>")
     END FUNCTION
@@ -1698,13 +1444,14 @@ FUNCTION ReadOutline(tocLines AS StringList) AS BookOutline
         LET line AS STRING = tocLines.Get(index)
         IF HeadingLevel(line) = 1 THEN
             outline.title = PlainText(FromIndex(Trim(line), 2))
-        ELSE IF HeadingLevel(line) = 2 THEN
-            LET entry AS TocLink = FirstMarkdownLink(FromIndex(Trim(line), 3))
+        ELSE IF HeadingLevel(line) = 2 OR HeadingLevel(line) = 3 THEN
+            LET level AS INTEGER = HeadingLevel(line)
+            LET entry AS TocLink = FirstMarkdownLink(FromIndex(Trim(line), level + 1))
             IF entry.found THEN
                 LET role AS STRING = ROLE_CHAPTER
-                IF StartsWith(TOLOWER(entry.label), "preface") THEN
+                IF level = 2 AND StartsWith(TOLOWER(entry.label), "preface") THEN
                     role = ROLE_PREFACE
-                ELSE IF StartsWith(TOLOWER(entry.label), "appendi") THEN
+                ELSE IF level = 2 AND StartsWith(TOLOWER(entry.label), "appendi") THEN
                     role = ROLE_APPENDICES
                     inAppendices = TRUE
                 END IF
@@ -1728,21 +1475,21 @@ FUNCTION XmlDeclaration() AS STRING
     RETURN "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
 END FUNCTION
 
-FUNCTION OpenXhtml(out AS ByteBuffer, title AS STRING, bodyType AS STRING) AS VOID
-    out.AppendLine(XmlDeclaration())
-    out.AppendLine("<!DOCTYPE html>")
-    out.AppendLine("<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:epub=\"http://www.idpf.org/2007/ops\" lang=\"en\" xml:lang=\"en\">")
-    out.AppendLine("<head>")
-    out.AppendLine("<meta charset=\"UTF-8\"/>")
-    out.AppendLine("<title>" + EscapeXml(title) + "</title>")
-    out.AppendLine("<link rel=\"stylesheet\" type=\"text/css\" href=\"css/book.css\"/>")
-    out.AppendLine("</head>")
-    out.AppendLine("<body epub:type=\"" + bodyType + "\">")
+FUNCTION OpenXhtml(out AS Text, title AS STRING, bodyType AS STRING) AS VOID
+    out.Line(XmlDeclaration())
+    out.Line("<!DOCTYPE html>")
+    out.Line("<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:epub=\"http://www.idpf.org/2007/ops\" lang=\"en\" xml:lang=\"en\">")
+    out.Line("<head>")
+    out.Line("<meta charset=\"UTF-8\"/>")
+    out.Line("<title>" + EscapeXml(title) + "</title>")
+    out.Line("<link rel=\"stylesheet\" type=\"text/css\" href=\"css/book.css\"/>")
+    out.Line("</head>")
+    out.Line("<body epub:type=\"" + bodyType + "\">")
 END FUNCTION
 
-FUNCTION CloseXhtml(out AS ByteBuffer) AS VOID
-    out.AppendLine("</body>")
-    out.AppendLine("</html>")
+FUNCTION CloseXhtml(out AS Text) AS VOID
+    out.Line("</body>")
+    out.Line("</html>")
 END FUNCTION
 
 FUNCTION MatterOf(role AS STRING) AS STRING
@@ -1758,14 +1505,14 @@ FUNCTION SectionTypeOf(role AS STRING) AS STRING
 END FUNCTION
 
 FUNCTION RenderPart(part AS BookPart, lines AS StringList, links AS LinkRewriter) AS VOID
-    LET body AS ByteBuffer = NEW ByteBuffer()
+    LET body AS Text = NEW Text()
     LET converter AS MarkdownConverter = NEW MarkdownConverter(lines, links, part.headings, body, FALSE)
     converter.Convert()
     LET sectionType AS STRING = SectionTypeOf(part.role)
     OpenXhtml(part.page, part.Title(), MatterOf(part.role))
-    part.page.AppendLine("<section epub:type=\"" + sectionType + "\" role=\"doc-" + sectionType + "\" class=\"" + part.role + "\">")
-    part.page.AppendRegion(body.Region(), body.Size())
-    part.page.AppendLine("</section>")
+    part.page.Line("<section epub:type=\"" + sectionType + "\" role=\"doc-" + sectionType + "\" class=\"" + part.role + "\">")
+    part.page.Add(body.Content())
+    part.page.Line("</section>")
     CloseXhtml(part.page)
 END FUNCTION
 
@@ -1811,47 +1558,40 @@ FUNCTION TitleLines(title AS STRING) AS StringList
     RETURN lines
 END FUNCTION
 
-FUNCTION SvgText(out AS ByteBuffer, y AS INTEGER, size AS INTEGER, fill AS STRING, family AS STRING, weight AS STRING, text AS STRING) AS VOID
-    out.AppendLine("<text x=\"600\" y=\"" + (y AS STRING) + "\" text-anchor=\"middle\" font-family=\"" + family + "\" font-size=\"" + (size AS STRING) + "\" font-weight=\"" + weight + "\" fill=\"" + fill + "\">" + EscapeXml(text) + "</text>")
+FUNCTION SvgText(out AS Text, y AS INTEGER, size AS INTEGER, fill AS STRING, family AS STRING, weight AS STRING, text AS STRING) AS VOID
+    out.Line("<text x=\"600\" y=\"" + (y AS STRING) + "\" text-anchor=\"middle\" font-family=\"" + family + "\" font-size=\"" + (size AS STRING) + "\" font-weight=\"" + weight + "\" fill=\"" + fill + "\">" + EscapeXml(text) + "</text>")
 END FUNCTION
 
-// logoHref is either a packaged path or a data: URI.
-FUNCTION RenderCoverSvg(out AS ByteBuffer, facts AS CoverFacts, logo AS ByteBuffer, embedLogo AS BOOLEAN) AS VOID
+// logoHref is relative to the file that holds this SVG.
+FUNCTION RenderCoverSvg(out AS Text, facts AS CoverFacts, logoHref AS STRING) AS VOID
     LET serif AS STRING = "Georgia, 'Times New Roman', serif"
     LET sans AS STRING = "'Helvetica Neue', Arial, sans-serif"
-    out.AppendLine("<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" version=\"1.1\" viewBox=\"0 0 1200 1800\" width=\"100%\" height=\"100%\" preserveAspectRatio=\"xMidYMid meet\">")
-    out.AppendLine("<title>" + EscapeXml(facts.title) + "</title>")
-    out.AppendLine("<defs><linearGradient id=\"bg\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#0b1d36\"/><stop offset=\"1\" stop-color=\"#16426e\"/></linearGradient></defs>")
-    out.AppendLine("<rect width=\"1200\" height=\"1800\" fill=\"url(#bg)\"/>")
-    out.AppendLine("<rect x=\"60\" y=\"60\" width=\"1080\" height=\"1680\" fill=\"none\" stroke=\"#f2b632\" stroke-width=\"4\" rx=\"24\"/>")
-    out.AppendLine("<circle cx=\"600\" cy=\"560\" r=\"330\" fill=\"#ffffff\"/>")
-    out.AppendText("<image x=\"330\" y=\"290\" width=\"540\" height=\"540\" preserveAspectRatio=\"xMidYMid meet\" xlink:href=\"")
-    IF embedLogo THEN
-        out.AppendText("data:image/png;base64,")
-        Base64Into(logo, out)
-    ELSE
-        out.AppendText("images/logo.png")
-    END IF
-    out.AppendLine("\"/>")
+    out.Line("<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" version=\"1.1\" viewBox=\"0 0 1200 1800\" width=\"100%\" height=\"100%\" preserveAspectRatio=\"xMidYMid meet\">")
+    out.Line("<title>" + EscapeXml(facts.title) + "</title>")
+    out.Line("<defs><linearGradient id=\"bg\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#0b1d36\"/><stop offset=\"1\" stop-color=\"#16426e\"/></linearGradient></defs>")
+    out.Line("<rect width=\"1200\" height=\"1800\" fill=\"url(#bg)\"/>")
+    out.Line("<rect x=\"60\" y=\"60\" width=\"1080\" height=\"1680\" fill=\"none\" stroke=\"#f2b632\" stroke-width=\"4\" rx=\"24\"/>")
+    out.Line("<circle cx=\"600\" cy=\"560\" r=\"330\" fill=\"#ffffff\"/>")
+    out.Line("<image x=\"330\" y=\"290\" width=\"540\" height=\"540\" preserveAspectRatio=\"xMidYMid meet\" xlink:href=\"" + logoHref + "\"/>")
     LET titleLines AS StringList = TitleLines(facts.title)
     LET y AS INTEGER = 1060
     FOR index = 0 TO titleLines.Count() - 1
         SvgText(out, y, 84, "#ffffff", serif, "bold", titleLines.Get(index))
         y += 104
     END FOR
-    out.AppendLine("<rect x=\"450\" y=\"" + ((y - 40) AS STRING) + "\" width=\"300\" height=\"6\" fill=\"#f2b632\"/>")
+    out.Line("<rect x=\"450\" y=\"" + ((y - 40) AS STRING) + "\" width=\"300\" height=\"6\" fill=\"#f2b632\"/>")
     SvgText(out, y + 70, 50, "#e8eef6", serif, "normal", facts.author)
     SvgText(out, 1530, 46, "#f2b632", sans, "bold", "Version " + facts.version)
     SvgText(out, 1600, 30, "#b9c7d8", sans, "normal", "Generated " + facts.generated)
     SvgText(out, 1660, 28, "#b9c7d8", sans, "normal", "basicnext.org")
-    out.AppendLine("</svg>")
+    out.Line("</svg>")
 END FUNCTION
 
-FUNCTION RenderCoverPage(out AS ByteBuffer, facts AS CoverFacts, logo AS ByteBuffer) AS VOID
+FUNCTION RenderCoverPage(out AS Text, facts AS CoverFacts) AS VOID
     OpenXhtml(out, "Cover", "cover")
-    out.AppendLine("<section epub:type=\"cover\" class=\"cover\">")
-    RenderCoverSvg(out, facts, logo, FALSE)
-    out.AppendLine("</section>")
+    out.Line("<section epub:type=\"cover\" class=\"cover\">")
+    RenderCoverSvg(out, facts, "images/logo.png")
+    out.Line("</section>")
     CloseXhtml(out)
 END FUNCTION
 
@@ -1859,22 +1599,22 @@ END FUNCTION
 // Navigation: EPUB 3 nav.xhtml (toc + landmarks) and EPUB 2 toc.ncx.
 // ---------------------------------------------------------------------------
 
-FUNCTION NavItem(out AS ByteBuffer, part AS BookPart) AS VOID
-    out.AppendText("<li><a href=\"" + part.xhtmlName + "\">" + EscapeXml(part.label) + "</a>")
+FUNCTION NavItem(out AS Text, part AS BookPart) AS VOID
+    out.Add("<li><a href=\"" + part.xhtmlName + "\">" + EscapeXml(part.label) + "</a>")
     IF part.role <> ROLE_APPENDICES AND part.headings.sectionIds.Count() > 0 THEN
-        out.AppendLine("<ol>")
+        out.Line("<ol>")
         FOR index = 0 TO part.headings.sectionIds.Count() - 1
-            out.AppendLine("<li><a href=\"" + part.xhtmlName + "#" + EscapeXml(part.headings.sectionIds.Get(index)) + "\">" + EscapeXml(part.headings.sectionTitles.Get(index)) + "</a></li>")
+            out.Line("<li><a href=\"" + part.xhtmlName + "#" + EscapeXml(part.headings.sectionIds.Get(index)) + "\">" + EscapeXml(part.headings.sectionTitles.Get(index)) + "</a></li>")
         END FOR
-        out.AppendText("</ol>")
+        out.Add("</ol>")
     END IF
 END FUNCTION
 
-FUNCTION RenderNav(out AS ByteBuffer, outline AS BookOutline) AS VOID
+FUNCTION RenderNav(out AS Text, outline AS BookOutline) AS VOID
     OpenXhtml(out, "Contents", "frontmatter")
-    out.AppendLine("<nav epub:type=\"toc\" id=\"toc\" role=\"doc-toc\">")
-    out.AppendLine("<h1>Contents</h1>")
-    out.AppendLine("<ol class=\"toc\">")
+    out.Line("<nav epub:type=\"toc\" id=\"toc\" role=\"doc-toc\">")
+    out.Line("<h1>Contents</h1>")
+    out.Line("<ol class=\"toc\">")
     LET inAppendices AS BOOLEAN = FALSE
     LET appendicesSeen AS BOOLEAN = FALSE
     LET node AS BookPart OR NULL = outline.parts.first
@@ -1884,64 +1624,64 @@ FUNCTION RenderNav(out AS ByteBuffer, outline AS BookOutline) AS VOID
         END IF
         IF node.role = ROLE_APPENDIX AND appendicesSeen THEN
             IF NOT inAppendices THEN
-                out.AppendLine("<ol>")
+                out.Line("<ol>")
                 inAppendices = TRUE
             END IF
             NavItem(out, node)
-            out.AppendLine("</li>")
+            out.Line("</li>")
         ELSE
             NavItem(out, node)
             IF node.role <> ROLE_APPENDICES THEN
-                out.AppendLine("</li>")
+                out.Line("</li>")
             END IF
         END IF
         node = node.following
     END WHILE
     IF inAppendices THEN
-        out.AppendLine("</ol>")
+        out.Line("</ol>")
     END IF
     IF appendicesSeen THEN
-        out.AppendLine("</li>")
+        out.Line("</li>")
     END IF
-    out.AppendLine("</ol>")
-    out.AppendLine("</nav>")
-    out.AppendLine("<nav epub:type=\"landmarks\" id=\"landmarks\" hidden=\"hidden\">")
-    out.AppendLine("<h2>Landmarks</h2>")
-    out.AppendLine("<ol>")
-    out.AppendLine("<li><a epub:type=\"cover\" href=\"cover.xhtml\">Cover</a></li>")
-    out.AppendLine("<li><a epub:type=\"toc\" href=\"nav.xhtml\">Contents</a></li>")
+    out.Line("</ol>")
+    out.Line("</nav>")
+    out.Line("<nav epub:type=\"landmarks\" id=\"landmarks\" hidden=\"hidden\">")
+    out.Line("<h2>Landmarks</h2>")
+    out.Line("<ol>")
+    out.Line("<li><a epub:type=\"cover\" href=\"cover.xhtml\">Cover</a></li>")
+    out.Line("<li><a epub:type=\"toc\" href=\"nav.xhtml\">Contents</a></li>")
     LandmarkFor(out, outline.parts, ROLE_PREFACE, "preface", "Preface")
     LandmarkFor(out, outline.parts, ROLE_CHAPTER, "bodymatter", "Start of Content")
     LandmarkFor(out, outline.parts, ROLE_APPENDICES, "backmatter", "Appendices")
-    out.AppendLine("</ol>")
-    out.AppendLine("</nav>")
+    out.Line("</ol>")
+    out.Line("</nav>")
     CloseXhtml(out)
 END FUNCTION
 
-FUNCTION LandmarkFor(out AS ByteBuffer, parts AS PartList, role AS STRING, landmark AS STRING, label AS STRING) AS VOID
+FUNCTION LandmarkFor(out AS Text, parts AS PartList, role AS STRING, landmark AS STRING, label AS STRING) AS VOID
     LET part AS BookPart OR NULL = parts.FirstWithRole(role)
     IF part IS BookPart THEN
-        out.AppendLine("<li><a epub:type=\"" + landmark + "\" href=\"" + part.xhtmlName + "\">" + label + "</a></li>")
+        out.Line("<li><a epub:type=\"" + landmark + "\" href=\"" + part.xhtmlName + "\">" + label + "</a></li>")
     END IF
 END FUNCTION
 
 CLASS NcxWriter
-    PRIVATE out AS ByteBuffer = NEW ByteBuffer()
+    PRIVATE out AS Text = NEW Text()
     PRIVATE playOrder AS INTEGER = 0
 
-    PUBLIC FUNCTION CONSTRUCTOR(out AS ByteBuffer)
+    PUBLIC FUNCTION CONSTRUCTOR(out AS Text)
         SELF.out = out
     END FUNCTION
 
     PUBLIC FUNCTION OpenPoint(label AS STRING, href AS STRING) AS VOID
         SELF.playOrder += 1
-        SELF.out.AppendLine("<navPoint id=\"np-" + (SELF.playOrder AS STRING) + "\" playOrder=\"" + (SELF.playOrder AS STRING) + "\">")
-        SELF.out.AppendLine("<navLabel><text>" + EscapeXml(label) + "</text></navLabel>")
-        SELF.out.AppendLine("<content src=\"" + EscapeXml(href) + "\"/>")
+        SELF.out.Line("<navPoint id=\"np-" + (SELF.playOrder AS STRING) + "\" playOrder=\"" + (SELF.playOrder AS STRING) + "\">")
+        SELF.out.Line("<navLabel><text>" + EscapeXml(label) + "</text></navLabel>")
+        SELF.out.Line("<content src=\"" + EscapeXml(href) + "\"/>")
     END FUNCTION
 
     PUBLIC FUNCTION ClosePoint() AS VOID
-        SELF.out.AppendLine("</navPoint>")
+        SELF.out.Line("</navPoint>")
     END FUNCTION
 
     PUBLIC FUNCTION Point(label AS STRING, href AS STRING) AS VOID
@@ -1950,17 +1690,17 @@ CLASS NcxWriter
     END FUNCTION
 END CLASS
 
-FUNCTION RenderNcx(out AS ByteBuffer, outline AS BookOutline, identifier AS STRING) AS VOID
-    out.AppendLine(XmlDeclaration())
-    out.AppendLine("<ncx xmlns=\"http://www.daisy.org/z3986/2005/ncx/\" version=\"2005-1\" xml:lang=\"en\">")
-    out.AppendLine("<head>")
-    out.AppendLine("<meta name=\"dtb:uid\" content=\"" + identifier + "\"/>")
-    out.AppendLine("<meta name=\"dtb:depth\" content=\"2\"/>")
-    out.AppendLine("<meta name=\"dtb:totalPageCount\" content=\"0\"/>")
-    out.AppendLine("<meta name=\"dtb:maxPageNumber\" content=\"0\"/>")
-    out.AppendLine("</head>")
-    out.AppendLine("<docTitle><text>" + EscapeXml(outline.title) + "</text></docTitle>")
-    out.AppendLine("<navMap>")
+FUNCTION RenderNcx(out AS Text, outline AS BookOutline, identifier AS STRING) AS VOID
+    out.Line(XmlDeclaration())
+    out.Line("<ncx xmlns=\"http://www.daisy.org/z3986/2005/ncx/\" version=\"2005-1\" xml:lang=\"en\">")
+    out.Line("<head>")
+    out.Line("<meta name=\"dtb:uid\" content=\"" + identifier + "\"/>")
+    out.Line("<meta name=\"dtb:depth\" content=\"2\"/>")
+    out.Line("<meta name=\"dtb:totalPageCount\" content=\"0\"/>")
+    out.Line("<meta name=\"dtb:maxPageNumber\" content=\"0\"/>")
+    out.Line("</head>")
+    out.Line("<docTitle><text>" + EscapeXml(outline.title) + "</text></docTitle>")
+    out.Line("<navMap>")
     LET points AS NcxWriter = NEW NcxWriter(out)
     points.Point("Cover", "cover.xhtml")
     LET appendicesOpen AS BOOLEAN = FALSE
@@ -1982,8 +1722,8 @@ FUNCTION RenderNcx(out AS ByteBuffer, outline AS BookOutline, identifier AS STRI
     IF appendicesOpen THEN
         points.ClosePoint()
     END IF
-    out.AppendLine("</navMap>")
-    out.AppendLine("</ncx>")
+    out.Line("</navMap>")
+    out.Line("</ncx>")
 END FUNCTION
 
 // ---------------------------------------------------------------------------
@@ -2006,53 +1746,53 @@ CLASS PackageFacts
     END FUNCTION
 END CLASS
 
-FUNCTION ManifestItem(out AS ByteBuffer, href AS STRING, properties AS STRING) AS VOID
+FUNCTION ManifestItem(out AS Text, href AS STRING, properties AS STRING) AS VOID
     LET extra AS STRING = ""
     IF properties <> "" THEN
         extra = " properties=\"" + properties + "\""
     END IF
-    out.AppendLine("<item id=\"" + ManifestId(href) + "\" href=\"" + EscapeXml(href) + "\" media-type=\"" + MediaTypeOf(href) + "\"" + extra + "/>")
+    out.Line("<item id=\"" + ManifestId(href) + "\" href=\"" + EscapeXml(href) + "\" media-type=\"" + MediaTypeOf(href) + "\"" + extra + "/>")
 END FUNCTION
 
-FUNCTION SpineItem(out AS ByteBuffer, href AS STRING) AS VOID
-    out.AppendLine("<itemref idref=\"" + ManifestId(href) + "\"/>")
+FUNCTION SpineItem(out AS Text, href AS STRING) AS VOID
+    out.Line("<itemref idref=\"" + ManifestId(href) + "\"/>")
 END FUNCTION
 
-FUNCTION RenderMetadata(out AS ByteBuffer, facts AS PackageFacts) AS VOID
-    out.AppendLine("<metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">")
-    out.AppendLine("<dc:identifier id=\"book-id\">" + facts.identifier + "</dc:identifier>")
-    out.AppendLine("<dc:title id=\"title\">" + EscapeXml(facts.title) + "</dc:title>")
-    out.AppendLine("<meta refines=\"#title\" property=\"title-type\">main</meta>")
-    out.AppendLine("<dc:title id=\"edition\">Version " + EscapeXml(facts.version) + "</dc:title>")
-    out.AppendLine("<meta refines=\"#edition\" property=\"title-type\">edition</meta>")
-    out.AppendLine("<dc:creator id=\"author\">" + EscapeXml(BOOK_AUTHOR) + "</dc:creator>")
-    out.AppendLine("<meta refines=\"#author\" property=\"role\" scheme=\"marc:relators\">aut</meta>")
-    out.AppendLine("<meta refines=\"#author\" property=\"file-as\">" + EscapeXml(BOOK_AUTHOR_SORT) + "</meta>")
-    out.AppendLine("<dc:language>en</dc:language>")
-    out.AppendLine("<dc:date>" + facts.generatedDate + "</dc:date>")
-    out.AppendLine("<dc:publisher>" + EscapeXml(BOOK_PUBLISHER) + "</dc:publisher>")
-    out.AppendLine("<dc:rights>" + EscapeXml(BOOK_RIGHTS) + "</dc:rights>")
-    out.AppendLine("<dc:subject>Programming languages</dc:subject>")
-    out.AppendLine("<dc:subject>Basic Next</dc:subject>")
-    out.AppendLine("<dc:description>The official tutorial of the Basic Next programming language, edition for version " + EscapeXml(facts.version) + ".</dc:description>")
-    out.AppendLine("<meta property=\"dcterms:modified\">" + facts.modified + "</meta>")
-    out.AppendLine("<meta property=\"schema:version\">" + EscapeXml(facts.version) + "</meta>")
-    out.AppendLine("<meta property=\"schema:accessMode\">textual</meta>")
-    out.AppendLine("<meta property=\"schema:accessMode\">visual</meta>")
-    out.AppendLine("<meta property=\"schema:accessModeSufficient\">textual</meta>")
-    out.AppendLine("<meta property=\"schema:accessibilityFeature\">structuralNavigation</meta>")
-    out.AppendLine("<meta property=\"schema:accessibilityFeature\">tableOfContents</meta>")
-    out.AppendLine("<meta property=\"schema:accessibilityHazard\">none</meta>")
-    out.AppendLine("<meta property=\"schema:accessibilitySummary\">Reflowable text with semantic headings, navigable table of contents and text alternatives for images.</meta>")
-    out.AppendLine("<meta name=\"cover\" content=\"" + ManifestId("images/cover.svg") + "\"/>")
-    out.AppendLine("</metadata>")
+FUNCTION RenderMetadata(out AS Text, facts AS PackageFacts) AS VOID
+    out.Line("<metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">")
+    out.Line("<dc:identifier id=\"book-id\">" + facts.identifier + "</dc:identifier>")
+    out.Line("<dc:title id=\"title\">" + EscapeXml(facts.title) + "</dc:title>")
+    out.Line("<meta refines=\"#title\" property=\"title-type\">main</meta>")
+    out.Line("<dc:title id=\"edition\">Version " + EscapeXml(facts.version) + "</dc:title>")
+    out.Line("<meta refines=\"#edition\" property=\"title-type\">edition</meta>")
+    out.Line("<dc:creator id=\"author\">" + EscapeXml(BOOK_AUTHOR) + "</dc:creator>")
+    out.Line("<meta refines=\"#author\" property=\"role\" scheme=\"marc:relators\">aut</meta>")
+    out.Line("<meta refines=\"#author\" property=\"file-as\">" + EscapeXml(BOOK_AUTHOR_SORT) + "</meta>")
+    out.Line("<dc:language>en</dc:language>")
+    out.Line("<dc:date>" + facts.generatedDate + "</dc:date>")
+    out.Line("<dc:publisher>" + EscapeXml(BOOK_PUBLISHER) + "</dc:publisher>")
+    out.Line("<dc:rights>" + EscapeXml(BOOK_RIGHTS) + "</dc:rights>")
+    out.Line("<dc:subject>Programming languages</dc:subject>")
+    out.Line("<dc:subject>Basic Next</dc:subject>")
+    out.Line("<dc:description>The official tutorial of the Basic Next programming language, edition for version " + EscapeXml(facts.version) + ".</dc:description>")
+    out.Line("<meta property=\"dcterms:modified\">" + facts.modified + "</meta>")
+    out.Line("<meta property=\"schema:version\">" + EscapeXml(facts.version) + "</meta>")
+    out.Line("<meta property=\"schema:accessMode\">textual</meta>")
+    out.Line("<meta property=\"schema:accessMode\">visual</meta>")
+    out.Line("<meta property=\"schema:accessModeSufficient\">textual</meta>")
+    out.Line("<meta property=\"schema:accessibilityFeature\">structuralNavigation</meta>")
+    out.Line("<meta property=\"schema:accessibilityFeature\">tableOfContents</meta>")
+    out.Line("<meta property=\"schema:accessibilityHazard\">none</meta>")
+    out.Line("<meta property=\"schema:accessibilitySummary\">Reflowable text with semantic headings, navigable table of contents and text alternatives for images.</meta>")
+    out.Line("<meta name=\"cover\" content=\"" + ManifestId("images/cover.svg") + "\"/>")
+    out.Line("</metadata>")
 END FUNCTION
 
-FUNCTION RenderPackage(out AS ByteBuffer, facts AS PackageFacts, outline AS BookOutline, resources AS ResourceRegistry) AS VOID
-    out.AppendLine(XmlDeclaration())
-    out.AppendLine("<package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\" unique-identifier=\"book-id\" xml:lang=\"en\" prefix=\"schema: http://schema.org/\">")
+FUNCTION RenderPackage(out AS Text, facts AS PackageFacts, outline AS BookOutline, resources AS ResourceRegistry) AS VOID
+    out.Line(XmlDeclaration())
+    out.Line("<package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\" unique-identifier=\"book-id\" xml:lang=\"en\" prefix=\"schema: http://schema.org/\">")
     RenderMetadata(out, facts)
-    out.AppendLine("<manifest>")
+    out.Line("<manifest>")
     ManifestItem(out, "toc.ncx", "")
     ManifestItem(out, "nav.xhtml", "nav")
     ManifestItem(out, "cover.xhtml", "svg")
@@ -2067,8 +1807,8 @@ FUNCTION RenderPackage(out AS ByteBuffer, facts AS PackageFacts, outline AS Book
         ManifestItem(out, node.xhtmlName, "")
         node = node.following
     END WHILE
-    out.AppendLine("</manifest>")
-    out.AppendLine("<spine toc=\"" + ManifestId("toc.ncx") + "\">")
+    out.Line("</manifest>")
+    out.Line("<spine toc=\"" + ManifestId("toc.ncx") + "\">")
     SpineItem(out, "cover.xhtml")
     LET contentsPlaced AS BOOLEAN = FALSE
     LET entry AS BookPart OR NULL = outline.parts.first
@@ -2083,39 +1823,24 @@ FUNCTION RenderPackage(out AS ByteBuffer, facts AS PackageFacts, outline AS Book
     IF NOT contentsPlaced THEN
         SpineItem(out, "nav.xhtml")
     END IF
-    out.AppendLine("</spine>")
-    out.AppendLine("</package>")
+    out.Line("</spine>")
+    out.Line("</package>")
 END FUNCTION
 
-FUNCTION RenderContainer(out AS ByteBuffer) AS VOID
-    out.AppendLine(XmlDeclaration())
-    out.AppendLine("<container version=\"1.0\" xmlns=\"urn:oasis:names:tc:opendocument:xmlns:container\">")
-    out.AppendLine("<rootfiles>")
-    out.AppendLine("<rootfile full-path=\"" + CONTENT_DIR + "content.opf\" media-type=\"application/oebps-package+xml\"/>")
-    out.AppendLine("</rootfiles>")
-    out.AppendLine("</container>")
+FUNCTION RenderContainer(out AS Text) AS VOID
+    out.Line(XmlDeclaration())
+    out.Line("<container version=\"1.0\" xmlns=\"urn:oasis:names:tc:opendocument:xmlns:container\">")
+    out.Line("<rootfiles>")
+    out.Line("<rootfile full-path=\"" + CONTENT_DIR + "content.opf\" media-type=\"application/oebps-package+xml\"/>")
+    out.Line("</rootfiles>")
+    out.Line("</container>")
 END FUNCTION
 
-FUNCTION HexOf(value AS UINT32, digits AS INTEGER) AS STRING
-    LET alphabet AS STRING = "0123456789abcdef"
-    LET result AS STRING = ""
-    LET rest AS UINT32 = value
-    FOR position = 1 TO digits
-        result = alphabet[(rest AND 15) AS INTEGER] + result
-        rest = rest SHR 4
-    END FOR
-    RETURN result
-END FUNCTION
-
-// Name-based UUID (RFC 9562 version 8 layout): four CRC-32 values of the
-// edition name with different salts give 128 stable bits, so every build
-// of one version keeps the same identifier.
+// Name-based UUID (RFC 9562 version 8 layout): the first 128 bits of
+// SHA-256(seed), with the version and variant nibbles fixed, so every
+// build of one edition keeps the same identifier.
 FUNCTION StableUuid(seed AS STRING) AS STRING
-    LET crc AS Crc32 = NEW Crc32()
-    LET hex AS STRING = ""
-    FOR salt = 0 TO 3
-        hex += HexOf(crc.Of(TextBytes(seed + "#" + (salt AS STRING))), 8)
-    END FOR
+    LET hex AS STRING = Crypto.SHA256(seed)
     LET variantDigit AS STRING = "89ab"[CodeOf(hex[16]) % 4]
     RETURN "urn:uuid:" + Mid(hex, 0, 8) + "-" + Mid(hex, 8, 4) + "-8" + Mid(hex, 13, 3) + "-" + variantDigit + Mid(hex, 17, 3) + "-" + Mid(hex, 20, 12)
 END FUNCTION
@@ -2124,60 +1849,60 @@ END FUNCTION
 // Stylesheet.
 // ---------------------------------------------------------------------------
 
-FUNCTION RenderCss(out AS ByteBuffer) AS VOID
-    out.AppendLine("@charset \"UTF-8\";")
-    out.AppendLine("/* Basic Next book — EPUB stylesheet. Generic font stacks only. */")
-    out.AppendLine("html { font-size: 100%; }")
-    out.AppendLine("body { font-family: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, serif; line-height: 1.55; color: #1d232b; margin: 0 4%; text-align: left; hyphens: auto; -epub-hyphens: auto; widows: 2; orphans: 2; }")
-    out.AppendLine("h1, h2, h3, h4, h5, h6 { font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif; color: #12355b; line-height: 1.25; page-break-after: avoid; break-after: avoid; hyphens: none; -epub-hyphens: none; }")
-    out.AppendLine("h1 { font-size: 1.9em; margin: 1.2em 0 0.8em 0; padding-bottom: 0.3em; border-bottom: 3px solid #f2b632; }")
-    out.AppendLine("h2 { font-size: 1.45em; margin: 1.6em 0 0.6em 0; padding-bottom: 0.15em; border-bottom: 1px solid #d5dde7; }")
-    out.AppendLine("h3 { font-size: 1.2em; margin: 1.3em 0 0.5em 0; }")
-    out.AppendLine("h4, h5, h6 { font-size: 1.05em; margin: 1.1em 0 0.4em 0; }")
-    out.AppendLine("section.chapter > h1:first-child, section.appendix > h1:first-child, section.appendices > h1:first-child, section.preface > h1:first-child { margin-top: 0.5em; }")
-    out.AppendLine("p { margin: 0 0 0.85em 0; }")
-    out.AppendLine("a { color: #1d5fa8; text-decoration: none; }")
-    out.AppendLine("a.external { text-decoration: underline; text-decoration-color: #9bb8da; }")
-    out.AppendLine("strong { font-weight: bold; color: #0f2440; }")
-    out.AppendLine("code, pre, kbd, samp { font-family: 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; }")
-    out.AppendLine("code { font-size: 0.88em; background-color: #eef2f7; padding: 0.05em 0.25em; border-radius: 3px; hyphens: none; -epub-hyphens: none; }")
-    out.AppendLine("pre { font-size: 0.8em; line-height: 1.4; background-color: #f6f8fb; border: 1px solid #d5dde7; border-left: 4px solid #12355b; border-radius: 4px; padding: 0.7em 0.9em; margin: 0.6em 0 1.1em 0; white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word; page-break-inside: avoid; break-inside: avoid; }")
-    out.AppendLine("pre code { font-size: 1em; background: none; padding: 0; border-radius: 0; }")
-    out.AppendLine("pre.language-sh, pre.language-shell, pre.language-text { border-left-color: #6b7a8c; }")
-    out.AppendLine("pre .k { color: #8a1f63; font-weight: bold; }")
-    out.AppendLine("pre .t { color: #1d5fa8; font-weight: bold; }")
-    out.AppendLine("pre .l { color: #9a5b00; }")
-    out.AppendLine("pre .s { color: #2c7a2c; }")
-    out.AppendLine("pre .n { color: #9a5b00; }")
-    out.AppendLine("pre .c { color: #6b7a8c; font-style: italic; }")
-    out.AppendLine("ul, ol { margin: 0 0 0.9em 0; padding-left: 1.6em; }")
-    out.AppendLine("li { margin: 0.2em 0; }")
-    out.AppendLine("li > ul, li > ol { margin-bottom: 0.2em; }")
-    out.AppendLine("blockquote { margin: 1em 0; padding: 0.4em 1em; border-left: 4px solid #c7d3e1; color: #3a4654; font-style: italic; }")
-    out.AppendLine("blockquote p:last-child, div.callout p:last-child { margin-bottom: 0; }")
-    out.AppendLine("div.callout { margin: 1em 0; padding: 0.6em 0.9em; border-radius: 4px; border-left: 5px solid #1d5fa8; background-color: #edf4fc; page-break-inside: avoid; break-inside: avoid; }")
-    out.AppendLine("div.callout.tip { border-left-color: #2c7a2c; background-color: #eef8ee; }")
-    out.AppendLine("div.callout.warning { border-left-color: #b8461b; background-color: #fdf0ea; }")
-    out.AppendLine("div.callout.important { border-left-color: #8a1f63; background-color: #f9eef5; }")
-    out.AppendLine("div.callout.draft { border-left-color: #9a5b00; background-color: #fdf6e6; }")
-    out.AppendLine("div.table-wrap { margin: 0.8em 0 1.2em 0; overflow-x: auto; }")
-    out.AppendLine("table { border-collapse: collapse; width: 100%; font-size: 0.86em; line-height: 1.4; page-break-inside: auto; }")
-    out.AppendLine("th, td { border: 1px solid #d5dde7; padding: 0.35em 0.55em; vertical-align: top; text-align: left; }")
-    out.AppendLine("thead th { background-color: #12355b; color: #ffffff; font-family: 'Helvetica Neue', Arial, sans-serif; }")
-    out.AppendLine("thead th code { color: #12355b; }")
-    out.AppendLine("tbody tr:nth-child(even) td { background-color: #f6f8fb; }")
-    out.AppendLine(".align-center { text-align: center; }")
-    out.AppendLine(".align-right { text-align: right; }")
-    out.AppendLine("hr { border: none; border-top: 1px solid #d5dde7; margin: 1.6em 15%; }")
-    out.AppendLine("img { max-width: 100%; height: auto; }")
-    out.AppendLine(".missing-image { font-style: italic; color: #6b7a8c; }")
-    out.AppendLine("section.cover { margin: 0; padding: 0; text-align: center; height: 100vh; }")
-    out.AppendLine("section.cover svg { display: block; margin: 0 auto; max-height: 100vh; }")
-    out.AppendLine("body[epub|type~='cover'] { margin: 0; }")
-    out.AppendLine("nav#toc ol { list-style-type: none; padding-left: 0; }")
-    out.AppendLine("nav#toc > ol > li { margin: 0.55em 0; font-weight: bold; font-family: 'Helvetica Neue', Arial, sans-serif; }")
-    out.AppendLine("nav#toc ol ol { padding-left: 1.3em; font-weight: normal; font-family: Georgia, serif; font-size: 0.95em; }")
-    out.AppendLine("nav#landmarks { display: none; }")
+FUNCTION RenderCss(out AS Text) AS VOID
+    out.Line("@charset \"UTF-8\";")
+    out.Line("/* Basic Next book — EPUB stylesheet. Generic font stacks only. */")
+    out.Line("html { font-size: 100%; }")
+    out.Line("body { font-family: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, serif; line-height: 1.55; color: #1d232b; margin: 0 4%; text-align: left; hyphens: auto; -epub-hyphens: auto; widows: 2; orphans: 2; }")
+    out.Line("h1, h2, h3, h4, h5, h6 { font-family: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif; color: #12355b; line-height: 1.25; page-break-after: avoid; break-after: avoid; hyphens: none; -epub-hyphens: none; }")
+    out.Line("h1 { font-size: 1.9em; margin: 1.2em 0 0.8em 0; padding-bottom: 0.3em; border-bottom: 3px solid #f2b632; }")
+    out.Line("h2 { font-size: 1.45em; margin: 1.6em 0 0.6em 0; padding-bottom: 0.15em; border-bottom: 1px solid #d5dde7; }")
+    out.Line("h3 { font-size: 1.2em; margin: 1.3em 0 0.5em 0; }")
+    out.Line("h4, h5, h6 { font-size: 1.05em; margin: 1.1em 0 0.4em 0; }")
+    out.Line("section.chapter > h1:first-child, section.appendix > h1:first-child, section.appendices > h1:first-child, section.preface > h1:first-child { margin-top: 0.5em; }")
+    out.Line("p { margin: 0 0 0.85em 0; }")
+    out.Line("a { color: #1d5fa8; text-decoration: none; }")
+    out.Line("a.external { text-decoration: underline; text-decoration-color: #9bb8da; }")
+    out.Line("strong { font-weight: bold; color: #0f2440; }")
+    out.Line("code, pre, kbd, samp { font-family: 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; }")
+    out.Line("code { font-size: 0.88em; background-color: #eef2f7; padding: 0.05em 0.25em; border-radius: 3px; hyphens: none; -epub-hyphens: none; }")
+    out.Line("pre { font-size: 0.8em; line-height: 1.4; background-color: #f6f8fb; border: 1px solid #d5dde7; border-left: 4px solid #12355b; border-radius: 4px; padding: 0.7em 0.9em; margin: 0.6em 0 1.1em 0; white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word; page-break-inside: avoid; break-inside: avoid; }")
+    out.Line("pre code { font-size: 1em; background: none; padding: 0; border-radius: 0; }")
+    out.Line("pre.language-sh, pre.language-shell, pre.language-text { border-left-color: #6b7a8c; }")
+    out.Line("pre .k { color: #8a1f63; font-weight: bold; }")
+    out.Line("pre .t { color: #1d5fa8; font-weight: bold; }")
+    out.Line("pre .l { color: #9a5b00; }")
+    out.Line("pre .s { color: #2c7a2c; }")
+    out.Line("pre .n { color: #9a5b00; }")
+    out.Line("pre .c { color: #6b7a8c; font-style: italic; }")
+    out.Line("ul, ol { margin: 0 0 0.9em 0; padding-left: 1.6em; }")
+    out.Line("li { margin: 0.2em 0; }")
+    out.Line("li > ul, li > ol { margin-bottom: 0.2em; }")
+    out.Line("blockquote { margin: 1em 0; padding: 0.4em 1em; border-left: 4px solid #c7d3e1; color: #3a4654; font-style: italic; }")
+    out.Line("blockquote p:last-child, div.callout p:last-child { margin-bottom: 0; }")
+    out.Line("div.callout { margin: 1em 0; padding: 0.6em 0.9em; border-radius: 4px; border-left: 5px solid #1d5fa8; background-color: #edf4fc; page-break-inside: avoid; break-inside: avoid; }")
+    out.Line("div.callout.tip { border-left-color: #2c7a2c; background-color: #eef8ee; }")
+    out.Line("div.callout.warning { border-left-color: #b8461b; background-color: #fdf0ea; }")
+    out.Line("div.callout.important { border-left-color: #8a1f63; background-color: #f9eef5; }")
+    out.Line("div.callout.draft { border-left-color: #9a5b00; background-color: #fdf6e6; }")
+    out.Line("div.table-wrap { margin: 0.8em 0 1.2em 0; overflow-x: auto; }")
+    out.Line("table { border-collapse: collapse; width: 100%; font-size: 0.86em; line-height: 1.4; page-break-inside: auto; }")
+    out.Line("th, td { border: 1px solid #d5dde7; padding: 0.35em 0.55em; vertical-align: top; text-align: left; }")
+    out.Line("thead th { background-color: #12355b; color: #ffffff; font-family: 'Helvetica Neue', Arial, sans-serif; }")
+    out.Line("thead th code { color: #12355b; }")
+    out.Line("tbody tr:nth-child(even) td { background-color: #f6f8fb; }")
+    out.Line(".align-center { text-align: center; }")
+    out.Line(".align-right { text-align: right; }")
+    out.Line("hr { border: none; border-top: 1px solid #d5dde7; margin: 1.6em 15%; }")
+    out.Line("img { max-width: 100%; height: auto; }")
+    out.Line(".missing-image { font-style: italic; color: #6b7a8c; }")
+    out.Line("section.cover { margin: 0; padding: 0; text-align: center; height: 100vh; }")
+    out.Line("section.cover svg { display: block; margin: 0 auto; max-height: 100vh; }")
+    out.Line("body[epub|type~='cover'] { margin: 0; }")
+    out.Line("nav#toc ol { list-style-type: none; padding-left: 0; }")
+    out.Line("nav#toc > ol > li { margin: 0.55em 0; font-weight: bold; font-family: 'Helvetica Neue', Arial, sans-serif; }")
+    out.Line("nav#toc ol ol { padding-left: 1.3em; font-weight: normal; font-family: Georgia, serif; font-size: 0.95em; }")
+    out.Line("nav#landmarks { display: none; }")
 END FUNCTION
 
 // ---------------------------------------------------------------------------
@@ -2232,88 +1957,85 @@ FUNCTION RenderParts(outline AS BookOutline, bookDir AS STRING, links AS LinkRew
     RETURN
 END FUNCTION
 
-FUNCTION AddText(zip AS ZipWriter, name AS STRING, content AS ByteBuffer) AS VOID OR Error
-    RETURN zip.AddStored(name, content)
-END FUNCTION
-
-FUNCTION WriteEpub(path AS STRING, stamp AS DosStamp, outline AS BookOutline, facts AS PackageFacts, cover AS CoverFacts, logo AS ByteBuffer, resources AS ResourceRegistry) AS VOID OR Error
-    LET created AS ZipWriter OR Error = ZipWriter.Create(path, stamp)
+FUNCTION WriteEpub(path AS STRING, outline AS BookOutline, facts AS PackageFacts, cover AS CoverFacts, resources AS ResourceRegistry) AS VOID OR Error
+    LET created AS Compress.ZipArchive OR Error = Compress.ZipArchive.Create(path)
     IF created IS Error THEN
         RETURN created
     END IF
-    LET zip AS ZipWriter = created
-    LET mimetype AS VOID OR Error = zip.AddStored("mimetype", TextBytes("application/epub+zip"))
+    LET archive AS Compress.ZipArchive = created
+    LET mimetype AS VOID OR Error = archive.AddStoredText("mimetype", "application/epub+zip")
     IF mimetype IS Error THEN
         RETURN mimetype
     END IF
-    LET container AS ByteBuffer = NEW ByteBuffer()
+    LET container AS Text = NEW Text()
     RenderContainer(container)
-    LET packageDocument AS ByteBuffer = NEW ByteBuffer()
+    LET packageDocument AS Text = NEW Text()
     RenderPackage(packageDocument, facts, outline, resources)
-    LET ncx AS ByteBuffer = NEW ByteBuffer()
+    LET ncx AS Text = NEW Text()
     RenderNcx(ncx, outline, facts.identifier)
-    LET nav AS ByteBuffer = NEW ByteBuffer()
+    LET nav AS Text = NEW Text()
     RenderNav(nav, outline)
-    LET coverPage AS ByteBuffer = NEW ByteBuffer()
-    RenderCoverPage(coverPage, cover, logo)
-    LET coverImage AS ByteBuffer = NEW ByteBuffer()
-    coverImage.AppendLine(XmlDeclaration())
-    RenderCoverSvg(coverImage, cover, logo, TRUE)
-    LET css AS ByteBuffer = NEW ByteBuffer()
+    LET coverPage AS Text = NEW Text()
+    RenderCoverPage(coverPage, cover)
+    LET coverImage AS Text = NEW Text()
+    coverImage.Line(XmlDeclaration())
+    RenderCoverSvg(coverImage, cover, "logo.png")
+    LET css AS Text = NEW Text()
     RenderCss(css)
-    LET steps AS VOID OR Error = AddAll(zip, container, packageDocument, ncx, nav, coverPage, coverImage, css, logo)
+    LET steps AS VOID OR Error = AddAll(archive, container, packageDocument, ncx, nav, coverPage, coverImage, css)
     IF steps IS Error THEN
         RETURN steps
     END IF
-    LET images AS VOID OR Error = AddResources(zip, resources)
+    LET images AS VOID OR Error = AddResources(archive, resources)
     IF images IS Error THEN
         RETURN images
     END IF
     LET node AS BookPart OR NULL = outline.parts.first
     WHILE node IS BookPart
-        LET added AS VOID OR Error = zip.AddStored(CONTENT_DIR + node.xhtmlName, node.page)
+        LET added AS VOID OR Error = AddDeflated(archive, CONTENT_DIR + node.xhtmlName, node.page)
         IF added IS Error THEN
             RETURN added
         END IF
         node = node.following
     END WHILE
-    RETURN zip.Finish()
+    RETURN archive.Close()
 END FUNCTION
 
-FUNCTION AddAll(zip AS ZipWriter, container AS ByteBuffer, packageDocument AS ByteBuffer, ncx AS ByteBuffer, nav AS ByteBuffer, coverPage AS ByteBuffer, coverImage AS ByteBuffer, css AS ByteBuffer, logo AS ByteBuffer) AS VOID OR Error
-    LET names AS StringList = NEW StringList()
-    names.Add("META-INF/container.xml")
-    names.Add(CONTENT_DIR + "content.opf")
-    names.Add(CONTENT_DIR + "toc.ncx")
-    names.Add(CONTENT_DIR + "nav.xhtml")
-    names.Add(CONTENT_DIR + "cover.xhtml")
-    names.Add(CONTENT_DIR + "images/cover.svg")
-    names.Add(CONTENT_DIR + "css/book.css")
-    names.Add(CONTENT_DIR + "images/logo.png")
-    FOR index = 0 TO names.Count() - 1
-        LET content AS ByteBuffer = logo
-        IF index = 0 THEN content = container
-        IF index = 1 THEN content = packageDocument
-        IF index = 2 THEN content = ncx
-        IF index = 3 THEN content = nav
-        IF index = 4 THEN content = coverPage
-        IF index = 5 THEN content = coverImage
-        IF index = 6 THEN content = css
-        LET added AS VOID OR Error = zip.AddStored(names.Get(index), content)
-        IF added IS Error THEN
-            RETURN added
-        END IF
-    END FOR
-    RETURN
+FUNCTION AddAll(archive AS Compress.ZipArchive, container AS Text, packageDocument AS Text, ncx AS Text, nav AS Text, coverPage AS Text, coverImage AS Text, css AS Text) AS VOID OR Error
+    LET containerAdded AS VOID OR Error = AddDeflated(archive, "META-INF/container.xml", container)
+    IF containerAdded IS Error THEN
+        RETURN containerAdded
+    END IF
+    LET packageAdded AS VOID OR Error = AddDeflated(archive, CONTENT_DIR + "content.opf", packageDocument)
+    IF packageAdded IS Error THEN
+        RETURN packageAdded
+    END IF
+    LET ncxAdded AS VOID OR Error = AddDeflated(archive, CONTENT_DIR + "toc.ncx", ncx)
+    IF ncxAdded IS Error THEN
+        RETURN ncxAdded
+    END IF
+    LET navAdded AS VOID OR Error = AddDeflated(archive, CONTENT_DIR + "nav.xhtml", nav)
+    IF navAdded IS Error THEN
+        RETURN navAdded
+    END IF
+    LET coverAdded AS VOID OR Error = AddDeflated(archive, CONTENT_DIR + "cover.xhtml", coverPage)
+    IF coverAdded IS Error THEN
+        RETURN coverAdded
+    END IF
+    LET coverImageAdded AS VOID OR Error = AddDeflated(archive, CONTENT_DIR + "images/cover.svg", coverImage)
+    IF coverImageAdded IS Error THEN
+        RETURN coverImageAdded
+    END IF
+    LET cssAdded AS VOID OR Error = AddDeflated(archive, CONTENT_DIR + "css/book.css", css)
+    IF cssAdded IS Error THEN
+        RETURN cssAdded
+    END IF
+    RETURN archive.AddFile(CONTENT_DIR + "images/logo.png", LOGO_FILE)
 END FUNCTION
 
-FUNCTION AddResources(zip AS ZipWriter, resources AS ResourceRegistry) AS VOID OR Error
+FUNCTION AddResources(archive AS Compress.ZipArchive, resources AS ResourceRegistry) AS VOID OR Error
     FOR index = 0 TO resources.sources.Count() - 1
-        LET content AS ByteBuffer OR Error = ReadBinaryFile(resources.sources.Get(index))
-        IF content IS Error THEN
-            RETURN content
-        END IF
-        LET added AS VOID OR Error = zip.AddStored(CONTENT_DIR + resources.packaged.Get(index), content)
+        LET added AS VOID OR Error = archive.AddFile(CONTENT_DIR + resources.packaged.Get(index), resources.sources.Get(index))
         IF added IS Error THEN
             RETURN added
         END IF
@@ -2340,10 +2062,11 @@ FUNCTION Start() AS INTEGER
         RETURN Report("reading toc.md", tocLines)
     END IF
     LET outline AS BookOutline = ReadOutline(tocLines)
-    LET logo AS ByteBuffer OR Error = ReadBinaryFile(LOGO_FILE)
+    LET logo AS FS.File OR Error = FS.Open(LOGO_FILE, FS.READ)
     IF logo IS Error THEN
         RETURN Report("reading " + LOGO_FILE, logo)
     END IF
+    logo.Close()
 
     PRINT "Basic Next book ", version, " from ", bookDir
     LET resources AS ResourceRegistry = NEW ResourceRegistry()
@@ -2356,7 +2079,7 @@ FUNCTION Start() AS INTEGER
     LET facts AS PackageFacts = NEW PackageFacts(StableUuid("basic-next-book-en-" + version), outline.title, version, generatedDate, modified)
     LET cover AS CoverFacts = NEW CoverFacts(outline.title, BOOK_AUTHOR, version, generatedDate)
     LET outputPath AS STRING = outputDir + "/" + OUTPUT_PREFIX + version + ".epub"
-    LET written AS VOID OR Error = WriteEpub(outputPath, DosStampOf(now), outline, facts, cover, logo, resources)
+    LET written AS VOID OR Error = WriteEpub(outputPath, outline, facts, cover, resources)
     IF written IS Error THEN
         RETURN Report("writing " + outputPath, written)
     END IF

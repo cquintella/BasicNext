@@ -583,7 +583,10 @@ pub(crate) fn lower_print_value(
         return;
     }
     if let Type::Named(name) = ty
-        && !matches!(name.as_str(), "DATE" | "TIME" | "TIMEZONE" | "Error" | "VOID")
+        && !matches!(
+            name.as_str(),
+            "DATE" | "TIME" | "TIMEZONE" | "Error" | "VOID"
+        )
         && !name.starts_with(bn_catalog::text("llvm", "msg.host_net"))
         && !name.starts_with("FS.")
         && llvm_type(ty) == Some(LlvmType::Ptr)

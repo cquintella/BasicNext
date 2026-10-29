@@ -3,7 +3,7 @@
 **Status:** Planned (`todo/bucket-0.7.0-nested-declarations-and-swift-repl.md`)
 **Repositório Alvo:** `/Users/caq/src/bn/basicnext`
 **Decisão BDFL:** Carlos Quintella (@cquintella) em 2026-10-25: mudança significativa na gramática e semântica da linguagem com transição de versão para **Basic Next 0.7.0**. Adoção integral do modelo do Swift para declarações aninhadas e comportamento de execução do REPL.
-**Dependências:** Série 0.6.9 concluída.
+**Dependências:** 0.6.15 e 0.6.16 fechados. 0.6.16 é a mudança de padrão da linha 0.6 (escapes e arrays) e precede a gramática 0.7. Se o 0.6.17 começar, ele fecha antes do 0.7.0. Recusa do CRY-1 não cria o 0.6.17 e não bloqueia. 0.6.13 não existe. Não espera 0.6.9b, 0.6.14b nem 0.6.15b. A série 0.6.9 não é o predecessor.
 
 ## Revisão de planejamento (2026-10-25)
 
@@ -151,6 +151,76 @@ Enquanto a linha correspondente não estiver em `0.7.md` com data, o cluster ind
   * Garantir que variáveis globais declaradas no REPL permaneçam acessíveis por funções e classes declaradas em turnos posteriores.
 
 ---
+
+## Cluster F — Coerência do `HOST` (decisões BDFL, 2026-10-27)
+
+Decisões de Carlos Quintella, 2026-10-27:
+
+1. **O `HOST` nasce com o programa e nunca é importado.** Toda capacidade é escrita `HOST.<capacidade>` (`HOST.Clock.Now()`, `HOST.FileSystem.Open(...)`, `HOST.Console.Cls()`), em qualquer módulo. `IMPORT HOST.x AS y` deixa de existir; `IMPORT` serve só a módulos `.bn` e à biblioteca `BN*`. Substitui a decisão de 2026-10-07 ("Which capabilities need `IMPORT`", `0.6.md`).
+2. **Entradas do processo só no módulo executável.** `HOST.Args` e `HOST.Env` são usados apenas no módulo que declara `Start`; bibliotecas recebem o que precisam como parâmetros (ocultação de informação). Estende a regra que já valia para `HOST.Args` (`host.md`, "Command-line environment") ao `HOST.Env`.
+
+Consequência de 1: os requisitos de capacidade que a política confere antes do `Start` (`HOST_CAPABILITY_UNAVAILABLE`) passam a vir dos usos de `HOST.x` no programa, não dos `IMPORT`.
+
+Pendente: **TODO (decisão BDFL)** a transição. Opção recomendada: no 0.6.x, `IMPORT HOST...` gera aviso com a forma nova, e no 0.7.0 vira erro. Alternativa: erro direto no 0.7.0.
+
+- [ ] **F.1 (Spec):** `language/0.7/` (ou `0.6.md`, conforme a transição): substituir a regra de 2026-10-07; retirar `HOST` de `module-import-path` em `0.7.ebnf`; reescrever os exemplos de `host.md`, `host-net.md`, `host-exec.md`, `host-env.md` e `console.md` sem `IMPORT`; remover a nota de `EXPORT IMPORT` sobre `HOST`; estender a restrição de `HOST.Args` a `HOST.Env` em `host-env.md`; registrar as duas decisões na tabela de versões e no histórico.
+- [ ] **F.2 (Frontend):** rejeitar `IMPORT HOST...` com diagnóstico que mostra a forma `HOST.<capacidade>` (catálogo); aceitar `HOST.<capacidade>` sem import em qualquer módulo; rejeitar `HOST.Args`/`HOST.Env` fora do módulo com `Start` (diagnóstico próprio no catálogo).
+- [ ] **F.3 (Requisitos e política):** derivar a lista de capacidades do programa dos usos de `HOST.x` (no lugar dos imports), para `bni` e `bnc`; a recusa antes do `Start` continua igual nos dois backends.
+- [ ] **F.4 (Fixtures):** positivas (cada capacidade sem import, nos dois backends) e negativas (`IMPORT HOST.Clock AS Clock`; `HOST.Env` e `HOST.Args` numa biblioteca); paridade `bni` × `bnc`.
+- [ ] **F.5 (Migração):** reescrever sem `IMPORT HOST` os exemplos, as fixtures, `tests/modules/*` e o programa de teste do BNCompress; atualizar as sugestões de autocompletar do LSP (`bn_lsp`) e do `bnr`.
+- [ ] **F.6 (Livro):** caps. 7, 8, 12, 13 e 14 e a seção de sandbox sem `IMPORT HOST`; cap. 12 explica que o `HOST` nasce com o programa e por que `Args` e `Env` ficam no módulo com `Start`.
+
+## Cluster G — Nomes de `BNMath` em PascalCase (decisão BDFL, 2026-10-28)
+
+Decisão de Carlos Quintella, 2026-10-28: `MEAN` foi erro de grafia. Método de `BNMath` segue PascalCase, como `Gcd`, `Sum` e `BNData.Mean`. Identificadores são sensíveis a caixa (`0.6.md`, "Reserved identifiers and letter case"), então o nome antigo deixa de existir no 0.7.0. Não há alias.
+
+O mesmo erro está nos outros `EXPORT FUNCTION` de `modules/bn/BNMath.bn` escritos só em maiúsculas. Os que já estão em PascalCase não mudam: `Gcd`, `Lcm`, `DegreeToRad`, `RadToDegree`, `PVariance`, `PStdev`, `Skewness`, `Kurtosis`, `PSkewness`, `PKurtosis`, `Quantile`, `Covariance`, `Correlation`, `Sum`, `Product`, `Dot`, `StudentT`, `StudentTPvalue`, `StudentTQuantile`, e as constantes `Pi` e `Euler`.
+
+Os membros de `Limits` (`MAX_FLOAT`, `MIN_INT64`, …) ficam de fora: são constantes de faixa em `UPPER_SNAKE`, não métodos.
+
+| Hoje | 0.7.0 |
+| --- | --- |
+| `ABS` | `Abs` |
+| `MIN` | `Min` |
+| `MAX` | `Max` |
+| `SIGN` | `Sign` |
+| `FLOOR` | `Floor` |
+| `CEIL` | `Ceil` |
+| `TRUNC` | `Trunc` |
+| `ROUND` | `Round` |
+| `EXP` | `Exp` |
+| `LOG` | `Log` |
+| `LOG10` | `Log10` |
+| `LOG2` | `Log2` |
+| `POW` | `Pow` |
+| `SIN` | `Sin` |
+| `COS` | `Cos` |
+| `TAN` | `Tan` |
+| `ASIN` | `Asin` |
+| `ACOS` | `Acos` |
+| `ATAN` | `Atan` |
+| `ATAN2` | `Atan2` |
+| `SQRT` | `Sqrt` |
+| `HYPOT` | `Hypot` |
+| `FMA` | `Fma` |
+| `VAL` | `Val` |
+| `MEAN` | `Mean` |
+| `MEDIAN` | `Median` |
+| `QUARTILE1` | `Quartile1` |
+| `QUARTILE3` | `Quartile3` |
+| `MODE` | `Mode` |
+| `STDEV` | `Stdev` |
+| `VARIANCE` | `Variance` |
+| `RANGE` | `Range` |
+| `TOHOUR` | `ToHour` |
+| `TOWEEKDAY` | `ToWeekday` |
+| `TODATE` | `ToDate` |
+| `TOTIME` | `ToTime` |
+| `TOTIMESTAMP` | `ToTimestamp` |
+
+- [ ] **G.1 (Spec):** em `language/0.7/math.md` (a cópia de A.1), trocar cada nome da tabela. O nome antigo é identificador inexistente, não diagnóstico especial.
+- [ ] **G.2 (Módulo e toolchain):** `modules/bn/BNMath.bn`, o casamento de nome em `bn_frontend` (`math_call` e o lowering), `bn_lib_math` e `bn_llvm`. Os símbolos `bn_rt_math_*` não mudam: são ABI, não o nome da linguagem.
+- [ ] **G.3 (Programas):** exemplos, livro, fixtures e testes que chamam o nome antigo passam ao nome novo. Um programa 0.7 com `Math.MEAN` não resolve o método.
 
 ## Cluster E — Versão 0.7.0, Bateria de Testes, Qualidade e Fechamento
 

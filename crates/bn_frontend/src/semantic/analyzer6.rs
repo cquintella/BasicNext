@@ -310,10 +310,12 @@ impl Analyzer {
         Ok(narrowed)
     }
 
-    /// An integer literal operand (`2`, `-2`) takes the floating-point type of
-    /// the other operand when its value fits exactly (0.6.md, "Numeric
-    /// operands"), so both backends see `FLOAT op FLOAT`. A literal that
-    /// does not fit keeps its integer type.
+    /// An integer constant operand (`2`, `-2`, `2 * 3`) takes the
+    /// floating-point type of the other operand when its value fits exactly
+    /// (0.6.md, "Numeric operands"; BDFL decision, 2026-10-28), so both
+    /// backends see `FLOAT op FLOAT`; lowering emits the constant as that
+    /// floating-point value. A constant that does not fit keeps its integer
+    /// type.
     pub(crate) fn literal_takes_float_type(
         &mut self,
         operand: &Expression,
@@ -325,28 +327,12 @@ impl Analyzer {
             Type::FloatLiteral => FloatType::Float64,
             _ => return,
         };
-        if !matches!(operand_type, Type::IntegerLiteral(_)) {
+        let Type::IntegerLiteral(value) = operand_type else {
             return;
-        }
-        let (literal, text) = match &operand.kind {
-            ExpressionKind::Literal(Literal::Integer(text)) => (operand, text.clone()),
-            ExpressionKind::Unary {
-                operator,
-                operand: negated,
-            } if operator == "Minus" => match &negated.kind {
-                ExpressionKind::Literal(Literal::Integer(text)) => {
-                    (negated.as_ref(), format!("-{text}"))
-                }
-                _ => return,
-            },
-            _ => return,
         };
-        if crate::types::literals::integer_literal_as_float(&text, kind).is_none() {
-            return;
+        if crate::types::literals::integer_literal_as_float(value, kind).is_some() {
+            self.record_expression(operand.span, &Type::Float(kind), None);
         }
-        let float = Type::Float(kind);
-        self.record_expression(literal.span, &float, None);
-        self.record_expression(operand.span, &float, None);
     }
 
     /// An assignment ends the narrowing of its target: only an `IS` test
@@ -414,9 +400,9 @@ impl Analyzer {
         for (argument, parameter) in arguments.iter().zip(parameters) {
             let actual = self.expression_as(argument, &parameter, locals)?;
             if !self.compatible(&parameter, &actual) {
-                return Err(type_mismatch(
-                    display(&parameter),
-                    display(&actual),
+                return Err(value_mismatch(
+                    &parameter,
+                    &actual,
                     "SUPER constructor parameter",
                     argument.span,
                 ));
@@ -445,6 +431,10 @@ impl Analyzer {
                 ));
             }
             self.expression(&arguments[0], locals)?;
+            self.settle_integer_constant(
+                &arguments[0],
+                bn_catalog::text("frontend", "msg.typeof_argument"),
+            )?;
             return Ok(Type::String);
         }
         let callee_type = self.expression(callee, locals)?;
@@ -534,9 +524,9 @@ impl Analyzer {
                     }
                     let actual = self.expression_as(argument, &parameter, locals)?;
                     if !self.compatible(&parameter, &actual) {
-                        return Err(type_mismatch(
-                            display(&parameter),
-                            display(&actual),
+                        return Err(value_mismatch(
+                            &parameter,
+                            &actual,
                             bn_catalog::text("frontend", "msg.async_worker_argument"),
                             argument.span,
                         ));
@@ -599,9 +589,9 @@ impl Analyzer {
         for (argument, parameter) in arguments.iter().zip(parameters) {
             let actual = self.expression_as(argument, &parameter, locals)?;
             if !self.compatible(&parameter, &actual) {
-                return Err(type_mismatch(
-                    display(&parameter),
-                    display(&actual),
+                return Err(value_mismatch(
+                    &parameter,
+                    &actual,
                     "function parameter",
                     argument.span,
                 ));

@@ -1,0 +1,22 @@
+# BNCompress texts (bn_catalog; AGENTS.md "No hard-coded messages").
+# One `key = value` per line; `{name}` is filled by the code.
+
+error.policy_denied.message = file access denied by execution policy: {path}
+error.entry_not_found.message = entry not found in archive
+error.invalid_archive.message = invalid archive
+error.unsupported_archive.message = unsupported archive
+error.invalid_utf8.message = entry is not valid UTF-8
+error.zip_slip.message = entry escapes the destination directory: {entry}
+error.archive_closed.message = archive is closed
+error.archive_reading.message = archive is open for reading, not writing
+error.archive_writing.message = archive is open for writing, not reading
+error.compress_failed.message = compression failed
+error.decompress_failed.message = compressed data is corrupt
+error.malformed_hex.message = malformed hexadecimal string
+error.invalid_text.message = text argument is null or not valid UTF-8
+error.missing_buffer.message = Bytes buffer is unknown or already released
+error.missing_archive.message = ZipArchive is unknown or already released
+error.invalid_index.message = entry index is negative
+error.limit_exceeded.message = decompressed data exceeds the limit of {limit} bytes
+msg.bytes_was_already_released = BNCompress.Bytes was already released
+msg.archive_was_already_released = BNCompress.ZipArchive was already released

@@ -287,6 +287,10 @@ fn semantic_fixtures_are_rejected() {
         "tests/grammar/invalid/error-vector-without-initializer.bn",
         "tests/grammar/invalid/parameter-assignment.bn",
         "tests/grammar/invalid/parameter-increment.bn",
+        "tests/grammar/invalid/parameter-vector-element-assignment.bn",
+        "tests/grammar/invalid/parameter-open-vector-element-assignment.bn",
+        "tests/grammar/invalid/parameter-struct-field-assignment.bn",
+        "tests/grammar/invalid/struct-literal-vector-element-short.bn",
         "tests/grammar/invalid/release-field.bn",
         "tests/grammar/invalid/release-static.bn",
     ] {

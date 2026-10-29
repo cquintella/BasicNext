@@ -185,10 +185,7 @@ name = "bn_core_compress"
 version = "0.6.10"
 dependencies = [
  "bn_catalog",
- "bn_core_copy",
- "bn_types",
  "flate2",
- "zeroize",
  "zip",
 ]
 
@@ -255,6 +252,7 @@ dependencies = [
 name = "bn_core_text"
 version = "0.6.10"
 dependencies = [
+ "bn_catalog",
  "bn_types",
 ]
 
@@ -385,6 +383,7 @@ dependencies = [
 name = "bn_ir"
 version = "0.6.10"
 dependencies = [
+ "bn_catalog",
  "bn_diag",
  "bn_source",
  "bn_types",
@@ -398,6 +397,7 @@ dependencies = [
  "bn_core_compress",
  "bn_diag",
  "bn_interp",
+ "bn_rt",
  "bn_source",
  "bn_types",
  "bn_value",

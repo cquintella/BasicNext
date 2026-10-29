@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! Calls to `BNCompress` members. `Bytes` and `ZipArchive` travel as `bn_rt` table
-//! handles (`i64`), as BNCrypto resources do.
+//! handles (`i64`), as `BNCrypto` resources do.
 #![allow(clippy::wildcard_imports)]
 use super::host_results::{emit_handle_result, emit_status_result, emit_void_result};
 use super::json_calls::emit_handle_index;
@@ -68,7 +68,14 @@ pub(super) fn lower_bncompress_call(
                 I::call(T::I32, "bn_rt_compress_bytes_to_text", args),
             );
             text.assign(format!("cmpstr{dest}"), I::load(T::Ptr, r("cmpout")));
-            emit_status_result(text, destination, &r("cmprc"), None, &r("cmpstr"), &O::int(0));
+            emit_status_result(
+                text,
+                destination,
+                &r("cmprc"),
+                None,
+                &r("cmpstr"),
+                &O::int(0),
+            );
         }
         "Deflate" | "Inflate" | "Gzip" | "Gunzip" => {
             emit_handle_index(text, analysis, &format!("cmph{dest}"), arguments[0]);
@@ -102,7 +109,14 @@ pub(super) fn lower_bncompress_call(
             let args = vec![(T::I64, cmph()), (T::Ptr, r("cmpout"))];
             text.assign(format!("cmprc{dest}"), I::call(T::I32, symbol, args));
             text.assign(format!("cmpstr{dest}"), I::load(T::Ptr, r("cmpout")));
-            emit_status_result(text, destination, &r("cmprc"), None, &r("cmpstr"), &O::int(0));
+            emit_status_result(
+                text,
+                destination,
+                &r("cmprc"),
+                None,
+                &r("cmpstr"),
+                &O::int(0),
+            );
         }
         "Create" | "Open" => {
             text.assign(format!("cmpout{dest}"), I::alloca(T::I64));
@@ -184,7 +198,14 @@ pub(super) fn lower_bncompress_call(
                 I::call(T::I32, "bn_rt_zip_extract_text", args),
             );
             text.assign(format!("cmpstr{dest}"), I::load(T::Ptr, r("cmpout")));
-            emit_status_result(text, destination, &r("cmprc"), None, &r("cmpstr"), &O::int(0));
+            emit_status_result(
+                text,
+                destination,
+                &r("cmprc"),
+                None,
+                &r("cmpstr"),
+                &O::int(0),
+            );
         }
         "ExtractBytes" => {
             emit_handle_index(text, analysis, &format!("cmph{dest}"), arguments[0]);
@@ -213,20 +234,26 @@ pub(super) fn lower_bncompress_call(
         }
         "EntryName" => {
             emit_handle_index(text, analysis, &format!("cmph{dest}"), arguments[0]);
-            let arg_ty = analysis.values.get(&arguments[1]).expect("entry index type");
+            let arg_ty = analysis
+                .values
+                .get(&arguments[1])
+                .expect("entry index type");
             let index = helpers::extend_to_i64(text, arguments[1], arg_ty);
             text.assign(format!("cmpout{dest}"), I::alloca(T::Ptr));
-            let args = vec![
-                (T::I64, cmph()),
-                (T::I64, index),
-                (T::Ptr, r("cmpout")),
-            ];
+            let args = vec![(T::I64, cmph()), (T::I64, index), (T::Ptr, r("cmpout"))];
             text.assign(
                 format!("cmprc{dest}"),
                 I::call(T::I32, "bn_rt_zip_entry_name", args),
             );
             text.assign(format!("cmpstr{dest}"), I::load(T::Ptr, r("cmpout")));
-            emit_status_result(text, destination, &r("cmprc"), None, &r("cmpstr"), &O::int(0));
+            emit_status_result(
+                text,
+                destination,
+                &r("cmprc"),
+                None,
+                &r("cmpstr"),
+                &O::int(0),
+            );
         }
         "Close" => {
             emit_handle_index(text, analysis, &format!("cmph{dest}"), arguments[0]);

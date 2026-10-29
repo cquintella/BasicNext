@@ -916,8 +916,6 @@ crates/bn_frontend/src/semantic/analyzer7.rs	prose	FLOAT, INTEGER
 crates/bn_frontend/src/semantic/analyzer7.rs	prose	compatible numeric arguments
 crates/bn_frontend/src/semantic/analyzer7.rs	prose	floating-point arguments
 crates/bn_frontend/src/semantic/analyzer7.rs	prose	numeric arguments
-crates/bn_frontend/src/semantic/analyzer7.rs	prose	numeric vector
-crates/bn_frontend/src/semantic/analyzer7.rs	prose	numeric vector
 crates/bn_frontend/src/semantic/analyzer7.rs	prose	type '{name}' is not declared or imported
 crates/bn_frontend/src/semantic/analyzer7.rs	prose	variable-length vectors are reserved for the BNData library
 crates/bn_frontend/src/semantic/helpers1.rs	identifier	HOST.Clock
@@ -1264,8 +1262,6 @@ crates/bn_interp/src/collections.rs	prose	DataFrame index out of bounds
 crates/bn_interp/src/collections.rs	prose	INTEGER vector
 crates/bn_interp/src/collections.rs	prose	index collection
 crates/bn_interp/src/collections.rs	prose	non-vector value
-crates/bn_interp/src/compare.rs	identifier	BNCrypto.Bytes
-crates/bn_interp/src/compare.rs	identifier	BNCrypto.Bytes
 crates/bn_interp/src/compare.rs	identifier	BNDispatch.Barrier
 crates/bn_interp/src/compare.rs	identifier	BNDispatch.Barrier
 crates/bn_interp/src/compare.rs	identifier	BNDispatch.Group
@@ -1432,7 +1428,6 @@ crates/bn_interp/src/executor/part3.rs	identifier	HOST.
 crates/bn_interp/src/executor/part3.rs	prose	HOST.{capability} is not provided by this host
 crates/bn_interp/src/executor/part3.rs	prose	function dispatch
 crates/bn_interp/src/executor/part3.rs	prose	{library} provider unavailable
-crates/bn_interp/src/executor/part7.rs	identifier	HOST.NumProcs
 crates/bn_interp/src/executor/part7.rs	prose	available processor count exceeds INTEGER range
 crates/bn_interp/src/executor/part7.rs	prose	available processor count is unavailable: {error}
 crates/bn_interp/src/executor/part7.rs	prose	host function '{name}' is not available
@@ -2164,7 +2159,6 @@ crates/bn_rt/src/secure_fs.rs	prose	filesystem path is outside the configured ro
 crates/bn_rt/src/secure_fs.rs	prose	filesystem path traverses a symlink
 crates/bn_rt/src/secure_fs.rs	prose	filesystem policy root changed while it was opened
 crates/bn_rt/src/secure_fs.rs	prose	filesystem policy root is not a directory
-crates/bn_rt/src/secure_fs.rs	prose	rooted filesystem access is unavailable on this platform
 crates/bn_rt/src/secure_fs.rs	prose	rooted filesystem access is unavailable on this platform
 crates/bn_rt/src/secure_fs_windows.rs	prose	filesystem path has no file component
 crates/bn_rt/src/secure_fs_windows.rs	prose	filesystem path traverses a non-directory

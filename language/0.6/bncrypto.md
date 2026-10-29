@@ -68,6 +68,17 @@ not depend on input length. Output is always lowercase hexadecimal.
 `FromHex` rejects odd-length input instead of truncating: an odd number of hex
 characters is not a byte sequence.
 
+`RandomBytes` accepts a `length` from 0 through 1 MiB (1 048 576 bytes); any other
+length is an `Error` with `Code` `INVALID_ARGUMENT`, and nothing is allocated. Keys,
+seeds and nonces need tens of bytes; the bound keeps a mistaken length from
+exhausting memory. (BDFL decision, 2026-10-27, delegated to the bucket 0.6.11
+audit, finding A10.)
+
+A `Key` whose material was erased with `.Zeroize()` stays a valid handle but holds
+no key: every operation that uses it returns an `Error` with `Code`
+`INVALID_ARGUMENT`, on both backends, and the program continues. (BDFL decision,
+2026-10-27, delegated to the bucket 0.6.11 audit, finding A5.)
+
 ### Algorithm Constants
 
 | Constant | Value | Algorithm / Key Length |
@@ -127,7 +138,10 @@ algorithm's accepted range are **rejected**, never clamped to something weaker.
 | `EcdsaP256Sign` | `EcdsaP256Sign(key AS Key, message AS Bytes) AS Bytes OR Error` |
 | `EcdsaP256Verify` | `EcdsaP256Verify(publicKey, message, signature AS Bytes) AS BOOLEAN` |
 
-Ed25519 keys are a 32-byte seed (RFC 8032). ECDSA P-256 keys are a 32-byte scalar;
+Ed25519 keys are a 32-byte seed (RFC 8032). ECDSA P-256 keys are a 32-byte
+big-endian scalar in 1 through n - 1, n the group order; `GenerateKey(ALG_ECDSA_P256)`
+draws again until the scalar is in that range (rejection sampling, FIPS 186-5
+A.2.2), so a generated key always signs;
 the public key is SEC1 uncompressed (65 bytes) and signatures are raw `r || s`
 (64 bytes) over SHA-256, with the nonce derived per RFC 6979.
 
@@ -187,7 +201,7 @@ constants of the module (`Crypto.AUTHENTICATION_FAILED` under
 
 | Constant | Value | When |
 | --- | ---: | --- |
-| `INVALID_ARGUMENT` | 1 | A key, nonce, or seed of the wrong length or not valid for the algorithm; Argon2id cost parameters out of range; `FromHex` of odd-length or non-hex text; a `Slice` range outside the buffer |
+| `INVALID_ARGUMENT` | 1 | A key, nonce, or seed of the wrong length or not valid for the algorithm; a `Key` erased with `.Zeroize()`; a `RandomBytes` length outside 0 through 1 MiB; Argon2id cost parameters out of range; `FromHex` of odd-length or non-hex text; a `Slice` range outside the buffer |
 | `AUTHENTICATION_FAILED` | 2 | `Open*` rejects the ciphertext (tampered data, AAD, key, nonce, or tag); `MlKemDecapsulate` rejects the ciphertext |
 | `UNAVAILABLE` | 3 | The build provides no implementation of the algorithm |
 

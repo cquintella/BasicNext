@@ -44,6 +44,28 @@ pub(crate) fn typed_literal_constant(literal: &Literal, ty: &Type) -> Constant {
     constant(literal)
 }
 
+/// The one constant of an operation on integer constants that analysis
+/// checked against its destination (its type is still the literal), or
+/// gave a floating-point operand's type (0.6.md, "Integer constants without
+/// a destination", "Numeric operands"). An operation settled to `INT32`
+/// is not folded: it runs, and its overflow stops the program.
+pub(crate) fn folded_constant(expression: &Expression, ty: &Type) -> Option<Constant> {
+    if !matches!(
+        expression.kind,
+        ExpressionKind::Unary { .. } | ExpressionKind::Binary { .. }
+    ) {
+        return None;
+    }
+    match ty {
+        Type::IntegerLiteral(value) => Some(Constant::Integer(value.clone())),
+        Type::Float(kind) => {
+            let value = crate::semantic::constant_integer(expression)?.to_string();
+            crate::types::literals::integer_literal_as_float(&value, *kind).map(Constant::Float)
+        }
+        _ => None,
+    }
+}
+
 pub(crate) fn module_constant(value: &crate::semantic::ConstantValue) -> Constant {
     match value {
         crate::semantic::ConstantValue::Integer(value) => Constant::Integer(value.clone()),

@@ -15,7 +15,7 @@ pub fn dataframe_index_error() -> Value {
         1,
         "DataFrame",
         "DataFrame index out of bounds".to_string(),
-        "index is outside valid row/column bounds".to_string(),
+        bn_catalog::text("frontend", "msg.dataframe_index_cause").to_string(),
     )
 }
 

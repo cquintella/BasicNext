@@ -1,0 +1,12 @@
+# Contract names of standard-library modules, their types and HOST
+# capabilities (bn_catalog; AGENTS.md "No hard-coded messages": contract
+# identifiers live in the catalog). One `key = value` per line.
+
+module.compress = BNCompress
+file.compress = BNCompress.bn
+type.compress_bytes = BNCompress.Bytes
+type.compress_zip_archive = BNCompress.ZipArchive
+type.crypto_bytes = BNCrypto.Bytes
+type.crypto_key = BNCrypto.Key
+capability.num_procs = HOST.NumProcs
+module.crypto = BNCrypto

@@ -26,12 +26,7 @@ use bn_interp::{
 
 pub const NAME: &str = "BNCrypto";
 
-#[derive(Debug)]
-struct KeyEntry {
-    algorithm: i32,
-    material: zeroize::Zeroizing<Vec<u8>>,
-    zeroized: bool,
-}
+use bn_stdlib::crypto::KeyEntry;
 
 /// Interpreter-side owner of `BNCrypto.Bytes` and `BNCrypto.Key` handles. Compiled programs use
 /// the parallel tables in `bn_stdlib::crypto_abi`; neither observes the other, and both
@@ -57,46 +52,34 @@ impl CryptoProvider {
     fn insert_key(&mut self, algorithm: i32, material: zeroize::Zeroizing<Vec<u8>>) -> Value {
         self.next += 1;
         let handle = self.next;
-        self.keys.insert(
-            handle,
-            KeyEntry {
-                algorithm,
-                material,
-                zeroized: false,
-            },
-        );
+        self.keys.insert(handle, KeyEntry::new(algorithm, material));
         self.key_holders.insert(handle, 1);
         Value::CryptoKey(handle)
     }
 
-    /// Reads the `Key` operand at `index`, or reports the type mismatch.
+    /// Reads the `Key` operand at `index`. A released key or a non-`Key`
+    /// operand is a diagnostic; a key erased with `Zeroize()` is the
+    /// `INVALID_ARGUMENT` failure of `bncrypto.md`, returned as an `Error`.
     fn key_at(
         &self,
         arguments: &[Value],
         index: usize,
         member: &str,
         span: Span,
-    ) -> Result<zeroize::Zeroizing<Vec<u8>>, Diagnostic> {
+    ) -> Result<Result<zeroize::Zeroizing<Vec<u8>>, CryptoFailure>, Diagnostic> {
         match arguments.get(index) {
             Some(Value::CryptoKey(handle)) => {
                 let Some(entry) = self.keys.get(handle) else {
                     return Err(runtime_error(
                         bn_diag::DiagId::USE_AFTER_RELEASE,
-                        "BNCrypto.Key was already released",
+                        bn_catalog::text("crypto", "msg.bncrypto_key_was_already_released"),
                         span,
                     ));
                 };
                 if entry.zeroized {
-                    return Err(runtime_error(
-                        bn_diag::DiagId::USE_AFTER_RELEASE,
-                        "key material has already been zeroized",
-                        span,
-                    ));
+                    return Ok(Err(CryptoFailure::ZeroizedKey));
                 }
-                Ok(entry.material.clone())
-            }
-            Some(Value::CryptoBytes(handle)) => {
-                Ok(zeroize::Zeroizing::new(self.buffer(*handle, span)?.clone()))
+                Ok(Ok(entry.material.clone()))
             }
             _ => Err(type_mismatch(
                 "BNCrypto.Key",
@@ -144,7 +127,10 @@ impl CryptoProvider {
         match method {
             "MlKemKeypair" | "MlDsaKeypair" => {
                 require_arity(member, arguments, 1, span)?;
-                let seed = self.key_at(arguments, 0, member, span)?;
+                let seed = match self.key_at(arguments, 0, member, span)? {
+                    Ok(material) => material,
+                    Err(failed) => return failure(&failed),
+                };
                 let pair = if method.starts_with("MlKem") {
                     bn_stdlib::crypto::ml_kem_keypair(&seed)
                 } else {
@@ -198,7 +184,10 @@ impl CryptoProvider {
             )));
         }
         require_arity(member, arguments, 2, span)?;
-        let key = self.key_at(arguments, 0, member, span)?;
+        let key = match self.key_at(arguments, 0, member, span)? {
+            Ok(material) => material,
+            Err(failed) => return failure(&failed),
+        };
         let payload = self.bytes_at(arguments, 1, member, span)?;
         let (produced, rejected) = if method == "MlKemDecapsulate" {
             (
@@ -239,7 +228,10 @@ impl CryptoProvider {
                 bn_stdlib::crypto::p256_verify(&public_key, &message, &signature)
             }));
         }
-        let key = self.key_at(arguments, 0, member, span)?;
+        let key = match self.key_at(arguments, 0, member, span)? {
+            Ok(material) => material,
+            Err(failed) => return failure(&failed),
+        };
         let produced = if method.ends_with("PublicKey") {
             require_arity(member, arguments, 1, span)?;
             if ed25519 {
@@ -281,13 +273,19 @@ impl CryptoProvider {
         match method {
             "HmacSha256" => {
                 require_arity(member, arguments, 2, span)?;
-                let key = self.key_at(arguments, 0, member, span)?;
+                let key = match self.key_at(arguments, 0, member, span)? {
+                    Ok(material) => material,
+                    Err(failed) => return failure(&failed),
+                };
                 let data = self.bytes_at(arguments, 1, member, span)?;
                 Ok(self.insert(bn_stdlib::crypto::hmac_sha256(&key, &data)))
             }
             "VerifyHmacSha256" => {
                 require_arity(member, arguments, 3, span)?;
-                let key = self.key_at(arguments, 0, member, span)?;
+                let key = match self.key_at(arguments, 0, member, span)? {
+                    Ok(material) => material,
+                    Err(failed) => return failure(&failed),
+                };
                 let data = self.bytes_at(arguments, 1, member, span)?;
                 let tag = self.bytes_at(arguments, 2, member, span)?;
                 Ok(Value::Boolean(bn_stdlib::crypto::hmac_verify(
@@ -389,7 +387,11 @@ impl CryptoProvider {
                                 span,
                             )
                         })?;
-                        let length = if entry.zeroized { 0 } else { entry.material.len() };
+                        let length = if entry.zeroized {
+                            0
+                        } else {
+                            entry.material.len()
+                        };
                         Ok(Value::Integer(
                             i128::try_from(length).unwrap_or(i128::MAX),
                             IntegerType::Int32,
@@ -416,37 +418,41 @@ impl CryptoProvider {
                 let hex = bn_stdlib::crypto::encode_hex(self.buffer(handle, span)?);
                 Ok(Value::String(shared_string(hex.as_str())))
             }
-            _ => {
-                require_arity(member, arguments, 3, span)?;
-                let bytes = self.bytes_at(arguments, 0, member, span)?;
-                let mut bounds = [0_i64; 2];
-                for (slot, argument) in bounds.iter_mut().zip(&arguments[1..3]) {
-                    let Value::Integer(value, _) = argument else {
-                        return Err(type_mismatch("INTEGER", "non-INTEGER value", member, span));
-                    };
-                    *slot = i64::try_from(*value).unwrap_or(if *value < 0 {
-                        i64::MIN
-                    } else {
-                        i64::MAX
-                    });
-                }
-                let [start, length] = bounds;
-                let range = usize::try_from(start)
-                    .ok()
-                    .zip(usize::try_from(length).ok())
-                    .and_then(|(from, count)| Some((from, from.checked_add(count)?)))
-                    .filter(|(_, end)| *end <= bytes.len());
-                match range {
-                    Some((from, end)) => Ok(self.insert(bytes[from..end].to_vec())),
-                    // Out of range is an Error, never a short buffer that could
-                    // pass for a key.
-                    None => failure(&CryptoFailure::Slice {
-                        start,
-                        length,
-                        size: bytes.len(),
-                    }),
-                }
-            }
+            _ => self.slice(member, arguments, span),
+        }
+    }
+
+    /// `Slice(start, length)` of a `Bytes`; out of range is an `Error`.
+    fn slice(
+        &mut self,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        require_arity(member, arguments, 3, span)?;
+        let bytes = self.bytes_at(arguments, 0, member, span)?;
+        let mut bounds = [0_i64; 2];
+        for (slot, argument) in bounds.iter_mut().zip(&arguments[1..3]) {
+            let Value::Integer(value, _) = argument else {
+                return Err(type_mismatch("INTEGER", "non-INTEGER value", member, span));
+            };
+            *slot = i64::try_from(*value).unwrap_or(if *value < 0 { i64::MIN } else { i64::MAX });
+        }
+        let [start, length] = bounds;
+        let range = usize::try_from(start)
+            .ok()
+            .zip(usize::try_from(length).ok())
+            .and_then(|(from, count)| Some((from, from.checked_add(count)?)))
+            .filter(|(_, end)| *end <= bytes.len());
+        match range {
+            Some((from, end)) => Ok(self.insert(bytes[from..end].to_vec())),
+            // Out of range is an Error, never a short buffer that could
+            // pass for a key.
+            None => failure(&CryptoFailure::Slice {
+                start,
+                length,
+                size: bytes.len(),
+            }),
         }
     }
 
@@ -461,7 +467,10 @@ impl CryptoProvider {
         span: Span,
     ) -> Result<Value, Diagnostic> {
         require_arity(member, arguments, 4, span)?;
-        let key = self.key_at(arguments, 0, member, span)?;
+        let key = match self.key_at(arguments, 0, member, span)? {
+            Ok(material) => material,
+            Err(failed) => return failure(&failed),
+        };
         let nonce = self.bytes_at(arguments, 1, member, span)?;
         let data = self.bytes_at(arguments, 2, member, span)?;
         let aad = self.bytes_at(arguments, 3, member, span)?;
@@ -486,6 +495,7 @@ impl CryptoProvider {
         }
     }
 
+    /// Entropy and key creation: `RandomBytes`, `GenerateNonce`, `GenerateKey`, `ImportKey`.
     fn key_or_entropy(
         &mut self,
         method: &str,
@@ -499,15 +509,7 @@ impl CryptoProvider {
                 let Value::Integer(length, _) = &arguments[0] else {
                     return Err(type_mismatch("INTEGER", "non-INTEGER value", member, span));
                 };
-                let Ok(len) = usize::try_from(*length) else {
-                    return Err(type_mismatch(
-                        "a non-negative INTEGER",
-                        "out-of-range value",
-                        member,
-                        span,
-                    ));
-                };
-                match bn_stdlib::crypto::random_bytes(len) {
+                match bn_stdlib::crypto::random_bytes(*length) {
                     Ok(bytes) => Ok(self.insert(bytes)),
                     Err(err) => failure(&err),
                 }
@@ -574,6 +576,19 @@ impl CryptoProvider {
                 let material = zeroize::Zeroizing::new(raw_bytes);
                 Ok(self.insert_key(alg, material))
             }
+            _ => self.key_inspection(method, member, arguments, span),
+        }
+    }
+
+    /// `Key` inspection and erasure: `Algorithm` and `Zeroize`.
+    fn key_inspection(
+        &mut self,
+        method: &str,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        match method {
             "Algorithm" => {
                 require_arity(member, arguments, 1, span)?;
                 let Value::CryptoKey(handle) = &arguments[0] else {
@@ -695,7 +710,7 @@ impl Provider for CryptoProvider {
                 }
                 None => Err(runtime_error(
                     bn_diag::DiagId::USE_AFTER_RELEASE,
-                    "BNCrypto.Key was already released",
+                    bn_catalog::text("crypto", "msg.bncrypto_key_was_already_released"),
                     span,
                 )),
             }),
@@ -705,36 +720,40 @@ impl Provider for CryptoProvider {
 
     fn release(&mut self, value: &Value, span: Span) -> Option<Result<(), Diagnostic>> {
         match value {
-            Value::CryptoBytes(handle) => Some(if let Some(holders) = self.holders.get_mut(handle) {
-                *holders -= 1;
-                if *holders == 0 {
-                    self.holders.remove(handle);
-                    self.buffers.remove(handle);
-                }
-                Ok(())
-            } else {
-                Err(runtime_error(
-                    bn_diag::DiagId::USE_AFTER_RELEASE,
-                    bn_catalog::text("crypto", "msg.bncrypto_bytes_was_already_released"),
-                    span,
-                ))
-            }),
-            Value::CryptoKey(handle) => Some(if let Some(holders) = self.key_holders.get_mut(handle) {
-                *holders -= 1;
-                if *holders == 0 {
-                    self.key_holders.remove(handle);
-                    if let Some(mut entry) = self.keys.remove(handle) {
-                        entry.material.zeroize();
+            Value::CryptoBytes(handle) => {
+                Some(if let Some(holders) = self.holders.get_mut(handle) {
+                    *holders -= 1;
+                    if *holders == 0 {
+                        self.holders.remove(handle);
+                        self.buffers.remove(handle);
                     }
-                }
-                Ok(())
-            } else {
-                Err(runtime_error(
-                    bn_diag::DiagId::USE_AFTER_RELEASE,
-                    "BNCrypto.Key was already released",
-                    span,
-                ))
-            }),
+                    Ok(())
+                } else {
+                    Err(runtime_error(
+                        bn_diag::DiagId::USE_AFTER_RELEASE,
+                        bn_catalog::text("crypto", "msg.bncrypto_bytes_was_already_released"),
+                        span,
+                    ))
+                })
+            }
+            Value::CryptoKey(handle) => {
+                Some(if let Some(holders) = self.key_holders.get_mut(handle) {
+                    *holders -= 1;
+                    if *holders == 0 {
+                        self.key_holders.remove(handle);
+                        if let Some(mut entry) = self.keys.remove(handle) {
+                            entry.material.zeroize();
+                        }
+                    }
+                    Ok(())
+                } else {
+                    Err(runtime_error(
+                        bn_diag::DiagId::USE_AFTER_RELEASE,
+                        bn_catalog::text("crypto", "msg.bncrypto_key_was_already_released"),
+                        span,
+                    ))
+                })
+            }
             _ => None,
         }
     }

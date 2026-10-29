@@ -531,6 +531,11 @@ pub(crate) fn emit_module_header(text: &mut crate::ir::LlvmModule) {
         (".bn_utc", "UTC"),
         (".bn_asc_error", bn_diag::trap_texts::ASC_EMPTY_STRING),
         (".bn_char_error", bn_diag::trap_texts::CHAR_NOT_UNICODE),
+        (".bn_asc_operation", bn_core_text::builtin::asc_operation()),
+        (
+            ".bn_char_operation",
+            bn_core_text::builtin::char_operation(),
+        ),
     ] {
         text.global(LlvmGlobal::bn_string(name, value, true));
     }

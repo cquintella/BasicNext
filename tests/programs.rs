@@ -20,8 +20,14 @@ mod cli_snapshots;
 mod compiler_parity;
 #[path = "programs/compound_assignment.rs"]
 mod compound_assignment;
+#[path = "programs/compress_module.rs"]
+mod compress_module;
+#[path = "programs/compress_policy.rs"]
+mod compress_policy;
 #[path = "programs/conformance.rs"]
 mod conformance;
+#[path = "programs/crypto_limits.rs"]
+mod crypto_limits;
 #[path = "programs/destructuring.rs"]
 mod destructuring;
 #[path = "programs/loop_scope.rs"]
@@ -40,3 +46,5 @@ mod runtime_locks;
 mod signed_zero;
 #[path = "programs/spec_0_6_5_s13.rs"]
 mod spec_0_6_5_s13;
+#[path = "programs/struct_vector_literals.rs"]
+mod struct_vector_literals;

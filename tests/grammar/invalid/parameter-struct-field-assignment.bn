@@ -1,0 +1,20 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// A field of a STRUCT parameter is part of the constant parameter
+// (0.6.md, "Parameter immutability and place mutation").
+STRUCT Point
+    X AS INTEGER = 0
+END STRUCT
+
+FUNCTION Move(p AS Point) AS INTEGER
+    p.X += 1
+    RETURN p.X
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET origin AS Point
+    PRINT Move(origin)
+END FUNCTION

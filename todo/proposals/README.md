@@ -38,3 +38,4 @@ specification.
 - [BNSqlite / S1+F1 (0.5.3)](bnsqlite-0.5.3.md) — aparte module + native SQLite backend; supersedes HOST.SQLite. Carlos direction B 2026-09-14. Bucket: `ongoing/bucket-0.5.3.md`.
 - [HOST.SQLite v0 — SUPERSEDED](host-sqlite-v0.md) — direction A; API history only.
 - [LLVM Backend Modularization & BNSqlite Crate Segregation](llvm-backend-modularization-and-sqlite.md) — Partition `bn_llvm` into `bn_llvm_ir`, `bn_llvm_layout`, `bn_llvm_arc`, `bn_llvm_ops` and segregate SQLite into `bn_core_sqlite`. Priority post-0.6.5.
+- [BNWeb client transfer](bnweb-client-transfer.md) — curl's HTTP capabilities as typed BNWeb operations (`ClientReply`, `Crypto.Bytes`, download, headers, form, proxy, TLS). No new keyword. Scheduled 2026-10-28 as `todo/bucket-0.6.15-bnweb-transfer-and-quic.md` (adds QUIC), after the 0.6.14 MVP. `Trust`, `WithClientIdentity`, and `FetchCertificate` are `todo/bucket-0.6.15b-bnweb-client-identity.md`. Not in 0.6.11.

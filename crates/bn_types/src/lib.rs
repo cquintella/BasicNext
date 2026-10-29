@@ -129,7 +129,14 @@ pub fn operator_spelling(operator: &str) -> &str {
         "Slash" => "/",
         "Plus" => "+",
         "Minus" => "-",
-        "Times" => "*",
+        "Star" => "*",
+        "Power" => "**",
+        "Assign" => "=",
+        "NotEqual" => "<>",
+        "Less" => "<",
+        "LessEqual" => "<=",
+        "Greater" => ">",
+        "GreaterEqual" => ">=",
         other => other,
     }
 }
@@ -208,6 +215,8 @@ mod spelling_tests {
     fn diagnostics_spell_operators_and_types_as_source_does() {
         assert_eq!(operator_spelling("Percent"), "%");
         assert_eq!(operator_spelling("DIV"), "DIV");
+        assert_eq!(operator_spelling("Star"), "*");
+        assert_eq!(operator_spelling("Assign"), "=");
         assert_eq!(integer_type_name(IntegerType::Int32), "INT32");
         assert_eq!(integer_type_name(IntegerType::UInt64), "UINT64");
     }

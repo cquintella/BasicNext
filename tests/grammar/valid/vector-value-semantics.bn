@@ -23,7 +23,8 @@ CLASS Shared
 END CLASS
 
 FUNCTION Touch(v AS INT32[2]) AS VOID
-    v[0] = 7
+    LET local AS INT32[2] = v
+    local[0] = 7
 END FUNCTION
 
 FUNCTION Keep() AS VOID

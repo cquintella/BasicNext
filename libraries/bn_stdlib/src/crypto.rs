@@ -39,8 +39,22 @@ pub const fn required_key_length(algorithm: i32) -> Option<usize> {
     }
 }
 
+/// The most bytes one `RandomBytes` call returns (`bncrypto.md`): keys,
+/// seeds and nonces need tens of bytes, and the bound keeps a mistaken
+/// length from exhausting memory.
+pub const MAX_RANDOM_BYTES: usize = 1024 * 1024;
+
 /// Generates `length` random bytes using the operating system CSPRNG (`getrandom`).
-pub fn random_bytes(length: usize) -> Result<Vec<u8>, CryptoFailure> {
+///
+/// # Errors
+///
+/// `RandomLength` for a length outside 0 through [`MAX_RANDOM_BYTES`];
+/// `Random` when the system entropy source fails.
+pub fn random_bytes(length: i128) -> Result<Vec<u8>, CryptoFailure> {
+    let length = usize::try_from(length)
+        .ok()
+        .filter(|length| *length <= MAX_RANDOM_BYTES)
+        .ok_or(CryptoFailure::RandomLength(length))?;
     let mut buf = vec![0u8; length];
     getrandom::getrandom(&mut buf).map_err(|_| CryptoFailure::Random("BNCrypto.RandomBytes"))?;
     Ok(buf)
@@ -59,14 +73,47 @@ pub fn generate_nonce(algorithm: i32) -> Result<Vec<u8>, CryptoFailure> {
     }
 }
 
+/// The most 32-byte draws `GenerateKey(ALG_ECDSA_P256)` makes before it
+/// reports the entropy source as failed. One draw falls outside the curve
+/// order with probability about 2^-32, so reaching this bound means the
+/// generator is not random.
+const MAX_P256_SCALAR_DRAWS: usize = 64;
+
 /// Generates key material using the operating system CSPRNG for the specified algorithm.
+///
+/// An ECDSA P-256 scalar is drawn again until it lies in 1 through n - 1
+/// (rejection sampling, FIPS 186-5 A.2.2), so every generated key signs.
+///
+/// # Errors
+///
+/// `Algorithm` for an unknown constant; `Random` when the system entropy
+/// source fails or never yields a valid P-256 scalar.
 pub fn generate_key_material(algorithm: i32) -> Result<zeroize::Zeroizing<Vec<u8>>, CryptoFailure> {
     let len = required_key_length(algorithm).ok_or(CryptoFailure::Algorithm(algorithm))?;
     let mut buf = zeroize::Zeroizing::new(vec![0u8; len]);
-    getrandom::getrandom(&mut buf)
-        .map_err(|_| CryptoFailure::Random("BNCrypto.GenerateKey"))?;
-    Ok(buf)
+    let draws = if algorithm == ALG_ECDSA_P256 {
+        MAX_P256_SCALAR_DRAWS
+    } else {
+        1
+    };
+    for _ in 0..draws {
+        getrandom::getrandom(&mut buf)
+            .map_err(|_| CryptoFailure::Random("BNCrypto.GenerateKey"))?;
+        if algorithm != ALG_ECDSA_P256 || is_p256_scalar(&buf) {
+            return Ok(buf);
+        }
+    }
+    Err(CryptoFailure::Random("BNCrypto.GenerateKey"))
 }
+
+/// Whether `bytes` is a big-endian P-256 private scalar in 1 through n - 1.
+#[must_use]
+pub fn is_p256_scalar(bytes: &[u8]) -> bool {
+    bytes.len() == P256_SCALAR_BYTES && p256::SecretKey::from_slice(bytes).is_ok()
+}
+
+/// Byte length of a P-256 private scalar.
+const P256_SCALAR_BYTES: usize = 32;
 
 /// SHA-256 of `data` as 64 lowercase hex characters.
 #[must_use]
@@ -418,6 +465,37 @@ pub fn ml_dsa_verify(verifying_key: &[u8], message: &[u8], signature: &[u8]) -> 
         return false;
     };
     key.verify(message, &signature).is_ok()
+}
+
+/// One `BNCrypto.Key`: its algorithm and its material, which is erased when
+/// the entry drops or when `Zeroize()` runs. Shared by the interpreter
+/// adapter and the C ABI so both backends hold keys the same way.
+pub struct KeyEntry {
+    pub algorithm: i32,
+    pub material: zeroize::Zeroizing<Vec<u8>>,
+    pub zeroized: bool,
+}
+
+impl KeyEntry {
+    #[must_use]
+    pub const fn new(algorithm: i32, material: zeroize::Zeroizing<Vec<u8>>) -> Self {
+        Self {
+            algorithm,
+            material,
+            zeroized: false,
+        }
+    }
+}
+
+/// Never prints the material: a key must not leak through a debug dump.
+impl std::fmt::Debug for KeyEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KeyEntry")
+            .field("algorithm", &self.algorithm)
+            .field("length", &self.material.len())
+            .field("zeroized", &self.zeroized)
+            .finish_non_exhaustive()
+    }
 }
 
 #[cfg(test)]

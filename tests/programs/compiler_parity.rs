@@ -120,6 +120,8 @@ fn supported_constant_programs_match_interpreter() {
         "build-integer-error-compare.bn",
         "increment-statement.bn",
         "increment-expression.bn",
+        "mixed-case-reserved-spellings.bn",
+        "constant-past-int32.bn",
     ] {
         let path = if fixture.starts_with("examples/") {
             workspace_root().join(fixture)

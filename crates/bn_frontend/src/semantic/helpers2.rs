@@ -169,6 +169,42 @@ pub(crate) fn error(id: DiagId, message: impl Into<String>, span: Span) -> Diagn
     .expect("single-argument schema for registered diagnostics")
 }
 
+/// `TYPE_MISMATCH` for a value of type `actual` where `expected` is required.
+/// An integer literal out of the range of an integer type names its value
+/// and the range (bucket 0.6.11 S5.1); "INT32, but found INT32" said neither.
+pub(crate) fn value_mismatch(
+    expected: &Type,
+    actual: &Type,
+    context: impl Into<String>,
+    span: Span,
+) -> Diagnostic {
+    if let (Type::Integer(kind), Type::IntegerLiteral(value)) = (expected, actual) {
+        return integer_out_of_range(*kind, value, context, span);
+    }
+    type_mismatch(display(expected), display(actual), context, span)
+}
+
+/// `TYPE_MISMATCH` for the integer literal `value` outside `kind`.
+pub(crate) fn integer_out_of_range(
+    kind: IntegerType,
+    value: &str,
+    context: impl Into<String>,
+    span: Span,
+) -> Diagnostic {
+    let (minimum, maximum) = integer_range(kind);
+    let decimal = parse_integer(value).map_or_else(|| value.to_owned(), |value| value.to_string());
+    let range = bn_catalog::fill(
+        "frontend",
+        "msg.numeric_type_range",
+        &[
+            ("type", &crate::types::integer_type_name(kind)),
+            ("minimum", &minimum),
+            ("maximum", &maximum),
+        ],
+    );
+    type_mismatch(range, decimal, context, span)
+}
+
 pub(crate) fn type_mismatch(
     expected: impl Into<String>,
     actual: impl Into<String>,

@@ -31,9 +31,9 @@ pub(crate) fn typeof_name(ty: &Type) -> String {
 
 #[path = "semantic/helpers1.rs"]
 mod helpers1;
-pub(crate) use helpers1::is_dispatch_class;
 #[allow(clippy::wildcard_imports)]
 use helpers1::*;
+pub(crate) use helpers1::{constant_integer, is_dispatch_class};
 #[path = "semantic/helpers2.rs"]
 mod helpers2;
 pub(crate) use helpers2::*;
@@ -122,6 +122,9 @@ pub struct SemanticModel {
     /// not this list.
     pub struct_fields: HashMap<String, Vec<RecordMember>>,
     pub host_aliases: HashMap<String, String>,
+    /// `STRUCT` fields a destructuring `LET` reads. The read has no member
+    /// expression of its own, so the unused-field check consults this list.
+    pub destructured_fields: Vec<MemberTarget>,
 }
 
 #[derive(Clone, Debug)]
@@ -370,6 +373,8 @@ struct Analyzer {
     layout_active: Vec<String>,
     /// Span of the field that closes a self-containing `STRUCT`.
     recursive_struct: Option<Span>,
+    /// `STRUCT` fields a destructuring `LET` reads.
+    destructured_fields: Vec<MemberTarget>,
 }
 
 #[derive(Debug)]
@@ -566,6 +571,11 @@ mod analyzer7;
 mod analyzer8;
 #[path = "semantic/destructuring.rs"]
 mod destructuring;
+#[path = "semantic/float_literal.rs"]
+mod float_literal;
+#[path = "semantic/literal_settle.rs"]
+mod literal_settle;
+use float_literal::{check_float_literal, float32_destination};
 #[path = "semantic/host_defaults.rs"]
 mod host_defaults;
 pub(crate) use analyzer8::{declaration_type, function_type, type_from_atom, type_from_reference};

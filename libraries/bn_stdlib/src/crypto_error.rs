@@ -43,12 +43,11 @@ pub enum CryptoFailure {
     /// Invalid or unsupported algorithm constant.
     Algorithm(i32),
     /// Key material length does not match algorithm requirement.
-    KeyLength {
-        expected: usize,
-        actual: usize,
-    },
+    KeyLength { expected: usize, actual: usize },
     /// Attempt to use an already zeroized key.
     ZeroizedKey,
+    /// `RandomBytes` with a length outside 0 through [`crate::crypto::MAX_RANDOM_BYTES`].
+    RandomLength(i128),
 }
 
 impl CryptoFailure {
@@ -79,6 +78,7 @@ impl CryptoFailure {
             Self::SigningKey => "BNCrypto.MlDsaSign",
             Self::Algorithm(_) | Self::KeyLength { .. } => "BNCrypto.ImportKey",
             Self::ZeroizedKey => "BNCrypto.Key",
+            Self::RandomLength(_) => "BNCrypto.RandomBytes",
         }
     }
 
@@ -110,6 +110,9 @@ impl CryptoFailure {
                 format!("key material length {actual} does not match required length {expected}")
             }
             Self::ZeroizedKey => "key material has already been zeroized".into(),
+            Self::RandomLength(length) => {
+                bn_catalog::fill("crypto", "random.length.message", &[("length", length)])
+            }
         }
     }
 
@@ -152,6 +155,11 @@ impl CryptoFailure {
                 "the key material must match the exact byte length required by the algorithm".into()
             }
             Self::ZeroizedKey => "zeroized keys cannot be used for cryptographic operations".into(),
+            Self::RandomLength(_) => bn_catalog::fill(
+                "crypto",
+                "random.length.cause",
+                &[("limit", &crate::crypto::MAX_RANDOM_BYTES)],
+            ),
         }
     }
 }

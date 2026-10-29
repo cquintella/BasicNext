@@ -210,8 +210,7 @@
       "ir_instructions": [
         "Binary",
         "Constant",
-        "Print",
-        "Unary"
+        "Print"
       ],
       "type_constraints": [
         "INTEGER"
@@ -238,8 +237,7 @@
       "ir_instructions": [
         "Binary",
         "Constant",
-        "Print",
-        "Unary"
+        "Print"
       ],
       "type_constraints": [
         "INTEGER"
@@ -429,8 +427,7 @@
         "Call",
         "Cast",
         "Constant",
-        "Print",
-        "Unary"
+        "Print"
       ],
       "type_constraints": [
         "INTEGER",
@@ -773,8 +770,7 @@
         "SetIndex",
         "SizeOf",
         "Store",
-        "Take",
-        "Unary"
+        "Take"
       ],
       "type_constraints": [
         "INTEGER",
@@ -812,7 +808,6 @@
         "Phi",
         "Print",
         "Store",
-        "Unary",
         "Vector"
       ],
       "type_constraints": [
@@ -963,7 +958,6 @@
         "Load",
         "Print",
         "Store",
-        "Unary",
         "Vector"
       ],
       "type_constraints": [
@@ -1007,8 +1001,7 @@
         "Retain",
         "SetIndex",
         "Store",
-        "Take",
-        "Unary"
+        "Take"
       ],
       "type_constraints": [
         "STRING",
@@ -1174,8 +1167,7 @@
         "Retain",
         "SetIndex",
         "Store",
-        "Take",
-        "Unary"
+        "Take"
       ],
       "type_constraints": [
         "STRING",

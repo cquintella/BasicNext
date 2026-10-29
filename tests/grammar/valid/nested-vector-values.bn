@@ -16,7 +16,8 @@ FUNCTION Names() AS STRING[2][2]
 END FUNCTION
 
 FUNCTION Bump(v AS INTEGER[2][2][2]) AS VOID
-    v[0][0][0] = 50
+    LET local AS INTEGER[2][2][2] = v
+    local[0][0][0] = 50
 END FUNCTION
 
 FUNCTION Start() AS VOID

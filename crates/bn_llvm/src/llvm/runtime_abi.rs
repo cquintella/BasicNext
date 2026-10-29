@@ -291,6 +291,9 @@ signatures! {
     MATH_ROUND = "bn_rt_math_round"(Double, Double) -> Double;
     MATH_SIN = "bn_rt_math_sin"(Double) -> Double;
     MATH_SQRT = "bn_rt_math_sqrt"(Double) -> Double;
+    MATH_STUDENT_T = "bn_rt_math_student_t"(Double, Double) -> Double;
+    MATH_STUDENT_T_PVALUE = "bn_rt_math_student_t_pvalue"(Double, Double) -> Double;
+    MATH_STUDENT_T_QUANTILE = "bn_rt_math_student_t_quantile"(Double, Double) -> Double;
     MATH_STDEV_F64 = "bn_rt_math_stdev_f64"(Ptr, I32) -> Double;
     MATH_STDEV_I32 = "bn_rt_math_stdev_i32"(Ptr, I32) -> Double;
     MATH_TAN = "bn_rt_math_tan"(Double) -> Double;
@@ -324,6 +327,9 @@ signatures! {
     MATH_VECTOR_QUANTILE = "bn_rt_math_vector_quantile"(Ptr, I32, I32, Double) -> Double;
     MATH_VECTOR_COVARIANCE = "bn_rt_math_vector_covariance"(Ptr, I32, I32, Ptr, I32, I32, Ptr) -> Double;
     MATH_VECTOR_CORRELATION = "bn_rt_math_vector_correlation"(Ptr, I32, I32, Ptr, I32, I32, Ptr) -> Double;
+    MATH_VECTOR_DOT = "bn_rt_math_vector_dot"(Ptr, I32, I32, Ptr, I32, I32, Ptr) -> Double;
+    MATH_VECTOR_PRODUCT = "bn_rt_math_vector_product"(Ptr, I32, I32) -> Double;
+    MATH_VECTOR_SUM = "bn_rt_math_vector_sum"(Ptr, I32, I32) -> Double;
     NET_ADDRESS_IS_IPV4 = "bn_rt_net_address_is_ipv4"(Ptr) -> I32;
     NET_ADDRESS_IS_IPV6 = "bn_rt_net_address_is_ipv6"(Ptr) -> I32;
     NET_ADDRESS_IS_LINK_LOCAL = "bn_rt_net_address_is_link_local"(Ptr) -> I32;
@@ -529,8 +535,9 @@ declarations! {
     MATH_VMAX_F64 MATH_MEAN_I32 MATH_MEDIAN_I32 MATH_QUARTILE1_I32 MATH_QUARTILE3_I32
     MATH_RANGE_I32 MATH_STDEV_I32 MATH_VARIANCE_I32 MATH_MODE_I32 MATH_MEAN_F64 MATH_MEDIAN_F64
     MATH_QUARTILE1_F64 MATH_QUARTILE3_F64 MATH_RANGE_F64 MATH_STDEV_F64 MATH_VARIANCE_F64
-    MATH_MODE_F64 MATH_TODATE MATH_TOTIME MATH_TOTIMESTAMP MATH_VECTOR_STATISTIC MATH_VECTOR_QUANTILE MATH_VECTOR_COVARIANCE
-    MATH_VECTOR_CORRELATION MATH_VECTOR_MODE
+    MATH_MODE_F64 MATH_TODATE MATH_TOTIME MATH_TOTIMESTAMP MATH_STUDENT_T MATH_STUDENT_T_PVALUE
+    MATH_STUDENT_T_QUANTILE MATH_VECTOR_STATISTIC MATH_VECTOR_QUANTILE MATH_VECTOR_COVARIANCE
+    MATH_VECTOR_CORRELATION MATH_VECTOR_DOT MATH_VECTOR_PRODUCT MATH_VECTOR_SUM MATH_VECTOR_MODE
     MATH_VECTOR_MIN_INTEGER MATH_VECTOR_MAX_INTEGER MATH_VECTOR_MIN_FLOAT MATH_VECTOR_MAX_FLOAT
     TEMPORAL_DATE_PARSE TEMPORAL_TIME_PARSE TEMPORAL_TIMESTAMP_PARSE TEMPORAL_TIMESTAMP_FORMAT
     TEMPORAL_TIMEZONE_OFFSET TEMPORAL_TIMEZONE_IS_DST TEMPORAL_TIMESTAMP_AT_ZONE TEMPORAL_TIMESTAMP_FROM_LOCAL

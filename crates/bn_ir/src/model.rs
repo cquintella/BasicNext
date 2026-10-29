@@ -645,7 +645,10 @@ impl Module {
             (&self.bnweb_providers, "BNWeb"),
             (&self.bndispatch_providers, "BNDispatch"),
             (&self.bncrypto_providers, "BNCrypto"),
-            (&self.bncompress_providers, "BNCompress"),
+            (
+                &self.bncompress_providers,
+                bn_catalog::text("modules", "module.compress"),
+            ),
             (&self.bnsqlite_providers, "BNSqlite"),
             (&self.bnffi_providers, "BNFfi"),
         ]

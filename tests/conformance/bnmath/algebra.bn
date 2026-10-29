@@ -1,0 +1,28 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// BNMath.Sum, Product and Dot (math.md, "Algebraic reductions").
+// The language has no exponent literal, so 1e16 is written in full.
+// The compensated sum keeps 1 + 1 beside 1e16 and is 2. Two MAX_FLOAT
+// values overflow to INF. An empty sum is 0 and an empty product is 1.
+// Product([2, -3, 4]) is -24. MAX_FLOAT * 16 * 0.0625 is MAX_FLOAT in
+// either order: a left-to-right product overflows on the first pair.
+// Dot of MAX_FLOAT with its negation is 0. Two empty vectors are 0.
+
+IMPORT BNMath AS Math
+
+FUNCTION Start() AS VOID
+    LET compensated AS FLOAT[4] = [10000000000000000.0, 1.0, -10000000000000000.0, 1.0]
+    LET overflow AS FLOAT[2] = [Math.MAX_FLOAT, Math.MAX_FLOAT]
+    LET factors AS FLOAT[3] = [2.0, -3.0, 4.0]
+    LET wide AS FLOAT[3] = [Math.MAX_FLOAT, 16.0, 0.0625]
+    LET reversed AS FLOAT[3] = [0.0625, 16.0, Math.MAX_FLOAT]
+    LET left AS FLOAT[2] = [Math.MAX_FLOAT, Math.MAX_FLOAT]
+    LET right AS FLOAT[2] = [1.0, -1.0]
+    LET empty AS FLOAT[0] = []
+    PRINT "sum", Math.Sum(compensated), Math.Sum(overflow), Math.Sum(empty)
+    PRINT "product", Math.Product(factors), Math.Product(wide), Math.Product(reversed), Math.Product(empty)
+    PRINT "dot", Math.Dot(left, right), Math.Dot(empty, empty)
+END FUNCTION

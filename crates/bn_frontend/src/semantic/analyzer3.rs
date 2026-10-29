@@ -107,9 +107,9 @@ impl Analyzer {
                                     initializer.span,
                                 )
                             } else {
-                                type_mismatch(
-                                    display(&ty),
-                                    display(&actual),
+                                value_mismatch(
+                                    &ty,
+                                    &actual,
                                     "binding initializer",
                                     initializer.span,
                                 )
@@ -121,9 +121,9 @@ impl Analyzer {
                         if let Some(additional_initializer) = additional_initializers.get(index) {
                             let actual = self.expression_as(additional_initializer, &ty, locals)?;
                             if !self.compatible(&ty, &actual) {
-                                return Err(type_mismatch(
-                                    display(&ty),
-                                    display(&actual),
+                                return Err(value_mismatch(
+                                    &ty,
+                                    &actual,
                                     "additional binding initializer",
                                     additional_initializer.span,
                                 ));
@@ -178,12 +178,7 @@ impl Analyzer {
                                     *span,
                                 )
                             } else {
-                                type_mismatch(
-                                    display(&target_type),
-                                    display(&result_type),
-                                    "assignment",
-                                    *span,
-                                )
+                                value_mismatch(&target_type, &result_type, "assignment", *span)
                             },
                         );
                     }
@@ -329,9 +324,9 @@ impl Analyzer {
                         if let Some(return_type) = return_type
                             && !self.compatible(return_type, &value_type)
                         {
-                            return Err(type_mismatch(
-                                display(return_type),
-                                display(&value_type),
+                            return Err(value_mismatch(
+                                return_type,
+                                &value_type,
                                 "FUNCTION return",
                                 value.span,
                             ));
@@ -339,8 +334,10 @@ impl Analyzer {
                     }
                 }
                 Statement::Print { values, .. } => {
+                    let context = bn_catalog::text("frontend", "msg.print_value");
                     for value in values {
                         self.expression(value, locals)?;
+                        self.settle_integer_constant(value, context)?;
                     }
                 }
                 Statement::Input {

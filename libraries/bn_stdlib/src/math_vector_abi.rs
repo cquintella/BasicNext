@@ -200,6 +200,20 @@ pub extern "C" fn bn_rt_math_vector_max_float(
     float_extreme(ptr, len, element, bn_core_math::vmax_f64)
 }
 
+/// `Sum` of the vector (math.md, "Algebraic reductions").
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_math_vector_sum(ptr: *const u8, len: i32, element: i32) -> f64 {
+    bn_core_math::sum(&read_elements(ptr, len, element).into_floats())
+}
+
+/// `Product` of the vector (math.md, "Algebraic reductions").
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_math_vector_product(ptr: *const u8, len: i32, element: i32) -> f64 {
+    bn_core_math::product(&read_elements(ptr, len, element).into_floats())
+}
+
 /// `Quantile` of the vector at `p`, R type 7 (math.md); the elements are
 /// read at their own width and widened to `FLOAT`.
 #[allow(unsafe_code)]
@@ -269,6 +283,27 @@ pub extern "C" fn bn_rt_math_vector_correlation(
 ) -> f64 {
     association(
         bn_core_math::correlation,
+        (x_ptr, x_len, x_element),
+        (y_ptr, y_len, y_element),
+        trap,
+    )
+}
+
+/// `Dot` of two vectors (math.md, "Algebraic reductions"); different
+/// lengths print the call site's `VECTOR_LENGTH_MISMATCH` and stop.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_math_vector_dot(
+    x_ptr: *const u8,
+    x_len: i32,
+    x_element: i32,
+    y_ptr: *const u8,
+    y_len: i32,
+    y_element: i32,
+    trap: *const c_char,
+) -> f64 {
+    association(
+        bn_core_math::dot,
         (x_ptr, x_len, x_element),
         (y_ptr, y_len, y_element),
         trap,

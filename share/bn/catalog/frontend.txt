@@ -81,6 +81,21 @@ msg.input_prompt_must_be_string = INPUT prompt must be STRING
 msg.input_target = INPUT target
 msg.string_or_string_or_eof = STRING or STRING OR EOF
 msg.integer_arguments_that_fit_int64 = integer arguments that fit INT64
+msg.numeric_arguments = numeric arguments
 msg.numeric_vector_and_numeric_probability = a numeric vector and a numeric probability
 msg.two_numeric_vectors = two numeric vectors
+msg.numeric_vector = a numeric vector
+msg.numeric_type_range = {type} from {minimum} to {maximum}
+msg.print_value = PRINT value
+msg.typeof_argument = TYPEOF argument
+msg.operand_of = operand of {operator}
+msg.floating_point_literal = floating-point literal
+msg.float32_value = FLOAT32 value
 msg.statistic_vectors_differ_in_length = the two vectors of a BNMath statistic differ in length
+msg.parameter_component = component of parameter '{name}' (parameters are constant)
+
+# Interpreter runtime texts.
+msg.dataframe_index_cause = index is outside valid row/column bounds
+msg.integer_overflow_cause = integer overflow
+msg.mutable_binding = mutable binding
+msg.assignment_target = assignment target

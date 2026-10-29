@@ -149,11 +149,13 @@ pub(crate) fn lower_program(
                 functions.push(lower_field_release(
                     model,
                     module_id,
-                    prefix,
-                    type_name,
-                    resolved_base.as_deref(),
-                    statements,
-                    *span,
+                    &ClassBody {
+                        prefix,
+                        name: type_name,
+                        base: resolved_base.as_deref(),
+                        statements,
+                        span: *span,
+                    },
                     method_names,
                 )?);
                 for statement in statements {
@@ -421,16 +423,29 @@ pub(crate) fn lower_instance_fields(
 /// ARC after the destructor chain, it releases the class's own strong fields
 /// in reverse declaration order, then calls its base class's, so derived
 /// fields go before base fields (0.6.md, "Zero strong → destructor").
+/// The declaration of a class being lowered: its module prefix, name, base
+/// class, member statements and span.
+pub(crate) struct ClassBody<'a> {
+    pub prefix: &'a str,
+    pub name: &'a str,
+    pub base: Option<&'a str>,
+    pub statements: &'a [Statement],
+    pub span: Span,
+}
+
 pub(crate) fn lower_field_release(
     model: &SemanticModel,
     module_id: FrontendModuleId,
-    prefix: &str,
-    class_name: &str,
-    base_class: Option<&str>,
-    statements: &[Statement],
-    span: Span,
+    class: &ClassBody<'_>,
     method_names: &HashSet<String>,
 ) -> Result<Function, Diagnostic> {
+    let ClassBody {
+        prefix,
+        name: class_name,
+        base: base_class,
+        statements,
+        span,
+    } = *class;
     let owner = qualified_class_name(prefix, class_name);
     let self_type = Type::Named(class_name.into());
     let mut builder = Builder::new(model, method_names.clone(), prefix, module_id);
@@ -519,6 +534,7 @@ pub(crate) fn lower_inherited_constructor(
         record_members: std::collections::HashMap::new(),
         struct_fields: std::collections::HashMap::new(),
         host_aliases: std::collections::HashMap::new(),
+        destructured_fields: Vec::new(),
     };
     let mut builder = Builder::new(&empty_model, methods.clone(), prefix, module_id);
     builder.derived_fields = Some(format!("{prefix}{class_name}.$fields"));
@@ -560,6 +576,7 @@ pub(crate) fn lower_inherited_destructor(
         record_members: std::collections::HashMap::new(),
         struct_fields: std::collections::HashMap::new(),
         host_aliases: std::collections::HashMap::new(),
+        destructured_fields: Vec::new(),
     };
     let mut builder = Builder::new(&empty_model, methods.clone(), prefix, module_id);
     let receiver = builder.load(SYNTHETIC_SELF, Type::Named(class_name.into()), span);

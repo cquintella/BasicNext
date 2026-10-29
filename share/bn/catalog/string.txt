@@ -5,3 +5,10 @@ release-of-zero = string buffer was released after its count reached zero
 # Messages moved out of Rust source (text-literal gate).
 msg.string_length_fits_u64 = string length fits u64
 msg.string_size_fits_address_space = string size fits address space
+
+# ASC and CHAR failures (error.md): Operation names and Causes, shared by
+# the interpreter and the native runtime through bn_core_text::builtin.
+builtin.asc.operation = ASC
+builtin.asc.cause = the string is empty
+builtin.char.operation = CHAR
+builtin.char.cause = the code is not a Unicode scalar value

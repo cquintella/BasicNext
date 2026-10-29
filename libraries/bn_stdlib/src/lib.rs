@@ -17,9 +17,9 @@ use std::ffi::c_char;
 
 pub use bn_rt::*;
 
+pub mod compress_abi;
 pub mod crypto;
 mod crypto_abi;
-pub mod compress_abi;
 pub mod crypto_error;
 pub mod data_error;
 mod dataframe;

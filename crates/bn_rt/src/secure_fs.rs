@@ -108,9 +108,7 @@ impl RootedDir {
         #[cfg(not(any(unix, windows)))]
         {
             let _ = (relative, mode);
-            Err(denied(
-                "rooted filesystem access is unavailable on this platform",
-            ))
+            Err(denied(ROOTED_ACCESS_UNAVAILABLE))
         }
     }
 
@@ -133,9 +131,42 @@ impl RootedDir {
         #[cfg(not(any(unix, windows)))]
         {
             let _ = relative;
-            Err(denied(
-                "rooted filesystem access is unavailable on this platform",
-            ))
+            Err(denied(ROOTED_ACCESS_UNAVAILABLE))
+        }
+    }
+
+    /// Creates the directory `path` and its missing ancestors relative to the
+    /// pinned root, never through a symlink. The root itself already exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns `PermissionDenied` for paths outside this root, paths containing
+    /// parent traversal, a component that is a symlink or not a directory,
+    /// and platforms without descriptor-relative traversal.
+    pub fn create_dir_all(&self, path: &Path) -> io::Result<()> {
+        let absolute = std::path::absolute(path)?;
+        if absolute == self.path || absolute == self.canonical_path {
+            return Ok(());
+        }
+        let relative = self.relative(path)?;
+        #[cfg(unix)]
+        {
+            let mut directory = self.directory.try_clone()?;
+            for component in relative.components() {
+                if let Component::Normal(name) = component {
+                    directory = open_or_make_directory_at(&directory, &c_name(name)?)?;
+                }
+            }
+            Ok(())
+        }
+        #[cfg(windows)]
+        {
+            windows::create_dir_all(&self.canonical_path, &relative)
+        }
+        #[cfg(not(any(unix, windows)))]
+        {
+            let _ = relative;
+            Err(denied(ROOTED_ACCESS_UNAVAILABLE))
         }
     }
 
@@ -170,20 +201,7 @@ impl RootedDir {
             };
             let name = c_name(name)?;
             if components.peek().is_some() {
-                // SAFETY: `directory` owns a live directory descriptor and
-                // `name` is a NUL-terminated single path component.
-                let descriptor = unsafe {
-                    libc::openat(
-                        directory.as_raw_fd(),
-                        name.as_ptr(),
-                        libc::O_RDONLY | libc::O_CLOEXEC | libc::O_DIRECTORY | libc::O_NOFOLLOW,
-                    )
-                };
-                if descriptor < 0 {
-                    return Err(traversal_error());
-                }
-                // SAFETY: successful `openat` returned a new owned descriptor.
-                directory = File::from(unsafe { OwnedFd::from_raw_fd(descriptor) });
+                directory = open_directory_at(&directory, &name)?;
                 continue;
             }
             let flags = match mode {
@@ -217,20 +235,7 @@ impl RootedDir {
             };
             let name = c_name(name)?;
             if components.peek().is_some() {
-                // SAFETY: `directory` owns a live directory descriptor and
-                // `name` is a NUL-terminated single path component.
-                let descriptor = unsafe {
-                    libc::openat(
-                        directory.as_raw_fd(),
-                        name.as_ptr(),
-                        libc::O_RDONLY | libc::O_CLOEXEC | libc::O_DIRECTORY | libc::O_NOFOLLOW,
-                    )
-                };
-                if descriptor < 0 {
-                    return Err(traversal_error());
-                }
-                // SAFETY: successful `openat` returned a new owned descriptor.
-                directory = File::from(unsafe { OwnedFd::from_raw_fd(descriptor) });
+                directory = open_directory_at(&directory, &name)?;
                 continue;
             }
             // SAFETY: final-component inspection is relative to the pinned
@@ -267,9 +272,89 @@ impl RootedDir {
 #[path = "secure_fs_windows.rs"]
 mod windows;
 
-fn denied(message: &'static str) -> io::Error {
-    io::Error::new(io::ErrorKind::PermissionDenied, message)
+/// The refusal on a platform without descriptor-relative traversal.
+#[cfg(not(any(unix, windows)))]
+const ROOTED_ACCESS_UNAVAILABLE: &str = "rooted filesystem access is unavailable on this platform";
+
+/// A refusal of the rooted walk or of the policy itself, as opposed to a
+/// `PermissionDenied` the operating system reports: a caller that has no
+/// separate permission code (`BNCompress`) reports only this one as a policy
+/// denial.
+#[derive(Debug)]
+struct PolicyRefusal(&'static str);
+
+impl std::fmt::Display for PolicyRefusal {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.0)
+    }
 }
+
+impl std::error::Error for PolicyRefusal {}
+
+pub(crate) fn denied(message: &'static str) -> io::Error {
+    io::Error::new(io::ErrorKind::PermissionDenied, PolicyRefusal(message))
+}
+
+/// Whether `error` is a refusal of the execution policy or of the rooted
+/// walk (a symlink, a path outside the root), not an operating-system error.
+#[must_use]
+pub fn is_policy_refusal(error: &io::Error) -> bool {
+    error
+        .get_ref()
+        .is_some_and(<dyn std::error::Error + Send + Sync>::is::<PolicyRefusal>)
+}
+
+/// Opens the directory `name` inside `parent` without following a symlink.
+#[cfg(unix)]
+fn open_directory_at(parent: &File, name: &std::ffi::CStr) -> io::Result<File> {
+    use std::os::fd::{AsRawFd as _, FromRawFd as _, OwnedFd};
+
+    // SAFETY: `parent` owns a live directory descriptor and `name` is a
+    // NUL-terminated single path component.
+    let descriptor = unsafe {
+        libc::openat(
+            parent.as_raw_fd(),
+            name.as_ptr(),
+            libc::O_RDONLY | libc::O_CLOEXEC | libc::O_DIRECTORY | libc::O_NOFOLLOW,
+        )
+    };
+    if descriptor < 0 {
+        return Err(traversal_error());
+    }
+    // SAFETY: successful `openat` returned a new owned descriptor.
+    Ok(File::from(unsafe { OwnedFd::from_raw_fd(descriptor) }))
+}
+
+/// Opens the directory `name` inside `parent`, creating it first when it is
+/// missing. The open that follows the create never follows a symlink, so a
+/// link put in its place between the two calls is refused.
+#[cfg(unix)]
+fn open_or_make_directory_at(parent: &File, name: &std::ffi::CStr) -> io::Result<File> {
+    use std::os::fd::AsRawFd as _;
+
+    match open_directory_at(parent, name) {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            // SAFETY: `parent` owns a live directory descriptor and `name` is
+            // a NUL-terminated single path component; `mkdirat` never
+            // follows a symlink at the final component.
+            let result =
+                unsafe { libc::mkdirat(parent.as_raw_fd(), name.as_ptr(), NEW_DIRECTORY_MODE) };
+            if result < 0 {
+                let error = io::Error::last_os_error();
+                if error.kind() != io::ErrorKind::AlreadyExists {
+                    return Err(error);
+                }
+            }
+            open_directory_at(parent, name)
+        }
+        other => other,
+    }
+}
+
+/// The mode a created directory asks for; the process umask narrows it, as
+/// for every file `FS.Open` creates (bucket 0.6.11, CMP-SEC-2).
+#[cfg(unix)]
+const NEW_DIRECTORY_MODE: libc::mode_t = 0o777;
 
 #[cfg(unix)]
 fn traversal_error() -> io::Error {
@@ -300,6 +385,48 @@ mod tests {
             std::process::id(),
             std::thread::current().id()
         ))
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn directories_are_created_inside_the_root_only() {
+        let base = fixture("create-dirs");
+        let root = base.join("root");
+        let outside = base.join("outside");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("redirect")).unwrap();
+        std::os::unix::fs::symlink(outside.join("missing"), root.join("dangling")).unwrap();
+        let rooted = RootedDir::new(&root).unwrap();
+
+        rooted.create_dir_all(&root.join("a/b/c")).unwrap();
+        assert!(root.join("a/b/c").is_dir());
+        rooted.create_dir_all(&root.join("a/b")).unwrap();
+        rooted.create_dir_all(&root).unwrap();
+        for escape in ["redirect/new", "dangling", "dangling/new"] {
+            let error = rooted.create_dir_all(&root.join(escape)).unwrap_err();
+            assert!(super::is_policy_refusal(&error), "{escape}: {error}");
+        }
+        assert!(rooted.create_dir_all(&base.join("elsewhere")).is_err());
+        assert_eq!(std::fs::read_dir(&outside).unwrap().count(), 0);
+        assert!(!base.join("elsewhere").exists());
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn only_policy_refusals_are_refusals() {
+        let base = fixture("refusal");
+        let root = base.join("root");
+        std::fs::create_dir_all(&root).unwrap();
+        let rooted = RootedDir::new(&root).unwrap();
+
+        let outside = rooted
+            .open(&base.join("other.txt"), OpenMode::Read)
+            .unwrap_err();
+        assert!(super::is_policy_refusal(&outside));
+        let system = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+        assert!(!super::is_policy_refusal(&system));
+        std::fs::remove_dir_all(base).unwrap();
     }
 
     #[cfg(unix)]

@@ -36,7 +36,9 @@ pub(crate) fn binary_type(
         "AND" | "OR" | "XOR" if left == &Type::Boolean && right == &Type::Boolean => {
             Ok(Type::Boolean)
         }
-        "AND" | "OR" | "XOR" | "DIV" | "Percent" => integer_result(left, right).ok_or_else(invalid),
+        "AND" | "OR" | "XOR" | "DIV" | "Percent" => folded_integer(left, right, expression)
+            .or_else(|| integer_result(left, right))
+            .ok_or_else(invalid),
         "SHL" | "SHR" => {
             if !is_integer(left) || !is_integer(right) {
                 return Err(invalid());
@@ -66,13 +68,27 @@ pub(crate) fn binary_type(
             {
                 return Ok(Type::Float(FloatType::Float64));
             }
-            if let Some(value) = constant_integer(expression) {
-                return Ok(Type::IntegerLiteral(value.to_string()));
+            if let Some(folded) = folded_integer(left, right, expression) {
+                return Ok(folded);
             }
             numeric_result(left, right).ok_or_else(invalid)
         }
         _ => Err(invalid()),
     }
+}
+
+/// The exact value of an operation on two integer constants, which a
+/// destination then checks (0.6.md, "Integer constants without a
+/// destination"). An operand already settled to `INT32` makes the operation
+/// run-time arithmetic instead, so its overflow still stops the program.
+fn folded_integer(left: &Type, right: &Type, expression: &Expression) -> Option<Type> {
+    if !matches!(
+        (left, right),
+        (Type::IntegerLiteral(_), Type::IntegerLiteral(_))
+    ) {
+        return None;
+    }
+    constant_integer(expression).map(|value| Type::IntegerLiteral(value.to_string()))
 }
 
 pub(crate) fn conversion_allowed(source: &Type, target: &Type) -> bool {

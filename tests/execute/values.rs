@@ -398,7 +398,8 @@ CLASS Counter IMPLEMENTS Valued
 END CLASS
 
 FUNCTION Mutate(point AS Point) AS VOID
-    point.X = 99.0
+    LET local AS Point = point
+    local.X = 99.0
 END FUNCTION
 
 FUNCTION Start() AS VOID

@@ -32,11 +32,27 @@ impl Analyzer {
         }
         let source_type = self.expression(source, locals)?;
         let received = self.destructured_values(&source_type, bindings, source.span)?;
+        self.record_destructured_fields(&source_type, bindings);
         for (binding, value_type) in bindings.iter().zip(received) {
             let ty = self.binding_type(binding, &value_type)?;
             self.declare_local(locals, &binding.name, ty, false, binding.span)?;
         }
         Ok(())
+    }
+
+    /// Each binding of a `STRUCT` source reads the field of its name.
+    fn record_destructured_fields(
+        &mut self,
+        source_type: &Type,
+        bindings: &[DestructuringBinding],
+    ) {
+        if self.struct_field_list(source_type).is_none() {
+            return;
+        }
+        let targets = bindings
+            .iter()
+            .filter_map(|binding| member_target(source_type, &binding.name));
+        self.destructured_fields.extend(targets);
     }
 
     /// The type each binding receives, in binding order. A `STRUCT` looks
@@ -135,9 +151,9 @@ impl Analyzer {
         self.validate_type_reference(type_ref, false)?;
         let declared = self.resolve_reference(type_ref);
         if !self.compatible(&declared, received) {
-            return Err(type_mismatch(
-                display(&declared),
-                display(received),
+            return Err(value_mismatch(
+                &declared,
+                received,
                 bn_catalog::text("frontend", "msg.destructuring_binding"),
                 binding.span,
             ));

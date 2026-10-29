@@ -390,6 +390,89 @@ confirmed by the BDFL).
 As with every descriptive reduction, any `NAN` input propagates to `NAN`;
 mode ties without `NAN` return `NA`.
 
+### Algebraic reductions (0.6.11)
+
+`BNMath.Sum(values)`, `BNMath.Product(values)` and `BNMath.Dot(x, y)`
+(BDFL decision, 2026-10-27, bucket 0.6.11 S3.3). The operand is the same
+numeric vector or region as the descriptive statistics, and each element
+is converted to `FLOAT` the same way. The result is `FLOAT`. The walk is
+in index order and allocates nothing beyond that conversion: no copy and
+no sort. Only `+`, `−`, `×` and `÷` are used, each correctly rounded, so
+the three give the same bits on every platform and on both backends.
+
+| Function | Meaning |
+| --- | --- |
+| `BNMath.Sum(values)` | The compensated (Neumaier) sum. An empty vector is `0.0`. |
+| `BNMath.Product(values)` | The product. An empty vector is `1.0`. |
+| `BNMath.Dot(x, y)` | The compensated sum of the products `x[i] · y[i]`. |
+
+`Sum` resolves non-finite values as `MEAN` does, and then returns the sum
+rather than the mean. Any `NAN` gives `NAN`. `INF` together with `-INF`
+gives `NAN`; otherwise an infinity gives that infinity. With finite
+values the compensated sum keeps the overflow it reaches, `INF` or
+`-INF` with the sign of that overflow, and does not add further terms:
+`Sum([MAX_FLOAT, MAX_FLOAT])` is `INF`, and
+`Sum([1e16, 1, -1e16, 1])` is `2.0`.
+
+`Product` decides zero, infinity and overflow from the whole vector, so
+that decision does not depend on order. Any `NAN` gives `NAN`. A zero
+(including `-0.0`) together with an infinity gives `NAN`; a zero with no
+infinity gives a zero whose sign is the sign of the product, even when
+the other factors would overflow. Each finite factor is split into a
+magnitude in `[0.5, 1)` and a power of two. The powers are added. The
+magnitudes are multiplied in index order, so the last bits of a finite
+product follow that order, as `Sum` does, while a product that overflows
+the `FLOAT` range is `INF` or `-INF` with the sign of the product in
+either order. `Product([2.0, -3.0, 4.0])` is `-24.0`.
+`Product([1e308, 1e10, -1e-10])` is finite, and so is the same factors
+in the other order.
+
+`Dot` stops the program with `VECTOR_LENGTH_MISMATCH` when the lengths
+differ, the same diagnostic as `Covariance`. Two empty vectors give
+`0.0`. Any `NAN`, and a product `0 · INF`, give `NAN`. A product that
+overflows is an infinity; `INF` together with `-INF` among the products
+gives `NAN`, and one sign of infinity gives that infinity. Otherwise the
+products are summed as `Sum`. `Dot([MAX_FLOAT, MAX_FLOAT], [1.0, -1.0])`
+is `0.0`. `Dot([1e308, 1e308], [1e308, -1e308])` is `NAN`: each product
+overflows, even though the true sum is finite.
+
+### Student's t (0.6.11)
+
+`BNMath.StudentT(t, df)`, `BNMath.StudentTPvalue(t, df)` and
+`BNMath.StudentTQuantile(p, df)` (BDFL decision, 2026-10-27, bucket
+0.6.11 S3.1 and S3.2). Each argument is numeric and is read as `FLOAT`.
+`df` is the degrees of freedom. The three are one rule in `bn_core_math`,
+built from `+`, `−`, `×`, `÷` and `SQRT` only, so both backends and every
+platform produce the same bits. The cumulative value and the p-value are
+that beta, not a correctly rounded special function: on the conformance
+points they lie within 9 units in the last place of a 28-digit evaluation
+of the same series. R 4.5.1 `pt` is not correctly rounded, and on some of
+those points it is farther from the series than this implementation.
+`StudentTQuantile(p, df)` for `p > 0.5` inverts `StudentT` to within one
+unit in the last place. `StudentTQuantile(p, df)` is the exact negation of
+`StudentTQuantile(1 − p, df)`, including when `1 − p` is not the floating
+value closest to the complement. R 4.5.1 `qt` is not exactly antisymmetric
+and not correctly rounded; on this set it differs by at most 51 units.
+
+`StudentT(t, df)` is the lower cumulative distribution, R's `pt(t, df,
+lower.tail = TRUE)`. `StudentTPvalue(t, df)` is the two-tailed p-value,
+the regularized incomplete beta `I_x(df / 2, 1 / 2)` with
+`x = df / (df + t²)`, which is R's `2 * pt(-abs(t), df)` without
+subtracting two close probabilities. For `t ≥ 0` the cumulative value is
+`1 − StudentTPvalue(t, df) / 2`; for `t < 0` it is
+`StudentTPvalue(t, df) / 2`.
+
+`StudentTQuantile(p, df)` is the inverse of `StudentT` for `p` in
+`(0, 1)`, R's `qt(p, df)`. `p = 0` is `-INF`, `p = 1` is `INF`, and
+`p = 0.5` is `0.0`. A `p` that is `NAN` or outside `[0, 1]` is `NAN`.
+
+A `NAN` argument is `NAN`. `df ≤ 0` is `NAN`. A positive infinite `df`,
+and a finite `df` so large that the beta terms overflow, is the standard
+normal distribution of `t` (the limit of the t distribution): `StudentT`
+is its cumulative value and `StudentTQuantile` is its quantile.
+`StudentT(INF, df)` is `1.0` and `StudentT(-INF, df)` is `0.0` for
+`df > 0`; the two-tailed p-value of an infinite `t` is `0.0`.
+
 ### Reproducibility requirement
 
 The reference interpreter and a future compiler must produce the same result

@@ -497,7 +497,9 @@ fn standard_module(path: &Path) -> Option<StandardModule> {
         Some("BNJson.bn") if in_bn => Some(StandardModule::BNJson),
         Some("BNDispatch.bn") if in_bn => Some(StandardModule::BNDispatch),
         Some("BNCrypto.bn") if in_bn => Some(StandardModule::BNCrypto),
-        Some("BNCompress.bn") if in_bn => Some(StandardModule::BNCompress),
+        Some(name) if in_bn && name == bn_catalog::text("modules", "file.compress") => {
+            Some(StandardModule::BNCompress)
+        }
         Some("BNSqlite.bn") if in_bn => Some(StandardModule::BNSqlite),
         Some("BNFfi.bn") if in_bn => Some(StandardModule::BNFfi),
         _ => None,

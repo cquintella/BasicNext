@@ -65,10 +65,10 @@ pub(super) fn association(
             .collect::<Result<Vec<_>, _>>()
     };
     let (x, y) = (numbers(x)?, numbers(y)?);
-    let result = if name == "Covariance" {
-        bn_core_math::covariance(&x, &y)
-    } else {
-        bn_core_math::correlation(&x, &y)
+    let result = match name {
+        "Covariance" => bn_core_math::covariance(&x, &y),
+        "Dot" => bn_core_math::dot(&x, &y),
+        _ => bn_core_math::correlation(&x, &y),
     };
     result
         .map(|value| Value::Float(value, FloatType::Float64))
@@ -80,6 +80,25 @@ pub(super) fn association(
             )
         })
 }
+/// `BNMath.Sum` or `BNMath.Product` (math.md, "Algebraic reductions").
+pub(super) fn algebraic(
+    name: &str,
+    value: &Value,
+    span: Span,
+    memory: &Heap<Value>,
+) -> Result<Value, Diagnostic> {
+    let numbers = vector_elements(value, span, memory)?
+        .iter()
+        .map(|element| number_as_float(element, span))
+        .collect::<Result<Vec<_>, _>>()?;
+    let result = if name == "Sum" {
+        bn_core_math::sum(&numbers)
+    } else {
+        bn_core_math::product(&numbers)
+    };
+    Ok(Value::Float(result, FloatType::Float64))
+}
+
 /// The elements of a vector, or of the region a pointer names.
 fn vector_elements<'a>(
     value: &'a Value,

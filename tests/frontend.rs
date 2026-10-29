@@ -24,6 +24,8 @@ mod loop_scope;
 mod module_graph;
 #[path = "frontend/narrowing_scope.rs"]
 mod narrowing_scope;
+#[path = "frontend/numeric_literal_range.rs"]
+mod numeric_literal_range;
 #[path = "frontend/parser.rs"]
 mod parser;
 #[path = "frontend/precedence.rs"]
@@ -32,5 +34,7 @@ mod precedence;
 mod semantic;
 #[path = "frontend/u1.rs"]
 mod u1;
+#[path = "frontend/unused_struct_field.rs"]
+mod unused_struct_field;
 #[path = "frontend/validated_ir.rs"]
 mod validated_ir;

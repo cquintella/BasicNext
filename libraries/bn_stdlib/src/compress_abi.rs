@@ -9,13 +9,18 @@
 
 use std::collections::HashMap;
 use std::ffi::c_char;
+use std::fs::File;
+use std::io;
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, PoisonError};
 
-use bn_core_compress::{
-    decode_hex, deflate, encode_hex, gunzip, gzip, inflate, CompressError, ZipArchiveHandle,
-};
+use crate::secure_fs::OpenMode;
 use crate::{c_str, c_string};
+use bn_core_compress::{
+    CompressError, FileAccess, ZipArchiveHandle, decode_hex, deflate, encode_hex, gunzip, gzip,
+    inflate,
+};
 
 pub(crate) const BN_COMPRESS_OK: i32 = 0;
 pub(crate) const BN_COMPRESS_INVALID_ARGUMENT: i32 = 1;
@@ -86,13 +91,39 @@ fn get_buffer(handle: u64) -> Option<Vec<u8>> {
     with_buffers(|buffers| buffers.get(&handle).cloned())
 }
 
+/// The execution policy of the compiled program (`bn_rt`), through which
+/// every file `BNCompress` touches is checked and opened
+/// (`language/0.6/bncompress.md`); its rooted operations never follow a
+/// symlink (bucket 0.6.11, CMP-SEC-1).
+struct CompiledPolicy;
+
+impl FileAccess for CompiledPolicy {
+    fn check(&self, path: &Path, write: bool) -> Result<(), String> {
+        if crate::policy::allows_path(path, write) {
+            Ok(())
+        } else {
+            Err(crate::policy::with_fs(|policy| policy.denial_reason(write)).to_string())
+        }
+    }
+    fn open_read(&self, path: &Path) -> io::Result<File> {
+        crate::policy::open_path(path, OpenMode::Read)
+    }
+    fn create(&self, path: &Path) -> io::Result<File> {
+        crate::policy::open_path(path, OpenMode::Write)
+    }
+    fn create_dir_all(&self, path: &Path) -> io::Result<()> {
+        crate::policy::with_fs(|policy| policy.create_dir_all(path))
+    }
+    fn remove_file(&self, path: &Path) -> io::Result<()> {
+        crate::policy::with_fs(|policy| policy.remove_file(path))
+    }
+    fn is_refusal(&self, error: &io::Error) -> bool {
+        crate::secure_fs::is_policy_refusal(error)
+    }
+}
+
 fn failed(err: &CompressError, operation: &str) -> i32 {
-    crate::set_error_report(
-        err.code,
-        operation,
-        &err.message,
-        &err.message,
-    );
+    crate::set_error_report(err.code, operation, &err.message, &err.cause);
     err.code
 }
 
@@ -116,12 +147,11 @@ pub extern "C" fn bn_rt_compress_bytes_from_hex(text: *const c_char, out: *mut u
     if out.is_null() {
         return BN_COMPRESS_INVALID_ARGUMENT;
     }
-    let text = c_str(text).unwrap_or_default();
+    let Some(text) = c_str(text) else {
+        return failed(&CompressError::invalid_text(), "FromHex");
+    };
     let Some(bytes) = decode_hex(text) else {
-        return failed(
-            &CompressError::invalid_argument("Malformed hexadecimal string"),
-            "FromHex",
-        );
+        return failed(&CompressError::malformed_hex(), "FromHex");
     };
     let handle = store_buffer(bytes);
     // SAFETY: caller guarantees non-null writable slot.
@@ -143,7 +173,8 @@ pub extern "C" fn bn_rt_compress_bytes_length(handle: u64) -> i64 {
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_compress_bytes_to_hex(handle: u64) -> *mut c_char {
-    let hex = with_buffers(|buffers| buffers.get(&handle).map(|b| encode_hex(b))).unwrap_or_default();
+    let hex =
+        with_buffers(|buffers| buffers.get(&handle).map(|b| encode_hex(b))).unwrap_or_default();
     c_string(&hex)
 }
 
@@ -154,7 +185,7 @@ pub extern "C" fn bn_rt_compress_bytes_to_text(handle: u64, out: *mut *mut c_cha
         return BN_COMPRESS_INVALID_ARGUMENT;
     }
     let Some(bytes) = get_buffer(handle) else {
-        return failed(&CompressError::not_found("Buffer not found"), "ToText");
+        return failed(&CompressError::missing_buffer(), "ToText");
     };
     match String::from_utf8(bytes) {
         Ok(s) => {
@@ -162,10 +193,7 @@ pub extern "C" fn bn_rt_compress_bytes_to_text(handle: u64, out: *mut *mut c_cha
             unsafe { *out = c_string(&s) };
             BN_COMPRESS_OK
         }
-        Err(e) => failed(
-            &CompressError::corrupt_data(format!("Invalid UTF-8: {e}")),
-            "ToText",
-        ),
+        Err(e) => failed(&CompressError::invalid_utf8(e.to_string()), "ToText"),
     }
 }
 
@@ -173,7 +201,10 @@ pub extern "C" fn bn_rt_compress_bytes_to_text(handle: u64, out: *mut *mut c_cha
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_compress_bytes_retain(handle: u64) -> i32 {
     let buffers = bn_core_copy::table::<Buffers>();
-    let mut holders = buffers.holders.lock().unwrap_or_else(PoisonError::into_inner);
+    let mut holders = buffers
+        .holders
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
     if let Some(count) = holders.get_mut(&handle) {
         *count += 1;
         BN_COMPRESS_OK
@@ -189,7 +220,10 @@ pub extern "C" fn bn_rt_compress_bytes_release(handle: u64) -> i32 {
         return BN_COMPRESS_OK;
     }
     let buffers = bn_core_copy::table::<Buffers>();
-    let mut holders = buffers.holders.lock().unwrap_or_else(PoisonError::into_inner);
+    let mut holders = buffers
+        .holders
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
     if let Some(count) = holders.get_mut(&handle) {
         *count -= 1;
         if *count == 0 {
@@ -217,7 +251,7 @@ pub extern "C" fn bn_rt_compress_deflate(handle: u64, out: *mut u64) -> i32 {
         return BN_COMPRESS_INVALID_ARGUMENT;
     }
     let Some(data) = get_buffer(handle) else {
-        return failed(&CompressError::not_found("Buffer not found"), "Deflate");
+        return failed(&CompressError::missing_buffer(), "Deflate");
     };
     match deflate(&data) {
         Ok(compressed) => {
@@ -236,7 +270,7 @@ pub extern "C" fn bn_rt_compress_inflate(handle: u64, out: *mut u64) -> i32 {
         return BN_COMPRESS_INVALID_ARGUMENT;
     }
     let Some(data) = get_buffer(handle) else {
-        return failed(&CompressError::not_found("Buffer not found"), "Inflate");
+        return failed(&CompressError::missing_buffer(), "Inflate");
     };
     match inflate(&data) {
         Ok(decompressed) => {
@@ -255,7 +289,7 @@ pub extern "C" fn bn_rt_compress_gzip(handle: u64, out: *mut u64) -> i32 {
         return BN_COMPRESS_INVALID_ARGUMENT;
     }
     let Some(data) = get_buffer(handle) else {
-        return failed(&CompressError::not_found("Buffer not found"), "Gzip");
+        return failed(&CompressError::missing_buffer(), "Gzip");
     };
     match gzip(&data) {
         Ok(compressed) => {
@@ -274,7 +308,7 @@ pub extern "C" fn bn_rt_compress_gunzip(handle: u64, out: *mut u64) -> i32 {
         return BN_COMPRESS_INVALID_ARGUMENT;
     }
     let Some(data) = get_buffer(handle) else {
-        return failed(&CompressError::not_found("Buffer not found"), "Gunzip");
+        return failed(&CompressError::missing_buffer(), "Gunzip");
     };
     match gunzip(&data) {
         Ok(decompressed) => {
@@ -292,7 +326,9 @@ pub extern "C" fn bn_rt_compress_deflate_text(text: *const c_char, out: *mut u64
     if out.is_null() {
         return BN_COMPRESS_INVALID_ARGUMENT;
     }
-    let text = c_str(text).unwrap_or_default();
+    let Some(text) = c_str(text) else {
+        return failed(&CompressError::invalid_text(), "DeflateText");
+    };
     match deflate(text.as_bytes()) {
         Ok(compressed) => {
             // SAFETY: pointer checked non-null.
@@ -310,7 +346,7 @@ pub extern "C" fn bn_rt_compress_inflate_text(handle: u64, out: *mut *mut c_char
         return BN_COMPRESS_INVALID_ARGUMENT;
     }
     let Some(data) = get_buffer(handle) else {
-        return failed(&CompressError::not_found("Buffer not found"), "InflateText");
+        return failed(&CompressError::missing_buffer(), "InflateText");
     };
     match inflate(&data) {
         Ok(decompressed) => match String::from_utf8(decompressed) {
@@ -319,10 +355,7 @@ pub extern "C" fn bn_rt_compress_inflate_text(handle: u64, out: *mut *mut c_char
                 unsafe { *out = c_string(&s) };
                 BN_COMPRESS_OK
             }
-            Err(e) => failed(
-                &CompressError::corrupt_data(format!("Invalid UTF-8: {e}")),
-                "InflateText",
-            ),
+            Err(e) => failed(&CompressError::invalid_utf8(e.to_string()), "InflateText"),
         },
         Err(e) => failed(&e, "InflateText"),
     }
@@ -334,7 +367,9 @@ pub extern "C" fn bn_rt_compress_gzip_text(text: *const c_char, out: *mut u64) -
     if out.is_null() {
         return BN_COMPRESS_INVALID_ARGUMENT;
     }
-    let text = c_str(text).unwrap_or_default();
+    let Some(text) = c_str(text) else {
+        return failed(&CompressError::invalid_text(), "GzipText");
+    };
     match gzip(text.as_bytes()) {
         Ok(compressed) => {
             // SAFETY: pointer checked non-null.
@@ -352,7 +387,7 @@ pub extern "C" fn bn_rt_compress_gunzip_text(handle: u64, out: *mut *mut c_char)
         return BN_COMPRESS_INVALID_ARGUMENT;
     }
     let Some(data) = get_buffer(handle) else {
-        return failed(&CompressError::not_found("Buffer not found"), "GunzipText");
+        return failed(&CompressError::missing_buffer(), "GunzipText");
     };
     match gunzip(&data) {
         Ok(decompressed) => match String::from_utf8(decompressed) {
@@ -361,10 +396,7 @@ pub extern "C" fn bn_rt_compress_gunzip_text(handle: u64, out: *mut *mut c_char)
                 unsafe { *out = c_string(&s) };
                 BN_COMPRESS_OK
             }
-            Err(e) => failed(
-                &CompressError::corrupt_data(format!("Invalid UTF-8: {e}")),
-                "GunzipText",
-            ),
+            Err(e) => failed(&CompressError::invalid_utf8(e.to_string()), "GunzipText"),
         },
         Err(e) => failed(&e, "GunzipText"),
     }
@@ -380,8 +412,10 @@ pub extern "C" fn bn_rt_zip_create(path: *const c_char, out: *mut u64) -> i32 {
     if out.is_null() {
         return BN_COMPRESS_INVALID_ARGUMENT;
     }
-    let path = c_str(path).unwrap_or_default();
-    match ZipArchiveHandle::create(path) {
+    let Some(path) = c_str(path) else {
+        return failed(&CompressError::invalid_text(), "ZipArchive.Create");
+    };
+    match ZipArchiveHandle::create(path, &CompiledPolicy) {
         Ok(archive) => {
             // SAFETY: pointer checked non-null.
             unsafe { *out = store_archive(archive) };
@@ -397,8 +431,10 @@ pub extern "C" fn bn_rt_zip_open(path: *const c_char, out: *mut u64) -> i32 {
     if out.is_null() {
         return BN_COMPRESS_INVALID_ARGUMENT;
     }
-    let path = c_str(path).unwrap_or_default();
-    match ZipArchiveHandle::open(path) {
+    let Some(path) = c_str(path) else {
+        return failed(&CompressError::invalid_text(), "ZipArchive.Open");
+    };
+    match ZipArchiveHandle::open(path, &CompiledPolicy) {
         Ok(archive) => {
             // SAFETY: pointer checked non-null.
             unsafe { *out = store_archive(archive) };
@@ -410,14 +446,22 @@ pub extern "C" fn bn_rt_zip_open(path: *const c_char, out: *mut u64) -> i32 {
 
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_zip_add_file(handle: u64, entry_name: *const c_char, disk_path: *const c_char) -> i32 {
-    let entry_name = c_str(entry_name).unwrap_or_default();
-    let disk_path = c_str(disk_path).unwrap_or_default();
+pub extern "C" fn bn_rt_zip_add_file(
+    handle: u64,
+    entry_name: *const c_char,
+    disk_path: *const c_char,
+) -> i32 {
+    let Some(entry_name) = c_str(entry_name) else {
+        return failed(&CompressError::invalid_text(), "ZipArchive.AddFile");
+    };
+    let Some(disk_path) = c_str(disk_path) else {
+        return failed(&CompressError::invalid_text(), "ZipArchive.AddFile");
+    };
     with_archives(|archives| {
         let Some(archive) = archives.get_mut(&handle) else {
-            return failed(&CompressError::not_found("ZipArchive not found"), "ZipArchive.AddFile");
+            return failed(&CompressError::missing_archive(), "ZipArchive.AddFile");
         };
-        match archive.add_file(entry_name, disk_path) {
+        match archive.add_file(entry_name, disk_path, &CompiledPolicy) {
             Ok(()) => BN_COMPRESS_OK,
             Err(e) => failed(&e, "ZipArchive.AddFile"),
         }
@@ -426,12 +470,20 @@ pub extern "C" fn bn_rt_zip_add_file(handle: u64, entry_name: *const c_char, dis
 
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_zip_add_text(handle: u64, entry_name: *const c_char, content: *const c_char) -> i32 {
-    let entry_name = c_str(entry_name).unwrap_or_default();
-    let content = c_str(content).unwrap_or_default();
+pub extern "C" fn bn_rt_zip_add_text(
+    handle: u64,
+    entry_name: *const c_char,
+    content: *const c_char,
+) -> i32 {
+    let Some(entry_name) = c_str(entry_name) else {
+        return failed(&CompressError::invalid_text(), "ZipArchive.AddText");
+    };
+    let Some(content) = c_str(content) else {
+        return failed(&CompressError::invalid_text(), "ZipArchive.AddText");
+    };
     with_archives(|archives| {
         let Some(archive) = archives.get_mut(&handle) else {
-            return failed(&CompressError::not_found("ZipArchive not found"), "ZipArchive.AddText");
+            return failed(&CompressError::missing_archive(), "ZipArchive.AddText");
         };
         match archive.add_text(entry_name, content) {
             Ok(()) => BN_COMPRESS_OK,
@@ -442,12 +494,23 @@ pub extern "C" fn bn_rt_zip_add_text(handle: u64, entry_name: *const c_char, con
 
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_zip_add_stored_text(handle: u64, entry_name: *const c_char, content: *const c_char) -> i32 {
-    let entry_name = c_str(entry_name).unwrap_or_default();
-    let content = c_str(content).unwrap_or_default();
+pub extern "C" fn bn_rt_zip_add_stored_text(
+    handle: u64,
+    entry_name: *const c_char,
+    content: *const c_char,
+) -> i32 {
+    let Some(entry_name) = c_str(entry_name) else {
+        return failed(&CompressError::invalid_text(), "ZipArchive.AddStoredText");
+    };
+    let Some(content) = c_str(content) else {
+        return failed(&CompressError::invalid_text(), "ZipArchive.AddStoredText");
+    };
     with_archives(|archives| {
         let Some(archive) = archives.get_mut(&handle) else {
-            return failed(&CompressError::not_found("ZipArchive not found"), "ZipArchive.AddStoredText");
+            return failed(
+                &CompressError::missing_archive(),
+                "ZipArchive.AddStoredText",
+            );
         };
         match archive.add_stored_text(entry_name, content) {
             Ok(()) => BN_COMPRESS_OK,
@@ -458,14 +521,20 @@ pub extern "C" fn bn_rt_zip_add_stored_text(handle: u64, entry_name: *const c_ch
 
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_zip_add_bytes(handle: u64, entry_name: *const c_char, bytes_handle: u64) -> i32 {
-    let entry_name = c_str(entry_name).unwrap_or_default();
+pub extern "C" fn bn_rt_zip_add_bytes(
+    handle: u64,
+    entry_name: *const c_char,
+    bytes_handle: u64,
+) -> i32 {
+    let Some(entry_name) = c_str(entry_name) else {
+        return failed(&CompressError::invalid_text(), "ZipArchive.AddBytes");
+    };
     let Some(data) = get_buffer(bytes_handle) else {
-        return failed(&CompressError::not_found("Buffer not found"), "ZipArchive.AddBytes");
+        return failed(&CompressError::missing_buffer(), "ZipArchive.AddBytes");
     };
     with_archives(|archives| {
         let Some(archive) = archives.get_mut(&handle) else {
-            return failed(&CompressError::not_found("ZipArchive not found"), "ZipArchive.AddBytes");
+            return failed(&CompressError::missing_archive(), "ZipArchive.AddBytes");
         };
         match archive.add_bytes(entry_name, &data, false) {
             Ok(()) => BN_COMPRESS_OK,
@@ -476,14 +545,26 @@ pub extern "C" fn bn_rt_zip_add_bytes(handle: u64, entry_name: *const c_char, by
 
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_zip_add_stored_bytes(handle: u64, entry_name: *const c_char, bytes_handle: u64) -> i32 {
-    let entry_name = c_str(entry_name).unwrap_or_default();
+pub extern "C" fn bn_rt_zip_add_stored_bytes(
+    handle: u64,
+    entry_name: *const c_char,
+    bytes_handle: u64,
+) -> i32 {
+    let Some(entry_name) = c_str(entry_name) else {
+        return failed(&CompressError::invalid_text(), "ZipArchive.AddStoredBytes");
+    };
     let Some(data) = get_buffer(bytes_handle) else {
-        return failed(&CompressError::not_found("Buffer not found"), "ZipArchive.AddStoredBytes");
+        return failed(
+            &CompressError::missing_buffer(),
+            "ZipArchive.AddStoredBytes",
+        );
     };
     with_archives(|archives| {
         let Some(archive) = archives.get_mut(&handle) else {
-            return failed(&CompressError::not_found("ZipArchive not found"), "ZipArchive.AddStoredBytes");
+            return failed(
+                &CompressError::missing_archive(),
+                "ZipArchive.AddStoredBytes",
+            );
         };
         match archive.add_stored_bytes(entry_name, &data) {
             Ok(()) => BN_COMPRESS_OK,
@@ -495,12 +576,14 @@ pub extern "C" fn bn_rt_zip_add_stored_bytes(handle: u64, entry_name: *const c_c
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_zip_extract_all(handle: u64, destination_dir: *const c_char) -> i32 {
-    let destination_dir = c_str(destination_dir).unwrap_or_default();
+    let Some(destination_dir) = c_str(destination_dir) else {
+        return failed(&CompressError::invalid_text(), "ZipArchive.ExtractAll");
+    };
     with_archives(|archives| {
         let Some(archive) = archives.get_mut(&handle) else {
-            return failed(&CompressError::not_found("ZipArchive not found"), "ZipArchive.ExtractAll");
+            return failed(&CompressError::missing_archive(), "ZipArchive.ExtractAll");
         };
-        match archive.extract_all(destination_dir) {
+        match archive.extract_all(destination_dir, &CompiledPolicy) {
             Ok(()) => BN_COMPRESS_OK,
             Err(e) => failed(&e, "ZipArchive.ExtractAll"),
         }
@@ -509,14 +592,22 @@ pub extern "C" fn bn_rt_zip_extract_all(handle: u64, destination_dir: *const c_c
 
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_zip_extract_file(handle: u64, entry_name: *const c_char, disk_path: *const c_char) -> i32 {
-    let entry_name = c_str(entry_name).unwrap_or_default();
-    let disk_path = c_str(disk_path).unwrap_or_default();
+pub extern "C" fn bn_rt_zip_extract_file(
+    handle: u64,
+    entry_name: *const c_char,
+    disk_path: *const c_char,
+) -> i32 {
+    let Some(entry_name) = c_str(entry_name) else {
+        return failed(&CompressError::invalid_text(), "ZipArchive.ExtractFile");
+    };
+    let Some(disk_path) = c_str(disk_path) else {
+        return failed(&CompressError::invalid_text(), "ZipArchive.ExtractFile");
+    };
     with_archives(|archives| {
         let Some(archive) = archives.get_mut(&handle) else {
-            return failed(&CompressError::not_found("ZipArchive not found"), "ZipArchive.ExtractFile");
+            return failed(&CompressError::missing_archive(), "ZipArchive.ExtractFile");
         };
-        match archive.extract_file(entry_name, disk_path) {
+        match archive.extract_file(entry_name, disk_path, &CompiledPolicy) {
             Ok(()) => BN_COMPRESS_OK,
             Err(e) => failed(&e, "ZipArchive.ExtractFile"),
         }
@@ -525,14 +616,20 @@ pub extern "C" fn bn_rt_zip_extract_file(handle: u64, entry_name: *const c_char,
 
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_zip_extract_text(handle: u64, entry_name: *const c_char, out: *mut *mut c_char) -> i32 {
+pub extern "C" fn bn_rt_zip_extract_text(
+    handle: u64,
+    entry_name: *const c_char,
+    out: *mut *mut c_char,
+) -> i32 {
     if out.is_null() {
         return BN_COMPRESS_INVALID_ARGUMENT;
     }
-    let entry_name = c_str(entry_name).unwrap_or_default();
+    let Some(entry_name) = c_str(entry_name) else {
+        return failed(&CompressError::invalid_text(), "ZipArchive.ExtractText");
+    };
     with_archives(|archives| {
         let Some(archive) = archives.get_mut(&handle) else {
-            return failed(&CompressError::not_found("ZipArchive not found"), "ZipArchive.ExtractText");
+            return failed(&CompressError::missing_archive(), "ZipArchive.ExtractText");
         };
         match archive.extract_text(entry_name) {
             Ok(text) => {
@@ -547,14 +644,20 @@ pub extern "C" fn bn_rt_zip_extract_text(handle: u64, entry_name: *const c_char,
 
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_zip_extract_bytes(handle: u64, entry_name: *const c_char, out: *mut u64) -> i32 {
+pub extern "C" fn bn_rt_zip_extract_bytes(
+    handle: u64,
+    entry_name: *const c_char,
+    out: *mut u64,
+) -> i32 {
     if out.is_null() {
         return BN_COMPRESS_INVALID_ARGUMENT;
     }
-    let entry_name = c_str(entry_name).unwrap_or_default();
+    let Some(entry_name) = c_str(entry_name) else {
+        return failed(&CompressError::invalid_text(), "ZipArchive.ExtractBytes");
+    };
     with_archives(|archives| {
         let Some(archive) = archives.get_mut(&handle) else {
-            return failed(&CompressError::not_found("ZipArchive not found"), "ZipArchive.ExtractBytes");
+            return failed(&CompressError::missing_archive(), "ZipArchive.ExtractBytes");
         };
         match archive.extract_bytes(entry_name) {
             Ok(bytes) => {
@@ -574,21 +677,28 @@ pub extern "C" fn bn_rt_zip_entry_count(handle: u64) -> i64 {
         let Some(archive) = archives.get_mut(&handle) else {
             return -1;
         };
-        archive.entry_count().map(|c| c as i64).unwrap_or(-1)
+        archive
+            .entry_count()
+            .ok()
+            .and_then(|count| i64::try_from(count).ok())
+            .unwrap_or(-1)
     })
 }
 
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_zip_entry_name(handle: u64, index: i64, out: *mut *mut c_char) -> i32 {
-    if out.is_null() || index < 0 {
+    if out.is_null() {
         return BN_COMPRESS_INVALID_ARGUMENT;
     }
+    let Ok(index) = usize::try_from(index) else {
+        return failed(&CompressError::invalid_index(), "ZipArchive.EntryName");
+    };
     with_archives(|archives| {
         let Some(archive) = archives.get_mut(&handle) else {
-            return failed(&CompressError::not_found("ZipArchive not found"), "ZipArchive.EntryName");
+            return failed(&CompressError::missing_archive(), "ZipArchive.EntryName");
         };
-        match archive.entry_name(index as usize) {
+        match archive.entry_name(index) {
             Ok(name) => {
                 // SAFETY: pointer checked non-null.
                 unsafe { *out = c_string(&name) };
@@ -617,7 +727,10 @@ pub extern "C" fn bn_rt_zip_close(handle: u64) -> i32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_zip_retain(handle: u64) -> i32 {
     let archives = bn_core_copy::table::<Archives>();
-    let mut holders = archives.holders.lock().unwrap_or_else(PoisonError::into_inner);
+    let mut holders = archives
+        .holders
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
     if let Some(count) = holders.get_mut(&handle) {
         *count += 1;
         BN_COMPRESS_OK
@@ -633,7 +746,10 @@ pub extern "C" fn bn_rt_zip_release(handle: u64) -> i32 {
         return BN_COMPRESS_OK;
     }
     let archives = bn_core_copy::table::<Archives>();
-    let mut holders = archives.holders.lock().unwrap_or_else(PoisonError::into_inner);
+    let mut holders = archives
+        .holders
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
     if let Some(count) = holders.get_mut(&handle) {
         *count -= 1;
         if *count == 0 {

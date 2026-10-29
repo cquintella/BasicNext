@@ -13,7 +13,8 @@ impl Analyzer {
     ) -> Result<Type, Diagnostic> {
         let expected_count = match name {
             "MIN" | "MAX" | "ROUND" | "POW" | "ATAN2" | "HYPOT" | "TOTIMESTAMP" | "Gcd" | "Lcm"
-            | "Quantile" | "Covariance" | "Correlation" => 2,
+            | "Quantile" | "Covariance" | "Correlation" | "Dot" | "StudentT" | "StudentTPvalue"
+            | "StudentTQuantile" => 2,
             "FMA" => 3,
             _ => 1,
         };
@@ -28,7 +29,7 @@ impl Analyzer {
                 });
             }
             return Err(type_mismatch(
-                "numeric vector",
+                bn_catalog::text("frontend", "msg.numeric_vector"),
                 display(&ty),
                 format!("BNMath.{name}"),
                 span,
@@ -79,7 +80,7 @@ impl Analyzer {
             let valid = is_numeric_vector_or_region(&types[0]);
             if !valid {
                 return Err(type_mismatch(
-                    "numeric vector",
+                    bn_catalog::text("frontend", "msg.numeric_vector"),
                     display(&types[0]),
                     format!("BNMath.{name}"),
                     span,
@@ -137,7 +138,18 @@ impl Analyzer {
             }
             return Ok(default_literal_type(types[0].clone()));
         }
-        if matches!(name, "Covariance" | "Correlation") {
+        if matches!(name, "Sum" | "Product") {
+            if !is_numeric_vector_or_region(&types[0]) {
+                return Err(type_mismatch(
+                    bn_catalog::text("frontend", "msg.numeric_vector"),
+                    display(&types[0]),
+                    format!("BNMath.{name}"),
+                    span,
+                ));
+            }
+            return Ok(Type::Float(FloatType::Float64));
+        }
+        if matches!(name, "Covariance" | "Correlation" | "Dot") {
             if !types.iter().all(is_numeric_vector_or_region) {
                 return Err(type_mismatch(
                     bn_catalog::text("frontend", "msg.two_numeric_vectors"),
@@ -152,6 +164,17 @@ impl Analyzer {
             if !is_numeric_vector_or_region(&types[0]) || !is_numeric(&types[1]) {
                 return Err(type_mismatch(
                     bn_catalog::text("frontend", "msg.numeric_vector_and_numeric_probability"),
+                    types.iter().map(display).collect::<Vec<_>>().join(", "),
+                    format!("BNMath.{name}"),
+                    span,
+                ));
+            }
+            return Ok(Type::Float(FloatType::Float64));
+        }
+        if matches!(name, "StudentT" | "StudentTPvalue" | "StudentTQuantile") {
+            if !types.iter().all(is_numeric) {
+                return Err(type_mismatch(
+                    bn_catalog::text("frontend", "msg.numeric_arguments"),
                     types.iter().map(display).collect::<Vec<_>>().join(", "),
                     format!("BNMath.{name}"),
                     span,

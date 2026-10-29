@@ -2,9 +2,13 @@
 
 **Status:** Deferred (`todo/`), created 2026-10-15 (Carlos: string work in
 two stages). Lane `0.6.9b` because `bucket-0.6.9.md` is `bnr`.
-**Depends on:** Sprint 7 (G.S2) of `ongoing/bucket-0.6.5.md` closed, i.e.
-stage 1: every native `STRING` points to a payload after a `StringHeader`
-(G7-D1, G7-D2), ownership comes from the IR (G7-D5), and K1 and K22 are closed.
+**Depends on:** stage 1, already in the 0.6.10 tree (every native `STRING`
+points at a payload after a `StringHeader`; ownership comes from the IR).
+The path `ongoing/bucket-0.6.5.md` is gone. Also depends on 0.6.16 having
+closed: `STRING[]` elements are lowered there as the one-word value, and this
+bucket updates that lowering with the rest. Do not start before 0.6.16.
+0.6.13 is unassigned.
+This bucket does not block 0.6.14, 0.6.15, or 0.7.0.
 K44 (P.6, `STATIC` shared by `ASYNC` tasks under `bnc`), which D4 needs,
 closed on 2026-10-15.
 **Kind:** toolchain only. No grammar, keyword or semantic change; the

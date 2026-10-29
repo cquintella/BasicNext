@@ -130,11 +130,16 @@ impl Analyzer {
                     // 0.6.2 C1: a module constant must fit its type, as a binding
                     // initializer must. The parser admits only literal initializers.
                     if let ExpressionKind::Literal(literal) = &initializer.kind {
+                        let context = bn_catalog::text("frontend", "msg.floating_point_literal");
+                        check_float_literal(initializer, FloatType::Float64, context)?;
+                        if float32_destination(&ty) {
+                            check_float_literal(initializer, FloatType::Float32, context)?;
+                        }
                         let actual = literal_type(literal);
                         if !self.compatible(&ty, &actual) {
-                            return Err(type_mismatch(
-                                display(&ty),
-                                display(&actual),
+                            return Err(value_mismatch(
+                                &ty,
+                                &actual,
                                 "module constant initializer",
                                 initializer.span,
                             ));

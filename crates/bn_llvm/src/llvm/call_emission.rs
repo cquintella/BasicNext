@@ -3,10 +3,10 @@ use super::runtime::is_bndata_function;
 use super::*;
 use runtime_abi::*;
 use traps::Fact;
-#[path = "crypto_calls.rs"]
-mod crypto_calls;
 #[path = "compress_calls.rs"]
 mod compress_calls;
+#[path = "crypto_calls.rs"]
+mod crypto_calls;
 #[path = "json_calls.rs"]
 mod json_calls;
 use crate::ir::{CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
@@ -566,7 +566,8 @@ pub(crate) fn lower_call_instruction(
                 format!("ascpayload{dest}"),
                 I::select(r("error"), T::I64, O::int(1), r("code")),
             );
-            emit_wrapped_error(text, "asc", dest, r("message"));
+            let operation = crate::layout::string_payload(".bn_asc_operation");
+            emit_wrapped_error(text, "asc", dest, r("message"), operation);
         }
         "CHAR" => {
             let dest = destination.0;
@@ -592,7 +593,8 @@ pub(crate) fn lower_call_instruction(
                 format!("charpayload{dest}"),
                 I::select(r("error"), T::I64, O::int(1), O::int(0)),
             );
-            emit_wrapped_error(text, "char", dest, r("value"));
+            let operation = crate::layout::string_payload(".bn_char_operation");
+            emit_wrapped_error(text, "char", dest, r("value"), operation);
         }
         name if module
             .functions
@@ -635,14 +637,21 @@ pub(crate) fn lower_call_instruction(
     Ok(())
 }
 
-/// Packs `%<prefix>error`, `message` wrapped as an error record and
-/// `%<prefix>payload` into the `{ i1, ptr, i64 }` of a `T OR Error` result.
-fn emit_wrapped_error(text: &mut crate::ir::LlvmModule, prefix: &str, dest: u32, message: O) {
+/// Packs `%<prefix>error`, `message` wrapped as an error record of
+/// `operation`, and `%<prefix>payload` into the `{ i1, ptr, i64 }` of a
+/// `T OR Error` result.
+fn emit_wrapped_error(
+    text: &mut crate::ir::LlvmModule,
+    prefix: &str,
+    dest: u32,
+    message: O,
+    operation: O,
+) {
     let r = |name: &str| O::reg(format!("{prefix}{name}{dest}"));
     let union = T::struct_of([T::I1, T::Ptr, T::I64]);
     let head = I::insert(union.clone(), O::undef(), T::I1, r("error"), 0);
     text.assign(format!("{prefix}agg0{dest}"), head);
-    let args = vec![(T::I1, r("error")), (T::Ptr, message), (T::Ptr, O::null())];
+    let args = vec![(T::I1, r("error")), (T::Ptr, message), (T::Ptr, operation)];
     text.assign(
         format!("{prefix}agg1wrap{dest}"),
         I::call(T::Ptr, "bn_rt_error_wrap", args),

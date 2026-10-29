@@ -24,7 +24,14 @@ impl Analyzer {
                 "a type test may appear only to the right of IS",
                 expression.span,
             )),
-            ExpressionKind::Literal(literal) => Ok(literal_type(literal)),
+            ExpressionKind::Literal(literal) => {
+                check_float_literal(
+                    expression,
+                    FloatType::Float64,
+                    bn_catalog::text("frontend", "msg.floating_point_literal"),
+                )?;
+                Ok(literal_type(literal))
+            }
             ExpressionKind::Input { prompt } => {
                 if let Some(prompt) = prompt {
                     let prompt_type = self.expression(prompt, locals)?;
@@ -124,12 +131,17 @@ impl Analyzer {
                     if element_type == Type::Unknown {
                         element_type = actual;
                     } else if !fits {
-                        return Err(type_mismatch(
-                            display(&expected),
-                            display(&actual),
+                        return Err(value_mismatch(
+                            &expected,
+                            &actual,
                             VECTOR_LITERAL_ELEMENT,
                             value.span,
                         ));
+                    }
+                }
+                if matches!(element_type, Type::IntegerLiteral(_)) {
+                    for value in values {
+                        self.settle_integer_constant(value, VECTOR_LITERAL_ELEMENT)?;
                     }
                 }
                 if element_type == Type::Unknown {
@@ -313,14 +325,19 @@ impl Analyzer {
                 let operand_type = self.expression(operand, locals)?;
                 match operator.as_str() {
                     "Minus" if is_numeric(&operand_type) => {
-                        if let Some(value) = constant_integer(expression) {
+                        if matches!(operand_type, Type::IntegerLiteral(_))
+                            && let Some(value) = constant_integer(expression)
+                        {
                             Ok(Type::IntegerLiteral(value.to_string()))
                         } else {
                             Ok(default_literal_type(operand_type))
                         }
                     }
                     "NOT" if operand_type == Type::Boolean => Ok(Type::Boolean),
-                    "NOT" if is_integer(&operand_type) => Ok(default_literal_type(operand_type)),
+                    "NOT" if is_integer(&operand_type) => self.settle_integer_constant(
+                        operand,
+                        &bn_catalog::fill("frontend", "msg.operand_of", &[("operator", &"NOT")]),
+                    ),
                     _ => Err(type_mismatch(
                         "operand accepted by operator",
                         display(&operand_type),
@@ -357,6 +374,8 @@ impl Analyzer {
                     Ok(Type::Boolean)
                 } else {
                     let right_type = self.expression(right, locals)?;
+                    let (left_type, right_type) =
+                        self.settle_undestined_operands(expression, left_type, right_type)?;
                     let result = binary_type(operator, &left_type, &right_type, expression)?;
                     self.literal_takes_float_type(left, &left_type, &right_type);
                     self.literal_takes_float_type(right, &right_type, &left_type);

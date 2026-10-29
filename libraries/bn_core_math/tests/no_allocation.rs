@@ -12,7 +12,7 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 use std::hint::black_box;
 
-use bn_core_math::{Statistic, reduce, reduce_f64};
+use bn_core_math::{Statistic, dot, product, reduce, reduce_f64, sum};
 
 thread_local! {
     /// Allocations made by this thread. A `const` initializer never
@@ -108,6 +108,32 @@ fn the_reductions_without_a_sort_allocate_nothing() {
             "{statistic:?} on the overflow path"
         );
     }
+}
+
+/// `Sum`, `Product` and `Dot` walk the slices and allocate nothing (math.md,
+/// "Algebraic reductions").
+#[test]
+fn algebraic_reductions_allocate_nothing() {
+    let left = [1.0, -2.0, f64::MAX, 0.0];
+    let right = [4.0, 5.0, 1.0, f64::INFINITY];
+    assert_eq!(
+        allocations_of(|| {
+            black_box(sum(&left));
+        }),
+        0
+    );
+    assert_eq!(
+        allocations_of(|| {
+            black_box(product(&left));
+        }),
+        0
+    );
+    assert_eq!(
+        allocations_of(|| {
+            let _ = black_box(dot(&left, &right));
+        }),
+        0
+    );
 }
 
 /// The counter is live: an order statistic sorts a copy, which allocates.

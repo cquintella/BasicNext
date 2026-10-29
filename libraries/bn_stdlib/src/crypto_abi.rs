@@ -28,13 +28,7 @@ pub(crate) const BN_CRYPTO_OK: i32 = 0;
 pub(crate) const BN_CRYPTO_INVALID_ARGUMENT: i32 = 1;
 pub(crate) const BN_CRYPTO_INVALID_HANDLE: i32 = 2;
 
-/// Key entry storing cryptographic material with zeroize-on-drop protection.
-#[derive(Debug)]
-pub struct KeyEntry {
-    pub algorithm: i32,
-    pub material: zeroize::Zeroizing<Vec<u8>>,
-    pub zeroized: bool,
-}
+use crate::crypto::KeyEntry;
 
 #[derive(Default)]
 struct Keys {
@@ -44,25 +38,13 @@ struct Keys {
 
 fn with_keys<T>(operation: impl FnOnce(&mut HashMap<u64, KeyEntry>) -> T) -> T {
     let keys = bn_core_copy::table::<Keys>();
-    operation(
-        &mut keys
-            .values
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner),
-    )
+    operation(&mut keys.values.lock().unwrap_or_else(PoisonError::into_inner))
 }
 
 fn store_key(algorithm: i32, material: zeroize::Zeroizing<Vec<u8>>) -> u64 {
     let handle = next_handle();
     with_keys(|keys| {
-        keys.insert(
-            handle,
-            KeyEntry {
-                algorithm,
-                material,
-                zeroized: false,
-            },
-        );
+        keys.insert(handle, KeyEntry::new(algorithm, material));
     });
     let keys = bn_core_copy::table::<Keys>();
     keys.holders
@@ -72,17 +54,19 @@ fn store_key(algorithm: i32, material: zeroize::Zeroizing<Vec<u8>>) -> u64 {
     handle
 }
 
-fn get_key_material(handle: u64) -> Option<zeroize::Zeroizing<Vec<u8>>> {
-    with_keys(|keys| {
-        keys.get(&handle).and_then(|entry| {
-            if entry.zeroized {
-                None
-            } else {
-                Some(entry.material.clone())
-            }
-        })
-    })
-    .or_else(|| with_buffers(|b| b.get(&handle).map(|b| zeroize::Zeroizing::new(b.clone()))))
+/// The material of the `Key` `handle`: `Err(BN_CRYPTO_INVALID_HANDLE)` for an
+/// unknown or released handle, and the `INVALID_ARGUMENT` `Error` of
+/// `bncrypto.md` for a key erased with `Zeroize()`.
+fn get_key_material(handle: u64) -> Result<zeroize::Zeroizing<Vec<u8>>, i32> {
+    let material = with_keys(|keys| {
+        keys.get(&handle)
+            .map(|entry| (!entry.zeroized).then(|| entry.material.clone()))
+    });
+    match material {
+        Some(Some(material)) => Ok(material),
+        Some(None) => Err(failed(&crate::crypto_error::CryptoFailure::ZeroizedKey)),
+        None => Err(BN_CRYPTO_INVALID_HANDLE),
+    }
 }
 
 /// The byte buffers of the module copy that runs on this thread
@@ -241,10 +225,12 @@ fn algorithm(selector: i32) -> Option<Aead> {
     }
 }
 
-/// The four buffers an AEAD call needs: key, nonce, message and AAD.
-type AeadOperands = (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>);
+/// The four operands an AEAD call needs: key, nonce, message and AAD. The key
+/// stays in `Zeroizing`, so this copy is erased when the call ends.
+type AeadOperands = (zeroize::Zeroizing<Vec<u8>>, Vec<u8>, Vec<u8>, Vec<u8>);
 
-fn borrow_aead(key_handle: u64, b: u64, c: u64, d: u64) -> Option<AeadOperands> {
+/// The AEAD operands, or the status to return (see [`get_key_material`]).
+fn borrow_aead(key_handle: u64, b: u64, c: u64, d: u64) -> Result<AeadOperands, i32> {
     let key = get_key_material(key_handle)?;
     let (nonce, msg, aad) = with_buffers(|buffers| {
         Some((
@@ -252,8 +238,9 @@ fn borrow_aead(key_handle: u64, b: u64, c: u64, d: u64) -> Option<AeadOperands> 
             buffers.get(&c)?.clone(),
             buffers.get(&d)?.clone(),
         ))
-    })?;
-    Some((key.to_vec(), nonce, msg, aad))
+    })
+    .ok_or(BN_CRYPTO_INVALID_HANDLE)?;
+    Ok((key, nonce, msg, aad))
 }
 
 /// Seals `plaintext` under `key`/`nonce` with `aad`, storing the ciphertext and
@@ -274,8 +261,9 @@ pub extern "C" fn bn_rt_crypto_seal(
     let Some(algorithm) = algorithm(selector) else {
         return BN_CRYPTO_INVALID_ARGUMENT;
     };
-    let Some((key, nonce, plaintext, aad)) = borrow_aead(key, nonce, plaintext, aad) else {
-        return BN_CRYPTO_INVALID_HANDLE;
+    let (key, nonce, plaintext, aad) = match borrow_aead(key, nonce, plaintext, aad) {
+        Ok(operands) => operands,
+        Err(status) => return status,
     };
     let Some(sealed) = seal(algorithm, &key, &nonce, &plaintext, &aad) else {
         return failed(&crate::crypto_error::CryptoFailure::Seal(algorithm));
@@ -305,8 +293,9 @@ pub extern "C" fn bn_rt_crypto_open(
     let Some(algorithm) = algorithm(selector) else {
         return BN_CRYPTO_INVALID_ARGUMENT;
     };
-    let Some((key, nonce, ciphertext, aad)) = borrow_aead(key, nonce, ciphertext, aad) else {
-        return BN_CRYPTO_INVALID_HANDLE;
+    let (key, nonce, ciphertext, aad) = match borrow_aead(key, nonce, ciphertext, aad) {
+        Ok(operands) => operands,
+        Err(status) => return status,
     };
     let Some(plain) = open(algorithm, &key, &nonce, &ciphertext, &aad) else {
         return failed(&crate::crypto_error::CryptoFailure::Open(algorithm));
@@ -324,8 +313,9 @@ pub extern "C" fn bn_rt_crypto_hmac(key: u64, data: u64, out: *mut u64) -> i32 {
     if out.is_null() {
         return BN_CRYPTO_INVALID_ARGUMENT;
     }
-    let Some(key) = get_key_material(key) else {
-        return BN_CRYPTO_INVALID_HANDLE;
+    let key = match get_key_material(key) {
+        Ok(material) => material,
+        Err(status) => return status,
     };
     let Some(data) = with_buffers(|buffers| buffers.get(&data).cloned()) else {
         return BN_CRYPTO_INVALID_HANDLE;
@@ -341,15 +331,13 @@ pub extern "C" fn bn_rt_crypto_hmac(key: u64, data: u64, out: *mut u64) -> i32 {
 #[unsafe(no_mangle)]
 #[allow(unsafe_code)] // C ABI: opaque handles in, boolean out.
 pub extern "C" fn bn_rt_crypto_hmac_verify(key: u64, data: u64, tag: u64) -> i32 {
-    let Some(key) = get_key_material(key) else {
-        return BN_CRYPTO_INVALID_HANDLE;
+    let key = match get_key_material(key) {
+        Ok(material) => material,
+        Err(status) => return status,
     };
-    let Some((data, tag)) = with_buffers(|buffers| {
-        Some((
-            buffers.get(&data)?.clone(),
-            buffers.get(&tag)?.clone(),
-        ))
-    }) else {
+    let Some((data, tag)) =
+        with_buffers(|buffers| Some((buffers.get(&data)?.clone(), buffers.get(&tag)?.clone())))
+    else {
         return BN_CRYPTO_INVALID_HANDLE;
     };
     i32::from(hmac_verify(&key, &data, &tag))
@@ -422,8 +410,9 @@ pub extern "C" fn bn_rt_crypto_public_key(selector: i32, private_key: u64, out: 
     let Some(ed25519) = scheme(selector) else {
         return BN_CRYPTO_INVALID_ARGUMENT;
     };
-    let Some(private_key) = get_key_material(private_key) else {
-        return BN_CRYPTO_INVALID_HANDLE;
+    let private_key = match get_key_material(private_key) {
+        Ok(material) => material,
+        Err(status) => return status,
     };
     let derived = if ed25519 {
         ed25519_public_key(&private_key)
@@ -458,8 +447,9 @@ pub extern "C" fn bn_rt_crypto_sign(
     let Some(ed25519) = scheme(selector) else {
         return BN_CRYPTO_INVALID_ARGUMENT;
     };
-    let Some(private_key) = get_key_material(private_key) else {
-        return BN_CRYPTO_INVALID_HANDLE;
+    let private_key = match get_key_material(private_key) {
+        Ok(material) => material,
+        Err(status) => return status,
     };
     let Some(message) = with_buffers(|buffers| buffers.get(&message).cloned()) else {
         return BN_CRYPTO_INVALID_HANDLE;
@@ -518,8 +508,9 @@ pub extern "C" fn bn_rt_crypto_kem_keypair(seed: u64, out: *mut u64) -> i32 {
     if out.is_null() {
         return BN_CRYPTO_INVALID_ARGUMENT;
     }
-    let Some(seed) = get_key_material(seed) else {
-        return BN_CRYPTO_INVALID_HANDLE;
+    let seed = match get_key_material(seed) {
+        Ok(material) => material,
+        Err(status) => return status,
     };
     let Some((mut public_key, private_key)) = ml_kem_keypair(&seed) else {
         return failed(&crate::crypto_error::CryptoFailure::Seed(
@@ -564,8 +555,9 @@ pub extern "C" fn bn_rt_crypto_kem_decapsulate(
     if out.is_null() {
         return BN_CRYPTO_INVALID_ARGUMENT;
     }
-    let Some(private_key) = get_key_material(private_key) else {
-        return BN_CRYPTO_INVALID_HANDLE;
+    let private_key = match get_key_material(private_key) {
+        Ok(material) => material,
+        Err(status) => return status,
     };
     let Some(ciphertext) = with_buffers(|buffers| buffers.get(&ciphertext).cloned()) else {
         return BN_CRYPTO_INVALID_HANDLE;
@@ -586,8 +578,9 @@ pub extern "C" fn bn_rt_crypto_dsa_keypair(seed: u64, out: *mut u64) -> i32 {
     if out.is_null() {
         return BN_CRYPTO_INVALID_ARGUMENT;
     }
-    let Some(seed) = get_key_material(seed) else {
-        return BN_CRYPTO_INVALID_HANDLE;
+    let seed = match get_key_material(seed) {
+        Ok(material) => material,
+        Err(status) => return status,
     };
     let Some((mut public_key, private_key)) = ml_dsa_keypair(&seed) else {
         return failed(&crate::crypto_error::CryptoFailure::Seed(
@@ -608,8 +601,9 @@ pub extern "C" fn bn_rt_crypto_dsa_sign(private_key: u64, message: u64, out: *mu
     if out.is_null() {
         return BN_CRYPTO_INVALID_ARGUMENT;
     }
-    let Some(private_key) = get_key_material(private_key) else {
-        return BN_CRYPTO_INVALID_HANDLE;
+    let private_key = match get_key_material(private_key) {
+        Ok(material) => material,
+        Err(status) => return status,
     };
     let Some(message) = with_buffers(|buffers| buffers.get(&message).cloned()) else {
         return BN_CRYPTO_INVALID_HANDLE;
@@ -672,13 +666,10 @@ pub extern "C" fn bn_rt_crypto_slice(data: u64, start: i64, length: i64, out: *m
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_random_bytes(length: i64, out: *mut u64) -> i32 {
-    if out.is_null() || length < 0 {
+    if out.is_null() {
         return BN_CRYPTO_INVALID_ARGUMENT;
     }
-    let Ok(len) = usize::try_from(length) else {
-        return BN_CRYPTO_INVALID_ARGUMENT;
-    };
-    let bytes = match crate::crypto::random_bytes(len) {
+    let bytes = match crate::crypto::random_bytes(i128::from(length)) {
         Ok(b) => b,
         Err(err) => return failed(&err),
     };
@@ -775,7 +766,13 @@ pub extern "C" fn bn_rt_crypto_key_length(key_handle: u64) -> i64 {
 pub extern "C" fn bn_rt_crypto_key_algorithm(key_handle: u64) -> i32 {
     with_keys(|keys| {
         keys.get(&key_handle)
-            .and_then(|entry| if entry.zeroized { None } else { Some(entry.algorithm) })
+            .and_then(|entry| {
+                if entry.zeroized {
+                    None
+                } else {
+                    Some(entry.algorithm)
+                }
+            })
             .unwrap_or(-1)
     })
 }
@@ -803,10 +800,7 @@ pub extern "C" fn bn_rt_crypto_key_retain(key_handle: u64) -> i32 {
         return BN_CRYPTO_OK;
     }
     let keys = bn_core_copy::table::<Keys>();
-    let mut holders = keys
-        .holders
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner);
+    let mut holders = keys.holders.lock().unwrap_or_else(PoisonError::into_inner);
     if let Some(count) = holders.get_mut(&key_handle) {
         *count += 1;
         BN_CRYPTO_OK
@@ -823,10 +817,7 @@ pub extern "C" fn bn_rt_crypto_key_release(key_handle: u64) -> i32 {
         return BN_CRYPTO_OK;
     }
     let keys = bn_core_copy::table::<Keys>();
-    let mut holders = keys
-        .holders
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner);
+    let mut holders = keys.holders.lock().unwrap_or_else(PoisonError::into_inner);
     let Some(count) = holders.get_mut(&key_handle) else {
         return BN_CRYPTO_INVALID_HANDLE;
     };

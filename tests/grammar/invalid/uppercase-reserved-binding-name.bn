@@ -1,0 +1,11 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Only the exact uppercase spelling of a reserved word is reserved
+// (keywords.md, "Reserved words are exact uppercase"): NEW is not a name.
+FUNCTION Start() AS VOID
+    LET NEW AS INTEGER = 1
+    PRINT NEW
+END FUNCTION

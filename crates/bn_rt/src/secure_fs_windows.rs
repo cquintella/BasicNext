@@ -111,6 +111,35 @@ pub(super) fn open(root: &Path, relative: &Path, mode: OpenMode) -> io::Result<F
     })
 }
 
+/// Creates every missing directory of `relative` under `root`, holding the
+/// handle of each one before it creates the next: a component that is a
+/// reparse point, or becomes one, is refused by `open_component`.
+pub(super) fn create_dir_all(root: &Path, relative: &Path) -> io::Result<()> {
+    let mut path = root.to_path_buf();
+    let mut held = Vec::new();
+    for component in relative.components() {
+        if let Component::Normal(name) = component {
+            path.push(name);
+            held.push(open_or_create_directory(&path)?);
+        }
+    }
+    drop(held);
+    Ok(())
+}
+
+fn open_or_create_directory(path: &Path) -> io::Result<File> {
+    match open_component(path, Kind::Directory) {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            match std::fs::create_dir(path) {
+                Err(error) if error.kind() != io::ErrorKind::AlreadyExists => return Err(error),
+                _ => {}
+            }
+            open_component(path, Kind::Directory)
+        }
+        other => other,
+    }
+}
+
 /// Removes a regular file. A swap of the checked file for a link between
 /// the check and the delete removes that link, never its target, and
 /// the held parents keep it inside the root.

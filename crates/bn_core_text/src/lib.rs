@@ -10,6 +10,7 @@
 //! - `is_timezone_id`: canonical IANA timezone identifier validation.
 //! - Civil date/time conversions, RFC 3339 parsing and formatting.
 
+pub mod builtin;
 pub mod civil;
 pub mod temporal;
 pub mod timezone;
