@@ -3,8 +3,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! The working directory (language/0.6/host.md, "Working directory"; bucket
-//! 0.6.12, R3 and R8). The working directory belongs to the process, so this
+//! The working directory (language/0.6/host.md, "Working directory"). The
+//! working directory belongs to the process, so this
 //! binary holds a single test: no other test can run while it changes
 //! directory.
 

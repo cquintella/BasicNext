@@ -228,7 +228,7 @@ fn variance_is_a_corrected_two_pass_in_index_order() {
     assert_eq!(float_of(Statistic::Variance, &[max, -max]), f64::INFINITY);
     assert_eq!(float_of(Statistic::Variance, &[-max, max]), f64::INFINITY);
     assert_eq!(float_of(Statistic::Stdev, &[max, -max]), f64::INFINITY);
-    // The mean of [MAX, MAX] overflows, so the variance is INF (G-1, the
+    // The mean of [MAX, MAX] overflows, so the variance is INF (math.md: the
     // derived rule decided (b) on 2026-10-26), though its true value is 0.
     assert_eq!(float_of(Statistic::Variance, &[max, max]), f64::INFINITY);
     let shifted = [1e9 + 4.0, 1e9 + 7.0, 1e9 + 13.0, 1e9 + 16.0];

@@ -331,13 +331,14 @@ fn a_failed_build_forgets_the_previous_stamp() {
     // A cargo that answers `metadata` and fails every build half way.
     let tools = workspace.join("tools");
     fs::create_dir_all(&tools).expect("tools");
-    let target = workspace.join("target");
+    // The metadata as cargo writes it: JSON, so a Windows path is escaped.
+    let metadata = serde_json::json!({ "target_directory": workspace.join("target") }).to_string();
+    fs::write(tools.join("metadata.json"), &metadata).expect("metadata");
     fs::write(
         tools.join("cargo"),
         format!(
-            "#!/usr/bin/env bash\nif [[ $1 == metadata ]]; then\n  \
-             printf '{{\"target_directory\":\"%s\"}}\\n' '{}'\n  exit 0\nfi\nexit 101\n",
-            target.display()
+            "#!/usr/bin/env bash\nif [[ $1 == metadata ]]; then\n  cat '{}'\n  exit 0\nfi\nexit 101\n",
+            tools.join("metadata.json").display().to_string().replace('\\', "/")
         ),
     )
     .expect("fake cargo");

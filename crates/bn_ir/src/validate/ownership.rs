@@ -124,7 +124,7 @@ fn consumed(
 
 /// Whether `instruction` yields a STRING buffer of its own: a concatenation,
 /// or `AS STRING` of a value whose type (`source`) is not STRING. Its one
-/// reference belongs to the value (R1, 2026-10-29: read as borrowed, a store
+/// reference belongs to the value (2026-10-29: read as borrowed, a store
 /// retained it and the first reference leaked). `AS STRING` of a STRING is
 /// the same buffer. A backend that folds the result to a constant hands out
 /// an immortal literal, which a release leaves alone.

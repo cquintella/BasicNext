@@ -8,7 +8,7 @@ IMPORT HOST.FileSystem AS FS
 IMPORT BNMath AS Math
 
 FUNCTION Start() AS VOID
-    LET file AS FS.File OR Error = FS.Open("tests/fixtures/bndata-sprint6.csv", FS.READ)
+    LET file AS FS.File OR Error = FS.Open("tests/fixtures/bndata-tour.csv", FS.READ)
     IF file IS Error THEN
         PRINT file.Code
     ELSE

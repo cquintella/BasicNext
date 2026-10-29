@@ -1,0 +1,5 @@
+# Public identifiers that look like private ones: path<TAB>literal<TAB>reason.
+# They exempt the cited tier only (tests/check-public-references.sh).
+libraries/bn_stdlib/src/crypto.rs	FIPS 186-5 A.2.2	a section of a public standard
+libraries/bn_stdlib/src/crypto.rs	ML-KEM-768	a public algorithm name
+libraries/bn_stdlib/src/crypto.rs	ML-DSA-65	a public algorithm name

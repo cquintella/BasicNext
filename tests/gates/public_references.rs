@@ -29,7 +29,7 @@ fn findings_per_file(root: &Path) -> BTreeMap<String, usize> {
     assert!(output.status.success(), "{output:?}");
     let mut counts = BTreeMap::new();
     for line in String::from_utf8_lossy(&output.stdout).lines() {
-        let file = line.split(':').next().unwrap_or_default().to_owned();
+        let file = line.split('\t').next().unwrap_or_default().to_owned();
         *counts.entry(file).or_insert(0) += 1;
     }
     counts
@@ -158,5 +158,83 @@ fn the_ratchet_only_shrinks_and_ends_empty() {
         ratchet_violations(&shrunk, &allowed).len(),
         2,
         "a lower count and a clean file must update the list"
+    );
+}
+
+#[test]
+fn the_scanner_finds_the_audited_spellings_and_exempts_only_cited_ones() {
+    let tree = super::support::TestDir::new("public-references-audit").expect("scratch tree");
+    // Built at run time, so this file holds none of the shapes it plants.
+    let samples = [
+        (
+            "relative.md",
+            format!("[usage](../../{}/project/usage.md)\n", "docs"),
+        ),
+        (
+            "process.md",
+            format!("See ../{}/{}/x.md.\n", "workflow", "ongoing"),
+        ),
+        ("bucketfile.rs", format!("// see bucket-{}.6.11.md\n", 0)),
+        (
+            "wrapped.rs",
+            format!("// shipped by the bucket\n// {}.6.12, item two\n", 0),
+        ),
+        (
+            "hyphen.rs",
+            format!("// planned in bucket typed-{}-emitter\n", "llvm"),
+        ),
+        ("dashed.rs", format!("// the leak of K-{}\n", 61)),
+        ("activity.rs", format!("// the core (FS-CORE-{})\n", 2)),
+        (
+            "cluster.rs",
+            format!("// accumulator (Cluster {}.2)\n", "A"),
+        ),
+        (
+            "citing.md",
+            format!("The audit finding A{} is closed.\n", 14),
+        ),
+        (
+            "leading.rs",
+            format!("/// G-{}, in one pass: infinities first.\n", 1),
+        ),
+        ("brief.md", format!("As {}.md says.\n", "agents")),
+        (
+            "exempt.rs",
+            format!("// sizes of FIPS 203 (ML-{}-768)\n", "KEM"),
+        ),
+        (
+            "not_exempt.rs",
+            format!("// FIPS 203 (ML-{}-768) and K{}\n", "KEM", 61),
+        ),
+    ];
+    fs::create_dir_all(tree.join("tests")).expect("tests folder");
+    for (name, text) in &samples {
+        fs::write(tree.join(name), text).expect("sample");
+    }
+    fs::write(
+        tree.join("tests/public_references.allow"),
+        "exempt.rs\tML-KEM-768\ta public algorithm name\n\
+         not_exempt.rs\tK\tan exemption never covers the always tier\n",
+    )
+    .expect("allow list");
+    let found = findings_per_file(tree.path());
+    let flagged: Vec<&str> = found.keys().map(String::as_str).collect();
+    assert_eq!(
+        flagged,
+        [
+            "activity.rs",
+            "brief.md",
+            "bucketfile.rs",
+            "citing.md",
+            "cluster.rs",
+            "dashed.rs",
+            "hyphen.rs",
+            "leading.rs",
+            "not_exempt.rs",
+            "process.md",
+            "relative.md",
+            "wrapped.rs",
+        ],
+        "{found:?}"
     );
 }

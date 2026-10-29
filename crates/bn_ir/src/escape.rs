@@ -7,8 +7,8 @@
 //! that reaches a store to another binding, a field, a vector, a `RETURN`, a
 //! call of a program function, or any instruction not known to only borrow
 //! it, is a copy the binding cannot see: the binding must not reuse or free
-//! storage it holds (the native `INPUT` line buffer, bucket
-//! typed-llvm-emitter, defect of 2026-10-07).
+//! storage it holds (the native `INPUT` line buffer was such a defect,
+//! found on 2026-10-07).
 
 use std::collections::{HashMap, HashSet};
 

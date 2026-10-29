@@ -661,8 +661,8 @@ fn path_text(path: *const c_char) -> Option<String> {
 }
 
 /// Narrows the effective policy below the artifact ceiling, as a host that
-/// denies more would (tests only: no compiled program narrows it; bucket
-/// 0.6.5 H.S3.a removed the unused `bn_rt_policy_restrict` export).
+/// denies more would (tests only: no compiled program narrows it, and the
+/// unused `bn_rt_policy_restrict` export was removed).
 #[cfg(test)]
 pub(crate) fn restrict_for_tests(mask: u64) {
     current_mut().restrict(mask);

@@ -54,6 +54,7 @@
     "bn::test/gates::public_references::the_scanner_finds_each_private_shape_and_passes_plain_text",
     "bn::test/gates::public_references::the_ratchet_only_shrinks_and_ends_empty",
     "bn::test/gates::public_references::public_files_cite_no_private_material_beyond_the_ratchet",
+    "bn::test/gates::public_references::the_scanner_finds_the_audited_spellings_and_exempts_only_cited_ones",
     "bn::test/gates::no_python::the_no_python_gate_finds_the_audited_spellings",
     "bn::test/gates::pre_commit::the_cached_dependency_gate_reads_the_staged_manifest_and_keeps_the_lock",
     "bn::test/gates::pre_commit::the_hook_refuses_a_staged_whitespace_error",

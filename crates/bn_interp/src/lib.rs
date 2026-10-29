@@ -359,7 +359,7 @@ struct OwnershipFrame<'a> {
     /// Ended by `RELEASE` (`EndBinding`) and not stored again.
     released_symbols: IdSet<SymbolId>,
     /// `AS WEAK` locals, which read `NULL` once their object is gone: the
-    /// function's own set, borrowed for the call (F.5).
+    /// function's own set, borrowed for the call.
     weak_symbols: &'a std::collections::HashSet<SymbolId>,
 }
 

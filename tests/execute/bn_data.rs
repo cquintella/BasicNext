@@ -229,7 +229,7 @@ fn bndata_accepts_variable_fixed_vector_lengths() {
 
 #[test]
 fn error_return_narrows_dataframe_for_readcsv() {
-    let source = "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"tests/fixtures/bndata-sprint6.csv\", FS.READ)\nIF file IS Error THEN\nRETURN\nEND IF\nLET table AS Data.DataFrame OR Error = Data.ReadCSV(file, TRUE, \",\")\nIF table IS Error THEN\nfile.Close()\nRELEASE file\nRETURN\nEND IF\nPRINT table.RowCount()\nRELEASE table\nfile.Close()\nRELEASE file\nEND FUNCTION\n";
+    let source = "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"tests/fixtures/bndata-tour.csv\", FS.READ)\nIF file IS Error THEN\nRETURN\nEND IF\nLET table AS Data.DataFrame OR Error = Data.ReadCSV(file, TRUE, \",\")\nIF table IS Error THEN\nfile.Close()\nRELEASE file\nRETURN\nEND IF\nPRINT table.RowCount()\nRELEASE table\nfile.Close()\nRELEASE file\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("narrow DataFrame after RETURN");
     assert_eq!(output, "2\n");
 }

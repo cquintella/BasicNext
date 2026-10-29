@@ -52,7 +52,7 @@ impl Builder<'_> {
             }
             // Any other type of a natively implemented library (`BNJson`,
             // `BNData`, …) is a library handle the IR does not count yet
-            // (the same gap as an unreleased logger had).
+            // (the same gap a logger had before its handles were released).
             Type::ImportedNamed { module, .. } if self.model.standard_modules.contains(module) => {
                 false
             }

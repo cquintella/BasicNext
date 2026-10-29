@@ -142,8 +142,8 @@ fn bnc_builds_and_runs_a_native_executable() {
     assert_eq!(String::from_utf8_lossy(&ran.stdout).trim(), "42");
 }
 
-/// Without `-g` the link drops runtime code the program never reaches (bucket
-/// 0.6.5 E, D2), so `bn_rt_arc_dump`, which only a debugger calls, is absent;
+/// Without `-g` the link drops runtime code the program never reaches, so
+/// `bn_rt_arc_dump`, which only a debugger calls, is absent;
 /// `a_native_debugger_reads_the_arc_core` shows a `-g` build keeps it.
 #[cfg(unix)]
 #[test]

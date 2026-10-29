@@ -205,7 +205,7 @@ impl CompensatedSum {
     }
 }
 
-/// G-1, in one pass: infinities decide first (`INF` with `-INF` is `NAN`);
+/// In one pass: infinities decide first (`INF` with `-INF` is `NAN`);
 /// otherwise the compensated sum of the finite values over `n`.
 #[allow(clippy::cast_precision_loss)] // n beyond 2^53 values is not addressable
 #[allow(clippy::float_cmp)] // an infinity is one exact value

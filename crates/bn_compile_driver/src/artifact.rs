@@ -61,8 +61,8 @@ pub(crate) fn native_program_link_args() -> &'static [&'static str] {
     native_program_link_args_for_os(std::env::consts::OS)
 }
 
-/// Link-time removal of runtime code the program never reaches (bucket
-/// 0.6.5 E, D2: a program links only what it uses, so the runtime archive can
+/// Link-time removal of runtime code the program never reaches (a program
+/// links only what it uses, so the runtime archive can
 /// hold `BNWeb` without growing other programs). The MSVC linker already
 /// applies `/OPT:REF` by default.
 pub(crate) fn dead_code_link_args_for_os(target_os: &str) -> &'static [&'static str] {

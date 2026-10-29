@@ -83,11 +83,17 @@ test_prereqs_diff() {
 # that fails half way has already replaced some artifacts, so the previous
 # stamp no longer describes them.
 test_prereqs_forget_stamps() {
-    local target
-    target=$(cargo metadata --format-version 1 --no-deps \
-        --manifest-path "$(test_prereqs_root)/Cargo.toml" 2> /dev/null \
-        | jq -r '.target_directory') || return 0
-    [[ -n $target && -d $target ]] || return 0
+    local metadata target
+    # A failure here stops the build: a silent skip would keep a stale stamp.
+    metadata=$(cargo metadata --format-version 1 --no-deps \
+        --manifest-path "$(test_prereqs_root)/Cargo.toml") || return "$?"
+    target=$(printf '%s\n' "$metadata" | jq -er '.target_directory') || return "$?"
+    # Git Bash on Windows: cargo reports `C:\…`, find wants `/c/…`.
+    if command -v cygpath > /dev/null 2>&1; then
+        target=$(cygpath -u "$target") || return "$?"
+    fi
+    # A target directory that does not exist yet holds no stamp.
+    [[ -d $target ]] || return 0
     find "$target" -maxdepth 3 -name "$TEST_PREREQS_STAMP_FILE" -type f -delete
 }
 

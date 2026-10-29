@@ -25,8 +25,8 @@ pub(crate) fn layout() -> LlvmType {
 
 /// Whether the general layout represents every member: one tag per member,
 /// and payloads without an ownership protocol (strings and `Error` records
-/// live as long as the program). Objects and vectors are stage 2 (bucket
-/// typed-llvm-emitter, Sprint 6 phase C).
+/// live as long as the program). Objects and vectors are not yet in this
+/// layout.
 pub(crate) fn general_members(members: &[Type]) -> bool {
     let mut codes = members.iter().map(member_code).collect::<Option<Vec<_>>>();
     let distinct = codes.as_mut().is_some_and(|codes| {

@@ -7,7 +7,7 @@
 //! "Floating-point literals out of range"; BDFL decision, 2026-10-27):
 //! a literal that rounds to infinity in `FLOAT64`,
 //! or in a `FLOAT32` destination, is a `TYPE_MISMATCH`, the same category
-//! and message form as an integer literal out of range (S5.1).
+//! and message form as an integer literal out of range.
 
 #![allow(clippy::wildcard_imports)]
 use super::*;
