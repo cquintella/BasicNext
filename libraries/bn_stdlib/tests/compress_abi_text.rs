@@ -5,7 +5,7 @@
 
 //! A text argument that reaches the `BNCompress` C ABI null or not valid UTF-8
 //! is `INVALID_ARGUMENT` naming the operation, never an empty path or name
-//! (`ongoing/issues.md`, A17).
+//! (an empty text would silently address the wrong entry).
 
 use std::ffi::c_char;
 

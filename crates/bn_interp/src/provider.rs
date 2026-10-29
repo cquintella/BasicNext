@@ -21,7 +21,7 @@ use crate::HostEnv;
 use bn_runtime::{Handle, Heap};
 
 /// What a provider may ask of the core while serving a call. Grows only when
-/// a migrated provider needs it (`docs/architecture/interp-extraction.md`).
+/// a migrated provider needs it, so providers stay outside the core.
 pub trait CoreContext {
     /// Pointer regions (`NEW T[n]`), for providers that read vectors by handle.
     fn memory(&self) -> &Heap<Value>;

@@ -22,8 +22,11 @@ __pycache__/
 # Superseded language trees kept on disk only (history: tags v0.6.0/v0.6.1)
 /language/tobediscarded/
 
-# Local planning and research (not versioned)
+# Local planning and research (not versioned). The development process
+# lives in its own private repository; these guards keep a stray copy of
+# its folders out of this public one.
 /docs/
+/todo/
 /ongoing/
 /done/
 /research/

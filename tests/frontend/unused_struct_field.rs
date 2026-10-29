@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! A destructuring `LET` reads the `STRUCT` fields it names, so they are not
-//! `UNUSED_BINDING`; a field nothing reads still is (`ongoing/issues.md`, A15).
+//! `UNUSED_BINDING`; a field nothing reads still is.
 
 use bn_frontend::lexer::lex;
 use bn_frontend::parser::parse;

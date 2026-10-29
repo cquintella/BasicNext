@@ -16,6 +16,8 @@ mod migration_ledger;
 mod no_python;
 #[path = "gates/pre_commit.rs"]
 mod pre_commit;
+#[path = "gates/public_references.rs"]
+mod public_references;
 #[path = "gates/shared_cores.rs"]
 mod shared_cores;
 #[path = "gates/shared_logic.rs"]

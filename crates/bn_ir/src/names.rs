@@ -9,7 +9,7 @@
 //! table is informative for lowered functions. It stays load-bearing for
 //! callees that have no body in the module — intrinsics and provider-backed
 //! stubs (standard modules are not lowered) — which backends classify through
-//! [`classify`]. Documented in `docs/architecture/ir-contract.md`.
+//! [`classify`].
 
 /// What a function name says about the function.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

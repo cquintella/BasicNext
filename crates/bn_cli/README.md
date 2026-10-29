@@ -26,7 +26,7 @@ the companion process log.
 - Driver-specific flags (`--target`, `--opt`, run/eval options, …) are parsed
   through `OptionExtension`; this crate never learns them.
 
-Architecture: `docs/architecture/library-first-drivers.md`.
+Drivers are libraries; the `bni` and `bnc` executables only parse arguments and call them.
 
 ## Public modules
 

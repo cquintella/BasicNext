@@ -1384,7 +1384,7 @@ fn excerpt(source: &SourceFile, position: Position, label: &str) -> (String, usi
 }
 
 /// The catalog's causes and help, one line each, indented to the gutter `width`
-/// (docs/architecture/diagnostics.md, "Every diagnostic explains itself").
+/// (every diagnostic explains itself: what happened and what to do).
 fn explanation(rendered: &RenderedDiagnostic, width: usize) -> String {
     use std::fmt::Write as _;
     let mut text = String::new();

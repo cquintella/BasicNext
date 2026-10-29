@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Regression tests for defects of section P of `ongoing/bucket-0.6.5.md`:
+//! Regression tests for defects fixed in the 0.6.5 line:
 //! each runs one fixture on `bni` and on the native binary and checks the
 //! exact output (or the support refusal) the known issue it names fixed.
 

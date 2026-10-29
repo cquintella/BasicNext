@@ -12,7 +12,7 @@
 # bn_rt-windows-x86_64.lib, SHA256SUMS, bni.1, bnc.1, bnr.1.
 #
 # Third-party actions are pinned by commit SHA; the comment names the release.
-# LLVM is pinned to 22.1.8 on every OS (docs/project/usage.md requires 22).
+# LLVM is pinned to 22.1.8 on every OS (the toolchain requires LLVM 22).
 
 name: ci
 

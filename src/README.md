@@ -16,4 +16,4 @@ The monolithic compiler implementation that previously resided under `src/` was 
 - **Shared Crates**: All lexical analysis, parsing, semantic checking, IR lowering, validation, runtime execution, and standard modules live in dedicated crates under `crates/`.
 - **Integration Tests**: Workspace-wide tests live under `tests/` and test the shared crates and drivers directly.
 
-Refer to [`crates/README.md`](../crates/README.md) for the complete crates inventory and [`docs/architecture/`](../docs/architecture/) for detailed architectural specifications.
+Refer to [`crates/README.md`](../crates/README.md) for the complete crates inventory and to `language/0.6/` for the specification.
