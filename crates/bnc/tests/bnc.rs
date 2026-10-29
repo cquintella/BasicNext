@@ -1,9 +1,9 @@
 #![allow(clippy::map_unwrap_or)]
 
 //! Integration tests of the `bnc` executable (Clang-like surface).
-//! Relocated from the root `tests/bnc.rs` (bucket 0.6.0, 2.2/2.4); tests
+//! Relocated from the root `tests/bnc.rs`; tests
 //! of the deleted wrapper profiles (`-c`, `--check`, default interpret)
-//! were retired with those flags (D-060-07).
+//! were retired with those flags.
 use std::process::Command;
 
 const WORKSPACE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");

@@ -3,8 +3,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! The stack check of compiled programs (0.6.md, "Recursion depth"; known
-//! issue K53): before each BN call, whether the caller's frame is close to
+//! The stack check of compiled programs (0.6.md, "Recursion depth"):
+//! before each BN call, whether the caller's frame is close to
 //! the end of the running thread's stack, so the program stops with
 //! `STACK_OVERFLOW` instead of a crash. The bounds come from the operating
 //! system, once per thread (`ASYNC` workers have stacks of their own).

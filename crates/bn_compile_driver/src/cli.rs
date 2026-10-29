@@ -4,8 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! The `bnc` command line: help, option handling and the call into the
-//! build. `bnc/src/main.rs` only names its version and calls [`main`]
-//! (bucket 0.6.5c S4).
+//! build. `bnc/src/main.rs` only names its version and calls [`main`].
 
 use std::process::ExitCode;
 

@@ -5,8 +5,7 @@
 
 //! The `bni` command line: help, command selection, option handling, and the
 //! large-stack thread the interpreter runs on. `bni/src/main.rs` only names
-//! its version and the protocol servers and calls [`main`] (bucket 0.6.5c
-//! S4).
+//! its version and the protocol servers and calls [`main`].
 
 use std::process::ExitCode;
 
@@ -86,7 +85,7 @@ fn protocol(name: &str, result: Result<(), String>) -> ExitCode {
 const COMMAND_STACK: usize = 64 * 1024 * 1024;
 
 /// The part of [`COMMAND_STACK`] BN calls do not use: the frames of one more
-/// call and the `STACK_OVERFLOW` report (known issue K53).
+/// call and the `STACK_OVERFLOW` report.
 const STACK_MARGIN: usize = 8 * 1024 * 1024;
 
 /// Runs `bni` with `arguments` (without the program name) on a thread with

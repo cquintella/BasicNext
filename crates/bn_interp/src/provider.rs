@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! The seam between the language core and everything the core does not
-//! implement itself (bucket 0.5.1d): HOST capabilities and `BN*` library
+//! implement itself: HOST capabilities and `BN*` library
 //! modules. The core routes a callee to a provider and hands it a
 //! [`CoreContext`]; the provider owns its own resources and never sees the
 //! `Executor`.

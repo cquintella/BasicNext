@@ -108,7 +108,7 @@ pub enum Failure {
     },
     InvalidUtf8(FromUtf8Error),
     /// The path is not a directory; `symlink` when it is a symbolic link,
-    /// which is not followed (bucket 0.6.12, G-2).
+    /// which is not followed.
     NotDirectory {
         symlink: bool,
     },
@@ -280,7 +280,7 @@ impl FileError {
         }
     }
 
-    /// The message of a 0.6.12 operation (bucket 0.6.12, FS-CORE-2), from
+    /// The message of a 0.6.12 operation, from
     /// the catalog; `None` for the older operations.
     fn entry_message(&self) -> Option<String> {
         let (path, destination) = match &self.subject {

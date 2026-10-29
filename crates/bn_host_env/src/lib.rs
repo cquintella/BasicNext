@@ -3,8 +3,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! `HOST.Env` — the one environment-reading implementation both backends call
-//! (bucket 0.6.5b). This crate holds the execution policy, portable failure codes,
+//! `HOST.Env` — the one environment-reading implementation both backends call.
+//! This crate holds the execution policy, portable failure codes,
 //! and [`get`] / [`has`]. It contains no `unsafe` code and reads the process
 //! environment via `std::env::var_os`.
 

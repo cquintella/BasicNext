@@ -3,8 +3,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! The text catalog (`AGENTS.md`, "No hard-coded messages"; bucket 0.6.5
-//! H). Every text a user can read and every contract name lives in
+//! The text catalog: no message is hard-coded.
+//! Every text a user can read and every contract name lives in
 //! `share/bn/catalog/<domain>.txt`, one `key = value` per line. The build
 //! script turns every entry into a constant, `bn_catalog::<domain>::<KEY>`
 //! (AC2: a reference to a missing entry is a compile error); the files are

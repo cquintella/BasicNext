@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! `--unused-pub`: `pub` items of a library crate whose name no other
-//! crate writes — candidates for `pub(crate)` (bucket 0.6.5h S3.c, AC5).
+//! crate writes — candidates for `pub(crate)`.
 //!
 //! The scan is by identifier, over the token stream (comments and string
 //! literals do not count): a name written anywhere in a dependent crate —
@@ -12,7 +12,7 @@
 //! code, macro bodies — counts as a use. It over-approximates use, so a
 //! listed item is a candidate, not a verdict: the compiler decides once the
 //! item is `pub(crate)`. C exports (`#[no_mangle]`, `extern "C"`) are not
-//! listed; they belong to the ABI gate (S3.a). Consumers outside the
+//! listed; they belong to the ABI gate. Consumers outside the
 //! workspace other than `fuzz/` (sibling repositories) are not scanned.
 
 use std::collections::{BTreeMap, BTreeSet};

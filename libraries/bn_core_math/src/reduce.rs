@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Statistical and vector reductions for `BNMath` (R5).
+//! Statistical and vector reductions for `BNMath`.
 
 use crate::shape::{self, Estimator};
 
@@ -243,7 +243,7 @@ const POPULATION_CORRECTION: usize = 0;
 /// The variance with divisor `n - correction`: `NAN` unless `n` exceeds
 /// `correction`, or with an infinite value; otherwise the corrected
 /// two-pass algorithm, and `INF` when any of its sums overflows, as `MEAN`
-/// (math.md, G-1 and G-11).
+/// (math.md, "Order, summation and overflow").
 fn variance<T: Copy + Into<f64>>(values: &[T], correction: usize) -> f64 {
     if values.len() <= correction || values.iter().any(|value| (*value).into().is_infinite()) {
         return f64::NAN;

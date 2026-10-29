@@ -198,7 +198,7 @@ pub(crate) fn emit_ownership(
     {
         // A vector of more than one dimension is stored as rows: its data
         // holds one `{ ptr, i32 }` row per first index, each walked as the
-        // vector of the remaining dimensions (K30), never as objects.
+        // vector of the remaining dimensions, never as objects.
         let (count, item) = match dimensions.split_first() {
             Some((rows, rest)) if !rest.is_empty() => (
                 *rows,

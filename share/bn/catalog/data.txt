@@ -1,5 +1,5 @@
-# data texts and contract names (bn_catalog; AGENTS.md "No hard-coded
-# messages"). One `key = value` per line; `{name}` is filled by the code.
+# data texts and contract names (bn_catalog: no message is hard-coded).
+# One `key = value` per line; `{name}` is filled by the code.
 
 separator.invalid.message = invalid CSV separator "{separator}"
 separator.invalid.cause = a CSV separator must be a single UTF-8 character other than '"', '\\r', or '\\n'

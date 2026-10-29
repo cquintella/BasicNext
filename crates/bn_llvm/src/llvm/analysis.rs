@@ -92,7 +92,7 @@ pub(crate) fn analyze_function<'a>(
                     ..
                 } => match value {
                     Constant::Function(name) => {
-                        // A call of a BN function checks the stack first (K53).
+                        // A call of a BN function checks the stack first.
                         let user = name.strip_prefix("@super:").unwrap_or(name);
                         if module
                             .functions
@@ -201,7 +201,7 @@ pub(crate) fn analyze_function<'a>(
                 }
                 Instruction::Store { symbol, ty, .. } => {
                     // The slot always has the declared type: no fallback to the
-                    // stored value's type (bucket typed-llvm-emitter, Sprint 6).
+                    // stored value's type.
                     if llvm_type(ty).is_none() {
                         return Err(unsupported_instruction(
                             module,
@@ -485,7 +485,7 @@ pub(crate) fn analyze_function<'a>(
         }
     }
     // A general alternative with an object member: the member must be a
-    // class (an ARC object), not a `STRUCT` value (Sprint 6 stage 2).
+    // class (an ARC object), not a `STRUCT` value.
     let unsupported_object = |ty: &Type| {
         general_alternative(ty).is_some_and(|members| {
             members.iter().any(|member| {

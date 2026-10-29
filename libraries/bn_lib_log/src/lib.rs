@@ -29,7 +29,7 @@ pub(crate) const WEB_ACCESS_MEMBER: &str = "Logger.$access";
 #[derive(Debug)]
 pub struct LogProvider {
     loggers: HashMap<u64, std::sync::Arc<std::sync::Mutex<bn_core_log::Logger>>>,
-    /// Bindings that hold each logger: the last one's end destroys it (K61).
+    /// Bindings that hold each logger: the last one's end destroys it.
     holders: HashMap<u64, usize>,
     next_logger: u64,
 }
@@ -359,7 +359,7 @@ mod lifetime_tests {
     }
 
     /// A copy retains the logger, each binding's end releases one, and the
-    /// last release destroys it (known issue K61).
+    /// last release destroys it.
     #[test]
     fn the_last_release_destroys_a_logger() {
         let mut provider = LogProvider::default();

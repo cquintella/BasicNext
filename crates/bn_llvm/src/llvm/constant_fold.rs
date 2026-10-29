@@ -231,7 +231,7 @@ pub(crate) fn fold_cast(value: Option<&ConstantValue>, ty: &Type) -> Option<Cons
 pub(crate) fn checked_integer_value(value: i128, ty: &Type) -> Option<i128> {
     // A literal-typed result is a constant semantic analysis checked against
     // its destination; it only has to fit the 64-bit carrier, signed or
-    // unsigned (`18446744073709551615 - 1` into `UINT64`, known issue K33).
+    // unsigned (`18446744073709551615 - 1` into `UINT64`).
     let (minimum, maximum) = if matches!(ty, Type::IntegerLiteral(_)) {
         (i128::from(i64::MIN), i128::from(u64::MAX))
     } else {

@@ -109,7 +109,7 @@ mod tests {
     }
 }
 
-/// `host-net.md`, "CIDR text" (Carlos, 2026-10-10; K39): a prefix of
+/// `host-net.md`, "CIDR text" (Carlos, 2026-10-10): a prefix of
 /// decimal digits with no sign or leading zero, and the network address.
 #[cfg(test)]
 mod strict_text_tests {

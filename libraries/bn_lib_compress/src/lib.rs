@@ -451,7 +451,7 @@ impl Provider for CompressProvider {
 
 /// The interpreter's `HOST.FileSystem` policy, through which every file
 /// `BNCompress` touches is checked and opened; its rooted operations never
-/// follow a symlink (bucket 0.6.11, CMP-SEC-1).
+/// follow a symlink.
 struct HostFiles<'a>(&'a bn_rt::FsPolicy);
 
 impl FileAccess for HostFiles<'_> {

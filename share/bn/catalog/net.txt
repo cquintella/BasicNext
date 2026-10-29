@@ -2,7 +2,7 @@
 # line; code refers to the key, never to the value. Every key here is used,
 # and every key the code uses is here (bn_core_net `catalog` tests).
 # Texts written before this file are literals still; they move here with
-# the migration of bucket 0.6.5 H.S4.
+# the migration of the remaining literals.
 
 # CIDR.Parse (host-net.md, "CIDR text").
 cidr.host_bits = address has bits past the prefix

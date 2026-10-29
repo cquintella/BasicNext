@@ -3,8 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Server sessions (`bnweb.md`, "Parallel handlers and server sessions";
-//! bucket 0.6.5 E.S0.e).
+//! Server sessions (`bnweb.md`, "Parallel handlers and server sessions").
 
 use super::Response;
 use super::sessions::{RequestSession, SESSION_COOKIE, SessionTable};

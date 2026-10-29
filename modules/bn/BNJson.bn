@@ -1,7 +1,7 @@
 // BNJson 0.3 external-module interface. The Rust provider supplies parsing and
 // bounded serialization; no JSON implementation is embedded in the language core.
 
-// DOM (bucket 0.6.1c). Accessors are typed so the result type is visible at the
+// DOM. Accessors are typed so the result type is visible at the
 // call site and a scalar read allocates no handle to release. Bounds are
 // enforced where they are breached, not deferred to Stringify.
 //

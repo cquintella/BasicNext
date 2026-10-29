@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! Global variables and constants of an LLVM module: linkage, attributes,
-//! type and initializer (bucket 0.6.5 T.5.2).
+//! type and initializer.
 
 use std::fmt;
 

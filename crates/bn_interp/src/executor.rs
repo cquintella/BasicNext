@@ -468,7 +468,7 @@ fn checked_integer(value: Option<i128>, ty: &Type, span: Span) -> Result<Value, 
 }
 
 /// `$for_condition(current, end, step)`: the counted `FOR` test, read from
-/// borrowed operands so the loop never copies them (bucket 0.6.10 F.4).
+/// borrowed operands so the loop never copies them.
 pub(crate) fn for_condition(
     current: &Value,
     end: &Value,
@@ -504,7 +504,7 @@ pub(crate) fn for_fits(current: &Value, step: &Value, span: Span) -> Result<Valu
 }
 
 /// The counted-`FOR` intrinsics read their operands where they are, with no
-/// argument vector (bucket 0.6.10 F.4); `None` for any other callee.
+/// argument vector; `None` for any other callee.
 pub(crate) fn borrowed_intrinsic(
     name: &str,
     arguments: &[ValueId],

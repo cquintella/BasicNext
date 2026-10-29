@@ -84,7 +84,7 @@ impl ProcessLog {
     /// Writes the filtered events to `target`: a path the user named (its
     /// directories are created) or the companion beside the product (they
     /// exist). Either way the file is opened without following a symlink
-    /// and must be a regular file (known issue K2).
+    /// and must be a regular file.
     ///
     /// # Errors
     ///

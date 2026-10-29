@@ -5,7 +5,7 @@
 
 //! CPU-specialized kernels for integer reduction operations (minimum, maximum).
 //!
-//! Conforming to AGENTS.md:
+//! The rules this file keeps:
 //! 1. No kernel changes an observable result. Only exact, order-independent
 //!    operations qualify (integers, minimum/maximum). Floating-point
 //!    sums remain scalar.
@@ -220,7 +220,7 @@ mod tests {
         }
     }
 
-    /// Benchmark (D1 of bucket 0.6.5d), not a correctness test. Run in
+    /// Benchmark, not a correctness test. Run in
     /// release on the machine being measured:
     /// `cargo test --release -p bn_rt cpu::tests::bench -- --ignored --nocapture`.
     /// Prints the median of 21 runs per size for the scalar kernel and for the

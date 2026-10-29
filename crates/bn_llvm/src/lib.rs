@@ -253,7 +253,7 @@ pub(crate) fn lower_validated_module_for_target_with_policy(
 }
 
 /// Lowers a validated module whose runtime traps print the diagnostic
-/// `render` gives (bucket 0.6.2b R6): `bnc` passes the renderer `bni` uses,
+/// `render` gives: `bnc` passes the renderer `bni` uses,
 /// with the program's source, so a native trap prints the same text.
 ///
 /// # Errors
@@ -676,7 +676,7 @@ fn is_native_pointer(ty: &Type) -> bool {
 }
 
 /// `POINTER TO T OR NULL`: the region fat pointer, null when the alternative
-/// holds `NULL`. Indexing it is a region index (K11); a definite `Type::Null`
+/// holds `NULL`. Indexing it is a region index; a definite `Type::Null`
 /// value is not this type.
 fn is_region_alternative(ty: &Type) -> bool {
     matches!(

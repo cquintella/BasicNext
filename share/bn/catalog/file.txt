@@ -1,5 +1,5 @@
-# file texts and contract names (bn_catalog; AGENTS.md "No hard-coded
-# messages"). One `key = value` per line; `{name}` is filled by the code.
+# file texts and contract names (bn_catalog: no message is hard-coded).
+# One `key = value` per line; `{name}` is filled by the code.
 
 open.mode.message = cannot open "{path}" in mode {mode}
 open.purpose.message = cannot open "{path}" for {purpose}
@@ -13,7 +13,7 @@ msg.file_verified_by_file_for = file verified by file_for
 msg.file_handle_count_overflowed_2 = file handle count overflowed
 msg.file_handle_is_invalid_2 = file handle is invalid
 
-# Entry operations (bucket 0.6.12, FS-CORE-1).
+# Entry operations.
 entry.root_not_target = the policy root itself is not a write target
 entry.not_private = the new entry kept group or other permission bits after it was made owner-only
 entry.get_current_directory.message = cannot read the current directory

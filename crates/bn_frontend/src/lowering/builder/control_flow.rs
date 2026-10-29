@@ -97,9 +97,9 @@ impl Builder<'_> {
                     }
                     // An imported type is tested by identity, whatever the import
                     // alias: a library handle (`Log.Logger`, a provider module) by
-                    // its own name (K35), a BN class (`Str.Tokenizer`) by
+                    // its own name, a BN class (`Str.Tokenizer`) by
                     // `#<module>.<Name>`, the identity its objects and the class
-                    // model carry (K41).
+                    // model carry.
                     Some(resolved) if let Type::ImportedNamed { module, name } = &resolved.ty => {
                         if self.model.standard_modules.contains(module) {
                             name.clone()

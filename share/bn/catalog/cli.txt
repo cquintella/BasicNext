@@ -1,5 +1,5 @@
-# Command-line texts of bni and bnc (bn_catalog; AGENTS.md "No hard-coded
-# messages"). One `key = value` per line; `{name}` is filled by the code.
+# Command-line texts of bni and bnc (bn_catalog: no message is hard-coded).
+# One `key = value` per line; `{name}` is filled by the code.
 # Each option has one owner: the common parser (bn_cli), the interpreter
 # driver (bni) or the compiler driver (bnc); an option a tool does not own
 # is unknown to it.

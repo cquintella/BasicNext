@@ -115,7 +115,7 @@ pub(crate) fn write_new(path: &Path, bytes: &str) -> io::Result<()> {
 }
 
 /// The private directory a native build keeps its LLVM IR and object file in
-/// (known issue K24; Carlos, 2026-10-09: beside the source being compiled).
+/// (Carlos, 2026-10-09: beside the source being compiled).
 /// Created exclusively (`mkdir` fails on an existing name, a planted
 /// symlink included), mode 0700 on Unix so nobody else can place a link
 /// inside it, and removed with its contents when dropped, on every path.

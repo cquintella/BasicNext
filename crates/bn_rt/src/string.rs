@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! C ABI for Basic Next native strings (Sprint 7, G7-D1).
+//! C ABI for Basic Next native strings.
 //!
 //! Every non-null STRING payload is preceded by a 16-byte header. Callers
 //! read it directly: nothing guesses whether the header exists.

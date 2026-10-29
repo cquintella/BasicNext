@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! The ARC verifier (bucket typed-llvm-emitter, Sprint 8, phase A): when a
+//! The ARC verifier: when a
 //! program ends, every object still alive must have exactly as many strong
 //! references as the program still holds — in `STATIC`s, in the strong
 //! fields of live objects, and in the elements of live regions. More is a

@@ -5,8 +5,8 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! Integration tests of the `bnc` executable relocated from the root
-//! `tests/cli.rs` (bucket 0.6.0, 2.4 / D-060-05): `bn build <args>` became
-//! `bnc <args>` (D-060-07), everything else verbatim.
+//! `tests/cli.rs`: `bn build <args>` became
+//! `bnc <args>`, everything else verbatim.
 
 // Multi-line raw-string BN program templates read more clearly with named
 // placeholders than with inlined path expressions.
@@ -1251,7 +1251,7 @@ END FUNCTION
 }
 
 /// Native `HOST.Net.Neighbor` on loopback: the compiled runtime shares the
-/// interpreter's core (bucket 0.5.2a, SPRINT 1), including trusted-path
+/// interpreter's core, including trusted-path
 /// `arp`/`ndp` resolution, so the typed result matches `tests/runtime.rs`.
 #[test]
 fn native_host_net_neighbor_loopback_is_a_typed_result() {
@@ -1529,7 +1529,7 @@ fn compiled_bncrypto_post_quantum_matches_the_interpreter() {
 
 /// `BNJson` survives compilation: the DOM slice links against the `bn_rt`
 /// document table and the native binary prints what the interpreter prints.
-/// Before bucket 0.6.1c the backend had no `BNJson` support at all.
+/// Before 0.6.1 the backend had no `BNJson` support at all.
 #[test]
 fn compiled_bnjson_dom_slice_matches_the_interpreter() {
     let directory = std::env::temp_dir().join(format!("bn-json-slice-{}", std::process::id()));
@@ -1685,7 +1685,7 @@ fn compiled_bnjson_companion_matches_the_interpreter() {
     );
 }
 
-/// Known issue K2: the companion log is `<product>.bnbuild.log`, appended to
+/// The companion log is `<product>.bnbuild.log`, appended to
 /// the product's name, so a product named `*.log` keeps its bytes; a
 /// product that is not a regular file (`/dev/null`) has no companion; and an
 /// explicit `--log-file` equal to the product is refused.

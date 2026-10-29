@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Native runtime diagnostics (bucket 0.6.2b R6). A trap site branches to
+//! Native runtime diagnostics. A trap site branches to
 //! its own block, which prints the diagnostic `bni` would print and then
 //! joins the function's trap exit. The text is rendered at compile time by
 //! the caller's renderer (the shared catalog and the source), so the program
@@ -442,7 +442,7 @@ fn emit_branch_to_site(text: &mut crate::ir::LlvmModule, condition: &O, site: &s
 }
 
 /// Stops with `STACK_OVERFLOW` naming `callee` when this call would exhaust
-/// the stack (0.6.md, "Recursion depth"; known issue K53): `bn_rt` compares
+/// the stack (0.6.md, "Recursion depth"): `bn_rt` compares
 /// the frame with the bounds of the running thread's stack, as `bni` does
 /// before each BN call.
 pub(crate) fn emit_stack_check(

@@ -1400,7 +1400,7 @@ fn explanation(rendered: &RenderedDiagnostic, width: usize) -> String {
 #[cfg(test)]
 mod tests {
     /// One line per registered identity: `code\tfluent_id\tseverity\tschema`.
-    /// Frozen before the registry refactor (bucket 0.5.1a §2.1); the refactor
+    /// Frozen before the registry refactor; the refactor
     /// must reproduce it byte for byte.
     fn registry_dump() -> String {
         let mut lines: Vec<String> = super::DiagId::all()
@@ -1434,10 +1434,10 @@ mod tests {
         .expect("write golden");
     }
 
-    /// Gate (bucket 0.6.2b R7): every diagnostic explains itself — a
+    /// Gate: every diagnostic explains itself — a
     /// specific title, a cause, and a help line — so the rustc-style
     /// renderer never prints a bare message; and its message does not repeat
-    /// the title the renderer already prints (known issue K19).
+    /// the title the renderer already prints.
     #[test]
     fn catalog_rows_have_title_cause_and_help() {
         let shard = [
@@ -1504,7 +1504,7 @@ mod tests {
         );
     }
 
-    /// Registry ↔ catalog ↔ schema exhaustiveness gate (bucket 0.5.1a §2.3).
+    /// Registry ↔ catalog ↔ schema exhaustiveness gate.
     /// Replaces the Python emit-site inventory: adding a diagnostic is one
     /// registry row plus one `.ftl` entry, and any drift fails here.
     #[test]
@@ -2117,7 +2117,7 @@ mod tests {
         let parse =
             Diagnostic::parse_facts("AS", "a binding declaration", span(0)).expect("parser facts");
         // The context is a fact for overlays; the message states only what
-        // was expected (bucket 0.6.2b D6).
+        // was expected.
         assert!(parse.message.contains("AS"));
     }
 

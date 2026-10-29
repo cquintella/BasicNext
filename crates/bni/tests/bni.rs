@@ -1,6 +1,6 @@
 #![allow(clippy::map_unwrap_or)]
 
-//! Integration tests of the `bni` executable surface (bucket 0.6.0, 2.1).
+//! Integration tests of the `bni` executable surface.
 //! The interpreter behaviour itself is covered by the relocated `tests/cli.rs`
 //! suite (activity 2.4); here: command set, version, JSON channel purity and
 //! the rejection of compiler-only flags.
@@ -96,12 +96,12 @@ fn bni_rejects_compiler_only_flags_and_the_build_command() {
         .output()
         .expect("run bni build");
     assert_eq!(build.status.code(), Some(2));
-    // `build` is not a bni command: the error comes with bni's own help (K3).
+    // `build` is not a bni command: the error comes with bni's own help.
     assert!(String::from_utf8_lossy(&build.stderr).contains("usage: bni"));
 }
 
 /// Frontend artifacts are a compiler surface (BDFL, 2026-10-07): `--emit` is a
-/// `bnc` option, unknown to `bni`, which prints the error and its help (K3).
+/// `bnc` option, unknown to `bni`, which prints the error and its help.
 #[test]
 fn bni_refuses_emit_as_an_unknown_option() {
     let source = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/hello.bn");

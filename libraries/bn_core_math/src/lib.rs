@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Mathematical scalar and statistical reduction core (R5).
+//! Mathematical scalar and statistical reduction core.
 //!
 //! Shared by `bn_lib_math` (interpreter adapter) and `bn_rt` (native runtime C ABI).
 //! Implements safe mathematical functions with exact parity across backends.

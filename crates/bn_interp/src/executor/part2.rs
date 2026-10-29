@@ -83,7 +83,7 @@ impl Executor<'_, '_> {
                 // instruction changes a scalar, a text or a name in place
                 // (`get_mut` reaches records and objects only), so a slot
                 // set earlier in this frame already holds the constant. A
-                // loop parses and allocates it once (bucket 0.6.10 F.7).
+                // loop parses and allocates it once.
                 if values.get(*destination).is_none() {
                     set(values, *destination, constant_value(constant, ty, *span)?);
                 }

@@ -3,8 +3,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! The LLVM module `bnc` builds in memory and renders once at the end
-//! (bucket 0.6.5 T.5, the Swift architecture): declarations, globals,
+//! The LLVM module `bnc` builds in memory and renders once at the end:
+//! declarations, globals,
 //! functions, block labels and instructions, all typed. There is no way to
 //! write LLVM text into it.
 

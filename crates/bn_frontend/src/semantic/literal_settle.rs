@@ -5,7 +5,7 @@
 
 //! An integer constant that reaches no destination is `INTEGER` (`INT32`)
 //! (0.6.md, "Integer constants without a destination"; BDFL decision,
-//! 2026-10-28, bucket 0.6.11 S5.2).
+//! 2026-10-28).
 //!
 //! Analysis folds a constant such as `10 ** 30` to its exact value so that a
 //! destination can check it (`LET x AS INT64 = 2 ** 40`). Where no

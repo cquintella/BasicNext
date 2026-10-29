@@ -9,7 +9,7 @@
 //! the core destroys the object. Requests are served on transport threads by
 //! an isolated executor over a clone of the module (`execute_callback`).
 
-#![allow(clippy::too_many_lines, clippy::too_many_arguments)] // Moved verbatim from the core (bucket 0.5.1d); one arm per BNWeb member.
+#![allow(clippy::too_many_lines, clippy::too_many_arguments)] // Moved verbatim from the core; one arm per BNWeb member.
 
 pub use bn_web::web;
 use bn_web::web::drain_server;

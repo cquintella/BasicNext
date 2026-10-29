@@ -6,7 +6,7 @@
 //! The interpreter's own options (`--trace`, `--no-filesystem`,
 //! `--jupyter-stdin`, `--format`, `--ffi-path`), parsed as a
 //! `bn_cli::options::OptionExtension`. The common parser never learns them,
-//! so `bnc` refuses each as an unknown option (known issue K3).
+//! so `bnc` refuses each as an unknown option.
 
 use std::path::PathBuf;
 

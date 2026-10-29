@@ -80,7 +80,7 @@ pub(crate) fn narrows(stored: &Type, loaded: &Type) -> bool {
 }
 
 /// `HOST.Net.Endpoint` narrowed out of `Endpoint OR Error` (`{ i1, ptr, i32 }`):
-/// the address and port fields (known issue K36).
+/// the address and port fields.
 fn narrows_to_endpoint(stored: &Type, loaded: &Type) -> bool {
     llvm_type(stored) == Some(crate::layout::status_endpoint_ty())
         && llvm_type(loaded) == Some(crate::layout::vector_ty())
@@ -425,7 +425,7 @@ pub(crate) fn construct(
         }
         // An `Error` into `Endpoint OR Error` or `Addresses OR Error`: the
         // error flag and the runtime record, which carries the code (the
-        // inverse of the narrowing in `narrow_member`; known issue K36).
+        // inverse of the narrowing in `narrow_member`).
         layout @ (AlternativeLayout::StatusEndpoint | AlternativeLayout::StatusPointer)
             if is_error_type(from) =>
         {

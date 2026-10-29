@@ -5,7 +5,7 @@
 
 //! `STATIC` storage of a native program: the field globals, the class
 //! initialization flags, and the reset that gives each `ASYNC` task its own
-//! copy (known issue K44; `0.6.md`, "Isolation and conformance").
+//! copy (`0.6.md`, "Isolation and conformance").
 //!
 //! Every global here is `thread_local`, so concurrent tasks never share a
 //! field. Queues reuse worker threads, so the trampoline also calls the

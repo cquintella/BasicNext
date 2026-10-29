@@ -262,7 +262,7 @@ pub(crate) fn lower_fs_call(
 }
 
 /// The directory, private-create, copy and move calls of `HOST.FileSystem`
-/// (host.md, "Directories, private files, copy and move"; bucket 0.6.12),
+/// (host.md, "Directories, private files, copy and move"),
 /// recognized by their contract names in the catalog.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum DirectoryCall {

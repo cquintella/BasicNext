@@ -7,7 +7,7 @@ use bn_types::Type;
 
 use crate::{Diagnostic, Module, invalid_ir};
 
-/// Structural rules for `FunctionKind` (bucket 0.5.1c §3.2). Backends select
+/// Structural rules for `FunctionKind`. Backends select
 /// entry points, constructors and destructors by kind, so a mislabelled
 /// function is invalid IR, not a backend surprise.
 pub(super) fn validate_function_kinds(module: &Module) -> Result<(), Diagnostic> {

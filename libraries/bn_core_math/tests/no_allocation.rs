@@ -4,9 +4,9 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! `MEAN`, `VARIANCE`, `STDEV` and `RANGE` read their values in place and
-//! allocate nothing (math.md, "Order, summation and overflow"; bucket 0.6.10
-//! acceptance B). A counting global allocator proves it; its `unsafe` is the
-//! test-only use Carlos approved on 2026-10-26 (Q-ALLOC, AGENTS.md).
+//! allocate nothing (math.md, "Order, summation and overflow"). A counting
+//! global allocator proves it; its `unsafe` is the
+//! test-only use Carlos approved on 2026-10-26.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;

@@ -27,6 +27,7 @@ command -v rg > /dev/null 2>&1 || {
 ALWAYS=(
     '\bK[0-9]{1,3}\b'
     '\b[A-Z]\.K[0-9]+'
+    '\b(AGENTS|CLAUDE|GEMINI)\.md\b'
     '(^|[^A-Za-z0-9_./-])(todo|ongoing|done|workflow)/'
     'bn/docs/'
     '(^|[^A-Za-z0-9_./-])docs/(architecture|project|releases|governance|research|positioning|library)\b'
@@ -40,13 +41,16 @@ CITED=(
     "\\b([Kk]nown issues?|[Ii]ssues?|[Dd]ecisions?|[Aa]udits?|[Bb]uckets?|[Ss]ections?|[Ii]tems?)\\b[^.;:]{0,40}\\b${CITED_IDS}\\b"
 )
 
+# `.gitignore` names private files to keep them out; that is not a citation.
+NOT_SCANNED='^(\./)?\.gitignore$'
+
 files() {
     if git -C "$root" rev-parse --show-prefix > /dev/null 2>&1; then
-        git -C "$root" ls-files -z
+        git -C "$root" ls-files
     else
         # Without git (a source copy), every file but the history.
-        (cd "$root" && find . -type f -not -path './.git/*' -print0)
-    fi
+        (cd "$root" && find . -type f -not -path './.git/*')
+    fi | grep -Ev "$NOT_SCANNED" | tr '\n' '\0'
 }
 
 scan() {

@@ -37,7 +37,7 @@ pub enum CpuTarget {
 }
 
 /// The compiler's own options (`--target`, `--opt`, `-g`, `--cpu`, `--emit`).
-/// Only `bnc` parses them; to `bni` each is an unknown option (known issue K3).
+/// Only `bnc` parses them; to `bni` each is an unknown option.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BuildOptions {
     pub target: Target,

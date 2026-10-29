@@ -563,7 +563,7 @@ pub(crate) fn parse_float_constant(value: &str) -> Option<f64> {
 
 /// LLVM reads a hexadecimal `float` constant in the 64-bit `double` encoding
 /// (`LangRef`, "Simple Constants"), so the special values have one spelling for
-/// both widths; a 32-bit pattern is rejected by clang (known issue K34).
+/// both widths; a 32-bit pattern is rejected by clang.
 /// The constant of a floating-point `value` of type `ty`; a `FLOAT32` value is
 /// rounded to single precision first, as LLVM requires of a `float` constant.
 /// The identity of floating-point addition, `-0.0`: `-0.0 + x` is `x` for

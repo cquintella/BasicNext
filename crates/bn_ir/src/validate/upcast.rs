@@ -78,20 +78,20 @@ fn call_types_compatible_inner(module: Option<&Module>, actual: &Type, expected:
 }
 
 /// The store rule: `assignment_types_compatible`, or a vector of objects into a
-/// vector of a base class or an interface (K28).
+/// vector of a base class or an interface.
 pub(crate) fn store_compatible(module: &Module, actual: &Type, expected: &Type) -> bool {
     assignment_types_compatible(actual, expected) || upcast_compatible(module, actual, expected)
 }
 
 /// The vector-literal element rule: the element type, or a class that reaches
-/// it (A.S6.n).
+/// it.
 pub(crate) fn element_compatible(module: &Module, actual: &Type, expected: &Type) -> bool {
     types_compatible(actual, expected) || upcast_compatible(module, actual, expected)
 }
 
 /// A value that reaches the slot only through the class model: a class into
 /// an ancestor or an interface it implements, or a vector of such values into
-/// a vector of the same dimensions (K28, A.S6.n). Numbers are not widened here:
+/// a vector of the same dimensions. Numbers are not widened here:
 /// a numeric store or element keeps the strict rule.
 pub(crate) fn upcast_compatible(module: &Module, actual: &Type, expected: &Type) -> bool {
     if is_upcast(module, actual, expected) {
@@ -264,7 +264,7 @@ fn is_named_value_type(ty: &Type) -> bool {
 /// The store rule without the class model: equal or widening types, and a
 /// named value into a named slot (semantic analysis checked that class
 /// relation). A vector of objects stored into a vector of a base class or an
-/// interface needs the class model: `upcast_compatible` (K28).
+/// interface needs the class model: `upcast_compatible`.
 pub(crate) fn assignment_types_compatible(actual: &Type, expected: &Type) -> bool {
     matches!(actual, Type::Unknown) || matches!(expected, Type::Unknown)
         || types_compatible(actual, expected)

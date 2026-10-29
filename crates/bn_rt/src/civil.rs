@@ -6,7 +6,7 @@
 //! Civil date and time arithmetic of `DATE`, `TIME`, and `TIMESTAMP`, the
 //! one implementation both backends use: `bn_interp::temporal` maps its
 //! failures to diagnostics, and the C ABI ends the program with the call
-//! site's diagnostic (bucket 0.6.2b R6).
+//! site's diagnostic.
 
 pub use bn_core_text::civil::{
     CivilDate, DAY_MS, MAX_YEAR, MIN_YEAR, civil_from_days, civil_time, days_from_civil,
@@ -37,7 +37,7 @@ pub fn split_at(timestamp: i64, trap: *const std::ffi::c_char) -> (i32, u32) {
     })
 }
 
-/// `Date.Parse(str)` (K80): returns days since 1970-01-01, or ends with the site's trap.
+/// `Date.Parse(str)`: returns days since 1970-01-01, or ends with the site's trap.
 #[allow(unsafe_code)] // SAFETY: C ABI export for LLVM-emitted code reading NUL-terminated strings.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_temporal_date_parse(text: *const c_char, trap: *const c_char) -> i32 {
@@ -52,7 +52,7 @@ pub extern "C" fn bn_rt_temporal_date_parse(text: *const c_char, trap: *const c_
     days
 }
 
-/// `Time.Parse(str)` (K80): returns milliseconds since midnight, or ends with the site's trap.
+/// `Time.Parse(str)`: returns milliseconds since midnight, or ends with the site's trap.
 #[allow(unsafe_code)] // SAFETY: C ABI export for LLVM-emitted code reading NUL-terminated strings.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_temporal_time_parse(text: *const c_char, trap: *const c_char) -> i32 {
@@ -67,7 +67,7 @@ pub extern "C" fn bn_rt_temporal_time_parse(text: *const c_char, trap: *const c_
     i32::try_from(millis).unwrap_or(0)
 }
 
-/// `Timestamp.Parse(str)` (K80): returns epoch milliseconds, or ends with the site's trap.
+/// `Timestamp.Parse(str)`: returns epoch milliseconds, or ends with the site's trap.
 #[allow(unsafe_code)] // SAFETY: C ABI export for LLVM-emitted code reading NUL-terminated strings.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_temporal_timestamp_parse(text: *const c_char, trap: *const c_char) -> i64 {
@@ -82,7 +82,7 @@ pub extern "C" fn bn_rt_temporal_timestamp_parse(text: *const c_char, trap: *con
     ts
 }
 
-/// `Timestamp.Format(ts)` (K80): returns owned RFC 3339 string, or ends with the site's trap.
+/// `Timestamp.Format(ts)`: returns owned RFC 3339 string, or ends with the site's trap.
 #[allow(unsafe_code)] // SAFETY: C ABI export for LLVM-emitted code allocating NUL-terminated strings.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_temporal_timestamp_format(

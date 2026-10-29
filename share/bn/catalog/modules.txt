@@ -1,5 +1,5 @@
 # Contract names of standard-library modules, their types and HOST
-# capabilities (bn_catalog; AGENTS.md "No hard-coded messages": contract
+# capabilities (bn_catalog: no message or contract name is hard-coded;
 # identifiers live in the catalog). One `key = value` per line.
 
 module.compress = BNCompress

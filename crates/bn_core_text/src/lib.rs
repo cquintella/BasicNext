@@ -15,7 +15,7 @@ pub mod civil;
 pub mod temporal;
 pub mod timezone;
 
-/// Parses a numeric prefix from `text`, matching Basic Next `VAL` semantics (R3).
+/// Parses a numeric prefix from `text`, matching Basic Next `VAL` semantics.
 /// Leading whitespace is trimmed. Trailing characters after the numeric prefix are ignored.
 /// Returns `0.0` if no valid numeric prefix exists or if parsing fails.
 #[must_use]
@@ -39,7 +39,7 @@ pub fn parse_val(text: &str) -> f64 {
     text[..end].parse().unwrap_or(0.0)
 }
 
-/// A canonical IANA time-zone identifier as `TimeZone.Parse` accepts it (R4).
+/// A canonical IANA time-zone identifier as `TimeZone.Parse` accepts it.
 /// `UTC`, or two or more `/`-separated parts, each starting with a letter
 /// and continuing with letters, digits, `_`, `-`, `+`.
 #[must_use]

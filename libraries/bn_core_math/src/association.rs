@@ -4,8 +4,8 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! Statistics of two vectors for `BNMath`: `Covariance` and `Correlation`
-//! (math.md, "Descriptive statistics"; BDFL decisions G-5 and the overflow
-//! rules, 2026-10-27), on the corrected two-pass kernel of `VARIANCE`.
+//! (math.md, "Descriptive statistics", and its overflow rules),
+//! on the corrected two-pass kernel of `VARIANCE`.
 
 use crate::reduce::CompensatedSum;
 

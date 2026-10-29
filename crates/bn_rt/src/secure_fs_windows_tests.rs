@@ -88,7 +88,7 @@ fn junctions_and_parent_traversal_cannot_leave_the_root() {
     let _ = std::fs::remove_dir_all(&outside);
 }
 
-/// Entry operations (bucket 0.6.12, FS-CORE-1) never act through a junction
+/// Entry operations never act through a junction
 /// and treat the root as readable but not writable.
 #[test]
 fn entry_operations_never_follow_a_junction() {

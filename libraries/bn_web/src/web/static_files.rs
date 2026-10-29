@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Static file serving for `BNWeb.Server` (E.S0.f):
+//! Static file serving for `BNWeb.Server`:
 //! - `Server.Static(prefix, directory)`
 //! - Path sanitization: `..`, absolute, `NUL`, and encoded separators rejected
 //! - Symbolic links leaving the directory return 404

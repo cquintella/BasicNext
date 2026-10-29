@@ -251,7 +251,7 @@ fn unused_binding_warnings(program: &Program, model: &SemanticModel) -> Vec<Diag
             } => class_binding_candidates(name, statements, &mut candidates),
             // A STRUCT field is a member read through a value (`r.name`), never a
             // local; every field is public, so an exported STRUCT's fields may be
-            // read by another module (known issue K54).
+            // read by another module.
             Item::Declaration {
                 kind: DeclarationKind::Struct,
                 name,
@@ -666,7 +666,7 @@ pub(crate) fn imported_type_catalog(
                         .iter()
                         .filter_map(|interface| match interface.split_once('.') {
                             None => Some(format!("#{}.{interface}", module.id.0)),
-                            // Named through this module's own alias (K18); an
+                            // Named through this module's own alias; an
                             // unknown alias is that module's own error.
                             Some((alias, name)) => aliases
                                 .get(alias)

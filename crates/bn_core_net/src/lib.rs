@@ -6,7 +6,7 @@
 //! `HOST.Net` core shared by the interpreter (`bn_host_net`) and compiled
 //! binaries (`bn_rt` `net_abi`): address/endpoint types, bounded
 //! resolve/reverse, ICMP ping, trusted-path ARP/NDP neighbor lookup, sockets.
-//! Moved out of `bn_rt` (bucket 0.6.5 E, D1) so the `BNWeb` core can use it.
+//! Moved out of `bn_rt` so the `BNWeb` core can use it.
 
 mod addressing;
 mod cidr;

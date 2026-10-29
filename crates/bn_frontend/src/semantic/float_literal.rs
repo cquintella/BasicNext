@@ -4,8 +4,8 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! A floating-point literal must fit the type it takes (0.6.md,
-//! "Floating-point literals out of range"; BDFL decision, 2026-10-27,
-//! bucket 0.6.11 S5.3): a literal that rounds to infinity in `FLOAT64`,
+//! "Floating-point literals out of range"; BDFL decision, 2026-10-27):
+//! a literal that rounds to infinity in `FLOAT64`,
 //! or in a `FLOAT32` destination, is a `TYPE_MISMATCH`, the same category
 //! and message form as an integer literal out of range (S5.1).
 

@@ -212,7 +212,7 @@ impl FsProvider {
     }
 
     /// The directory, private-create, copy and move methods (host.md,
-    /// "Directories, private files, copy and move"; bucket 0.6.12): argument
+    /// "Directories, private files, copy and move"): argument
     /// conversion only, over `bn_rt::file` with the interpreter's policy.
     fn directory_call(
         &mut self,

@@ -132,7 +132,7 @@ pub(crate) fn lower_terminator(
                 let operand = if state.return_llvm == crate::general_alternative::layout()
                     || union_return && matches!(value_ty, Type::NotAvailable | Type::EndOfFile)
                     // An `Error` returned as `Endpoint OR Error` / `Addresses OR
-                    // Error` (K36).
+                    // Error`.
                     || (crate::layout::is_one_of(&state.return_llvm, &[crate::layout::status_endpoint_ty(), crate::layout::status_pointer_ty()])
                         && is_error_type(value_ty))
                 {

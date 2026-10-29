@@ -13,7 +13,7 @@
     clippy::cast_sign_loss,
     clippy::cast_precision_loss,
     clippy::unused_self
-)] // Moved verbatim from the core (bucket 0.5.1d); one arm per HOST.Net member.
+)] // Moved verbatim from the core; one arm per HOST.Net member.
 
 pub mod net;
 pub mod net_values;

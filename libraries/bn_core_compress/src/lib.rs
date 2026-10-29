@@ -13,7 +13,7 @@
 //! policy of the backend (`HOST.FileSystem` in `bni`, `bn_rt`'s policy in
 //! compiled programs), as `language/0.6/bncompress.md` requires. Opening
 //! through it, not only asking it, keeps a symlink from redirecting a
-//! write outside a `--write-root` (bucket 0.6.11, CMP-SEC-1).
+//! write outside a `--write-root`.
 
 use flate2::Compression;
 use flate2::read::{DeflateDecoder, GzDecoder};
@@ -616,7 +616,7 @@ impl ZipArchiveHandle {
     /// [`Self::extract_all`] with `limit` bytes for all entries together. The
     /// Unix mode an entry records is never applied: a created file or
     /// directory has the mode the process umask leaves, so an archive cannot
-    /// install a setuid program (bucket 0.6.11, CMP-SEC-2). Entries already
+    /// install a setuid program. Entries already
     /// written stay when a later one fails; the file that passes `limit` is
     /// removed.
     fn extract_all_within(
@@ -679,7 +679,7 @@ impl ZipArchiveHandle {
 impl Drop for ZipArchiveHandle {
     fn drop(&mut self) {
         // A release without `Close()` still finishes the archive; its error
-        // has no caller left to receive it (bucket 0.6.11, S6.7).
+        // has no caller left to receive it.
         let _ = self.close();
     }
 }

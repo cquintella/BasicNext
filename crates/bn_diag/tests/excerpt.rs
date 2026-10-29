@@ -5,7 +5,7 @@
 
 //! The source excerpt under a diagnostic: its gutter is as wide as the line
 //! number, every `|` lines up, and the `^` sits under the reported column,
-//! in both renderers (bucket 0.6.11, S6.11).
+//! in both renderers.
 
 use bn_diag::{Catalog, Diagnostic};
 use bn_source::{Position, SourceFile, Span};

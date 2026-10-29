@@ -6,7 +6,7 @@
 // Every C function the backend declares (`bn_rt`, the C library and the
 // LLVM intrinsics with C types) as one typed signature, and the groups a
 // module declares together, in emission order. No `declare` is written as
-// text anywhere else (bucket 0.6.5 T.5.1).
+// text anywhere else.
 
 use crate::ir::{
     AbiType::{Double, Float, I1, I8, I16, I32, I64, Ptr, Void},
@@ -631,7 +631,7 @@ mod tests {
     use super::{BN_RT_DECLARATIONS, PRINTF, memmove, overflow};
     use crate::ir::{Declaration, LlvmType};
 
-    /// Bucket 0.6.5 T.5.1 and T.5.5: a `declare` comes from this table only, and
+    /// A `declare` comes from this table only, and
     /// no backend source writes LLVM text (a definition, a global, a debug
     /// attachment); `LlvmModule` takes typed pieces only.
     #[test]

@@ -20,8 +20,7 @@ use crate::layout::{
 use crate::runtime_abi::STR_EQ;
 
 /// Above this length a vector compare is one `memcmp` (integer elements) or
-/// one counted loop. At or below it, each element is compared in place
-/// (known issue K84).
+/// one counted loop. At or below it, each element is compared in place.
 const VECTOR_COMPARE_UNROLL_LIMIT: u64 = 16;
 
 /// Whether comparing `ty` emits `memcmp` for a long integer vector, including

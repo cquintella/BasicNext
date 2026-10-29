@@ -34,7 +34,7 @@ pub(super) fn is_arc_type(module: &Module, ty: &Type) -> bool {
         Type::Named(name) => is_declared(module, name),
         // A `BNLog.Logger` is a counted handle; any other type of a natively
         // implemented library is a handle the IR does not count (the same
-        // rule the lowering applies; K61, K63).
+        // rule the lowering applies).
         Type::ImportedNamed { module: id, name }
             if module.standard_library_of((*id).into()).is_some() =>
         {

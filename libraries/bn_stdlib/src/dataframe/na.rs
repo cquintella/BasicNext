@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! Missing values in a `DataFrame`: `CountNA`, `DropNA` and `FillNA`
-//! (bndata.md, "Missing values"; BDFL decisions D-3 and G-5). One rule for
+//! (bndata.md, "Missing values"). One rule for
 //! both backends; each passes how its cells read and are made.
 
 use super::{DataFrameColumn, DataFrameResource};

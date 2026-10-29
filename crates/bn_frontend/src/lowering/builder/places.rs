@@ -5,7 +5,7 @@
 
 // Stores into a place below a `STRUCT` value that no single IR instruction
 // reaches — `b[0].x`, `Keep.p.x`, `b[0].items[1]`, `SELF.p.x` (0.6.md,
-// "Values and copies"; bucket 0.6.5 V.3). The place is resolved once, each
+// "Values and copies"). The place is resolved once, each
 // index evaluated once; the `STRUCT` is copied into a hidden local, the store
 // applies to that local, and the local is stored back into its own place.
 

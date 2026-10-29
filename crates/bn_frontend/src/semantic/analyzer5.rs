@@ -113,8 +113,8 @@ impl Analyzer {
                 let mut element_type = Type::Unknown;
                 for value in values {
                     let actual = self.expression(value, locals)?;
-                    // Decision D-2 (0.6.md, "Vector literals take a declared
-                    // destination"): a scalar element is checked against the
+                    // The rule of 0.6.md, "Vector literals take a declared
+                    // destination": a scalar element is checked against the
                     // first element's type by the assignment rules; rows keep
                     // their own check.
                     let rows = matches!(element_type, Type::Vector { .. });

@@ -112,7 +112,7 @@ pub(crate) fn lower_scalar_instruction(
                 }
             }
             // `EOF` is the `@.bn_eof` sentinel, the value `INPUT` reads at end
-            // of input (T.K9).
+            // of input.
             Constant::EndOfFile => {
                 text.assign(
                     format!("v{}", destination.0),

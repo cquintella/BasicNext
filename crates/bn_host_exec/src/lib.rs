@@ -407,8 +407,8 @@ mod tests {
         assert!(start.elapsed() < Duration::from_secs(2));
     }
 
-    /// A process the child started keeps stdout open after the child exits
-    /// (known issue K72): its output is kept, not dropped as an empty
+    /// A process the child started keeps stdout open after the child exits:
+    /// its output is kept, not dropped as an empty
     /// success.
     #[cfg(unix)]
     #[test]

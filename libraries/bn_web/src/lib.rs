@@ -7,7 +7,7 @@
 //! binaries (`bn_rt` `web_abi`): HTTP/1.1 and HTTP/2 transport (`hyper`),
 //! TLS (`rustls`), routing, sessions, cookies, ACLs and egress policy, over
 //! the `HOST.Net` core (`bn_core_net`). It holds no BN value: each adapter
-//! converts at its boundary (bucket 0.6.5 E, D1).
+//! converts at its boundary.
 
 #![allow(clippy::missing_errors_doc)] // Errors are plain `String` / `&str` messages the adapters map.
 
