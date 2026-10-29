@@ -9,9 +9,11 @@ cpu.rs
 env.rs
 exec.rs
 file.rs
+file_entries.rs
 file_error.rs
 policy.rs
 secure_fs.rs
+secure_fs_entries.rs
 secure_fs_windows.rs
 string.rs
 terminal.rs
