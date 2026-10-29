@@ -353,6 +353,9 @@ impl Anchor {
 
 /// Sets `mode` on the open entry and checks that no group or other bit is
 /// left (G-6: the mode bits are the check; inherited ACLs are not read).
+// `mode_t` is `u16` on macOS and `u32` on Linux: the conversion is needed
+// on the first and the same type on the second.
+#[allow(clippy::useless_conversion)]
 fn make_private(entry: &File, mode: libc::mode_t) -> io::Result<()> {
     entry.set_permissions(Permissions::from_mode(u32::from(mode)))?;
     let mode = entry.metadata()?.permissions().mode();

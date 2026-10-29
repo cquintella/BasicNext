@@ -165,6 +165,15 @@ From a checkout, `cargo run -p bni -- run <file>` uses this tree's toolchain.
 
 ## Release notes
 
+### 0.6.12 (carries 0.6.11)
+
+- **`HOST.FileSystem` directories**: `GetCurrentDirectory`, `SetCurrentDirectory`, `CreateDirectory`, `RemoveDirectory`, `IsDirectory`, private `OpenNew`, `Copy` and `Move`, with codes `IS_NOT_DIRECTORY` (10), `DIRECTORY_NOT_EMPTY` (11) and `ALREADY_EXISTS` (12). No symbolic link is followed, an existing entry is never changed, new entries are owner-only on Unix, and every path obeys the execution policy.
+- **`BNCrypto.Key`** with operating-system random keys and nonces, wiped on release.
+- **`BNCompress`**: DEFLATE, Gzip and ZIP archives, with `ZIP_SLIP` and size limits and the filesystem policy.
+- **`BNMath`**: compensated `Sum`, `Product`, `Dot` and Student's t distribution.
+- **Numeric literals**: out-of-range literals are `TYPE_MISMATCH` in every destination; an integer constant with no destination is `INT32`.
+- Details: `docs/releases/0.6.11.md` and `docs/releases/0.6.12.md` in the documentation tree.
+
 ### 0.6.10
 
 - **Numerics & Descriptive Statistics (`BNMath`, `BNData`)**:
