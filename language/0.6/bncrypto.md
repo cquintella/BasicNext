@@ -2,7 +2,7 @@
 
 ## Status
 
-External standard-library module (bucket 0.6.1b). Source of truth:
+External standard-library module (since 0.6.1). Source of truth:
 `modules/bn/BNCrypto.bn`. The digests are **not** implemented in Basic Next: they
 come from `bn_rt::crypto` over the C ABI, so the interpreter (`bni`, through the
 `bn_lib_crypto` provider) and compiled binaries (`bnc`, through the LLVM backend)
@@ -71,13 +71,12 @@ characters is not a byte sequence.
 `RandomBytes` accepts a `length` from 0 through 1 MiB (1 048 576 bytes); any other
 length is an `Error` with `Code` `INVALID_ARGUMENT`, and nothing is allocated. Keys,
 seeds and nonces need tens of bytes; the bound keeps a mistaken length from
-exhausting memory. (BDFL decision, 2026-10-27, delegated to the bucket 0.6.11
-audit, finding A10.)
+exhausting memory (BDFL decision, 2026-10-27).
 
 A `Key` whose material was erased with `.Zeroize()` stays a valid handle but holds
 no key: every operation that uses it returns an `Error` with `Code`
-`INVALID_ARGUMENT`, on both backends, and the program continues. (BDFL decision,
-2026-10-27, delegated to the bucket 0.6.11 audit, finding A5.)
+`INVALID_ARGUMENT`, on both backends, and the program continues (BDFL decision,
+2026-10-27).
 
 ### Algorithm Constants
 

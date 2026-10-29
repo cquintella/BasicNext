@@ -145,11 +145,11 @@ These instance methods use the same algorithms and `NAN` / `NA` rules as
 otherwise `Error`.
 
 A cell that is `NA` (a missing datum) is left out of the statistic, as
-pandas `skipna=True` does (BDFL decision, 2026-10-26, D-3): `Mean` of
+pandas `skipna=True` does (BDFL decision, 2026-10-26): `Mean` of
 `1.0`, `NA`, `3.0` is `2.0`. A column whose cells are all `NA` counts as
 empty: `Mean`, `Median`, `Quartile*`, `Range`, `Stdev` and `Variance` are
 `NAN`, `Mode` is `NA`, and `Min` / `Max` return the empty-column `Error`
-(G-3). `NAN` is a value, not a missing datum: a `NAN` cell propagates as in
+(BDFL decision, 2026-10-26). `NAN` is a value, not a missing datum: a `NAN` cell propagates as in
 `BNMath`, so a column with `NA` and `NAN` gives `NAN`.
 
 | Method | Meaning |
@@ -168,7 +168,7 @@ empty: `Mean`, `Median`, `Quartile*`, `Range`, `Stdev` and `Variance` are
 
 ## Missing values (0.6.10)
 
-BDFL decisions D-3 (2026-10-26) and G-5 (2026-10-27). A missing column name
+Decided (BDFL decision, 2026-10-26; BDFL decision, 2026-10-27). A missing column name
 is `Data.NOT_FOUND`, as everywhere in this module.
 
 | Method | Meaning |

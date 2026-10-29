@@ -122,7 +122,7 @@ and `Stderr` are identifiers on host types, not keywords.
 
 ## 0.5.2 changes
 
-Surface shipped by bucket `ongoing/bucket-0.5.2.md`. Since
+Surface shipped in 0.5.2. Since
 2026-09-19 (SPRINT 3) the lexer registry is generated from **this** file and
 `0.6.ebnf` (`crates/bn_frontend/build.rs`), so `PROTECTED` and `OVERRIDE` are
 reserved words in the shipped lexer from that build on; `PROTECTED` semantics

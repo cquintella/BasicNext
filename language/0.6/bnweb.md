@@ -104,7 +104,7 @@ committed response cannot be reset or silently replaced.
 
 ### Route parameters, query values and cookies (0.6.5)
 
-Bucket 0.6.5 E.S0.d (Carlos, 2026-10-10). A route `GET /users/:id` matches
+Decided (BDFL decision, 2026-10-10): a route `GET /users/:id` matches
 `/users/00102`; the handler reads `request.Param("id")`, `"00102"`. A query
 field never selects a route: `GET /users` serves `/users?id=00102`, and
 `request.Query("id")` returns its values.
@@ -147,7 +147,7 @@ stop, cleanup, and idempotent close have explicit time and queue bounds.
 
 ### Parallel handlers and server sessions (0.6.5)
 
-Bucket 0.6.5 E.S0.e (Carlos, 2026-10-10). A server runs its handlers in
+Decided (BDFL decision, 2026-10-10): a server runs its handlers in
 parallel on a `BNDispatch` queue the program owns:
 
 ```basic

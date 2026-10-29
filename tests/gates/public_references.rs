@@ -8,8 +8,8 @@
 //! unpublished documentation, so a path into them or a private identifier
 //! (an issue number, a bucket item, an audit finding) explains nothing.
 //! `tests/check-public-references.sh` finds them; this gate holds the
-//! files that still have some to a ratchet that may only shrink, with each
-//! count exact, so the list ends empty.
+//! files that still have some to a ratchet (`tests/public_references.list`,
+//! removed once empty) that may only shrink, with each count exact.
 
 use std::{collections::BTreeMap, fs, path::Path, process::Command};
 
@@ -77,7 +77,8 @@ fn ratchet_violations(
 #[test]
 fn public_files_cite_no_private_material_beyond_the_ratchet() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let allowed = ratchet(&fs::read_to_string(root.join(RATCHET)).expect("ratchet list"));
+    // The list is gone once every file is clean; an absent list is empty.
+    let allowed = ratchet(&fs::read_to_string(root.join(RATCHET)).unwrap_or_default());
     let violations = ratchet_violations(&findings_per_file(root), &allowed);
     assert!(
         violations.is_empty(),

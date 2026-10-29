@@ -58,7 +58,7 @@ outside 0.3; fixed typed values avoid dynamic maps and generated methods.
 
 ## API (0.6.5)
 
-Decided 2026-10-11 (Carlos; bucket 0.6.5 P.15). It replaces the 0.3
+Decided (BDFL decision, 2026-10-11). It replaces the 0.3
 surface (`NEW Logger()`, `AddConsole`, `AddFile`, `AddNull`, `SetFormat`,
 `Log`, `Child`, `Fields`, `Entry`, `Transport`), which is removed.
 

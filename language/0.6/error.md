@@ -39,7 +39,7 @@ result (see [math.md](math.md), [bnstring.md](bnstring.md)).
 
 ## No default value
 
-Bucket typed-llvm-emitter (BDFL decision, 2026-10-05). Because a program cannot
+Decided (BDFL decision, 2026-10-05). Because a program cannot
 construct an `Error`, an `Error` has no default value: a `LET`, a class or
 `STRUCT` field, or a vector whose type is `Error` (or whose elements are
 `Error`) needs an initializer that is an `Error` the program received, and
