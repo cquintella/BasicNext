@@ -112,7 +112,7 @@ is removed.
 
 ## Limits
 
-Decompression never produces more than 256 MiB (268 435 456 bytes) in one call: `Inflate`, `Gunzip`, `InflateText`, `GunzipText`, `ExtractBytes`, `ExtractText` and `ExtractFile` for one entry, and `ExtractAll` for all entries together. Output beyond the limit is not allocated or written; the call returns an `Error` with `Code` `BNCompress.LIMIT_EXCEEDED`, so a small archive crafted to expand without bound (a decompression bomb) cannot exhaust memory or disk. (BDFL decision, 2026-10-27.)
+Decompression never produces more than 256 MiB (268 435 456 bytes) in one call: `Inflate`, `Gunzip`, `InflateText`, `GunzipText`, `ExtractBytes`, `ExtractText` and `ExtractFile` for one entry, and `ExtractAll` for all entries together. Output beyond the limit is not allocated or written; the call returns an `Error` with `Code` `BNCompress.LIMIT_EXCEEDED`, so a small archive crafted to expand without bound (a decompression bomb) cannot exhaust memory or disk. (BDFL decision, 2026-10-27, delegated to an audit.)
 
 ## Errors
 

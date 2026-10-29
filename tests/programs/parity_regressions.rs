@@ -800,8 +800,8 @@ fn vector_literal_in_loop_reuses_entry_slot_without_stack_growth() {
 /// Narrowed resources store cleanly into `T OR NULL` and static `Log.Logger OR Error`.
 #[test]
 fn narrowed_resources_store_into_nullable_and_error_alternatives() {
-    let directory = TestDir::new("parity-k91-narrowed-resources").expect("create directory");
-    let path = directory.join("k91.bn");
+    let directory = TestDir::new("parity-narrowed-resources").expect("create directory");
+    let path = directory.join("narrowed.bn");
     fs::write(
         &path,
         r#"IMPORT HOST.FileSystem AS FS
@@ -814,7 +814,7 @@ END CLASS
 
 FUNCTION Start() AS VOID
     LET local_file AS FS.File OR NULL = NULL
-    LET res AS FS.File OR Error = FS.Open("nonexistent_test_k91.txt", FS.READ)
+    LET res AS FS.File OR Error = FS.Open("nonexistent_narrowed_test.txt", FS.READ)
     IF NOT (res IS Error) THEN
         local_file = res
         State.file_kept = res
@@ -825,11 +825,11 @@ FUNCTION Start() AS VOID
         LET logger AS Log.Logger = log_res
         State.log_kept = logger
     END IF
-    PRINT "k91 ok"
+    PRINT "narrowed ok"
 END FUNCTION
 "#,
     )
-    .expect("write k91 source");
+    .expect("write the narrowed-resources source");
 
     let artifact = compile_native(&path, &directory);
     for (backend, output) in [
@@ -839,7 +839,7 @@ END FUNCTION
         assert_success(&output, backend);
         assert_eq!(
             String::from_utf8_lossy(&output.stdout).trim(),
-            "k91 ok",
+            "narrowed ok",
             "{backend}"
         );
     }
@@ -848,8 +848,8 @@ END FUNCTION
 /// ARC trace region labels match on both backends.
 #[test]
 fn arc_trace_region_labels_match_on_both_backends() {
-    let directory = TestDir::new("parity-k16-arc-trace-region").expect("create directory");
-    let path = directory.join("k16.bn");
+    let directory = TestDir::new("parity-arc-trace-region").expect("create directory");
+    let path = directory.join("arc_trace.bn");
     fs::write(
         &path,
         r"FUNCTION Start() AS VOID
@@ -858,7 +858,7 @@ fn arc_trace_region_labels_match_on_both_backends() {
 END FUNCTION
 ",
     )
-    .expect("write k16 source");
+    .expect("write the trace source");
 
     let artifact = compile_native(&path, &directory);
     let interpreted = execute(bni().env("BN_ARC_TRACE", "1").arg("run").arg(&path), None);
@@ -887,8 +887,8 @@ END FUNCTION
 /// Standard-library handles are released at end of binding.
 #[test]
 fn standard_library_handles_are_released_at_end_of_binding() {
-    let directory = TestDir::new("parity-k63-standard-handles").expect("create directory");
-    let path = directory.join("k63.bn");
+    let directory = TestDir::new("parity-standard-handles").expect("create directory");
+    let path = directory.join("handles.bn");
     fs::write(
         &path,
         r#"IMPORT BNJson AS Json
@@ -915,7 +915,7 @@ FUNCTION Start() AS VOID
 END FUNCTION
 "#,
     )
-    .expect("write k63 source");
+    .expect("write the handles source");
 
     let artifact = compile_native(&path, &directory);
     for (backend, output) in [

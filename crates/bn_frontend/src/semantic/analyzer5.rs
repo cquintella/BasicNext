@@ -356,7 +356,7 @@ impl Analyzer {
                     self.validate_is_test(&left_type, right, expression.span)?;
                     Ok(Type::Boolean)
                 } else if (operator == "AND" || operator == "OR") && left_type == Type::Boolean {
-                    // The right operand sees a narrowed binding (0.6.md, IS, D1).
+                    // The right operand sees a narrowed binding (0.6.md, "`IS` narrowing").
                     let narrowed = self.narrowed_locals(left, locals, operator == "AND")?;
                     let right_type = self.expression(right, &narrowed)?;
                     if right_type != Type::Boolean {

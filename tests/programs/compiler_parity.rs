@@ -509,7 +509,7 @@ fn scalars_stored_into_alternatives_match_the_interpreter() {
     assert_native_parity(&path, None);
 }
 
-/// D9: `NEW FS.File()` and a plain `FS.File` binding or parameter compile
+/// `NEW FS.File()` and a plain `FS.File` binding or parameter compile
 /// natively and behave as in the interpreter (a never-opened file).
 #[test]
 fn never_opened_files_match_the_interpreter() {

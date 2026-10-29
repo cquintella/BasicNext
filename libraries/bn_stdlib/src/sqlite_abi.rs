@@ -20,7 +20,7 @@ use super::sqlite_error::SqliteReport as _;
 
 fn input_string(pointer: *const c_char) -> Option<String> {
     // Path and SQL arrive as STRING values. The header length keeps an
-    // interior NUL, which `bn_core_sqlite` rejects (G7-D4).
+    // interior NUL, which `bn_core_sqlite` rejects.
     super::string::string_text(pointer)
 }
 

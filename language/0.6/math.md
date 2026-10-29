@@ -354,7 +354,7 @@ or outside `[0, 1]` give `NAN` (R stops with an error for the last).
 Infinite values take part as in R: the quantile between `−INF` and `INF`
 is `NAN`.
 
-`Covariance(x, y)` and `Correlation(x, y)` (BDFL decision, 2026-10-27; with the
+`Covariance(x, y)` and `Correlation(x, y)` (BDFL decision, 2026-10-27, for them and their
 overflow rules) take two numeric vectors or regions of the
 same length, of any element types; different lengths stop the program
 with `VECTOR_LENGTH_MISMATCH`. With `d = x − MEAN(x)` and

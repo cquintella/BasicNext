@@ -12,7 +12,7 @@ pub use bn_host_env::{INVALID_NAME, INVALID_UTF8, NOT_SET, POLICY_DENIED};
 
 fn input<'a>(ptr: *const c_char) -> Option<&'a str> {
     // An environment name is a STRING. An interior NUL stays in the text so
-    // `bn_host_env` rejects it the same way `bni` does (G7-D4).
+    // `bn_host_env` rejects it the same way `bni` does.
     std::str::from_utf8(crate::string::slice_from_raw(ptr)?).ok()
 }
 

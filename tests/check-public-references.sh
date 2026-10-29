@@ -30,7 +30,7 @@ command -v rg > /dev/null 2>&1 || {
 GAP='(?:\s|//[/!]?|#)+'
 # Identifiers of private plans and findings: bucket items and sections,
 # activity IDs, review and audit findings, decision and gate labels.
-IDS='[A-Z]{1,2}\.S[0-9]+(\.[a-z])?|S[0-9]+\.[0-9a-z]+|P\.[0-9]+|P[0-9]{1,2}[a-z]?|A[0-9]{2}|[DG]-[0-9]+|D-[0-9]{3}-[0-9]+|H-D[0-9]+|CRY-[0-9]+|[A-Z]{2,5}-[A-Z]{2,5}-[0-9]+|R[0-9]+|B[0-9]{1,2}|[A-Z]\.[0-9]+(\.[A-Z0-9]+)*|[Ss]print [0-9]+|AUDIT-[A-Z0-9-]+'
+IDS='[A-Z]{1,2}\.S[0-9]+(\.[a-z])?|S[0-9]+\.[0-9a-z]+|P\.[0-9]+|P[0-9]{1,2}[a-z]?|D[0-9]+|[DG]-[0-9]+|D-[0-9]{3}-[0-9]+|H-D[0-9]+|CRY-[0-9]+|[A-Z]{2,5}-[A-Z]{2,5}-[0-9]+|R[0-9]+|B[0-9]{1,2}|[A-Z]\.[0-9]+(\.[A-Z0-9]+)*|AUDIT-[A-Z0-9-]+'
 
 # Always private, wherever they appear.
 ALWAYS=(
@@ -43,7 +43,14 @@ ALWAYS=(
     'bn/[d]ocs/'
     '\bdocs/(architecture|project|releases|governance|research|positioning|library)\b'
     '\bbucket-[0-9a-z][0-9a-z.-]*'
-    '(?i)\bsprint-?[0-9]+\b'
+    '(?i)\bsprint[- ]?[0-9]+\b'
+    '\bk[0-9]{2,3}\b'
+    '(?i)\bknown\s+issues?\s+#?[0-9]+'
+    '\bKI-[0-9]+\b'
+    '\bG[0-9]+-D[0-9]+\b'
+    '\bD-0[0-9]{2}\b'
+    '\b[a-z0-9-]+-design\.md\b'
+    '\bprocess-adjustments\b'
 )
 # Private when cited: a bucket named by version or name (the words may be
 # wrapped), an ID in parentheses, or an ID after a citing word.
@@ -53,6 +60,9 @@ CITED=(
     "\\b[0-9]\\.[0-9]+\\.[0-9]+[a-z]?${GAP}bucket\\b"
     "\\([^)]{0,200}?\\b(${IDS})\\b[^)]{0,200}?\\)"
     "(^|//[/!]?|#)\\s*(${IDS})[,:]"
+    "§[0-9][0-9.]*[^.\\n]{0,30}\\bbucket\\b"
+    "(?i:\\b(audits?|findings?)\\b)[^.;:)]{0,40}?\\bA[0-9]{1,2}\\b"
+    "\\bbucket\\b[^.\\n]{0,30}§[0-9]"
     "(?i:\\b(known\\s+issues?|issues?|decisions?|audits?|findings?|buckets?|sections?|items?|clusters?|gates?)\\b)[^.;:)]{0,40}?\\b(${IDS})\\b"
 )
 
@@ -92,18 +102,30 @@ drop_allowed() {
         cat
         return
     fi
-    awk -F'\t' '
-        NR == FNR {
-            if ($0 !~ /^#/ && NF >= 3) literal[$1, ++count[$1]] = $2
-            next
-        }
-        {
-            keep = 1
-            if ($3 == "cited")
-                for (entry = 1; entry <= count[$1]; entry++)
-                    if (index($4, literal[$1, entry])) keep = 0
-            if (keep) print
-        }' "$allow" -
+    local path number tier text stripped matched keep pattern entry_path literal reason
+    while IFS=$'\t' read -r path number tier text; do
+        if [[ $tier == cited ]]; then
+            # Remove each allowed literal, then test the rest of the line
+            # again: an exemption covers its literal, not its line.
+            stripped=$text
+            matched=0
+            while IFS=$'\t' read -r entry_path literal reason; do
+                [[ $entry_path == \#* || -z $literal ]] && continue
+                if [[ $entry_path == "$path" && $stripped == *"$literal"* ]]; then
+                    stripped=${stripped//"$literal"/}
+                    matched=1
+                fi
+            done < "$allow"
+            if ((matched)); then
+                keep=0
+                for pattern in "${CITED[@]}"; do
+                    printf '%s\n' "$stripped" | rg -q -e "$pattern" && keep=1
+                done
+                ((keep)) || continue
+            fi
+        fi
+        printf '%s\t%s\t%s\t%s\n' "$path" "$number" "$tier" "$text"
+    done
 }
 
 {

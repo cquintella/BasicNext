@@ -162,7 +162,7 @@ pub fn libc_fflush() -> io::Result<()> {
     }
 }
 
-#[allow(unsafe_code)] // C ABI: read a Basic Next STRING pointer using header length (G7-D1).
+#[allow(unsafe_code)] // C ABI: read a Basic Next STRING pointer using header length.
 pub fn c_str<'a>(ptr: *const c_char) -> Option<&'a str> {
     if ptr.is_null() {
         return None;

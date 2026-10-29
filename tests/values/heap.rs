@@ -142,7 +142,7 @@ END FUNCTION
 /// Destroying an object releases the element buffer of its fixed-vector fields.
 #[test]
 fn object_destruction_releases_fixed_vector_element_buffer() {
-    let directory = TestDir::new("heap-k89-vector-field").expect("create directory");
+    let directory = TestDir::new("heap-vector-field").expect("create directory");
     let path = directory.join("vec_field.bn");
     fs::write(
         &path,

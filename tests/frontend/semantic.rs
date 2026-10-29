@@ -1084,8 +1084,8 @@ fn async_function_parameter_count_and_types_are_validated() {
 
 #[test]
 fn imported_module_diagnostics_use_that_modules_source_and_spelling() {
-    let library = Path::new("/bn-k58-semantic/lib.bn");
-    let entry = Path::new("/bn-k58-semantic/main.bn");
+    let library = Path::new("/bn-module-semantic/lib.bn");
+    let entry = Path::new("/bn-module-semantic/main.bn");
     let class =
         "EXPORT CLASS Box\n    PUBLIC FUNCTION CONSTRUCTOR()\n    END FUNCTION\nEND CLASS\n";
     let mut overlays = std::collections::BTreeMap::new();

@@ -124,7 +124,7 @@ impl Analyzer {
             Type::Named(owner) => (owner.as_str(), false),
             Type::TypeName(owner) => (owner.as_str(), true),
             // An alternative is not narrowed here: `b.n` with `b AS Box OR NULL`
-            // is a static mismatch even when every arm has `n` (0.6.md, IS, D2).
+            // is a static mismatch even when every arm has `n` (0.6.md, "`IS` narrowing").
             Type::Alternative(_) => {
                 return Err(type_mismatch(
                     bn_catalog::text("frontend", "msg.narrowed_value"),

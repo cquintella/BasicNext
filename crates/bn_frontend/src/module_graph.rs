@@ -840,8 +840,8 @@ mod tests {
 
     #[test]
     fn imported_type_names_use_the_diagnosing_modules_spelling() {
-        let entry = PathBuf::from("/bn-k58-spell/main.bn");
-        let library = PathBuf::from("/bn-k58-spell/lib.bn");
+        let entry = PathBuf::from("/bn-module-spelling/main.bn");
+        let library = PathBuf::from("/bn-module-spelling/lib.bn");
         let mut overlays = BTreeMap::new();
         overlays.insert(library.clone(), "EXPORT CONST Answer = 1\n".into());
         overlays.insert(

@@ -141,8 +141,8 @@ serially. An internal bounded
 `HOST.Net` runtime may perform concurrent transport I/O, but it does not add
 `ASYNC`/`AWAIT` syntax or concurrent handler execution. The explicit `Server.Dispatch`
 operation invokes BN filters and route handlers; HTTP transport adapters use
-the approved Rust callback bridge in the verified Sprint 11 boundary.
-Transport-to-BN callback projection is gated for Sprint 13 `BNDispatch`. Start, dispatch, overload, graceful
+the approved Rust callback bridge at its verified boundary.
+Transport-to-BN callback projection waits for the `BNDispatch` integration. Start, dispatch, overload, graceful
 stop, cleanup, and idempotent close have explicit time and queue bounds.
 
 ### Parallel handlers and server sessions (0.6.5)
@@ -217,8 +217,8 @@ material are not written. `NEW Client()` has no logger and writes nothing.
 
 The 0.3 client has bounded cleartext connect/read/write/total timeouts,
 response bodies, decompression policy, cookie jars, and connection reuse.
-HTTPS client transport and certificate trust roots are gated for Sprint 13 by
-D-026; 0.3 makes no HTTPS client support claim before that gate closes. HTTPS servers
+HTTPS client transport and certificate trust roots wait for the same integration and a decision
+gate; 0.3 makes no HTTPS client support claim before that gate closes. HTTPS servers
 never silently downgrade and retain the accepted certificate/SNI/ALPN policy.
 
 HTTPS servers receive certificates through the explicit external `TLSConfig`

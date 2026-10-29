@@ -40,7 +40,7 @@ pub(crate) struct LlvmGlobal {
 
 /// Alignment of a static STRING header (`[i64 count][i64 len][bytes]`).
 const STRING_GLOBAL_ALIGNMENT: u32 = 8;
-/// Bit pattern of `u64::MAX`: an immortal buffer (G7-D2).
+/// Bit pattern of `u64::MAX`: an immortal buffer.
 const IMMORTAL_REF_COUNT_BITS: i64 = -1;
 
 impl LlvmGlobal {
@@ -84,7 +84,7 @@ impl LlvmGlobal {
     }
 
     /// A static STRING: immortal count, byte length, payload and trailing NUL.
-    /// The value pointer is 16 bytes into this global (G7-D2).
+    /// The value pointer is 16 bytes into this global.
     ///
     /// # Panics
     ///

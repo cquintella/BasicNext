@@ -6,7 +6,7 @@
 //! Gate against logic duplicated between the interpreter side and the native
 //! side. A rule lives once, in a shared core
 //! (`bn_core_*`, `bn_host_*` cores, `bn_types`, `bn_ir`, `bn_diag`); the two
-//! sides only adapt it. Two signals, both from the §1.2 scan of the bucket:
+//! sides only adapt it. Two signals:
 //! an identical window of six normalized lines, and an identical string
 //! literal of 24 characters or more, found on both sides. Test code is not
 //! scanned. `tests/shared_logic.allow` lists the accepted findings, each with

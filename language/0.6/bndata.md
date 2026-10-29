@@ -168,7 +168,7 @@ empty: `Mean`, `Median`, `Quartile*`, `Range`, `Stdev` and `Variance` are
 
 ## Missing values (0.6.10)
 
-Decided (BDFL decision, 2026-10-26; BDFL decision, 2026-10-27). A missing column name
+Decided (BDFL decision, 2026-10-26) (BDFL decision, 2026-10-27). A missing column name
 is `Data.NOT_FOUND`, as everywhere in this module.
 
 | Method | Meaning |

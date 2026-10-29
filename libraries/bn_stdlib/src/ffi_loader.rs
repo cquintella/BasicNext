@@ -64,7 +64,7 @@ fn cache_loaded_library(key: LibraryKey, loaded: Library) -> Arc<Library> {
 
 /// Resolves and returns a dynamically loaded library by name or path.
 ///
-/// Precedence order per Decision D4:
+/// Precedence order:
 /// 1. Direct path if name contains `/` or `\`
 /// 2. Given exact filename if name contains `.`
 /// 3. Search `--ffi-path` directories (if supplied)

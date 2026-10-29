@@ -1338,7 +1338,7 @@ fn bnjson_companion_interprets() {
     );
 }
 
-/// D6: a syntax error says what was expected once, and a rule violation is
+/// A syntax error says what was expected once, and a rule violation is
 /// its own identity (E0101), both with cause and help.
 #[test]
 fn syntax_errors_state_the_expectation_or_the_rule() {

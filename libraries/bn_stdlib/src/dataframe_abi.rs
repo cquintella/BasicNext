@@ -1154,7 +1154,7 @@ pub extern "C" fn bn_rt_dataframe_copy_integer(
     });
     match result {
         Ok(values) => {
-            // SAFETY: G7-D1: a non-null STRING is preceded by its header; the allocation is the header, the payload and a trailing NUL, and a null allocation is not read.
+            // SAFETY: a non-null STRING is preceded by its header; the allocation is the header, the payload and a trailing NUL, and a null allocation is not read.
             unsafe {
                 std::ptr::copy_nonoverlapping(values.as_ptr(), target, values.len());
             }
@@ -1191,7 +1191,7 @@ pub extern "C" fn bn_rt_dataframe_copy_float(
     });
     match result {
         Ok(values) => {
-            // SAFETY: G7-D1: a non-null STRING is preceded by its header; the allocation is the header, the payload and a trailing NUL, and a null allocation is not read.
+            // SAFETY: a non-null STRING is preceded by its header; the allocation is the header, the payload and a trailing NUL, and a null allocation is not read.
             unsafe {
                 std::ptr::copy_nonoverlapping(values.as_ptr(), target, values.len());
             }

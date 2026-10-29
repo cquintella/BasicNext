@@ -7,14 +7,13 @@
 //! or of the book cannot open the private process repository or the
 //! unpublished documentation, so a path into them or a private identifier
 //! (an issue number, a bucket item, an audit finding) explains nothing.
-//! `tests/check-public-references.sh` finds them; this gate holds the
-//! files that still have some to a ratchet (`tests/public_references.list`,
-//! removed once empty) that may only shrink, with each count exact.
+//! `tests/check-public-references.sh` finds them; any finding fails the
+//! gate (a public identifier that looks private is exempted, literal by
+//! literal, in `tests/public_references.allow`).
 
 use std::{collections::BTreeMap, fs, path::Path, process::Command};
 
 const SCANNER: &str = "tests/check-public-references.sh";
-const RATCHET: &str = "tests/public_references.list";
 
 /// Findings per file from the scanner run on `root`.
 fn findings_per_file(root: &Path) -> BTreeMap<String, usize> {
@@ -35,56 +34,14 @@ fn findings_per_file(root: &Path) -> BTreeMap<String, usize> {
     counts
 }
 
-/// `count<TAB>path` lines; `#` starts a comment.
-fn ratchet(text: &str) -> BTreeMap<String, usize> {
-    text.lines()
-        .filter(|line| !line.trim().is_empty() && !line.starts_with('#'))
-        .map(|line| {
-            let (count, path) = line.split_once('\t').expect("count<TAB>path");
-            (path.to_owned(), count.parse().expect("a count"))
-        })
-        .collect()
-}
-
-/// Every difference between the findings and the ratchet.
-fn ratchet_violations(
-    found: &BTreeMap<String, usize>,
-    allowed: &BTreeMap<String, usize>,
-) -> Vec<String> {
-    let mut violations = Vec::new();
-    for (file, count) in found {
-        match allowed.get(file) {
-            None => violations.push(format!("{file}: {count} new private reference(s)")),
-            Some(limit) if count > limit => {
-                violations.push(format!(
-                    "{file}: {count} private references, ratchet {limit}"
-                ));
-            }
-            Some(limit) if count < limit => {
-                violations.push(format!(
-                    "{file}: down to {count}; lower its ratchet from {limit}"
-                ));
-            }
-            Some(_) => {}
-        }
-    }
-    for file in allowed.keys().filter(|file| !found.contains_key(*file)) {
-        violations.push(format!("{file}: clean now; remove it from {RATCHET}"));
-    }
-    violations
-}
-
 #[test]
-fn public_files_cite_no_private_material_beyond_the_ratchet() {
+fn public_files_cite_no_private_material() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    // The list is gone once every file is clean; an absent list is empty.
-    let allowed = ratchet(&fs::read_to_string(root.join(RATCHET)).unwrap_or_default());
-    let violations = ratchet_violations(&findings_per_file(root), &allowed);
+    let found = findings_per_file(root);
     assert!(
-        violations.is_empty(),
+        found.is_empty(),
         "state the reason in place instead of citing a private path or ID \
-         (`bash {SCANNER} --root .` lists them):\n{}",
-        violations.join("\n")
+         (`bash {SCANNER} --root .` lists them): {found:?}"
     );
 }
 
@@ -141,32 +98,9 @@ fn the_scanner_finds_each_private_shape_and_passes_plain_text() {
     );
 }
 
-#[test]
-fn the_ratchet_only_shrinks_and_ends_empty() {
-    let allowed = ratchet("# comment\n2\ta.rs\n1\tb.rs\n");
-    let same = BTreeMap::from([("a.rs".to_owned(), 2), ("b.rs".to_owned(), 1)]);
-    assert!(ratchet_violations(&same, &allowed).is_empty());
-    let grown = BTreeMap::from([("a.rs".to_owned(), 3), ("b.rs".to_owned(), 1)]);
-    assert_eq!(ratchet_violations(&grown, &allowed).len(), 1);
-    let new_file = BTreeMap::from([
-        ("a.rs".to_owned(), 2),
-        ("b.rs".to_owned(), 1),
-        ("c.rs".to_owned(), 1),
-    ]);
-    assert_eq!(ratchet_violations(&new_file, &allowed).len(), 1);
-    let shrunk = BTreeMap::from([("a.rs".to_owned(), 1)]);
-    assert_eq!(
-        ratchet_violations(&shrunk, &allowed).len(),
-        2,
-        "a lower count and a clean file must update the list"
-    );
-}
-
-#[test]
-fn the_scanner_finds_the_audited_spellings_and_exempts_only_cited_ones() {
-    let tree = super::support::TestDir::new("public-references-audit").expect("scratch tree");
-    // Built at run time, so this file holds none of the shapes it plants.
-    let samples = [
+/// The audited spellings, built at run time so this file holds none of them.
+fn audited_samples() -> Vec<(&'static str, String)> {
+    vec![
         (
             "relative.md",
             format!("[usage](../../{}/project/usage.md)\n", "docs"),
@@ -207,7 +141,37 @@ fn the_scanner_finds_the_audited_spellings_and_exempts_only_cited_ones() {
             "not_exempt.rs",
             format!("// FIPS 203 (ML-{}-768) and K{}\n", "KEM", 61),
         ),
-    ];
+        (
+            "lowercase.rs",
+            format!("let dir = \"parity-k{}-cell\";\n", 91),
+        ),
+        (
+            "spelled.md",
+            format!("See known issue {} for details.\n", 61),
+        ),
+        ("sprint.rs", format!("// found by the Sprint {} audit\n", 2)),
+        ("onedigit.md", format!("Bounded (audit, finding A{}).\n", 2)),
+        (
+            "section.rs",
+            format!("// both from the §{}.2 scan of the bucket\n", 1),
+        ),
+        (
+            "gatelabel.rs",
+            format!("// SAFETY: G{}-D{}. A header precedes it.\n", 7, 1),
+        ),
+        ("decision.rs", format!("// gated by D-{}{}\n", 0, 26)),
+        ("design.md", format!("See process-{}-design.md.\n", "notes")),
+        (
+            "partly_exempt.rs",
+            format!("// ML-{}-768 sizes (audit finding A{})\n", "KEM", 14),
+        ),
+    ]
+}
+
+#[test]
+fn the_scanner_finds_the_audited_spellings_and_exempts_only_cited_ones() {
+    let tree = super::support::TestDir::new("public-references-audit").expect("scratch tree");
+    let samples = audited_samples();
     fs::create_dir_all(tree.join("tests")).expect("tests folder");
     for (name, text) in &samples {
         fs::write(tree.join(name), text).expect("sample");
@@ -215,7 +179,8 @@ fn the_scanner_finds_the_audited_spellings_and_exempts_only_cited_ones() {
     fs::write(
         tree.join("tests/public_references.allow"),
         "exempt.rs\tML-KEM-768\ta public algorithm name\n\
-         not_exempt.rs\tK\tan exemption never covers the always tier\n",
+         not_exempt.rs\tK\tan exemption never covers the always tier\n\
+         partly_exempt.rs\tML-KEM-768\ta public algorithm name\n",
     )
     .expect("allow list");
     let found = findings_per_file(tree.path());
@@ -229,11 +194,20 @@ fn the_scanner_finds_the_audited_spellings_and_exempts_only_cited_ones() {
             "citing.md",
             "cluster.rs",
             "dashed.rs",
+            "decision.rs",
+            "design.md",
+            "gatelabel.rs",
             "hyphen.rs",
             "leading.rs",
+            "lowercase.rs",
             "not_exempt.rs",
+            "onedigit.md",
+            "partly_exempt.rs",
             "process.md",
             "relative.md",
+            "section.rs",
+            "spelled.md",
+            "sprint.rs",
             "wrapped.rs",
         ],
         "{found:?}"
