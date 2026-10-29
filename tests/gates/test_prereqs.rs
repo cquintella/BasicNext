@@ -112,26 +112,13 @@ fn scratch_workspace(label: &str) -> super::support::TestDir {
     .expect("copy the build script");
     fs::write(workspace.join("source.rs"), "fn main() {}\n").expect("write a source");
     fs::write(workspace.join(".gitignore"), "/ignored/\n/target/\n").expect("write .gitignore");
-    git(&workspace, &["init", "--quiet"]);
-    git(&workspace, &["add", "--all"]);
-    git(&workspace, &["commit", "--quiet", "--message", "base"]);
+    super::support::git(workspace.path(), &["init", "--quiet"]);
+    super::support::git(workspace.path(), &["add", "--all"]);
+    super::support::git(
+        workspace.path(),
+        &["commit", "--quiet", "--message", "base"],
+    );
     workspace
-}
-
-fn git(workspace: &super::support::TestDir, arguments: &[&str]) {
-    let output = std::process::Command::new("git")
-        .current_dir(workspace.path())
-        .args([
-            "-c",
-            "user.name=test",
-            "-c",
-            "user.email=test@example.invalid",
-        ])
-        .args(["-c", "commit.gpgsign=false"])
-        .args(arguments)
-        .output()
-        .expect("run git");
-    assert!(output.status.success(), "git {arguments:?}: {output:?}");
 }
 
 fn stamp(workspace: &super::support::TestDir) -> String {
@@ -147,9 +134,9 @@ fn the_tree_stamp_follows_every_source_change() {
     fs::write(workspace.join("source.rs"), "fn main() { () }\n").expect("edit");
     let unstaged = stamp(&workspace);
     assert_ne!(unstaged, base, "an unstaged edit changes the stamp");
-    git(&workspace, &["add", "source.rs"]);
+    super::support::git(workspace.path(), &["add", "source.rs"]);
     assert_ne!(stamp(&workspace), base, "a staged edit changes the stamp");
-    git(&workspace, &["reset", "--quiet", "--hard"]);
+    super::support::git(workspace.path(), &["reset", "--quiet", "--hard"]);
     assert_eq!(stamp(&workspace), base, "reverting restores the stamp");
 
     fs::write(workspace.join("new.rs"), "// new\n").expect("untracked file");
@@ -167,8 +154,8 @@ fn the_tree_stamp_follows_every_source_change() {
     fs::write(workspace.join("ignored/build.log"), "output\n").expect("ignored file");
     assert_eq!(stamp(&workspace), base, "an ignored file does not count");
 
-    git(
-        &workspace,
+    super::support::git(
+        workspace.path(),
         &["commit", "--quiet", "--allow-empty", "--message", "next"],
     );
     assert_ne!(stamp(&workspace), base, "a new HEAD changes the stamp");

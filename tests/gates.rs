@@ -12,6 +12,10 @@ mod catalog_keys;
 mod dependency_gate;
 #[path = "gates/migration_ledger.rs"]
 mod migration_ledger;
+#[path = "gates/no_python.rs"]
+mod no_python;
+#[path = "gates/pre_commit.rs"]
+mod pre_commit;
 #[path = "gates/shared_cores.rs"]
 mod shared_cores;
 #[path = "gates/shared_logic.rs"]

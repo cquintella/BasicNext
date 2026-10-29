@@ -1,7 +1,19 @@
 #!/usr/bin/env bash
+#   tests/check-forbidden-deps.sh            # the working tree
+#   tests/check-forbidden-deps.sh --cached   # the index (pre-commit hook)
 set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+# --cached checks what a commit would hold: the index is exported to a
+# scratch tree and this gate, as staged, runs there.
+if [[ ${1:-} == --cached ]]; then
+  snapshot=$(mktemp -d "${TMPDIR:-/tmp}/bn-forbidden-deps-index.XXXXXX")
+  trap 'rm -rf "$snapshot"' EXIT
+  git -C "$repo_root" checkout-index --all --prefix="$snapshot/"
+  CARGO_TARGET_DIR="$repo_root/target" bash "$snapshot/tests/check-forbidden-deps.sh"
+  exit "$?"
+fi
 checker="$repo_root/scripts/check-forbidden-deps.sh"
 
 if [[ ! -x "$checker" ]]; then

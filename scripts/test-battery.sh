@@ -47,6 +47,7 @@ if [[ $GATES_ONLY == 1 ]]; then
   echo "== running pre-tag quality and contract gates"
   cargo fmt --all --check || exit 1
   cargo clippy --workspace --all-targets -- -D warnings || exit 1
+  bash scripts/repository-gates.sh || exit 1
   source scripts/build-test-prereqs.sh
   prepare_test_artifacts || exit "$?"
   cargo test --test gates --test codegen --test frontend --test ffi || exit 1

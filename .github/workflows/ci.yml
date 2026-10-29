@@ -44,10 +44,8 @@ jobs:
       - name: Clippy
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: Repository gates
-        run: |
-          tests/check-forbidden-deps.sh
-          tests/check-shared-cores.sh
-          bash tests/check-value-layout.sh
+        # The one gate list, shared with scripts/test-battery.sh --gates.
+        run: bash scripts/repository-gates.sh
 
   test:
     strategy:

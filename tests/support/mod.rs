@@ -214,3 +214,21 @@ pub fn compile_native(source: impl AsRef<Path>, directory: &TestDir) -> PathBuf 
     );
     artifact
 }
+
+/// Runs git in `directory` with a fixed identity and no signing, so tests
+/// can commit in scratch repositories; panics when git fails.
+pub fn git(directory: &Path, arguments: &[&str]) {
+    let output = Command::new("git")
+        .current_dir(directory)
+        .args([
+            "-c",
+            "user.name=test",
+            "-c",
+            "user.email=test@example.invalid",
+        ])
+        .args(["-c", "commit.gpgsign=false"])
+        .args(arguments)
+        .output()
+        .expect("run git");
+    assert!(output.status.success(), "git {arguments:?}: {output:?}");
+}

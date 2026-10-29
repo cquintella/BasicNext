@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Pre-commit hook (installed by scripts/install-hooks.sh). It checks what
+# the commit will hold — the index — never the working tree, so an
+# unrelated unformatted file does not block a commit and nobody's
+# uncommitted work is stashed or touched.
+set -euo pipefail
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+
+edition=$(sed -n 's/^edition *= *"\([0-9]*\)".*/\1/p' Cargo.toml | head -n 1)
+[[ -n $edition ]] || { echo "pre-commit: no edition in Cargo.toml" >&2; exit 1; }
+
+status=0
+while IFS= read -r -d '' path; do
+    # `rustfmt --check` exits 0 on standard input even when it prints a
+    # diff, so the staged text is compared with its formatted form. A file
+    # that does not parse formats to nothing and is refused too.
+    if ! cmp -s <(git show ":$path") \
+        <(git show ":$path" | rustfmt --edition "$edition" --emit stdout 2> /dev/null); then
+        echo "pre-commit: staged $path is not formatted (cargo fmt, then git add)" >&2
+        status=1
+    fi
+done < <(git diff --cached --name-only --diff-filter=ACMR -z -- '*.rs')
+
+git diff --cached --check || status=1
+bash tests/check-forbidden-deps.sh --cached > /dev/null || status=1
+exit "$status"
