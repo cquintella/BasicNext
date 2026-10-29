@@ -52,7 +52,7 @@ test_prereqs_stamp() {
     git -C "$root" rev-parse --verify --quiet HEAD > /dev/null || return "$?"
     {
         git -C "$root" rev-parse HEAD
-        git -C "$root" diff HEAD --binary
+        test_prereqs_diff "$root"
         git -C "$root" ls-files -z --others --exclude-standard \
             | LC_ALL=C sort -z \
             | while IFS= read -r -d '' path; do
@@ -61,9 +61,34 @@ test_prereqs_stamp() {
                     readlink "$root/$path"
                 elif [[ -f "$root/$path" ]]; then
                     cat -- "$root/$path"
+                elif [[ -d "$root/$path" ]]; then
+                    # An untracked nested repository is listed by name only;
+                    # its own commit, changes and new files count too.
+                    git -C "$root/$path" rev-parse HEAD 2> /dev/null || true
+                    test_prereqs_diff "$root/$path" 2> /dev/null || true
+                    git -C "$root/$path" status --porcelain=v1 -z --untracked-files=all \
+                        2> /dev/null || true
                 fi
             done
     } | git hash-object --stdin
+}
+
+# Staged and unstaged changes against HEAD, as raw bytes: a configured
+# external diff tool or textconv driver would otherwise hide every edit.
+test_prereqs_diff() {
+    git -C "$1" diff --no-ext-diff --no-textconv --binary HEAD
+}
+
+# Removes every stamp under the target directory before a build: a build
+# that fails half way has already replaced some artifacts, so the previous
+# stamp no longer describes them.
+test_prereqs_forget_stamps() {
+    local target
+    target=$(cargo metadata --format-version 1 --no-deps \
+        --manifest-path "$(test_prereqs_root)/Cargo.toml" 2> /dev/null \
+        | jq -r '.target_directory') || return 0
+    [[ -n $target && -d $target ]] || return 0
+    find "$target" -maxdepth 3 -name "$TEST_PREREQS_STAMP_FILE" -type f -delete
 }
 
 prepare_test_artifacts() {
@@ -76,6 +101,7 @@ prepare_test_artifacts() {
         echo "build-test-prereqs.sh: not a git work tree; no stamp is written, so" \
             "tests need every override (scripts/test.sh sets them)" >&2
     fi
+    test_prereqs_forget_stamps || return "$?"
     artifacts=$(cargo build --locked -p bni -p bnc -p bn_rt -p bn_stdlib -p bn_web \
         --message-format=json-render-diagnostics "$@") || return "$?"
     interpreter=$(printf '%s\n' "$artifacts" | jq -bser '

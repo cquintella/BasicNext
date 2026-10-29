@@ -42,10 +42,14 @@ pub fn overrides_complete(lookup: impl Fn(&str) -> Option<OsString>) -> bool {
         .all(|name| lookup(name).is_some_and(|path| Path::new(&path).is_file()))
 }
 
-/// `target/<profile>/` of the workspace, following `CARGO_TARGET_DIR`.
+/// `target/<profile>/` of the workspace, following `CARGO_TARGET_DIR` (or
+/// `CARGO_BUILD_TARGET_DIR`). A target directory set in a cargo config file
+/// or a `--target` triple is not followed: the stamp is then reported
+/// missing, which stops the tests instead of passing them.
 pub fn profile_dir(workspace: &Path) -> PathBuf {
-    let target =
-        env::var_os("CARGO_TARGET_DIR").map_or_else(|| workspace.join("target"), PathBuf::from);
+    let target = env::var_os("CARGO_TARGET_DIR")
+        .or_else(|| env::var_os("CARGO_BUILD_TARGET_DIR"))
+        .map_or_else(|| workspace.join("target"), PathBuf::from);
     let target = if target.is_absolute() {
         target
     } else {
@@ -58,11 +62,37 @@ pub fn profile_dir(workspace: &Path) -> PathBuf {
     })
 }
 
+/// The bash that runs the build script. On Windows, `System32\bash.exe` is
+/// the WSL launcher, and a default Git for Windows install puts only
+/// `Git\cmd` on PATH; so the first `bash.exe` on PATH outside System32 is
+/// taken, else the Git Bash beside `git --exec-path`
+/// (`…\mingw64\libexec\git-core` → `…\bin\bash.exe`).
+fn bash_program() -> PathBuf {
+    if !cfg!(windows) {
+        return PathBuf::from("bash");
+    }
+    let on_path = env::split_paths(&env::var_os("PATH").unwrap_or_default())
+        .filter(|directory| {
+            !directory
+                .to_string_lossy()
+                .to_ascii_lowercase()
+                .contains("system32")
+        })
+        .map(|directory| directory.join("bash.exe"))
+        .find(|candidate| candidate.is_file());
+    on_path
+        .or_else(|| {
+            let output = Command::new("git").arg("--exec-path").output().ok()?;
+            let exec_path = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
+            let git_bash = exec_path.ancestors().nth(3)?.join("bin").join("bash.exe");
+            git_bash.is_file().then_some(git_bash)
+        })
+        .unwrap_or_else(|| PathBuf::from("bash"))
+}
+
 /// The stamp of the tree under `workspace` now, from the build script.
 pub fn current_stamp(workspace: &Path) -> Result<String, String> {
-    // An explicit PATH makes Windows search it before System32, whose
-    // `bash.exe` is the WSL launcher, not the Git Bash that runs CI.
-    let output = Command::new("bash")
+    let output = Command::new(bash_program())
         .env("PATH", env::var_os("PATH").unwrap_or_default())
         .current_dir(workspace)
         .args([BUILD_SCRIPT, "--print-stamp"])

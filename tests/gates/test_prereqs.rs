@@ -36,7 +36,32 @@ fn scanned_files(directory: &Path, files: &mut Vec<std::path::PathBuf>) {
     }
 }
 
-/// A debug `cargo build` that names a prerequisite package.
+/// The packages a `cargo build` command line names (`-p x`, `-px`, `-p=x`,
+/// `--package x`, `--package=x`).
+fn named_packages(arguments: &str) -> Vec<String> {
+    let words: Vec<&str> = arguments.split_whitespace().collect();
+    let mut packages = Vec::new();
+    for (index, word) in words.iter().enumerate() {
+        let named = match *word {
+            "-p" | "--package" => words.get(index + 1).copied(),
+            _ => word
+                .strip_prefix("--package=")
+                .or_else(|| word.strip_prefix("-p="))
+                .or_else(|| word.strip_prefix("-p").filter(|rest| !rest.is_empty())),
+        };
+        if let Some(name) = named {
+            packages.push(
+                name.trim_matches(|character: char| "()'\";`".contains(character))
+                    .to_owned(),
+            );
+        }
+    }
+    packages
+}
+
+/// A debug `cargo build` that may build a prerequisite: one that names a
+/// prerequisite package, or names no package at all (the workspace default
+/// members or `--workspace` include every prerequisite).
 fn builds_a_prerequisite(line: &str) -> bool {
     let Some(arguments) = line.split_once("cargo build").map(|(_, rest)| rest) else {
         return false;
@@ -44,10 +69,32 @@ fn builds_a_prerequisite(line: &str) -> bool {
     if arguments.contains("--release") {
         return false;
     }
-    let words: Vec<&str> = arguments.split_whitespace().collect();
-    words.windows(2).any(|pair| {
-        pair[0] == "-p" && PREREQUISITE_PACKAGES.contains(&pair[1].trim_end_matches(')'))
-    })
+    let packages = named_packages(arguments);
+    packages.is_empty()
+        || packages
+            .iter()
+            .any(|package| PREREQUISITE_PACKAGES.contains(&package.as_str()))
+}
+
+/// Command lines with shell (`\`) and PowerShell (`` ` ``) continuations
+/// joined, each with the number of its first line.
+fn command_lines(text: &str) -> Vec<(usize, String)> {
+    let mut lines = Vec::new();
+    let mut pending: Option<(usize, String)> = None;
+    for (index, line) in text.lines().enumerate() {
+        let continued = line.trim_end().ends_with(['\\', '`']);
+        let content = line.trim_end().trim_end_matches(['\\', '`']);
+        let (number, mut joined) = pending.take().unwrap_or((index + 1, String::new()));
+        joined.push(' ');
+        joined.push_str(content);
+        if continued {
+            pending = Some((number, joined));
+        } else {
+            lines.push((number, joined));
+        }
+    }
+    lines.extend(pending);
+    lines
 }
 
 fn duplicate_builds(root: &Path) -> Vec<String> {
@@ -67,9 +114,9 @@ fn duplicate_builds(root: &Path) -> Vec<String> {
         }
         let text =
             fs::read_to_string(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
-        for (index, line) in text.lines().enumerate() {
-            if builds_a_prerequisite(line) {
-                duplicates.push(format!("{relative}:{}: {}", index + 1, line.trim()));
+        for (number, line) in command_lines(&text) {
+            if builds_a_prerequisite(&line) {
+                duplicates.push(format!("{relative}:{number}: {}", line.trim()));
             }
         }
     }
@@ -99,6 +146,17 @@ fn the_one_build_gate_rejects_a_second_prerequisite_build() {
         "  cargo build -p bn_rt -p bn_stdlib --release"
     ));
     assert!(!builds_a_prerequisite("    cargo build --locked -p bnr"));
+    assert!(builds_a_prerequisite(
+        "    cargo build --locked --workspace --bins"
+    ));
+    assert!(builds_a_prerequisite("        cargo build --locked"));
+    assert!(builds_a_prerequisite("cargo build --package bn_rt"));
+    assert!(builds_a_prerequisite("cargo build --package=bnc"));
+    assert!(builds_a_prerequisite("cargo build -pbni"));
+    let continued = command_lines("cargo build --locked \\\n    -p bn_web\nnext\n");
+    assert_eq!(continued[0].0, 1);
+    assert!(builds_a_prerequisite(&continued[0].1));
+    assert!(!builds_a_prerequisite(&continued[1].1));
 }
 
 /// A scratch git repository holding the build script, as a workspace.
@@ -224,4 +282,81 @@ fn a_source_copy_without_its_own_git_tree_is_not_stamped() {
         !script_sees_git(&nested),
         "a copy inside another repository"
     );
+}
+
+/// The tree stamp printed by the script with extra environment variables.
+fn stamp_with(workspace: &super::support::TestDir, variables: &[(&str, &str)]) -> String {
+    let output = std::process::Command::new("bash")
+        .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+        .envs(variables.iter().copied())
+        .current_dir(workspace.path())
+        .args([BUILD_SOURCE, "--print-stamp"])
+        .output()
+        .expect("run the build script");
+    assert!(output.status.success(), "{output:?}");
+    String::from_utf8_lossy(&output.stdout).trim().to_owned()
+}
+
+#[test]
+fn an_external_diff_tool_does_not_hide_an_edit() {
+    let workspace = scratch_workspace("prereqs-external-diff");
+    let quiet_diff = [("GIT_EXTERNAL_DIFF", "true")];
+    let base = stamp_with(&workspace, &quiet_diff);
+    fs::write(workspace.join("source.rs"), "fn main() { () }\n").expect("edit");
+    assert_ne!(stamp_with(&workspace, &quiet_diff), base);
+}
+
+#[test]
+fn an_edit_inside_an_untracked_nested_repository_counts() {
+    let workspace = scratch_workspace("prereqs-nested");
+    let nested = workspace.join("vendored");
+    fs::create_dir_all(&nested).expect("nested repository");
+    fs::write(nested.join("lib.rs"), "// one\n").expect("nested source");
+    super::support::git(&nested, &["init", "--quiet"]);
+    super::support::git(&nested, &["add", "--all"]);
+    super::support::git(&nested, &["commit", "--quiet", "--message", "nested"]);
+    let before = stamp(&workspace);
+    fs::write(nested.join("lib.rs"), "// two\n").expect("nested edit");
+    assert_ne!(stamp(&workspace), before);
+}
+
+#[test]
+fn a_failed_build_forgets_the_previous_stamp() {
+    let workspace = scratch_workspace("prereqs-failed-build");
+    let stamp_path = workspace
+        .join("target/debug")
+        .join(super::support::prerequisites::STAMP_FILE);
+    fs::create_dir_all(stamp_path.parent().expect("profile directory")).expect("profile");
+    fs::write(&stamp_path, format!("{}\n", stamp(&workspace))).expect("old stamp");
+    // A cargo that answers `metadata` and fails every build half way.
+    let tools = workspace.join("tools");
+    fs::create_dir_all(&tools).expect("tools");
+    let target = workspace.join("target");
+    fs::write(
+        tools.join("cargo"),
+        format!(
+            "#!/usr/bin/env bash\nif [[ $1 == metadata ]]; then\n  \
+             printf '{{\"target_directory\":\"%s\"}}\\n' '{}'\n  exit 0\nfi\nexit 101\n",
+            target.display()
+        ),
+    )
+    .expect("fake cargo");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(tools.join("cargo"), fs::Permissions::from_mode(0o755))
+            .expect("executable fake cargo");
+    }
+    let path = std::env::join_paths(std::iter::once(tools.clone()).chain(std::env::split_paths(
+        &std::env::var_os("PATH").unwrap_or_default(),
+    )))
+    .expect("search path");
+    let output = std::process::Command::new("bash")
+        .env("PATH", path)
+        .current_dir(workspace.path())
+        .arg(BUILD_SOURCE)
+        .output()
+        .expect("run the build script");
+    assert!(!output.status.success(), "the build failed: {output:?}");
+    assert!(!stamp_path.exists(), "no stamp outlives a failed build");
 }
