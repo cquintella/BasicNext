@@ -12,3 +12,22 @@ msg.file_handle_is_invalid = file handle is invalid
 msg.file_verified_by_file_for = file verified by file_for
 msg.file_handle_count_overflowed_2 = file handle count overflowed
 msg.file_handle_is_invalid_2 = file handle is invalid
+
+# Entry operations (bucket 0.6.12, FS-CORE-1).
+entry.root_not_target = the policy root itself is not a write target
+entry.not_private = the new entry kept group or other permission bits after it was made owner-only
+entry.get_current_directory.message = cannot read the current directory
+entry.set_current_directory.message = cannot change the current directory to "{path}"
+entry.create_directory.message = cannot create the directory "{path}"
+entry.remove_directory.message = cannot remove the directory "{path}"
+entry.is_directory.message = cannot check whether "{path}" is a directory
+entry.open_new.message = cannot create the file "{path}"
+entry.copy.message = cannot copy "{source}" to "{destination}"
+entry.move.message = cannot move "{source}" to "{destination}"
+entry.not_directory.cause = the path is not a directory
+entry.symlink.cause = the path is a symbolic link, which is not followed
+entry.not_empty.cause = the directory has entries
+entry.already_exists.cause = the path already exists, and an existing entry is never replaced or changed
+entry.not_regular_source.cause = the source is a symbolic link or not a regular file, and a link is not followed
+entry.cross_device.cause = the source and the destination are on different file systems, and a move does not copy
+entry.path_not_text.cause = the path of the current directory is not valid text

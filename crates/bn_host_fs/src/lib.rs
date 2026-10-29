@@ -70,7 +70,18 @@ fn path_argument<'a>(
     context: &str,
     span: Span,
 ) -> Result<&'a Path, Diagnostic> {
-    let Value::String(path) = &arguments[0] else {
+    path_at(arguments, 0, context, span)
+}
+
+/// The path argument at `index`; `context` names the operation in a type
+/// mismatch.
+fn path_at<'a>(
+    arguments: &'a [Value],
+    index: usize,
+    context: &str,
+    span: Span,
+) -> Result<&'a Path, Diagnostic> {
+    let Value::String(path) = &arguments[index] else {
         return Err(type_mismatch("STRING", "non-STRING value", context, span));
     };
     Ok(Path::new(path.as_ref()))
@@ -107,19 +118,8 @@ impl Provider for FsProvider {
                     Ok(mode) => mode,
                     Err(failure) => return Ok(file_error(&failure)),
                 };
-                let opened = bn_rt::file::open(core.host().filesystem(), path, mode).map(|file| {
-                    let id = self.next_file;
-                    self.next_file += 1;
-                    self.files.insert(
-                        id,
-                        FileSlot {
-                            file,
-                            references: 1,
-                        },
-                    );
-                    Value::File(id)
-                });
-                Ok(method_result(opened, |value| value))
+                let opened = bn_rt::file::open(core.host().filesystem(), path, mode);
+                Ok(method_result(opened, |file| self.insert_file(file)))
             }
             "DeleteFile" => {
                 require_arity(name, arguments, 1, span)?;
@@ -129,11 +129,7 @@ impl Provider for FsProvider {
                     |()| Value::Null,
                 ))
             }
-            _ => Err(runtime_error(
-                bn_diag::DiagId::HOST_CAPABILITY_UNAVAILABLE,
-                format!("host function '{name}' is not available"),
-                span,
-            )),
+            _ => self.directory_call(core, member, name, arguments, span),
         }
     }
 
@@ -201,6 +197,86 @@ impl Provider for FsProvider {
 }
 
 impl FsProvider {
+    /// Stores an open file under a new handle with one reference.
+    fn insert_file(&mut self, file: OpenFile) -> Value {
+        let id = self.next_file;
+        self.next_file += 1;
+        self.files.insert(
+            id,
+            FileSlot {
+                file,
+                references: 1,
+            },
+        );
+        Value::File(id)
+    }
+
+    /// The directory, private-create, copy and move methods (host.md,
+    /// "Directories, private files, copy and move"; bucket 0.6.12): argument
+    /// conversion only, over `bn_rt::file` with the interpreter's policy.
+    fn directory_call(
+        &mut self,
+        core: &mut dyn CoreContext,
+        member: &str,
+        name: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        let policy = core.host().filesystem();
+        let unit = |()| Value::Null;
+        match member {
+            "GetCurrentDirectory" => {
+                require_arity(name, arguments, 0, span)?;
+                Ok(method_result(
+                    bn_rt::file::get_current_directory(policy),
+                    |text| Value::String(shared_string(text)),
+                ))
+            }
+            "SetCurrentDirectory"
+            | "CreateDirectory"
+            | "RemoveDirectory"
+            | "IsDirectory"
+            | "OpenNew" => {
+                require_arity(name, arguments, 1, span)?;
+                let path = path_at(arguments, 0, name, span)?;
+                Ok(match member {
+                    "SetCurrentDirectory" => {
+                        method_result(bn_rt::file::set_current_directory(policy, path), unit)
+                    }
+                    "CreateDirectory" => {
+                        method_result(bn_rt::file::create_directory(policy, path), unit)
+                    }
+                    "RemoveDirectory" => {
+                        method_result(bn_rt::file::remove_directory(policy, path), unit)
+                    }
+                    "IsDirectory" => {
+                        method_result(bn_rt::file::is_directory(policy, path), Value::Boolean)
+                    }
+                    _ => {
+                        let created = bn_rt::file::open_new(policy, path);
+                        method_result(created, |file| self.insert_file(file))
+                    }
+                })
+            }
+            "Copy" | "Move" => {
+                require_arity(name, arguments, 2, span)?;
+                let source = path_at(arguments, 0, name, span)?;
+                let destination = path_at(arguments, 1, name, span)?;
+                let result = if member == "Copy" {
+                    bn_rt::file::copy(policy, source, destination)
+                } else {
+                    bn_rt::file::move_entry(policy, source, destination)
+                };
+                Ok(method_result(result, unit))
+            }
+            _ => Err(runtime_error(
+                bn_diag::DiagId::HOST_CAPABILITY_UNAVAILABLE,
+                format!("host function '{name}' is not available"),
+                span,
+            )),
+        }
+    }
+
     fn file_call(
         &mut self,
         core: &mut dyn CoreContext,

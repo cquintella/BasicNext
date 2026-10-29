@@ -46,6 +46,7 @@ pub fn assert_matches_ledger(target: &str) {
     for unix_only in [
         "bn::test/execute::host_exec::host_exec_e11_signal_termination_negative_return_code",
         "bn::test/programs::compress_policy::bncompress_never_writes_through_a_symlink_on_both_backends",
+        "bn::test/programs::fs_directories_policy::directory_operations_obey_every_policy_on_both_backends",
         "bn::test/programs::compiler_parity::env_value_not_utf8_is_invalid_utf8_on_both_backends",
         "bn::test/programs::parity::console_size_uses_stdout_when_stdin_is_piped",
         "bn::test/programs::parity_regressions::the_end_of_an_async_task_closes_its_files",

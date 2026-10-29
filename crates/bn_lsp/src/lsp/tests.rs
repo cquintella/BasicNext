@@ -238,6 +238,29 @@ fn completion_lists_host_members_from_the_frontend_catalog() {
     assert!(items.contains(&"SetTimeouts".into()), "{items:?}");
 }
 
+/// The 0.6.12 `HOST.FileSystem` members and codes come from the same table
+/// (bucket 0.6.12, FS-FE-1).
+#[test]
+fn completion_lists_the_directory_members_and_codes() {
+    let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nFS.\nEND FUNCTION\n";
+    let items = labels(source, 2, 3);
+    for member in [
+        "GetCurrentDirectory",
+        "SetCurrentDirectory",
+        "CreateDirectory",
+        "RemoveDirectory",
+        "IsDirectory",
+        "OpenNew",
+        "Copy",
+        "Move",
+        "IS_NOT_DIRECTORY",
+        "DIRECTORY_NOT_EMPTY",
+        "ALREADY_EXISTS",
+    ] {
+        assert!(items.contains(&member.into()), "{member}: {items:?}");
+    }
+}
+
 #[test]
 fn completion_lists_local_functions() {
     let source = "FUNCTION Add(a AS INTEGER, b AS INTEGER) AS INTEGER\nRETURN a + b\nEND FUNCTION\nFUNCTION Start() AS VOID\nAd\nEND FUNCTION\n";

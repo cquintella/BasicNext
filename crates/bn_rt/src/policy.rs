@@ -15,7 +15,7 @@ use std::{
     time::Duration,
 };
 
-use super::secure_fs::{OpenMode, RootedDir, denied};
+use super::secure_fs::{Anchor, EntryKind, OpenMode, RootedDir, anchor_unrooted, denied};
 
 pub(crate) const POLICY_CLOCK: u64 = 1 << 0;
 pub const POLICY_CONSOLE: u64 = 1 << 1;
@@ -57,12 +57,21 @@ impl Scope {
         matches!(self, Self::Rooted(roots) if roots.is_empty())
     }
 
+    fn names_a_root(&self, path: &Path) -> bool {
+        match self {
+            Self::Unrestricted => false,
+            Self::Rooted(roots) => roots
+                .iter()
+                .any(|root| root.covers(path) && !root.contains(path)),
+        }
+    }
+
     fn root_for(&self, path: &Path) -> io::Result<Option<&RootedDir>> {
         match self {
             Self::Unrestricted => Ok(None),
             Self::Rooted(roots) => roots
                 .iter()
-                .filter(|root| root.contains(path))
+                .filter(|root| root.covers(path))
                 .max_by_key(|root| root.path().components().count())
                 .map(Some)
                 .ok_or_else(|| denied(FS_OUTSIDE_POLICY)),
@@ -218,6 +227,110 @@ impl FsPolicy {
             Some(root) => root.create_dir_all(path),
             None => std::fs::create_dir_all(path),
         }
+    }
+
+    /// The anchor of `path` in the read or the write roots: the root walk
+    /// when the scope is rooted, a plain open otherwise (bucket 0.6.12,
+    /// FS-CORE-1).
+    fn anchor(&self, path: &Path, write: bool) -> io::Result<Anchor> {
+        if write && self.read_only {
+            return Err(denied(FS_WRITES_DENIED));
+        }
+        let scope = if write { &self.write } else { &self.read };
+        match scope.root_for(path)? {
+            Some(root) => root.anchor(path),
+            None => anchor_unrooted(path),
+        }
+    }
+
+    /// What `path` names, without following a final symbolic link (a read).
+    ///
+    /// # Errors
+    ///
+    /// A refusal outside the read roots, `NotFound`, or the system error.
+    pub fn entry_kind(&self, path: &Path) -> io::Result<EntryKind> {
+        self.anchor(path, false)?.kind()
+    }
+
+    /// What `path` names, checked against the write roots: the kind a write
+    /// (a removal, a rename) acts on, without requiring a read root.
+    ///
+    /// # Errors
+    ///
+    /// A refusal outside the write roots, `NotFound`, or the system error.
+    pub fn writable_entry_kind(&self, path: &Path) -> io::Result<EntryKind> {
+        self.anchor(path, true)?.kind()
+    }
+
+    /// Whether `path` names a policy root itself, which is never a write
+    /// target (bucket 0.6.12, G-3).
+    #[must_use]
+    pub fn names_a_root(&self, path: &Path) -> bool {
+        [&self.read, &self.write]
+            .into_iter()
+            .any(|scope| scope.names_a_root(path))
+    }
+
+    /// Creates the owner-only directory `path` (a write).
+    ///
+    /// # Errors
+    ///
+    /// A refusal outside the write roots; `AlreadyExists`, `NotFound` for a
+    /// missing parent, `PermissionDenied` when not owner-only.
+    pub fn create_private_directory(&self, path: &Path) -> io::Result<()> {
+        self.anchor(path, true)?.create_private_directory()
+    }
+
+    /// Creates the owner-only file `path`, open for writing (a write).
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::create_private_directory`].
+    pub fn create_private_file(&self, path: &Path) -> io::Result<File> {
+        self.anchor(path, true)?.create_private_file()
+    }
+
+    /// Opens `path` for reading without following a final symbolic link.
+    ///
+    /// # Errors
+    ///
+    /// A refusal outside the read roots, or the system error.
+    pub fn open_entry(&self, path: &Path) -> io::Result<File> {
+        self.anchor(path, false)?.open_read()
+    }
+
+    /// Removes the empty directory `path` (a write); a symbolic link or a
+    /// file is not removed.
+    ///
+    /// # Errors
+    ///
+    /// A refusal outside the write roots or for a root itself;
+    /// `NotADirectory`, `DirectoryNotEmpty`, `NotFound`.
+    pub fn remove_empty_directory(&self, path: &Path) -> io::Result<()> {
+        self.anchor(path, true)?.remove_empty_directory()
+    }
+
+    /// Renames `from` to `to` (both writes), replacing a regular file only.
+    ///
+    /// # Errors
+    ///
+    /// A refusal outside the write roots or for a root itself;
+    /// `AlreadyExists` for a directory or a symbolic link at `to`;
+    /// `CrossesDevices` across file systems.
+    pub fn rename_entry(&self, from: &Path, to: &Path) -> io::Result<()> {
+        let source = self.anchor(from, true)?;
+        let target = self.anchor(to, true)?;
+        source.rename_to(&target)
+    }
+
+    /// Makes `path` the working directory of the process (a read of that
+    /// directory), never through a symbolic link.
+    ///
+    /// # Errors
+    ///
+    /// A refusal outside the read roots, or the system error.
+    pub fn change_directory(&self, path: &Path) -> io::Result<()> {
+        self.anchor(path, false)?.change_directory()
     }
 }
 

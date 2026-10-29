@@ -3,8 +3,11 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+// Listing a directory stays outside the surface until bucket 0.6.16
+// (language/0.6/host.md, "Outside 0.6.12"); creating one is valid since
+// 0.6.12.
 IMPORT HOST.FileSystem AS FS
 
 FUNCTION Start() AS VOID
-    FS.CreateDirectory("data")
+    FS.ListDirectory("data")
 END FUNCTION

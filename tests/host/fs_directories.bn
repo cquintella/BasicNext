@@ -1,0 +1,67 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Run in an empty directory. The directory lifecycle of HOST.FileSystem
+// (language/0.6/host.md, "Directories, private files, copy and move"):
+// create, private create, copy, move, change of directory and removal, with
+// the code of every refusal, the same on both backends.
+IMPORT HOST.FileSystem AS FS
+
+FUNCTION Code(result AS VOID OR Error) AS INTEGER
+    IF result IS Error THEN
+        RETURN result.Code
+    END IF
+    RETURN 0
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    PRINT "create", Code(FS.CreateDirectory("work")), Code(FS.CreateDirectory("work")) = FS.ALREADY_EXISTS
+    PRINT "missing parent", Code(FS.CreateDirectory("none/inner")) = FS.NOT_FOUND
+    LET isDirectory AS BOOLEAN OR Error = FS.IsDirectory("work")
+    PRINT "is directory", isDirectory
+
+    LET created AS FS.File OR Error = FS.OpenNew("work/a.txt")
+    IF created IS Error THEN
+        PRINT "open new failed", created.Code
+        RETURN
+    END IF
+    PRINT "write", Code(created.Write("alpha")), Code(created.Close())
+    LET again AS FS.File OR Error = FS.OpenNew("work/a.txt")
+    IF again IS Error THEN
+        PRINT "open new again", again.Code = FS.ALREADY_EXISTS
+    END IF
+    LET fileIsDirectory AS BOOLEAN OR Error = FS.IsDirectory("work/a.txt")
+    PRINT "file is directory", fileIsDirectory
+
+    PRINT "copy", Code(FS.Copy("work/a.txt", "work/b.txt"))
+    PRINT "copy onto existing", Code(FS.Copy("work/a.txt", "work/b.txt")) = FS.ALREADY_EXISTS
+    PRINT "copy a directory", Code(FS.Copy("work", "work/c.txt")) = FS.IS_DIRECTORY
+    PRINT "move", Code(FS.Move("work/b.txt", "work/c.txt"))
+    LET movedAway AS BOOLEAN OR Error = FS.Exists("work/b.txt")
+    PRINT "moved away", movedAway
+    PRINT "move onto a directory", Code(FS.Move("work/c.txt", "work")) = FS.ALREADY_EXISTS
+
+    PRINT "enter", Code(FS.SetCurrentDirectory("work"))
+    LET here AS STRING OR Error = FS.GetCurrentDirectory()
+    PRINT "current is text", here IS STRING
+    LET copied AS FS.File OR Error = FS.Open("c.txt", FS.READ)
+    IF copied IS FS.File THEN
+        LET text AS STRING OR Error = copied.ReadAll()
+        PRINT "relative read", text
+        PRINT "close", Code(copied.Close())
+    END IF
+    PRINT "enter a file", Code(FS.SetCurrentDirectory("a.txt")) = FS.IS_NOT_DIRECTORY
+    PRINT "leave", Code(FS.SetCurrentDirectory(".."))
+
+    PRINT "remove full", Code(FS.RemoveDirectory("work")) = FS.DIRECTORY_NOT_EMPTY
+    PRINT "remove a file", Code(FS.RemoveDirectory("work/a.txt")) = FS.IS_NOT_DIRECTORY
+    PRINT "delete", Code(FS.DeleteFile("work/a.txt")), Code(FS.DeleteFile("work/c.txt"))
+    PRINT "remove", Code(FS.RemoveDirectory("work"))
+    PRINT "remove missing", Code(FS.RemoveDirectory("work")) = FS.NOT_FOUND
+    LET gone AS BOOLEAN OR Error = FS.IsDirectory("work")
+    IF gone IS Error THEN
+        PRINT "gone", gone.Code = FS.NOT_FOUND
+    END IF
+END FUNCTION

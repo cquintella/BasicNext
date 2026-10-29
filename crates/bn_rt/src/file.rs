@@ -18,6 +18,13 @@ pub use super::file_error::{Failure, FileError};
 use super::policy::FsPolicy;
 use super::secure_fs::OpenMode;
 
+#[path = "file_entries.rs"]
+mod entries;
+pub use entries::{
+    copy, create_directory, get_current_directory, is_directory, move_entry, open_new,
+    remove_directory, set_current_directory,
+};
+
 /// Text or binary use (host.md: the first successful method picks it).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Family {

@@ -933,7 +933,7 @@ mod runtime_dispatch;
 use runtime_dispatch::lower_bn_dispatch_call;
 #[path = "llvm/fs_emission.rs"]
 mod fs_emission;
-use fs_emission::{FS_CALLS, fs_call_supported, lower_fs_call};
+use fs_emission::{DirectoryCall, FS_CALLS, fs_call_supported, lower_fs_call};
 #[path = "llvm/debug_info.rs"]
 mod debug_info;
 pub use debug_info::DebugInfo;

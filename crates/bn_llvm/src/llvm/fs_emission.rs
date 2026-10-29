@@ -33,6 +33,9 @@ pub(crate) fn fs_call_supported(
     arguments: &[ValueId],
     values: &HashMap<ValueId, Type>,
 ) -> Option<bool> {
+    if let Some(call) = DirectoryCall::of(name) {
+        return Some(call.arguments_supported(arguments, values));
+    }
     Some(match name {
         "HOST.FileSystem.Open" => {
             arguments.len() == 2
@@ -253,7 +256,152 @@ pub(crate) fn lower_fs_call(
             let args = vec![handle, (T::Ptr, r("filewbptr")), (T::I64, count)];
             emit_void_call_result(text, destination, call("bn_rt_file_write_bytes", args));
         }
-        _ => return false,
+        _ => return lower_directory_call(text, destination, name, arguments),
+    }
+    true
+}
+
+/// The directory, private-create, copy and move calls of `HOST.FileSystem`
+/// (host.md, "Directories, private files, copy and move"; bucket 0.6.12),
+/// recognized by their contract names in the catalog.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DirectoryCall {
+    GetCurrentDirectory,
+    SetCurrentDirectory,
+    CreateDirectory,
+    RemoveDirectory,
+    IsDirectory,
+    OpenNew,
+    Copy,
+    Move,
+}
+
+impl DirectoryCall {
+    const ALL: [Self; 8] = [
+        Self::GetCurrentDirectory,
+        Self::SetCurrentDirectory,
+        Self::CreateDirectory,
+        Self::RemoveDirectory,
+        Self::IsDirectory,
+        Self::OpenNew,
+        Self::Copy,
+        Self::Move,
+    ];
+
+    /// The call named `name`, if it is one of these.
+    pub(crate) fn of(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|call| call.name() == name)
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::GetCurrentDirectory => {
+                bn_catalog::text("modules", "operation.fs_get_current_directory")
+            }
+            Self::SetCurrentDirectory => {
+                bn_catalog::text("modules", "operation.fs_set_current_directory")
+            }
+            Self::CreateDirectory => bn_catalog::text("modules", "operation.fs_create_directory"),
+            Self::RemoveDirectory => bn_catalog::text("modules", "operation.fs_remove_directory"),
+            Self::IsDirectory => bn_catalog::text("modules", "operation.fs_is_directory"),
+            Self::OpenNew => bn_catalog::text("modules", "operation.fs_open_new"),
+            Self::Copy => bn_catalog::text("modules", "operation.fs_copy"),
+            Self::Move => bn_catalog::text("modules", "operation.fs_move"),
+        }
+    }
+
+    /// Path arguments are `STRING`: none, one, or two.
+    fn arguments_supported(self, arguments: &[ValueId], values: &HashMap<ValueId, Type>) -> bool {
+        let paths = match self {
+            Self::GetCurrentDirectory => 0,
+            Self::Copy | Self::Move => 2,
+            _ => 1,
+        };
+        arguments.len() == paths
+            && arguments
+                .iter()
+                .all(|argument| values.get(argument) == Some(&Type::String))
+    }
+}
+
+/// Lowers a directory, private-create, copy or move call onto its
+/// `bn_rt_fs_*` symbol; false for any other name.
+fn lower_directory_call(
+    text: &mut crate::ir::LlvmModule,
+    destination: ValueId,
+    name: &str,
+    arguments: &[ValueId],
+) -> bool {
+    let Some(directory_call) = DirectoryCall::of(name) else {
+        return false;
+    };
+    let dest = destination.0;
+    let v = |index: usize| O::reg(format!("v{}", arguments[index].0));
+    let r = |name: &str| O::reg(format!("{name}{dest}"));
+    let call = |symbol: &str, args| I::call(T::I32, symbol, args);
+    match directory_call {
+        DirectoryCall::SetCurrentDirectory
+        | DirectoryCall::CreateDirectory
+        | DirectoryCall::RemoveDirectory => {
+            let symbol = match directory_call {
+                DirectoryCall::SetCurrentDirectory => "bn_rt_fs_set_current_directory",
+                DirectoryCall::CreateDirectory => "bn_rt_fs_create_directory",
+                _ => "bn_rt_fs_remove_directory",
+            };
+            emit_void_call_result(text, destination, call(symbol, vec![(T::Ptr, v(0))]));
+        }
+        DirectoryCall::Copy | DirectoryCall::Move => {
+            let symbol = if directory_call == DirectoryCall::Copy {
+                "bn_rt_fs_copy"
+            } else {
+                "bn_rt_fs_move"
+            };
+            let args = vec![(T::Ptr, v(0)), (T::Ptr, v(1))];
+            emit_void_call_result(text, destination, call(symbol, args));
+        }
+        DirectoryCall::IsDirectory => {
+            text.assign(format!("fsisdout{dest}"), I::alloca(T::I32));
+            let args = vec![(T::Ptr, v(0)), (T::Ptr, r("fsisdout"))];
+            text.assign(
+                format!("fsisdrc{dest}"),
+                call("bn_rt_fs_is_directory", args),
+            );
+            text.assign(format!("fsisdval{dest}"), I::load(T::I32, r("fsisdout")));
+            let wide = I::cast(CastOp::ZExt, T::I32, r("fsisdval"), T::I64);
+            text.assign(format!("fsisdpay{dest}"), wide);
+            emit_status_result(
+                text,
+                destination,
+                &r("fsisdrc"),
+                None,
+                &O::null(),
+                &r("fsisdpay"),
+            );
+        }
+        DirectoryCall::GetCurrentDirectory => {
+            text.assign(format!("fsgcdout{dest}"), I::alloca(T::Ptr));
+            let args = vec![(T::Ptr, r("fsgcdout"))];
+            text.assign(
+                format!("fsgcdrc{dest}"),
+                call("bn_rt_fs_get_current_directory", args),
+            );
+            text.assign(format!("fsgcddata{dest}"), I::load(T::Ptr, r("fsgcdout")));
+            emit_status_result(
+                text,
+                destination,
+                &r("fsgcdrc"),
+                None,
+                &r("fsgcddata"),
+                &O::int(0),
+            );
+        }
+        DirectoryCall::OpenNew => {
+            text.assign(format!("fsnewout{dest}"), I::alloca(T::I64));
+            let args = vec![(T::Ptr, v(0)), (T::Ptr, r("fsnewout"))];
+            text.assign(format!("fsnewrc{dest}"), call("bn_rt_fs_open_new", args));
+            text.assign(format!("fsnewhandle{dest}"), I::load(T::I64, r("fsnewout")));
+            emit_handle_result(text, destination, &r("fsnewrc"), &r("fsnewhandle"));
+        }
     }
     true
 }

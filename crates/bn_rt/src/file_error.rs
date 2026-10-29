@@ -29,12 +29,20 @@ pub(crate) enum FsOperation {
     WriteLine,
     ReadBytes,
     WriteBytes,
+    GetCurrentDirectory,
+    SetCurrentDirectory,
+    CreateDirectory,
+    RemoveDirectory,
+    IsDirectory,
+    OpenNew,
+    Copy,
+    Move,
 }
 
 impl FsOperation {
     /// The `Error.Operation` text.
     #[must_use]
-    pub const fn name(self) -> &'static str {
+    pub fn name(self) -> &'static str {
         match self {
             Self::Open => "HOST.FileSystem.Open",
             Self::Exists => "HOST.FileSystem.Exists",
@@ -46,6 +54,18 @@ impl FsOperation {
             Self::WriteLine => "HOST.FileSystem.File.WriteLine",
             Self::ReadBytes => "HOST.FileSystem.File.ReadBytes",
             Self::WriteBytes => "HOST.FileSystem.File.WriteBytes",
+            Self::GetCurrentDirectory => {
+                bn_catalog::text("modules", "operation.fs_get_current_directory")
+            }
+            Self::SetCurrentDirectory => {
+                bn_catalog::text("modules", "operation.fs_set_current_directory")
+            }
+            Self::CreateDirectory => bn_catalog::text("modules", "operation.fs_create_directory"),
+            Self::RemoveDirectory => bn_catalog::text("modules", "operation.fs_remove_directory"),
+            Self::IsDirectory => bn_catalog::text("modules", "operation.fs_is_directory"),
+            Self::OpenNew => bn_catalog::text("modules", "operation.fs_open_new"),
+            Self::Copy => bn_catalog::text("modules", "operation.fs_copy"),
+            Self::Move => bn_catalog::text("modules", "operation.fs_move"),
         }
     }
 
@@ -61,6 +81,14 @@ impl FsOperation {
             Self::Open => "open",
             Self::Exists => "check",
             Self::DeleteFile => "delete",
+            Self::GetCurrentDirectory
+            | Self::SetCurrentDirectory
+            | Self::CreateDirectory
+            | Self::RemoveDirectory
+            | Self::IsDirectory
+            | Self::OpenNew
+            | Self::Copy
+            | Self::Move => panic!("the 0.6.12 operations take their message from the catalog"),
         }
     }
 }
@@ -79,6 +107,20 @@ pub enum Failure {
         binary_in_use: bool,
     },
     InvalidUtf8(FromUtf8Error),
+    /// The path is not a directory; `symlink` when it is a symbolic link,
+    /// which is not followed (bucket 0.6.12, G-2).
+    NotDirectory {
+        symlink: bool,
+    },
+    /// `RemoveDirectory` of a directory with entries.
+    NotEmpty,
+    /// An existing entry where a new one is created, or a directory or a
+    /// symbolic link at the destination of `Move`.
+    AlreadyExists,
+    /// A `Copy` source that is a symbolic link or not a regular file.
+    NotRegularSource,
+    /// `Move` between file systems, which does not copy.
+    CrossDevice,
     /// A write on a file opened for `READ`, or a read on one opened for
     /// `WRITE` or `APPEND`. Detected before the call, so every host reports
     /// it alike.
@@ -101,6 +143,10 @@ enum Subject {
     Path(String, Option<OpenMode>),
     /// A file method's file: its path, or none for `NEW FS.File()`.
     File(Option<String>),
+    /// The source and the destination of `Copy` or `Move`.
+    Pair(String, String),
+    /// The process itself (`GetCurrentDirectory`).
+    Process,
 }
 
 /// A failed `HOST.FileSystem` operation.
@@ -135,6 +181,31 @@ impl FileError {
         }
     }
 
+    /// A failure of `Copy` or `Move` from `source` to `destination`.
+    #[must_use]
+    pub(crate) fn on_pair(
+        operation: FsOperation,
+        source: &str,
+        destination: &str,
+        failure: Failure,
+    ) -> Self {
+        Self {
+            operation,
+            subject: Subject::Pair(source.to_owned(), destination.to_owned()),
+            failure,
+        }
+    }
+
+    /// A failure of an operation on the process (`GetCurrentDirectory`).
+    #[must_use]
+    pub(crate) const fn on_process(operation: FsOperation, failure: Failure) -> Self {
+        Self {
+            operation,
+            subject: Subject::Process,
+            failure,
+        }
+    }
+
     /// A failure of a file method; `path` is `None` for `NEW FS.File()`.
     #[must_use]
     pub(crate) fn on_file(operation: FsOperation, path: Option<&str>, failure: Failure) -> Self {
@@ -154,13 +225,16 @@ impl FileError {
     #[must_use]
     pub fn code(&self) -> i32 {
         match &self.failure {
-            Failure::UnknownMode(_) => fs::INVALID_ARGUMENT,
+            Failure::UnknownMode(_) | Failure::NotRegularSource => fs::INVALID_ARGUMENT,
             Failure::PolicyDenied(_) => fs::POLICY_DENIED,
             Failure::Directory => fs::IS_DIRECTORY,
             Failure::Closed => fs::CLOSED,
             Failure::WrongFamily { .. } => fs::WRONG_FAMILY,
             Failure::InvalidUtf8(_) => fs::INVALID_UTF8,
-            Failure::WrongMode { .. } => fs::IO_FAILED,
+            Failure::WrongMode { .. } | Failure::CrossDevice => fs::IO_FAILED,
+            Failure::NotDirectory { .. } => fs::IS_NOT_DIRECTORY,
+            Failure::NotEmpty => fs::DIRECTORY_NOT_EMPTY,
+            Failure::AlreadyExists => fs::ALREADY_EXISTS,
             Failure::Io(error) => match error.kind() {
                 io::ErrorKind::NotFound => fs::NOT_FOUND,
                 io::ErrorKind::PermissionDenied => fs::PERMISSION_DENIED,
@@ -171,13 +245,16 @@ impl FileError {
 
     /// `Error.Operation`.
     #[must_use]
-    pub const fn operation(&self) -> &'static str {
+    pub fn operation(&self) -> &'static str {
         self.operation.name()
     }
 
     /// `Error.Message`: what could not be done, naming the file.
     #[must_use]
     pub fn message(&self) -> String {
+        if let Some(message) = self.entry_message() {
+            return message;
+        }
         let action = self.operation.action();
         match (&self.subject, &self.failure) {
             (Subject::Path(path, _), Failure::UnknownMode(mode)) => bn_catalog::fill(
@@ -197,7 +274,53 @@ impl FileError {
                 format!("cannot {action} \"{path}\"")
             }
             (Subject::File(None), _) => format!("cannot {action} a file"),
+            (Subject::Pair(..) | Subject::Process, _) => {
+                panic!("only the 0.6.12 operations name two paths or none")
+            }
         }
+    }
+
+    /// The message of a 0.6.12 operation (bucket 0.6.12, FS-CORE-2), from
+    /// the catalog; `None` for the older operations.
+    fn entry_message(&self) -> Option<String> {
+        let (path, destination) = match &self.subject {
+            Subject::Path(path, _) | Subject::File(Some(path)) => (path.clone(), String::new()),
+            Subject::Pair(source, destination) => (source.clone(), destination.clone()),
+            Subject::File(None) | Subject::Process => (String::new(), String::new()),
+        };
+        Some(match self.operation {
+            FsOperation::GetCurrentDirectory => {
+                bn_catalog::text("file", "entry.get_current_directory.message").to_owned()
+            }
+            FsOperation::SetCurrentDirectory => bn_catalog::fill(
+                "file",
+                "entry.set_current_directory.message",
+                &[("path", &path)],
+            ),
+            FsOperation::CreateDirectory => {
+                bn_catalog::fill("file", "entry.create_directory.message", &[("path", &path)])
+            }
+            FsOperation::RemoveDirectory => {
+                bn_catalog::fill("file", "entry.remove_directory.message", &[("path", &path)])
+            }
+            FsOperation::IsDirectory => {
+                bn_catalog::fill("file", "entry.is_directory.message", &[("path", &path)])
+            }
+            FsOperation::OpenNew => {
+                bn_catalog::fill("file", "entry.open_new.message", &[("path", &path)])
+            }
+            FsOperation::Copy => bn_catalog::fill(
+                "file",
+                "entry.copy.message",
+                &[("source", &path), ("destination", &destination)],
+            ),
+            FsOperation::Move => bn_catalog::fill(
+                "file",
+                "entry.move.message",
+                &[("source", &path), ("destination", &destination)],
+            ),
+            _ => return None,
+        })
     }
 
     /// `Error.Cause`: why, never a restatement of the message.
@@ -227,6 +350,20 @@ impl FileError {
             Failure::WrongMode { writing: false } => {
                 "the file is open for writing; open it with FS.READ to read".into()
             }
+            Failure::NotDirectory { symlink: false } => {
+                bn_catalog::text("file", "entry.not_directory.cause").to_owned()
+            }
+            Failure::NotDirectory { symlink: true } => {
+                bn_catalog::text("file", "entry.symlink.cause").to_owned()
+            }
+            Failure::NotEmpty => bn_catalog::text("file", "entry.not_empty.cause").to_owned(),
+            Failure::AlreadyExists => {
+                bn_catalog::text("file", "entry.already_exists.cause").to_owned()
+            }
+            Failure::NotRegularSource => {
+                bn_catalog::text("file", "entry.not_regular_source.cause").to_owned()
+            }
+            Failure::CrossDevice => bn_catalog::text("file", "entry.cross_device.cause").to_owned(),
             Failure::Io(error) => error.to_string(),
         }
     }

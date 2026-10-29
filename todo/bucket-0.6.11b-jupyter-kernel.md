@@ -1,6 +1,6 @@
 # Bucket 0.6.11b — Jupyter Kernel (`basicnext-jupyter`) Brought to bni 0.6
 
-**Status:** ongoing, created 2026-10-28. Parts 1 and 3a are done and pushed in `basicnext-jupyter` commit `5c327a9` (`main`). Parts 2, 3b and 4 are open.
+**Status:** todo (created 2026-10-28; runs after 0.6.12, independent of the language sequence — Carlos, 2026-10-28). Parts 1 and 3a are done and pushed in `basicnext-jupyter` commit `5c327a9` (`main`). Parts 2, 3b and 4 are open.
 **Decisions (Carlos, 2026-10-28):** (1) notebooks keep state between cells through `bni eval --session`; this supersedes "no state between cells" in `language/0.6/0.6.md` § "Jupyter host", which still has to be rewritten (JUP-SPEC-1). (2) Diagnostics are passed through exactly as bni emits them; the `cell.bn` path rewrite is dropped. (3) Commit and push the plugin.
 **Source:** Review of `basicnext-jupyter` (single commit `6d38484`, 2026-09-16, package `bn-kernel` 0.4.4) against `bni` at `2c09339` (0.6.11 dev) and `language/0.6/0.6.md` § "Jupyter host".
 **Version slot:** `b` suffix of 0.6.11, the bucket in progress. The kernel is a sibling repo and a host of the existing runtime; it changes no language surface, so it does not take a numbered slot in the language sequence of `AGENTS.md`. 0.6.13 stays unassigned and is not reused. Anything that changes the host contract (Part 3) is a BDFL gate and does not close here.

@@ -72,7 +72,7 @@ with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.
 | `invalid/withdrawn-console-statements.bn` | Reject (semantic) | `CLS(HOST.Console)` / `BEEP(HOST.Console)` are not 0.2 statements. |
 | `invalid/filesystem-unknown-mode.bn` | Reject (semantic) | `FS.Open` rejects literal modes outside `READ`, `WRITE`, `APPEND`. |
 | `invalid/filesystem-seek.bn` | Reject (semantic) | File seeking is outside the 0.2 surface. |
-| `invalid/filesystem-directory-api.bn` | Reject (semantic) | Directory APIs are outside the 0.2 surface. |
+| `invalid/filesystem-directory-api.bn` | Reject (semantic) | Listing a directory is outside the 0.6.12 surface (bucket 0.6.16). |
 | `invalid/import-after-declaration.bn` | Reject (syntax) | Import ordering. |
 | `invalid/import-after-constant.bn` | Reject (syntax) | An `IMPORT` cannot follow a module `EXPORT CONST`. |
 | `valid/private-module-constant.bn` | Accept | A module-level `CONST` without `EXPORT` is private to the module. |

@@ -87,3 +87,61 @@ fn junctions_and_parent_traversal_cannot_leave_the_root() {
     let _ = std::fs::remove_dir_all(&base);
     let _ = std::fs::remove_dir_all(&outside);
 }
+
+/// Entry operations (bucket 0.6.12, FS-CORE-1) never act through a junction
+/// and treat the root as readable but not writable.
+#[test]
+fn entry_operations_never_follow_a_junction() {
+    use super::super::{EntryKind, is_policy_refusal};
+    use crate::policy::FsPolicy;
+    use std::io::ErrorKind;
+
+    let base = fixture("entries");
+    let root_path = base.join("root");
+    let outside = base.join("outside");
+    std::fs::create_dir_all(&root_path).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    junction(&root_path.join("link"), &outside);
+    let pin = || RootedDir::new(&root_path).unwrap();
+    let policy = FsPolicy::rooted(vec![pin()], vec![pin()]);
+
+    policy
+        .create_private_directory(&root_path.join("made"))
+        .unwrap();
+    let mut file = policy
+        .create_private_file(&root_path.join("made").join("f"))
+        .unwrap();
+    file.write_all(b"x").unwrap();
+    drop(file);
+    for path in [root_path.join("made"), root_path.join("link")] {
+        let error = policy.create_private_directory(&path).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::AlreadyExists, "{}", path.display());
+    }
+    let through = root_path.join("link").join("new");
+    assert!(is_policy_refusal(
+        &policy.create_private_file(&through).map(drop).unwrap_err()
+    ));
+    assert_eq!(
+        policy.entry_kind(&root_path.join("link")).unwrap(),
+        EntryKind::Symlink
+    );
+    assert_eq!(policy.entry_kind(&root_path).unwrap(), EntryKind::Directory);
+
+    let removed = policy
+        .remove_empty_directory(&root_path.join("link"))
+        .unwrap_err();
+    assert_eq!(removed.kind(), ErrorKind::NotADirectory);
+    std::fs::write(root_path.join("plain"), "x").unwrap();
+    let renamed = policy
+        .rename_entry(&root_path.join("plain"), &root_path.join("link"))
+        .unwrap_err();
+    assert_eq!(renamed.kind(), ErrorKind::AlreadyExists);
+    assert!(is_policy_refusal(
+        &policy.remove_empty_directory(&root_path).unwrap_err()
+    ));
+    assert!(policy.change_directory(&root_path.join("link")).is_err());
+    assert!(std::fs::read_dir(&outside).unwrap().next().is_none());
+    // The pinned roots hold their handles without FILE_SHARE_DELETE.
+    drop(policy);
+    std::fs::remove_dir_all(base).unwrap();
+}

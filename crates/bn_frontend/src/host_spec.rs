@@ -202,6 +202,7 @@ pub(crate) fn catalog() -> Catalog {
     members1::declare_2(&mut catalog);
     members1::declare_3(&mut catalog);
     members1::declare_4(&mut catalog);
+    members1::declare_filesystem_directories(&mut catalog);
     members1::declare_5(&mut catalog);
     members1::declare_6(&mut catalog);
     members2::declare_7(&mut catalog);

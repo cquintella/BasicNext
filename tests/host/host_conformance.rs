@@ -127,8 +127,11 @@ const CASES: &[Case] = &[
             "HOST.FileSystem.INVALID_UTF8",
             "HOST.FileSystem.IO_FAILED",
             "HOST.FileSystem.POLICY_DENIED",
+            "HOST.FileSystem.IS_NOT_DIRECTORY",
+            "HOST.FileSystem.DIRECTORY_NOT_EMPTY",
+            "HOST.FileSystem.ALREADY_EXISTS",
         ],
-        stdout: "1 2 3 4 5\n6 7 8 9\n",
+        stdout: "1 2 3 4 5\n6 7 8 9\n10 11 12\n",
         exit: 0,
         stderr: None,
     },
@@ -151,6 +154,28 @@ const CASES: &[Case] = &[
         ],
         stdout: "TRUE 0 1 2\nline: one\nrest: 10\nclosed error: FALSE\nexists: TRUE\n\
                  removed error: FALSE exists: FALSE\nmissing is error: TRUE\n",
+        exit: 0,
+        stderr: None,
+    },
+    Case {
+        fixture: "fs_directories.bn",
+        args: &[],
+        covers: &[
+            "HOST.FileSystem.GetCurrentDirectory",
+            "HOST.FileSystem.SetCurrentDirectory",
+            "HOST.FileSystem.CreateDirectory",
+            "HOST.FileSystem.RemoveDirectory",
+            "HOST.FileSystem.IsDirectory",
+            "HOST.FileSystem.OpenNew",
+            "HOST.FileSystem.Copy",
+            "HOST.FileSystem.Move",
+        ],
+        stdout: "create 0 TRUE\nmissing parent TRUE\nis directory TRUE\nwrite 0 0\n\
+                 open new again TRUE\nfile is directory FALSE\ncopy 0\ncopy onto existing TRUE\n\
+                 copy a directory TRUE\nmove 0\nmoved away FALSE\nmove onto a directory TRUE\n\
+                 enter 0\ncurrent is text TRUE\nrelative read alpha\nclose 0\n\
+                 enter a file TRUE\nleave 0\nremove full TRUE\nremove a file TRUE\n\
+                 delete 0 0\nremove 0\nremove missing TRUE\ngone TRUE\n",
         exit: 0,
         stderr: None,
     },

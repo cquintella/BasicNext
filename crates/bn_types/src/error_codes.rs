@@ -18,9 +18,12 @@ pub mod fs {
     pub const INVALID_UTF8: i32 = 7;
     pub const IO_FAILED: i32 = 8;
     pub const POLICY_DENIED: i32 = 9;
+    pub const IS_NOT_DIRECTORY: i32 = 10;
+    pub const DIRECTORY_NOT_EMPTY: i32 = 11;
+    pub const ALREADY_EXISTS: i32 = 12;
 
     /// Member name and value of every code.
-    pub const ALL: [(&str, i32); 9] = [
+    pub const ALL: [(&str, i32); 12] = [
         ("INVALID_ARGUMENT", INVALID_ARGUMENT),
         ("NOT_FOUND", NOT_FOUND),
         ("PERMISSION_DENIED", PERMISSION_DENIED),
@@ -30,6 +33,9 @@ pub mod fs {
         ("INVALID_UTF8", INVALID_UTF8),
         ("IO_FAILED", IO_FAILED),
         ("POLICY_DENIED", POLICY_DENIED),
+        ("IS_NOT_DIRECTORY", IS_NOT_DIRECTORY),
+        ("DIRECTORY_NOT_EMPTY", DIRECTORY_NOT_EMPTY),
+        ("ALREADY_EXISTS", ALREADY_EXISTS),
     ];
 }
 

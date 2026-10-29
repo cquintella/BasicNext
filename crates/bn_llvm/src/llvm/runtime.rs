@@ -16,6 +16,7 @@ use crate::ir::{CastOp, ICmpCond, InstSink, LlvmInst, LlvmOperand, LlvmType};
 
 pub(crate) fn is_bn_rt_host_call(name: &str) -> bool {
     FS_CALLS.contains(&name)
+        || DirectoryCall::of(name).is_some()
         || crate::runtime_net::NetMember::of(name).is_some()
         || matches!(
             name,

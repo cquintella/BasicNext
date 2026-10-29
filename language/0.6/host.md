@@ -203,6 +203,75 @@ Capability-level helpers, without a file object:
 | --- | --- |
 | `Exists(path AS STRING) AS BOOLEAN OR Error` | `TRUE` if a regular file exists at `path`. Missing path or a directory at `path` is `FALSE`. Permission or other I/O failure is `Error`. |
 | `DeleteFile(path AS STRING) AS VOID OR Error` | Removes a file. A missing path is `Error`. |
+| `IsDirectory(path AS STRING) AS BOOLEAN OR Error` | `TRUE` if `path` is a directory. A file or a symbolic link at `path` is `FALSE`; a missing path is `Error` (0.6.12). |
+
+### Directories, private files, copy and move (0.6.12)
+
+| Method | Meaning |
+| --- | --- |
+| `GetCurrentDirectory() AS STRING OR Error` | The absolute path of the working directory of the process. |
+| `SetCurrentDirectory(path AS STRING) AS VOID OR Error` | Makes the directory `path` the working directory. |
+| `CreateDirectory(path AS STRING) AS VOID OR Error` | Creates one owner-only directory. Its parent must exist. |
+| `RemoveDirectory(path AS STRING) AS VOID OR Error` | Removes one empty directory. |
+| `OpenNew(path AS STRING) AS FS.File OR Error` | Creates one owner-only file and returns it open for writing, as `FS.WRITE` does. |
+| `Copy(source AS STRING, destination AS STRING) AS VOID OR Error` | Copies the bytes of one regular file to a new owner-only file. |
+| `Move(source AS STRING, destination AS STRING) AS VOID OR Error` | Renames one entry on the same file system. |
+
+**Symbolic links.** None of these methods follows a symbolic link at the
+final component of a path, and nothing is written through one. A link is not
+a directory (`IsDirectory` is `FALSE`; `SetCurrentDirectory` and
+`RemoveDirectory` return `FS.IS_NOT_DIRECTORY`), not a source to copy
+(`FS.INVALID_ARGUMENT`), and an existing name (`FS.ALREADY_EXISTS` for
+`CreateDirectory`, `OpenNew`, and the destination of `Copy` or `Move`).
+`Move` of a link renames the link itself. On Windows a junction or any other
+reparse point counts as a symbolic link. Under a `--read-root` or
+`--write-root`, a link on the way to the final component is refused as
+`FS.Open` refuses it; without a root, the directories on the way are those
+the operating system resolves.
+
+**Owner-only.** On Unix, `CreateDirectory` sets mode `0700`, and `OpenNew`
+and the destination of `Copy` set mode `0600`, after the create and whatever
+the umask is. An entry that keeps a group or other permission bit is removed
+and the call returns `FS.PERMISSION_DENIED`. Inherited access-control lists
+are not inspected. On Windows the new entry inherits the access-control list
+of its parent, so it is owner-only only where the parent is, as in the user
+profile (BDFL decision, 2026-10-28). `Copy` copies only the bytes: not the
+mode, owner, setuid, setgid or sticky bit, access-control list, or times.
+`Move` keeps the entry itself, with its mode and owner; a private file stays
+private only when it was created private. `FS.Open` is unchanged: it creates
+with mode `0666` narrowed by the umask.
+
+**Existing and missing entries.** `CreateDirectory`, `OpenNew`, and `Copy`
+never change an existing entry: an existing name is `FS.ALREADY_EXISTS`, and
+an existing directory keeps its mode. `Move` replaces a regular file at the
+destination; a directory or a symbolic link there is `FS.ALREADY_EXISTS`.
+`Move` between file systems is `FS.IO_FAILED`, with no copy in its place.
+A missing parent (`CreateDirectory`, `OpenNew`, the destination of `Copy`),
+or a missing path (`IsDirectory`, `SetCurrentDirectory`, `RemoveDirectory`,
+the source of `Copy` or `Move`) is `FS.NOT_FOUND`. `RemoveDirectory` of a
+directory with entries is `FS.DIRECTORY_NOT_EMPTY`, and of a file is
+`FS.IS_NOT_DIRECTORY`. `Copy` from a directory is `FS.IS_DIRECTORY`. A failed
+`Copy` leaves no destination.
+
+**Working directory.** A process has one working directory.
+`SetCurrentDirectory` changes it for every task of the program and, when a
+host runs the program inside its own process (`bni eval --session`,
+`bni dap`), for that host as well (BDFL decision, 2026-10-28). A program that
+runs tasks should not change directory while they run. Every
+`HOST.FileSystem` method resolves a relative path against the working
+directory and then applies the execution policy to the result.
+
+**Execution policy.** `IsDirectory`, `GetCurrentDirectory`,
+`SetCurrentDirectory` (the directory entered) and the source of `Copy` are
+reads: the path must sit inside a `--read-root`, the root itself included.
+`CreateDirectory`, `OpenNew`, `RemoveDirectory`, the destination of `Copy`,
+and both paths of `Move` are writes: the path must sit inside a
+`--write-root`. A root itself is never a write target: `CreateDirectory` of a
+root is `FS.ALREADY_EXISTS`, and `RemoveDirectory` or `Move` of a root is
+`FS.POLICY_DENIED`. Under a sandbox, `GetCurrentDirectory` returns
+`FS.POLICY_DENIED` when the working directory is outside every read root.
+`BN_FS_POLICY=read-only` denies every write and `BN_FS_POLICY=deny` every
+method. A denied call is `FS.POLICY_DENIED` and changes nothing.
 
 ### File system errors (0.6.2)
 
@@ -211,18 +280,23 @@ Capability-level helpers, without a file object:
 
 | Constant | Value | When |
 | --- | ---: | --- |
-| `FS.INVALID_ARGUMENT` | 1 | Computed unknown mode; path text the host cannot use |
-| `FS.NOT_FOUND` | 2 | `Open` for `READ` or `DeleteFile` of a missing path |
-| `FS.PERMISSION_DENIED` | 3 | The operating system refuses access |
-| `FS.IS_DIRECTORY` | 4 | `Open` or `DeleteFile` of a directory |
+| `FS.INVALID_ARGUMENT` | 1 | Computed unknown mode; path text the host cannot use; a `Copy` source that is a symbolic link |
+| `FS.NOT_FOUND` | 2 | `Open` for `READ` or `DeleteFile` of a missing path; a missing path or parent in the 0.6.12 methods |
+| `FS.PERMISSION_DENIED` | 3 | The operating system refuses access; an owner-only create that keeps a group or other bit |
+| `FS.IS_DIRECTORY` | 4 | `Open` or `DeleteFile` of a directory; `Copy` from a directory |
 | `FS.CLOSED` | 5 | A method other than `Close` on a closed file |
 | `FS.WRONG_FAMILY` | 6 | A text method in binary use, or a byte method in text use |
 | `FS.INVALID_UTF8` | 7 | A text read meets bytes that are not UTF-8 |
-| `FS.IO_FAILED` | 8 | Any other read, write, or flush failure |
+| `FS.IO_FAILED` | 8 | Any other read, write, or flush failure; `Move` between file systems |
 | `FS.POLICY_DENIED` | 9 | The execution policy denies the path or the operation |
+| `FS.IS_NOT_DIRECTORY` | 10 | `SetCurrentDirectory` or `RemoveDirectory` of a file or a symbolic link (0.6.12) |
+| `FS.DIRECTORY_NOT_EMPTY` | 11 | `RemoveDirectory` of a directory with entries (0.6.12) |
+| `FS.ALREADY_EXISTS` | 12 | `CreateDirectory`, `OpenNew`, or `Copy` to an existing name; `Move` onto a directory or a symbolic link (0.6.12) |
 
-Outside 0.2: `ChangeDirectory`, directory create/list/delete, `Move`,
-`Copy`, `chmod` / `chown`, `Seek`, `Flush`, and a `Path` object.
+The values 10 to 12 follow the existing ones (BDFL decision, 2026-10-28).
+
+Outside 0.6.12: listing a directory (`ListDirectory`, bucket 0.6.16),
+`chmod` / `chown`, `Seek`, `Flush`, and a `Path` object.
 
 The Jupyter 0.2 kernel does not grant files: a module that imports
 `HOST.FileSystem` fails before `Start` with `HOST_CAPABILITY_UNAVAILABLE`.

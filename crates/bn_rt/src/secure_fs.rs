@@ -144,8 +144,7 @@ impl RootedDir {
     /// parent traversal, a component that is a symlink or not a directory,
     /// and platforms without descriptor-relative traversal.
     pub fn create_dir_all(&self, path: &Path) -> io::Result<()> {
-        let absolute = std::path::absolute(path)?;
-        if absolute == self.path || absolute == self.canonical_path {
+        if self.is_root(path)? {
             return Ok(());
         }
         let relative = self.relative(path)?;
@@ -168,6 +167,21 @@ impl RootedDir {
             let _ = relative;
             Err(denied(ROOTED_ACCESS_UNAVAILABLE))
         }
+    }
+
+    /// Whether `path` names the root itself, by its configured or canonical
+    /// path.
+    fn is_root(&self, path: &Path) -> io::Result<bool> {
+        let absolute = std::path::absolute(path)?;
+        Ok(absolute == self.path || absolute == self.canonical_path)
+    }
+
+    /// Whether `path` is the root or lies under it: a read may name the root
+    /// itself (bucket 0.6.12, G-3); a write to it is refused by the entry
+    /// operation.
+    #[must_use]
+    pub(crate) fn covers(&self, path: &Path) -> bool {
+        self.contains(path) || self.is_root(path).unwrap_or(false)
     }
 
     fn relative(&self, path: &Path) -> io::Result<PathBuf> {
@@ -271,6 +285,23 @@ impl RootedDir {
 #[cfg(windows)]
 #[path = "secure_fs_windows.rs"]
 mod windows;
+
+#[cfg(unix)]
+#[path = "secure_fs_entries.rs"]
+mod entries;
+#[cfg(unix)]
+pub(crate) use entries::{Anchor, anchor_unrooted};
+#[cfg(windows)]
+pub(crate) use windows::{Anchor, anchor_unrooted};
+
+/// What a path names, read without following a final symbolic link.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EntryKind {
+    File,
+    Directory,
+    Symlink,
+    Other,
+}
 
 /// The refusal on a platform without descriptor-relative traversal.
 #[cfg(not(any(unix, windows)))]

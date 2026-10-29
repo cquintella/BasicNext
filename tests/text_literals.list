@@ -2205,6 +2205,9 @@ crates/bn_types/src/error_codes.rs	identifier	IO_FAILED
 crates/bn_types/src/error_codes.rs	identifier	IO_FAILED
 crates/bn_types/src/error_codes.rs	identifier	IS_DIRECTORY
 crates/bn_types/src/error_codes.rs	identifier	LIMIT_EXCEEDED
+crates/bn_types/src/error_codes.rs	identifier	ALREADY_EXISTS
+crates/bn_types/src/error_codes.rs	identifier	DIRECTORY_NOT_EMPTY
+crates/bn_types/src/error_codes.rs	identifier	IS_NOT_DIRECTORY
 crates/bn_types/src/error_codes.rs	identifier	NOT_FOUND
 crates/bn_types/src/error_codes.rs	identifier	NOT_FOUND
 crates/bn_types/src/error_codes.rs	identifier	NOT_FOUND

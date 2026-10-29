@@ -10,6 +10,8 @@ fn migrated_frontend_tests_match_the_ledger() {
 
 #[path = "frontend/compound_assignment.rs"]
 mod compound_assignment;
+#[path = "frontend/host_fs_directories.rs"]
+mod host_fs_directories;
 #[path = "frontend/inexact_integer_literal.rs"]
 mod inexact_integer_literal;
 #[path = "frontend/ir.rs"]

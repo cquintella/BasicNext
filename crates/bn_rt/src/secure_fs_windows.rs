@@ -11,11 +11,11 @@
 //! nor any ancestor can be renamed (verified on NTFS), so the full path keeps
 //! naming the components that were checked.
 
-use super::{OpenMode, denied};
+use super::{EntryKind, OpenMode, RootedDir, denied};
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::os::windows::fs::{MetadataExt as _, OpenOptionsExt as _};
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
 
 const FILE_SHARE_READ: u32 = 0x1;
 const FILE_SHARE_WRITE: u32 = 0x2;
@@ -148,6 +148,159 @@ pub(super) fn remove_file(root: &Path, relative: &Path) -> io::Result<()> {
         drop(open_component(path, Kind::Doomed)?);
         std::fs::remove_file(path)
     })
+}
+
+/// The Windows error for "the directory name is invalid", which `std` reads
+/// as `NotADirectory` (POSIX `ENOTDIR`).
+const ERROR_DIRECTORY: i32 = 267;
+
+/// Where an entry operation acts (bucket 0.6.12, FS-CORE-1): the full path
+/// of the entry, with the handles of its parents held so that no parent can
+/// be renamed or replaced, or a directory with no name to act on (a policy
+/// root, a drive root). Windows sets no DACL on what it creates: the entry
+/// inherits the parent's (G-5).
+pub(crate) struct Anchor {
+    path: PathBuf,
+    is_root: bool,
+    // Held, never read: an open handle keeps its directory from being
+    // renamed or replaced while the operation runs.
+    _held_parents: Vec<File>,
+}
+
+impl RootedDir {
+    /// The anchor of `path`, reached from the pinned root without following
+    /// a reparse point on the way. The root itself has no name.
+    pub(crate) fn anchor(&self, path: &Path) -> io::Result<Anchor> {
+        if self.is_root(path)? {
+            return Ok(Anchor {
+                path: self.canonical_path.clone(),
+                is_root: true,
+                _held_parents: Vec::new(),
+            });
+        }
+        let relative = self.relative(path)?;
+        let names: Vec<_> = relative
+            .components()
+            .filter_map(|component| match component {
+                Component::Normal(name) => Some(name),
+                _ => None,
+            })
+            .collect();
+        let mut entry = self.canonical_path.clone();
+        let mut held = Vec::with_capacity(names.len());
+        for (index, name) in names.iter().enumerate() {
+            entry.push(name);
+            if index + 1 < names.len() {
+                held.push(open_component(&entry, Kind::Directory)?);
+            }
+        }
+        Ok(Anchor {
+            is_root: names.is_empty(),
+            path: entry,
+            _held_parents: held,
+        })
+    }
+}
+
+/// The anchor of `path` without a policy root: only the final component is
+/// never followed.
+pub(crate) fn anchor_unrooted(path: &Path) -> io::Result<Anchor> {
+    let absolute = std::path::absolute(path)?;
+    Ok(Anchor {
+        is_root: absolute.file_name().is_none(),
+        path: absolute,
+        _held_parents: Vec::new(),
+    })
+}
+
+impl Anchor {
+    fn named(&self) -> io::Result<&Path> {
+        if self.is_root {
+            Err(denied(bn_catalog::text("file", "entry.root_not_target")))
+        } else {
+            Ok(&self.path)
+        }
+    }
+
+    pub(crate) fn kind(&self) -> io::Result<EntryKind> {
+        if self.is_root {
+            return Ok(EntryKind::Directory);
+        }
+        let metadata = std::fs::symlink_metadata(&self.path)?;
+        Ok(
+            if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+                EntryKind::Symlink
+            } else if metadata.is_dir() {
+                EntryKind::Directory
+            } else if metadata.is_file() {
+                EntryKind::File
+            } else {
+                EntryKind::Other
+            },
+        )
+    }
+
+    pub(crate) fn create_private_directory(&self) -> io::Result<()> {
+        if self.is_root {
+            return Err(io::ErrorKind::AlreadyExists.into());
+        }
+        std::fs::create_dir(&self.path)?;
+        // A reparse point put in place of the new directory is refused.
+        open_component(&self.path, Kind::Directory).map(drop)
+    }
+
+    pub(crate) fn create_private_file(&self) -> io::Result<File> {
+        if self.is_root {
+            return Err(io::ErrorKind::AlreadyExists.into());
+        }
+        // CREATE_NEW fails on any existing name, a reparse point included.
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+            .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+            .open(&self.path)
+    }
+
+    pub(crate) fn open_read(&self) -> io::Result<File> {
+        let kind = if self.is_root || self.kind()? == EntryKind::Directory {
+            Kind::Directory
+        } else {
+            Kind::File(OpenMode::Read)
+        };
+        open_component(&self.path, kind)
+    }
+
+    pub(crate) fn remove_empty_directory(&self) -> io::Result<()> {
+        let path = self.named()?;
+        if self.kind()? != EntryKind::Directory {
+            return Err(io::Error::from_raw_os_error(ERROR_DIRECTORY));
+        }
+        // A reparse point swapped in after the check is removed as a link,
+        // never through it.
+        std::fs::remove_dir(path)
+    }
+
+    pub(crate) fn rename_to(&self, target: &Self) -> io::Result<()> {
+        let source = self.named()?;
+        let destination = target.named()?;
+        match target.kind() {
+            Ok(EntryKind::File) => {}
+            Ok(_) => return Err(io::ErrorKind::AlreadyExists.into()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+        std::fs::rename(source, destination)
+    }
+
+    pub(crate) fn change_directory(&self) -> io::Result<()> {
+        // The handle is held across the change, so the checked directory is
+        // the one the process enters.
+        let directory = open_component(&self.path, Kind::Directory)?;
+        let changed = std::env::set_current_dir(&self.path);
+        drop(directory);
+        changed
+    }
 }
 
 #[cfg(test)]

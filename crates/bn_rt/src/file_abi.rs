@@ -186,6 +186,18 @@ pub extern "C" fn bn_rt_file_open(path: *const c_char, mode: i32, out: *mut BNFi
     if let Err(status) = authorize() {
         return status;
     }
+    register_file(out, || {
+        super::policy::with_fs(|policy| super::file::open(policy, Path::new(&path), mode))
+    })
+}
+
+/// Reserves a handle, runs `open`, and stores the file under that handle
+/// with one reference; `out` receives the handle on success. `out` was
+/// checked non-null and set to 0 by the caller.
+fn register_file(
+    out: *mut BNFileHandle,
+    open: impl FnOnce() -> Result<OpenFile, FileError>,
+) -> u32 {
     let table = files();
     let mut guard = table
         .0
@@ -199,13 +211,13 @@ pub extern "C" fn bn_rt_file_open(path: *const c_char, mode: i32, out: *mut BNFi
     let std::collections::hash_map::Entry::Vacant(entry) = guard.files.entry(id) else {
         return BN_FILE_ERROR;
     };
-    match super::policy::with_fs(|policy| super::file::open(policy, Path::new(&path), mode)) {
+    match open() {
         Ok(file) => {
             entry.insert(FileSlot {
                 file,
                 references: 1,
             });
-            // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
+            // SAFETY: the caller checked the pointer non-null; it points at a writable slot the caller allocated.
             unsafe { out.write(id) };
             BN_FILE_OK
         }
@@ -388,6 +400,132 @@ pub extern "C" fn bn_rt_fs_delete_file(path: *const c_char) -> u32 {
         .map_or_else(|error| failed(&error), |()| BN_FILE_OK)
 }
 
+/// Runs a 0.6.12 operation on one path argument (host.md, "Directories,
+/// private files, copy and move"); the status of a `VOID OR Error` result.
+fn path_operation(
+    path: *const c_char,
+    operation: impl FnOnce(&super::policy::FsPolicy, &Path) -> Result<(), FileError>,
+) -> u32 {
+    let path = match path_argument(path) {
+        Ok(path) => path,
+        Err(status) => return status,
+    };
+    if let Err(status) = authorize() {
+        return status;
+    }
+    super::policy::with_fs(|policy| operation(policy, Path::new(&path)))
+        .map_or_else(|error| failed(&error), |()| BN_FILE_OK)
+}
+
+/// Runs `Copy` or `Move` on two path arguments.
+fn pair_operation(
+    source: *const c_char,
+    destination: *const c_char,
+    operation: impl FnOnce(&super::policy::FsPolicy, &Path, &Path) -> Result<(), FileError>,
+) -> u32 {
+    let (source, destination) = match (path_argument(source), path_argument(destination)) {
+        (Ok(source), Ok(destination)) => (source, destination),
+        (Err(status), _) | (_, Err(status)) => return status,
+    };
+    if let Err(status) = authorize() {
+        return status;
+    }
+    super::policy::with_fs(|policy| operation(policy, Path::new(&source), Path::new(&destination)))
+        .map_or_else(|error| failed(&error), |()| BN_FILE_OK)
+}
+
+/// `FS.GetCurrentDirectory()`: `out` receives an owned string.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_fs_get_current_directory(out: *mut *mut c_char) -> u32 {
+    if out.is_null() {
+        return BN_FILE_INVALID;
+    }
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
+    unsafe { out.write(std::ptr::null_mut()) };
+    if let Err(status) = authorize() {
+        return status;
+    }
+    match super::policy::with_fs(super::file::get_current_directory) {
+        Ok(directory) => write_owned(out, &directory),
+        Err(error) => failed(&error),
+    }
+}
+
+/// `FS.SetCurrentDirectory(path)`.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_fs_set_current_directory(path: *const c_char) -> u32 {
+    path_operation(path, super::file::set_current_directory)
+}
+
+/// `FS.CreateDirectory(path)`.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_fs_create_directory(path: *const c_char) -> u32 {
+    path_operation(path, super::file::create_directory)
+}
+
+/// `FS.RemoveDirectory(path)`.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_fs_remove_directory(path: *const c_char) -> u32 {
+    path_operation(path, super::file::remove_directory)
+}
+
+/// `FS.IsDirectory(path)`: `out` receives 1 or 0.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_fs_is_directory(path: *const c_char, out: *mut i32) -> u32 {
+    if out.is_null() {
+        return BN_FILE_INVALID;
+    }
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
+    unsafe { out.write(0) };
+    let path = match path_argument(path) {
+        Ok(path) => path,
+        Err(status) => return status,
+    };
+    if let Err(status) = authorize() {
+        return status;
+    }
+    match super::policy::with_fs(|policy| super::file::is_directory(policy, Path::new(&path))) {
+        Ok(directory) => {
+            // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
+            unsafe { out.write(i32::from(directory)) };
+            BN_FILE_OK
+        }
+        Err(error) => failed(&error),
+    }
+}
+
+/// `FS.OpenNew(path)`: `out` receives the handle of the new owner-only file.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_fs_open_new(path: *const c_char, out: *mut BNFileHandle) -> u32 {
+    if out.is_null() {
+        return BN_FILE_INVALID;
+    }
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
+    unsafe { out.write(0) };
+    let path = match path_argument(path) {
+        Ok(path) => path,
+        Err(status) => return status,
+    };
+    if let Err(status) = authorize() {
+        return status;
+    }
+    register_file(out, || {
+        super::policy::with_fs(|policy| super::file::open_new(policy, Path::new(&path)))
+    })
+}
+
+/// `FS.Copy(source, destination)`.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_fs_copy(source: *const c_char, destination: *const c_char) -> u32 {
+    pair_operation(source, destination, super::file::copy)
+}
+
+/// `FS.Move(source, destination)`.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_fs_move(source: *const c_char, destination: *const c_char) -> u32 {
+    pair_operation(source, destination, super::file::move_entry)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -545,6 +683,54 @@ mod tests {
             "outside"
         );
         std::fs::remove_file(root).unwrap();
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    /// The 0.6.12 exports reject a null or non-UTF-8 path and a null out
+    /// pointer, clear every out slot before work, and register a handle only
+    /// for a created file (bucket 0.6.12, FS-NAT-1).
+    #[test]
+    #[allow(clippy::borrow_as_ptr)]
+    fn directory_exports_check_their_pointers() {
+        let _policy = super::super::policy::reset_for_tests();
+        let bad_utf8 = [0xFF_u8, 0x00_u8];
+        let bad: *const c_char = bad_utf8.as_ptr().cast();
+        let null: *const c_char = std::ptr::null();
+        for status in [
+            bn_rt_fs_create_directory(null),
+            bn_rt_fs_create_directory(bad),
+            bn_rt_fs_set_current_directory(null),
+            bn_rt_fs_remove_directory(bad),
+            bn_rt_fs_copy(null, bad),
+            bn_rt_fs_move(bad, null),
+            bn_rt_fs_get_current_directory(std::ptr::null_mut()),
+        ] {
+            assert_eq!(status, BN_FILE_INVALID);
+        }
+        let mut flag = 7;
+        assert_eq!(bn_rt_fs_is_directory(null, &mut flag), BN_FILE_INVALID);
+        assert_eq!(flag, 0);
+
+        let base = std::env::temp_dir().join(format!("bn-file-abi-new-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let missing = base.join("none").join("file");
+        let missing = crate::string::c_string_from_bytes(missing.to_str().unwrap().as_bytes());
+        let mut handle = 9;
+        assert_ne!(bn_rt_fs_open_new(missing, &mut handle), BN_FILE_OK);
+        assert_eq!(handle, 0);
+
+        let path = base.join("new.txt");
+        let name = crate::string::c_string_from_bytes(path.to_str().unwrap().as_bytes());
+        assert_eq!(bn_rt_fs_open_new(name, &mut handle), BN_FILE_OK);
+        assert_ne!(handle, 0);
+        assert!(write_handle(handle, "private").is_ok());
+        assert_eq!(bn_rt_file_close(handle), BN_FILE_OK);
+        assert_eq!(bn_rt_file_release(handle), BN_FILE_OK);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "private");
+        let mut again = 9;
+        assert_ne!(bn_rt_fs_open_new(name, &mut again), BN_FILE_OK);
+        assert_eq!(again, 0);
         std::fs::remove_dir_all(base).unwrap();
     }
 

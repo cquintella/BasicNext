@@ -30,6 +30,8 @@ mod conformance;
 mod crypto_limits;
 #[path = "programs/destructuring.rs"]
 mod destructuring;
+#[path = "programs/fs_directories_policy.rs"]
+mod fs_directories_policy;
 #[path = "programs/loop_scope.rs"]
 mod loop_scope;
 #[path = "programs/math_expressions.rs"]

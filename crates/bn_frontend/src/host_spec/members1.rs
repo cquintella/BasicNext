@@ -1,4 +1,6 @@
-use super::{Catalog, SpecFloatType, SpecIntegerType, SpecMember, SpecPointerLength, SpecType};
+use super::{
+    Capability, Catalog, SpecFloatType, SpecIntegerType, SpecMember, SpecPointerLength, SpecType,
+};
 use std::collections::BTreeMap;
 
 pub(super) fn declare_1(catalog: &mut Catalog) {
@@ -328,4 +330,67 @@ pub(super) fn declare_5(catalog: &mut Catalog) {
 
 pub(super) fn declare_6(catalog: &mut Catalog) {
     catalog.members.insert("Float".into(), BTreeMap::new());
+}
+
+/// The `HOST.FileSystem` methods of bucket 0.6.12 (host.md, "Directories,
+/// private files, copy and move"), added to the members `declare_4` lists.
+pub(super) fn declare_filesystem_directories(catalog: &mut Catalog) {
+    let members = catalog
+        .members
+        .get_mut(Capability::FileSystem.owner())
+        .expect("declare_4 lists HOST.FileSystem first");
+    members.extend([
+        (
+            "GetCurrentDirectory".into(),
+            fallible(Vec::new(), SpecType::String),
+        ),
+        (
+            "SetCurrentDirectory".into(),
+            fallible(vec![SpecType::String], void()),
+        ),
+        (
+            "CreateDirectory".into(),
+            fallible(vec![SpecType::String], void()),
+        ),
+        (
+            "RemoveDirectory".into(),
+            fallible(vec![SpecType::String], void()),
+        ),
+        (
+            "IsDirectory".into(),
+            fallible(vec![SpecType::String], SpecType::Boolean),
+        ),
+        (
+            "OpenNew".into(),
+            fallible(vec![SpecType::String], SpecType::Named("FS.File".into())),
+        ),
+        (
+            "Copy".into(),
+            fallible(vec![SpecType::String, SpecType::String], void()),
+        ),
+        (
+            "Move".into(),
+            fallible(vec![SpecType::String, SpecType::String], void()),
+        ),
+    ]);
+}
+
+/// A capability method whose result is `result OR Error`.
+fn fallible(parameters: Vec<SpecType>, result: SpecType) -> SpecMember {
+    SpecMember {
+        ty: SpecType::Function {
+            parameters,
+            return_type: Box::new(SpecType::Alternative(vec![
+                result,
+                SpecType::Named("Error".into()),
+            ])),
+        },
+        is_static: false,
+        private: false,
+        mutable: false,
+    }
+}
+
+fn void() -> SpecType {
+    SpecType::Named("VOID".into())
 }
