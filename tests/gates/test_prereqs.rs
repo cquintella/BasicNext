@@ -192,3 +192,36 @@ fn every_override_set_to_a_file_skips_the_stamp() {
         "no/such/archive.a"
     ))));
 }
+
+/// Whether the build script sees `workspace` as a git work tree of its own.
+fn script_sees_git(workspace: &Path) -> bool {
+    std::process::Command::new("bash")
+        .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+        .current_dir(workspace)
+        .args([
+            "-c",
+            "source scripts/build-test-prereqs.sh && test_prereqs_in_git",
+        ])
+        .status()
+        .expect("run the build script")
+        .success()
+}
+
+#[test]
+fn a_source_copy_without_its_own_git_tree_is_not_stamped() {
+    let repository = scratch_workspace("prereqs-git-top");
+    assert!(script_sees_git(repository.path()));
+
+    let copy = super::support::TestDir::new("prereqs-no-git").expect("plain copy");
+    fs::create_dir_all(copy.join("scripts")).expect("scripts");
+    fs::copy(repository.join(BUILD_SOURCE), copy.join(BUILD_SOURCE)).expect("copy script");
+    assert!(!script_sees_git(copy.path()), "a copy without git");
+
+    let nested = repository.join("unpacked");
+    fs::create_dir_all(nested.join("scripts")).expect("nested scripts");
+    fs::copy(repository.join(BUILD_SOURCE), nested.join(BUILD_SOURCE)).expect("nested script");
+    assert!(
+        !script_sees_git(&nested),
+        "a copy inside another repository"
+    );
+}

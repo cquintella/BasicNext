@@ -35,6 +35,16 @@ test_prereqs_root() {
     (cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 }
 
+# True when the workspace root is the top of a git work tree. A source copy
+# without git (a release tarball, the Windows test host's copy) has no tree
+# to stamp; neither does a copy unpacked inside another repository.
+test_prereqs_in_git() {
+    local root prefix
+    root=$(test_prereqs_root) || return 1
+    prefix=$(git -C "$root" rev-parse --show-prefix 2> /dev/null) || return 1
+    [[ -z $prefix ]]
+}
+
 # Prints the stamp of the source tree under the workspace root.
 test_prereqs_stamp() {
     local root
@@ -59,7 +69,13 @@ test_prereqs_stamp() {
 prepare_test_artifacts() {
     local artifacts interpreter compiler runtime stdlib web stamp
     jq --version > /dev/null || return "$?"
-    stamp=$(test_prereqs_stamp) || return "$?"
+    stamp=
+    if test_prereqs_in_git; then
+        stamp=$(test_prereqs_stamp) || return "$?"
+    else
+        echo "build-test-prereqs.sh: not a git work tree; no stamp is written, so" \
+            "tests need every override (scripts/test.sh sets them)" >&2
+    fi
     artifacts=$(cargo build --locked -p bni -p bnc -p bn_rt -p bn_stdlib -p bn_web \
         --message-format=json-render-diagnostics "$@") || return "$?"
     interpreter=$(printf '%s\n' "$artifacts" | jq -bser '
@@ -84,7 +100,13 @@ prepare_test_artifacts() {
         | if length == 1 then .[0] else empty end') || return "$?"
     test -x "$interpreter" && test -x "$compiler" \
         && test -f "$runtime" && test -f "$stdlib" && test -f "$web" || return 1
-    printf '%s\n' "$stamp" > "$(dirname "$interpreter")/$TEST_PREREQS_STAMP_FILE" || return "$?"
+    local stamp_path
+    stamp_path="$(dirname "$interpreter")/$TEST_PREREQS_STAMP_FILE"
+    if [[ -n $stamp ]]; then
+        printf '%s\n' "$stamp" > "$stamp_path" || return "$?"
+    else
+        rm -f "$stamp_path"
+    fi
     export BN_INTERPRETER="$interpreter" BN_COMPILER="$compiler"
     export BN_RT_LIB="$runtime" BN_STDLIB_LIB="$stdlib" BN_WEB_LIB="$web"
 }

@@ -42,6 +42,7 @@
     "bn::test/values::ownership_matrix::native_strings_leave_no_buffer_behind",
     "bn::test/gates::test_prereqs::test_prerequisites_are_built_by_one_script",
     "bn::test/gates::test_prereqs::the_one_build_gate_rejects_a_second_prerequisite_build",
+    "bn::test/gates::test_prereqs::a_source_copy_without_its_own_git_tree_is_not_stamped",
     "bn::test/gates::test_prereqs::a_stale_or_missing_build_is_refused",
     "bn::test/gates::test_prereqs::every_override_set_to_a_file_skips_the_stamp",
     "bn::test/gates::test_prereqs::the_tree_stamp_follows_every_source_change",
