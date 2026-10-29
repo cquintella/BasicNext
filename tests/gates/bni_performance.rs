@@ -7,7 +7,8 @@
 //! `tests/bench` programs and the linear-time gates. Wall-clock time depends
 //! on the machine, so these are ignored by the ordinary run; measure a
 //! release interpreter:
-//! `cargo build --release -p bni && BN_INTERPRETER=target/release/bni cargo test --release --test gates -- --ignored bni_performance`.
+//! `bash scripts/test.sh --release --test gates -- --ignored bni_performance`
+//! (it builds the release prerequisites and sets every override).
 
 use super::support::{bni, run, workspace_root};
 use std::time::{Duration, Instant};

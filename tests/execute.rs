@@ -5,6 +5,10 @@
 #[path = "support/migration_target.rs"]
 mod migration_target;
 
+#[allow(dead_code)]
+#[path = "support/prerequisites.rs"]
+mod prerequisites;
+
 #[path = "execute/support.rs"]
 pub(crate) mod support;
 

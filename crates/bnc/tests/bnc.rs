@@ -8,7 +8,14 @@ use std::process::Command;
 
 const WORKSPACE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 
+// The binary comes fresh from `CARGO_BIN_EXE_bnc`, but the runtime archives
+// it links do not: the shared check stops on a stale build.
+#[allow(dead_code)]
+#[path = "../../../tests/support/prerequisites.rs"]
+mod prerequisites;
+
 fn bnc() -> Command {
+    prerequisites::ensure_fresh(std::path::Path::new(WORKSPACE));
     let path = std::env::var_os("BN_COMPILER")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_BIN_EXE_bnc")));

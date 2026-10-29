@@ -14,6 +14,7 @@ use serde_json::json;
 use wait_timeout::ChildExt;
 
 pub mod matrix;
+pub mod prerequisites;
 
 static UNIQUE_ID: AtomicU64 = AtomicU64::new(0);
 
@@ -175,24 +176,14 @@ pub fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
+/// `bni` or `bnc` (`prerequisites::executable`).
 pub fn executable_path(name: &str) -> PathBuf {
-    let override_name = match name {
-        "bni" => Some("BN_INTERPRETER"),
-        "bnc" => Some("BN_COMPILER"),
-        _ => None,
-    };
-    if let Some(path) = override_name.and_then(env::var_os) {
-        return PathBuf::from(path);
-    }
+    prerequisites::executable(&workspace_root(), name)
+}
 
-    let mut path = workspace_root().join("target");
-    path.push(if cfg!(debug_assertions) {
-        "debug"
-    } else {
-        "release"
-    });
-    path.push(format!("{name}{}", env::consts::EXE_SUFFIX));
-    path
+/// A runtime archive (`prerequisites::archive`).
+pub fn runtime_archive(library: &str) -> PathBuf {
+    prerequisites::archive(&workspace_root(), library)
 }
 
 pub fn bni() -> Command {

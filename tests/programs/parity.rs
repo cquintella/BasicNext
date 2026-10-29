@@ -29,22 +29,10 @@ use rustix::{
 #[cfg(unix)]
 use wait_timeout::ChildExt;
 
-/// The executables under test live in the workspace `target/<profile>/`;
-/// this package has no binary of its own, so build them first
-/// (`cargo build -p bni -p bnc`; `scripts/test-battery.sh` does).
+/// The executables under test, resolved and checked fresh by the shared
+/// support (this package has no binary of its own).
 fn executable(name: &str) -> Command {
-    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target");
-    path.push(if cfg!(debug_assertions) {
-        "debug"
-    } else {
-        "release"
-    });
-    path.push(format!("{name}{}", std::env::consts::EXE_SUFFIX));
-    assert!(
-        path.is_file(),
-        "{name} must be built first: cargo build -p bni -p bnc"
-    );
-    Command::new(path)
+    Command::new(crate::support::executable_path(name))
 }
 
 fn bni() -> Command {

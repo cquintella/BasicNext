@@ -186,21 +186,13 @@ fn console_tty_calls_fail_only_when_executed() {
     let path =
         std::env::temp_dir().join(format!("basicnext-console-pipe-{}.bn", std::process::id()));
     fs::write(&path, executed).expect("write piped console fixture");
-    // The interpreter executable from the workspace target directory (this
-    // package has no binary; `cargo build -p bni` first).
-    let bni = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("target")
-        .join(if cfg!(debug_assertions) {
-            "debug"
-        } else {
-            "release"
-        })
-        .join(format!("bni{}", std::env::consts::EXE_SUFFIX));
-    assert!(bni.is_file(), "bni must be built first: cargo build -p bni");
-    let output = Command::new(bni)
-        .args(["run", path.to_str().expect("UTF-8 fixture path")])
-        .output()
-        .expect("run with captured standard output");
+    let output = Command::new(crate::prerequisites::executable(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")),
+        "bni",
+    ))
+    .args(["run", path.to_str().expect("UTF-8 fixture path")])
+    .output()
+    .expect("run with captured standard output");
     let _ = fs::remove_file(path);
     assert_eq!(output.status.code(), Some(1));
     assert!(
