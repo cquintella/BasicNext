@@ -24,7 +24,7 @@ const SOURCE_EXTENSION: &str = "bn";
 
 /// Programs whose expected output is known not to hold yet, with the reason.
 /// A ratchet: a listed program must still fail on that backend, and an
-/// unlisted one must pass (CLAUDE.md, "Known-failure lists").
+/// unlisted one must pass (the list is a ratchet).
 const KNOWN_FAILURES: [(&str, &str, &str); 0] = [];
 
 fn conformance_programs(directory: &Path, programs: &mut Vec<PathBuf>) {

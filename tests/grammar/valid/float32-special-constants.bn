@@ -1,4 +1,4 @@
-// NAN, INF and -INF converted to FLOAT32 build natively (known issue K34: the
+// NAN, INF and -INF converted to FLOAT32 build natively (the
 // LLVM constant used the 32-bit hexadecimal pattern, which clang rejects).
 FUNCTION Start() AS VOID
     LET zero AS FLOAT64 = 0.0

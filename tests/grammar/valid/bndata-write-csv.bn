@@ -10,7 +10,7 @@ FUNCTION Start() AS VOID
     LET frame AS Data.DataFrame = NEW Data.DataFrame()
     LET names AS STRING[2] = ["Ana", "Carlos"]
     frame.AddStringColumn("name", names)
-    LET file AS FS.File OR Error = FS.Open("/tmp/basicnext-sprint6-write.csv", FS.WRITE)
+    LET file AS FS.File OR Error = FS.Open("/tmp/basicnext-bndata-write.csv", FS.WRITE)
     IF file IS Error THEN
         PRINT file.Code
     ELSE

@@ -7,7 +7,7 @@
 // codes (NOT_FOUND for a name without records, INVALID_ARGUMENT for a
 // malformed one; `.invalid` never exists, RFC 6761), an index outside a
 // resolver result is an Error, and an Error moves between `T OR Error`
-// results of different layouts (known issue K36).
+// results of different layouts.
 IMPORT HOST.Net AS Net
 
 FUNCTION Endpoint(text AS STRING, port AS UINT16) AS Net.Endpoint OR Error

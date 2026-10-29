@@ -18,7 +18,7 @@ const ANGLES_PROGRAM: &str = "IMPORT BNMath AS Math\n\nFUNCTION Start() AS VOID\
 
 /// IEEE 754 binary64 values of Rust `to_radians` / `to_degrees`, which
 /// multiply by the same precomputed ratios, printed as the shortest decimal
-/// that reads back (math.md; independent probe, bucket 0.6.10 E.1b).
+/// that reads back (math.md; independent probe).
 const ANGLES_OUTPUT: &str = "3.141592653589793 3.141592653589793\n\
 3.141592653589793 1.5707963267948966 0.7853981633974483\n\
 6.283185307179586 -1.5707963267948966 0.5235987755982988\n\

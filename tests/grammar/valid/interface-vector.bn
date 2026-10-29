@@ -1,6 +1,6 @@
 // A vector of an interface or of a base class holds objects of the classes
 // that reach it: a literal of implementing or subclass objects, and an
-// element store of another class (known issue K28: the IR validator
+// element store of another class (the IR validator
 // refused both).
 INTERFACE Listener
     FUNCTION Notify(event AS STRING) AS VOID

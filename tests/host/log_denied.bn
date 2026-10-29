@@ -5,7 +5,7 @@
 
 // Run with BN_FS_POLICY=deny or read-only: a log file the policy denies is
 // Error(Log.IO_FAILED) from Logger.New on both backends and the program goes
-// on (bnlog.md "Making a logger"; D2 of bucket 0.6.5c).
+// on (bnlog.md "Making a logger").
 IMPORT HOST.FileSystem AS FS
 IMPORT BNLog AS Log
 

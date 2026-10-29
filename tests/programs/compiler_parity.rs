@@ -269,8 +269,8 @@ fn struct_fields_have_distinct_layout_and_bounded_native_lifetime() {
     assert_eq!(compiled.stdout, interpreted.stdout);
 }
 
-/// A STRUCT made in a function other than `Start` and returned builds natively
-/// (known issue K13): the frame's storage ends at the return, so the returned
+/// A STRUCT made in a function other than `Start` and returned builds natively:
+/// the frame's storage ends at the return, so the returned
 /// value leaves in a heap block the caller owns.
 #[test]
 fn struct_returned_from_a_function_matches_interpreter() {
@@ -353,7 +353,7 @@ fn region_fields_are_strong_bindings() {
     assert_native_parity(&path, None);
 }
 
-/// Bucket 0.6.2b R6: a native runtime trap prints the diagnostic `bni`
+/// a native runtime trap prints the diagnostic `bni`
 /// prints (title, excerpt, cause, help; `bnc` renders it from the shared
 /// catalog at compile time) and exits with the same status. One program per
 /// trap kind lives in `tests/runtime-traps/`.
@@ -677,8 +677,8 @@ fn malformed_env_policy_stops_both_backends() {
 
 /// `bnc --cpu native` changes no observable result: floating-point, integer
 /// width and `BNMath` reduction programs print exactly what `bni run` prints
-/// (no fast-math, no contraction; AGENTS.md "No optimization changes an
-/// observable result").
+/// (no fast-math, no contraction: no optimization changes an
+/// observable result).
 #[test]
 fn cpu_native_artifacts_print_what_the_interpreter_prints() {
     let directory = TestDir::new("cpu-native").expect("create directory");
@@ -780,7 +780,7 @@ fn a_string_program_does_not_free_its_payload() {
     assert!(llvm.contains("i64 16"), "the payload skips the header");
 }
 
-/// A STRING holding U+0000 (Sprint 3 / G.S1): `bni` and `bnc` both keep
+/// A STRING holding U+0000: `bni` and `bnc` both keep
 /// the NUL and print the full length with exit status 0 and exact parity.
 #[test]
 fn nul_in_a_string_matches_on_both_backends() {
@@ -854,8 +854,8 @@ fn nul_in_a_string_matches_on_both_backends() {
 }
 
 /// A log file the filesystem policy denies is `Error(Log.IO_FAILED)` from
-/// `Logger.New` on both backends, and the program goes on (bnlog.md "Errors";
-/// bucket 0.6.5c D2). `bni` stopped with `EXECUTION_POLICY_DENIED` under
+/// `Logger.New` on both backends, and the program goes on (bnlog.md "Errors").
+/// `bni` stopped with `EXECUTION_POLICY_DENIED` under
 /// `read-only` and returned `CAPABILITY_REQUIRED` under `deny`.
 #[test]
 fn denied_log_file_is_io_failed_on_both_backends() {

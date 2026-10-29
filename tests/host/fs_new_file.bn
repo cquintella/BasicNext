@@ -5,7 +5,7 @@
 
 // NEW FS.File() is a file that was never opened (host.md): its methods,
 // Close aside, return Error(FS.CLOSED). A plain FS.File binding or parameter
-// works natively too (both emitted invalid LLVM; bucket 0.6.2b D9).
+// works natively too (both emitted invalid LLVM).
 IMPORT HOST.FileSystem AS FS
 
 FUNCTION Describe(file AS FS.File) AS VOID

@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 // The end of an ASYNC task is the end of its copy's program (0.6.md,
-// "Isolation and conformance"; known issue K88): no DESTRUCTOR runs for what
+// "Isolation and conformance"): no DESTRUCTOR runs for what
 // its STATIC fields or a cycle still hold, and the copy is discarded, so the
 // next task on the same worker reuses the reclaimed storage (BN_ARC_TRACE
 // shows the same object ids for both tasks).

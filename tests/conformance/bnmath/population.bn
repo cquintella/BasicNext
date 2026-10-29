@@ -3,8 +3,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// BNMath.PVariance and BNMath.PStdev (math.md, "Descriptive statistics";
-// BDFL decision G-5, 2026-10-27). Expected output: population.expected:
+// BNMath.PVariance and BNMath.PStdev (math.md, "Descriptive statistics").
+// Expected output: population.expected:
 //   - [1, 2, 3, 4]: the mean is 2.5, the squared deviations sum to
 //     2.25 + 0.25 + 0.25 + 2.25 = 5, so PVariance = 5 / 4 = 1.25 and PStdev
 //     = SQRT(1.25) = 1.118033988749895 (bc: 1.1180339887498948482...);

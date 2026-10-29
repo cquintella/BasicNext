@@ -4,5 +4,5 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 // E0100 names what the parser expected, once ("Expected IMPORT or a
-// top-level declaration", never "Expected expected …"; bucket 0.6.2b D6).
+// top-level declaration", never "Expected expected …").
 x = 1

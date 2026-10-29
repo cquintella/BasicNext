@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// Bucket 0.6.1c SPRINT 1 — the thin vertical slice: build an object, write one
+// The thin vertical slice: build an object, write one
 // string, read it back, and prove the fail-closed reads. Deliberately one
 // member of each kind; the rest of the DOM follows once this path is proven on
 // both backends.

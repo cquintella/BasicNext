@@ -39,7 +39,7 @@ fn valid_fixture(name: &str) -> std::path::PathBuf {
     workspace_root().join("tests/grammar/valid").join(name)
 }
 
-/// A character from `s[i]` or `CHAR` outlives its frame (known issue K49):
+/// A character from `s[i]` or `CHAR` outlives its frame:
 /// native builds returned a pointer into a dead stack buffer, and a loop
 /// grew the stack until the process crashed. The buffer is now a heap
 /// allocation, so no `alloca` remains on those paths.
@@ -81,7 +81,7 @@ fn string_index_and_char_results_outlive_their_frame() {
 }
 
 /// The elements of a `STRING` vector without an initializer are `""` on both
-/// backends, in a local and in a class field (known issue K50: native builds
+/// backends, in a local and in a class field (native builds
 /// stored a null pointer).
 #[test]
 fn string_vector_elements_default_to_the_empty_string() {
@@ -104,7 +104,7 @@ fn string_vector_elements_default_to_the_empty_string() {
 
 /// `IS POINTER TO VOID` holds for every non-NULL pointer value, typed or
 /// opaque, and guards the conversion back to a typed pointer (known issue
-/// K51: native builds folded the test to `FALSE`, so the branch never ran).
+/// native builds folded the test to `FALSE`, so the branch never ran).
 #[test]
 fn is_pointer_to_void_holds_for_a_non_null_pointer() {
     let path = valid_fixture("pointer-void.bn");
@@ -188,7 +188,7 @@ fn nullable_integer_region_is_reads_length() {
     }
 }
 
-/// `IS POINTER TO Log.Logger` on `POINTER TO Log.Logger OR NULL` (K11).
+/// `IS POINTER TO Log.Logger` on `POINTER TO Log.Logger OR NULL`.
 /// The stored value is NULL. This does not read an allocation.
 #[test]
 fn qualified_null_pointer_alternative_is_not_the_pointer() {
@@ -209,7 +209,7 @@ fn qualified_null_pointer_alternative_is_not_the_pointer() {
     }
 }
 
-/// `IS POINTER TO Box` on `POINTER TO Box OR NULL` (K11).
+/// `IS POINTER TO Box` on `POINTER TO Box OR NULL`.
 /// The stored value is NULL; a live `POINTER TO Box` is not constructed here.
 #[test]
 fn null_named_pointer_alternative_is_not_the_pointer() {
@@ -230,7 +230,7 @@ fn null_named_pointer_alternative_is_not_the_pointer() {
     }
 }
 
-/// `IS Log.Logger` on `Log.Logger OR Error` (K64).
+/// `IS Log.Logger` on `Log.Logger OR Error`.
 #[test]
 fn imported_logger_alternative_is_the_logger() {
     let path = workspace_root().join("tests/grammar/valid/logger-alternative-is.bn");
@@ -252,8 +252,8 @@ fn imported_logger_alternative_is_the_logger() {
 
 /// Functions of an imported module copy, reassign, return and test objects
 /// of the module's own class with the ARC behaviour of a one-file program
-/// (known issues K57: both backends stopped with `INVALID_IR` on the copy
-/// and the reassignment; K52: a `NEW` returned by a method of the imported
+/// (both backends stopped with `INVALID_IR` on the copy
+/// and the reassignment; a `NEW` returned by a method of the imported
 /// class was never registered natively, so the caller released another
 /// object).
 #[test]
@@ -277,7 +277,7 @@ fn imported_module_owns_objects_of_its_own_class() {
 }
 
 /// The objects of a vector of more than one dimension are released once
-/// each, row by row (known issue K30: native builds walked the rows as
+/// each, row by row (native builds walked the rows as
 /// objects and stopped with `INVALID_IR`).
 #[test]
 fn objects_in_vector_rows_are_released_once() {
@@ -299,7 +299,7 @@ fn objects_in_vector_rows_are_released_once() {
 }
 
 /// `BNMath` range constants read through the `Limits` class fold to the
-/// same values as the module members (math.md: one storage location; K59).
+/// same values as the module members (math.md: one storage location).
 #[test]
 fn bnmath_limits_class_reads_the_range_constants() {
     let directory = TestDir::new("bnmath-limits").expect("create directory");
@@ -326,7 +326,7 @@ fn bnmath_limits_class_reads_the_range_constants() {
     }
 }
 
-/// A STRUCT made outside `Start` builds natively (known issue K13): returned
+/// A STRUCT made outside `Start` builds natively: returned
 /// from a function, made on every turn of a loop, copied with value
 /// semantics, and holding an object that is released exactly once.
 #[test]
@@ -350,8 +350,7 @@ fn struct_values_outside_start_match_on_both_backends() {
 
 /// Recursion that never ends stops with `STACK_OVERFLOW` naming the call, on
 /// both backends, after the output written before it; a tail call takes
-/// stack too, so `bnc` does not loop forever (0.6.md, "Recursion depth";
-/// known issue K53).
+/// stack too, so `bnc` does not loop forever (0.6.md, "Recursion depth").
 #[test]
 fn endless_recursion_stops_with_stack_overflow_on_both_backends() {
     for (path, callee) in [
@@ -388,7 +387,7 @@ fn endless_recursion_stops_with_stack_overflow_on_both_backends() {
 
 /// Fixed vectors of two and three dimensions are values natively, as under
 /// `bni`: a copy, an argument, a returned vector, a default and a `STATIC`
-/// each own their rows (0.6.md, value semantics; known issue K21).
+/// each own their rows (0.6.md, value semantics).
 #[test]
 fn nested_vectors_are_values_on_both_backends() {
     let path = valid_fixture("nested-vector-values.bn");
@@ -409,7 +408,7 @@ fn nested_vectors_are_values_on_both_backends() {
 }
 
 /// An index of any integer type names the same element on both backends
-/// (known issue K71: native builds narrowed a wide index to 32 bits before
+/// (native builds narrowed a wide index to 32 bits before
 /// the bounds check). The out-of-range cases are traps in
 /// `tests/runtime-traps/` (`wide-index-*`, `uint32-index`, `host-args-*`).
 #[test]
@@ -432,7 +431,7 @@ fn indices_of_every_integer_width_match_on_both_backends() {
 }
 
 /// `HOST.Args` read from functions outside `Start` works on both backends
-/// (known issue K79: native builds failed with undefined value `%argc` / `%argv`
+/// (native builds failed with undefined value `%argc` / `%argv`
 /// in any function other than `Start`).
 #[test]
 fn host_args_outside_start_match_on_both_backends() {
@@ -454,7 +453,7 @@ fn host_args_outside_start_match_on_both_backends() {
 }
 
 /// Global temporal builtins `Date.Parse`, `Time.Parse`, `Timestamp.Parse`,
-/// and `Timestamp.Format` match on both backends (known issue K80).
+/// and `Timestamp.Format` match on both backends.
 #[test]
 fn temporal_builtins_match_on_both_backends() {
     let path = valid_fixture("temporal-builtins.bn");
@@ -474,7 +473,7 @@ fn temporal_builtins_match_on_both_backends() {
     }
 }
 
-/// SQLite 64-bit rowid/changes (K73) and empty blob/text with NULL (K78) match on both backends.
+/// SQLite 64-bit rowid/changes and empty blob/text with NULL match on both backends.
 #[test]
 fn sqlite_types_and_empty_blob_match_on_both_backends() {
     let path = valid_fixture("sqlite-types-and-empty-blob.bn");
@@ -494,7 +493,7 @@ fn sqlite_types_and_empty_blob_match_on_both_backends() {
     }
 }
 
-/// Returning a struct by value containing ARC references and vectors outlives its frame (K10, K63).
+/// Returning a struct by value containing ARC references and vectors outlives its frame.
 #[test]
 fn struct_return_arc_matches_on_both_backends() {
     let path = valid_fixture("struct-return-arc.bn");
@@ -514,8 +513,8 @@ fn struct_return_arc_matches_on_both_backends() {
     }
 }
 
-/// An `ASYNC` task runs on its own fresh copy of the `STATIC` fields (known
-/// issue K44): native builds shared one copy across threads, so a task saw
+/// An `ASYNC` task runs on its own fresh copy of the `STATIC` fields:
+/// native builds shared one copy across threads, so a task saw
 /// the caller's values, its writes reached the caller, and concurrent tasks
 /// lost updates. Every `STATIC` global is now thread-local, and each
 /// trampoline resets them before its task, since a queue reuses threads.
@@ -565,8 +564,8 @@ fn async_tasks_run_on_a_fresh_copy_of_the_static_fields() {
     }
 }
 
-/// The end of an `ASYNC` task is the end of its copy's program (known issue
-/// K88): what its `STATIC` fields or a cycle still hold gets no
+/// The end of an `ASYNC` task is the end of its copy's program:
+/// what its `STATIC` fields or a cycle still hold gets no
 /// `DESTRUCTOR`, and the copy is discarded. Native builds kept those
 /// objects for the life of the process, so each task leaked them and took
 /// new object ids; now the next task reuses the reclaimed slots, and the
@@ -646,7 +645,7 @@ fn assert_same_output_in_fresh_directories(path: &Path, label: &str, expected: &
 }
 
 /// A listener an `ASYNC` task keeps in a `STATIC` closes with the task's
-/// copy (known issue K90): the program can bind its port afterwards. Native
+/// copy: the program can bind its port afterwards. Native
 /// builds kept it open for the life of the process.
 #[test]
 fn the_end_of_an_async_task_closes_its_sockets() {
@@ -655,7 +654,7 @@ fn the_end_of_an_async_task_closes_its_sockets() {
 }
 
 /// A connection an `ASYNC` task keeps in a `STATIC` closes with the task's
-/// copy (known issue K90): its open transaction rolls back and the database
+/// copy: its open transaction rolls back and the database
 /// is free. Both backends kept it open (`BUSY`), the connection table being
 /// process-wide.
 #[test]
@@ -665,7 +664,7 @@ fn the_end_of_an_async_task_closes_its_connections() {
 }
 
 /// 200 tasks each keep an open file in a `STATIC` under a limit of 64
-/// descriptors (known issue K90): every file closes with its task's copy,
+/// descriptors: every file closes with its task's copy,
 /// so no open fails. Native builds failed from the 32nd task on.
 #[cfg(unix)]
 #[test]
@@ -700,7 +699,7 @@ fn the_end_of_an_async_task_closes_its_files() {
 }
 
 /// A dynamic vector dimension (`LET values AS INTEGER[n]`) lowers cleanly
-/// on both backends and zeros its memory (known issue K12 / T.K12).
+/// on both backends and zeros its memory.
 #[test]
 fn dynamic_vector_dimension_allocates_and_zeros_memory() {
     let directory = TestDir::new("dynamic-vector-dimension").expect("create directory");
@@ -734,7 +733,7 @@ fn dynamic_vector_dimension_allocates_and_zeros_memory() {
 }
 
 /// A vector literal inside a loop pre-allocates its storage in the entry block
-/// and does not grow the call stack across iterations (known issue K62).
+/// and does not grow the call stack across iterations.
 #[test]
 fn vector_literal_in_loop_reuses_entry_slot_without_stack_growth() {
     let directory = TestDir::new("vector-loop-stack").expect("create directory");
@@ -798,7 +797,7 @@ fn vector_literal_in_loop_reuses_entry_slot_without_stack_growth() {
     }
 }
 
-/// Narrowed resources store cleanly into `T OR NULL` and static `Log.Logger OR Error` (K91).
+/// Narrowed resources store cleanly into `T OR NULL` and static `Log.Logger OR Error`.
 #[test]
 fn narrowed_resources_store_into_nullable_and_error_alternatives() {
     let directory = TestDir::new("parity-k91-narrowed-resources").expect("create directory");
@@ -846,7 +845,7 @@ END FUNCTION
     }
 }
 
-/// ARC trace region labels match on both backends (K16 / T.K-trace).
+/// ARC trace region labels match on both backends.
 #[test]
 fn arc_trace_region_labels_match_on_both_backends() {
     let directory = TestDir::new("parity-k16-arc-trace-region").expect("create directory");
@@ -885,7 +884,7 @@ END FUNCTION
     );
 }
 
-/// Standard-library handles are released at end of binding (K63).
+/// Standard-library handles are released at end of binding.
 #[test]
 fn standard_library_handles_are_released_at_end_of_binding() {
     let directory = TestDir::new("parity-k63-standard-handles").expect("create directory");

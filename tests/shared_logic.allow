@@ -1,28 +1,28 @@
 # Accepted duplications between the interpreter and native sides (tests/shared_logic.rs).
 # kind<TAB>key<TAB>reason. The list only shrinks: each entry leaves with the migration step it names.
-literal	BNCrypto.EcdsaP256PublicKey	BNCrypto type name in bn_lib_crypto and bn_rt; leaves with the crypto core (bucket 0.6.5c §5 step 5)
-literal	BNCrypto.Ed25519PublicKey	BNCrypto type name in bn_lib_crypto and bn_rt; leaves with the crypto core (bucket 0.6.5c §5 step 5)
-literal	BNData.DataFrame.{method}	BNData operation-name format in bn_lib_data and bn_rt; leaves with the DataFrame core (bucket 0.6.5c §5 step 3)
-literal	HOST.Net.Address.ToString	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core (bucket 0.6.5c §5 step 2)
-literal	HOST.Net.Addresses.Count	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core (bucket 0.6.5c §5 step 2)
-literal	HOST.Net.Endpoint.Address	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core (bucket 0.6.5c §5 step 2)
-literal	HOST.Net.Endpoint.Create	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core (bucket 0.6.5c §5 step 2)
-literal	HOST.Net.PingReply.Address	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core (bucket 0.6.5c §5 step 2)
-literal	HOST.Net.PingReply.RoundTripMicroseconds	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core (bucket 0.6.5c §5 step 2)
-literal	HOST.Net.TCPListener.Accept	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core (bucket 0.6.5c §5 step 2)
-literal	HOST.Net.TCPListener.Close	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core (bucket 0.6.5c §5 step 2)
-literal	HOST.Net.TCPListener.LocalEndpoint	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core (bucket 0.6.5c §5 step 2)
-literal	HOST.Net.TCPStream.Close	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core (bucket 0.6.5c §5 step 2)
-literal	HOST.Net.TCPStream.LocalEndpoint	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core (bucket 0.6.5c §5 step 2)
-literal	HOST.Net.TCPStream.RemoteEndpoint	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core (bucket 0.6.5c §5 step 2)
-literal	HOST.Net.TCPStream.Write	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core (bucket 0.6.5c §5 step 2)
-literal	HOST.Net.UDPPacket.CopyTo	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core (bucket 0.6.5c §5 step 2)
-literal	HOST.Net.UDPPacket.Source	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core (bucket 0.6.5c §5 step 2)
-literal	HOST.Net.UDPPacket.WasTruncated	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core (bucket 0.6.5c §5 step 2)
-literal	HOST.Net.UDPSocket.Close	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core (bucket 0.6.5c §5 step 2)
-literal	HOST.Net.UDPSocket.LocalEndpoint	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core (bucket 0.6.5c §5 step 2)
-literal	HOST.Net.UDPSocket.Receive	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core (bucket 0.6.5c §5 step 2)
-literal	HOST.Net.UDPSocket.SendTo	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core (bucket 0.6.5c §5 step 2)
-literal	cannot write output: {error}	console write failure text in bn_interp and bn_rt; leaves with the console core (bucket 0.6.5c §5 step 7)
-literal	datagram exceeds the buffer	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core (bucket 0.6.5c §5 step 2)
-literal	write exceeds the buffer	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core (bucket 0.6.5c §5 step 2)
+literal	BNCrypto.EcdsaP256PublicKey	BNCrypto type name in bn_lib_crypto and bn_rt; leaves with the crypto core
+literal	BNCrypto.Ed25519PublicKey	BNCrypto type name in bn_lib_crypto and bn_rt; leaves with the crypto core
+literal	BNData.DataFrame.{method}	BNData operation-name format in bn_lib_data and bn_rt; leaves with the DataFrame core
+literal	HOST.Net.Address.ToString	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core
+literal	HOST.Net.Addresses.Count	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core
+literal	HOST.Net.Endpoint.Address	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core
+literal	HOST.Net.Endpoint.Create	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core
+literal	HOST.Net.PingReply.Address	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core
+literal	HOST.Net.PingReply.RoundTripMicroseconds	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core
+literal	HOST.Net.TCPListener.Accept	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core
+literal	HOST.Net.TCPListener.Close	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core
+literal	HOST.Net.TCPListener.LocalEndpoint	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core
+literal	HOST.Net.TCPStream.Close	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core
+literal	HOST.Net.TCPStream.LocalEndpoint	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core
+literal	HOST.Net.TCPStream.RemoteEndpoint	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core
+literal	HOST.Net.TCPStream.Write	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core
+literal	HOST.Net.UDPPacket.CopyTo	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core
+literal	HOST.Net.UDPPacket.Source	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core
+literal	HOST.Net.UDPPacket.WasTruncated	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core
+literal	HOST.Net.UDPSocket.Close	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core
+literal	HOST.Net.UDPSocket.LocalEndpoint	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core
+literal	HOST.Net.UDPSocket.Receive	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core
+literal	HOST.Net.UDPSocket.SendTo	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core
+literal	cannot write output: {error}	console write failure text in bn_interp and bn_rt; leaves with the console core
+literal	datagram exceeds the buffer	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core
+literal	write exceeds the buffer	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core

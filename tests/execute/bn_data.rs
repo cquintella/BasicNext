@@ -134,7 +134,7 @@ fn bndata_write_csv_on_a_closed_file_returns_error() {
         "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"{path}\", FS.WRITE)\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET names AS STRING[1] = [\"Ana\"]\ntable.AddStringColumn(\"name\", names)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nfile.Close()\nLET written AS VOID OR Error = Data.WriteCSV(file, table, TRUE, \",\")\nIF written IS Error THEN\nPRINT written.Code\nEND IF\nRELEASE file\nEND IF\nRELEASE table\nFS.DeleteFile(\"{path}\")\nEND FUNCTION\n"
     );
     let (_, output) = run(&source, "").expect("WriteCSV on a closed file returns Error");
-    assert_eq!(output, "5\n"); // FS.CLOSED from the closed file; BNData codes: bucket 0.6.2b R8
+    assert_eq!(output, "5\n"); // FS.CLOSED from the closed file; BNData codes are their own
     let _ = fs::remove_file(csv);
 }
 
@@ -209,7 +209,7 @@ fn bndata_deleted_frame_rejects_reuse() {
 
 #[test]
 fn bndata_write_csv_serializes_headers_and_rows() {
-    let csv = unique_temp("sprint6-write.csv");
+    let csv = unique_temp("bndata-write.csv");
     let path = bn_path(&csv);
     let source = format!(
         "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET frame AS Data.DataFrame = NEW Data.DataFrame()\nLET names AS STRING[2] = [\"Ana\", \"Carlos\"]\nframe.AddStringColumn(\"name\", names)\nLET file AS FS.File OR Error = FS.Open(\"{path}\", FS.WRITE)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nLET result AS VOID OR Error = Data.WriteCSV(file, frame, TRUE, \",\")\nIF result IS Error THEN\nPRINT result.Code\nEND IF\nfile.Close()\nRELEASE file\nEND IF\nRELEASE frame\nEND FUNCTION\n"

@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 // Recursion that never ends stops with STACK_OVERFLOW on both backends, after
-// the output written before it (0.6.md, "Recursion depth"; known issue K53).
+// the output written before it (0.6.md, "Recursion depth").
 
 FUNCTION Depth(n AS INTEGER) AS INTEGER
     RETURN Depth(n + 1) + 1

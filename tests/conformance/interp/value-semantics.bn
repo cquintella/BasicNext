@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// Conformance lock for the bni performance work (bucket 0.6.10 F.1):
+// Conformance lock for the bni performance work:
 // value semantics and control flow an interpreter rewrite could break.
 // Expected output: value-semantics.expected, by hand from 0.6.md:
 //   - vectors and STRUCTs are values: a copy never sees later writes

@@ -40,7 +40,7 @@ ALWAYS=(
     '\b(known_issues|issues|decisions|STATUS)\.md\b'
     '(^|[^A-Za-z0-9_-])(todo|ongoing|done)/'
     '\bworkflow/'
-    'bn/docs/'
+    'bn/[d]ocs/'
     '\bdocs/(architecture|project|releases|governance|research|positioning|library)\b'
     '\bbucket-[0-9a-z][0-9a-z.-]*'
     '(?i)\bsprint-?[0-9]+\b'

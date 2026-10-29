@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 // BNMath.Covariance and BNMath.Correlation (math.md, "Descriptive
-// statistics"; BDFL decisions G-5 and the overflow rules, 2026-10-27).
+// statistics", and its overflow rules).
 // Expected output: covariance.expected:
 //   - the data are exact, so bc gives the exact results: the covariances
 //     3.8333333333333335 (11.5 / 3) and 10.0 are correctly rounded (as in

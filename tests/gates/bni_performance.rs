@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! `bni` performance (bucket 0.6.10, cluster F): a timing table of the
+//! `bni` performance: a timing table of the
 //! `tests/bench` programs and the linear-time gates. Wall-clock time depends
 //! on the machine, so these are ignored by the ordinary run; measure a
 //! release interpreter:

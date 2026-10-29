@@ -44,7 +44,7 @@ fn filesystem_file_reads_lines_and_bytes() {
 
 #[test]
 fn filesystem_file_writes_bytes_round_trip() {
-    let file = unique_temp("sprint5.bn");
+    let file = unique_temp("host-fs.bn");
     let path = bn_path(&file);
     let source = format!(
         "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET out AS FS.File OR Error = FS.Open(\"{path}\", FS.WRITE)\nLET buffer AS POINTER TO BYTE[] = NEW BYTE[2]\nbuffer[0] = 65\nbuffer[1] = 66\nIF out IS Error THEN\nPRINT out.Code\nELSE\nLET result AS VOID OR Error = out.WriteBytes(buffer, 2)\nIF result IS Error THEN\nPRINT result.Code\nEND IF\nout.Close()\nEND IF\nLET input AS FS.File OR Error = FS.Open(\"{path}\", FS.READ)\nIF input IS Error THEN\nPRINT input.Code\nELSE\nLET read_buffer AS POINTER TO BYTE[] = NEW BYTE[2]\nPRINT input.ReadBytes(read_buffer), read_buffer[0], read_buffer[1]\nRELEASE input\nEND IF\nFS.DeleteFile(\"{path}\")\nEND FUNCTION\n"
@@ -63,7 +63,7 @@ fn filesystem_write_bytes_on_a_read_only_file_returns_error() {
 
 #[test]
 fn filesystem_file_rejects_byte_count_outside_buffer() {
-    let file = unique_temp("sprint5-count.bn");
+    let file = unique_temp("host-fs-count.bn");
     let path = bn_path(&file);
     let source = format!(
         "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET out AS FS.File OR Error = FS.Open(\"{path}\", FS.WRITE)\nLET buffer AS POINTER TO BYTE[] = NEW BYTE[2]\nIF out IS Error THEN\nPRINT out.Code\nELSE\nout.WriteBytes(buffer, 3)\nEND IF\nEND FUNCTION\n"
@@ -75,7 +75,7 @@ fn filesystem_file_rejects_byte_count_outside_buffer() {
 
 #[test]
 fn filesystem_file_reports_invalid_utf8_on_text_read() {
-    let file = unique_temp("sprint5-utf8.bn");
+    let file = unique_temp("host-fs-utf8.bn");
     let path = bn_path(&file);
     fs::write(&file, [0xff, 0xfe]).expect("create invalid UTF-8 fixture");
     let source = format!(
@@ -95,7 +95,7 @@ fn filesystem_failed_text_write_does_not_lock_out_binary_reads() {
 
 #[test]
 fn filesystem_rejects_directory_open_and_missing_delete() {
-    let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\".\", FS.READ)\nIF file IS Error THEN\nPRINT \"open\", file.Code\nELSE\nPRINT \"opened\"\nRELEASE file\nEND IF\nLET removed AS VOID OR Error = FS.DeleteFile(\"/tmp/basicnext-sprint5-missing.bn\")\nIF removed IS Error THEN\nPRINT \"del\", removed.Code\nEND IF\nEND FUNCTION\n";
+    let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\".\", FS.READ)\nIF file IS Error THEN\nPRINT \"open\", file.Code\nELSE\nPRINT \"opened\"\nRELEASE file\nEND IF\nLET removed AS VOID OR Error = FS.DeleteFile(\"/tmp/basicnext-host-fs-missing.bn\")\nIF removed IS Error THEN\nPRINT \"del\", removed.Code\nEND IF\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("unsupported paths return Error values");
     assert_eq!(output, "open 4\ndel 2\n"); // FS.IS_DIRECTORY, FS.NOT_FOUND
 }

@@ -1,5 +1,5 @@
 // STRUCT fields read through a value, here and in another function, are
-// not unused bindings (known issue K54).
+// not unused bindings.
 STRUCT Row
     name AS STRING
     size AS INTEGER

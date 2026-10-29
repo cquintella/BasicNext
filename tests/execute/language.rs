@@ -67,9 +67,9 @@ fn debug_control_can_terminate_before_user_instruction() {
     let _ = fs::remove_file(path);
 }
 
-/// Bucket 0.6.10 F.1 lock: a pause inside a hot counted loop sees the
+/// A lock: a pause inside a hot counted loop sees the
 /// frame's bindings with the values of that iteration, after the dense
-/// frame slots replaced the per-call maps (F.2).
+/// frame slots replaced the per-call maps.
 #[test]
 fn debug_view_inside_a_hot_loop_shows_the_iteration_values() {
     const LOOP_BODY_LINE: usize = 4;
@@ -202,7 +202,7 @@ fn console_tty_calls_fail_only_when_executed() {
     );
 }
 
-/// Bucket 0.5.1d §1.1: a library provider registered from outside the crate
+/// A library provider registered from outside the crate
 /// answers a library callee and re-enters the core through `CoreContext`.
 #[test]
 fn library_provider_seam_routes_calls_and_reenters_the_core() {

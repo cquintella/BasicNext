@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// IS on an imported alternative member uses the member's own name (K64).
+// IS on an imported alternative member uses the member's own name.
 IMPORT BNLog AS Log
 
 FUNCTION Start() AS VOID

@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Differential test of ARC (bucket typed-llvm-emitter, Sprint 8, phase A):
+//! Differential test of ARC:
 //! reproducible pseudo-random programs (the seed is in the failure message)
 //! of creations, aliases, reassignments, `NULL`, and field stores, run on
 //! `bni` and on a `bnc` executable, and compared with a model of the rules

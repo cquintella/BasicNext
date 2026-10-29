@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Destructuring `LET` and positional `STRUCT` literals (0.6.md, bucket S.11).
+//! Destructuring `LET` and positional `STRUCT` literals (0.6.md).
 
 use super::support;
 

@@ -3,8 +3,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Text-literal ratchet (bucket 0.6.5 H.S1; `AGENTS.md`, "No hard-coded
-//! messages"). Every text a user can read and every contract identifier
+//! Text-literal ratchet (no message is hard-coded).
+//! Every text a user can read and every contract identifier
 //! lives in a data file under `share/bn/`, not in a string literal of
 //! production code. The literals that existed when the gate was added are
 //! listed in `tests/text_literals.list`; the list only shrinks:
@@ -561,7 +561,7 @@ fn production_code_has_no_new_text_literal() {
     assert!(report.is_empty(), "{}", report.concat());
 }
 
-/// The lexer and the classification (H.S1.b proves the gate itself on the
+/// The lexer and the classification (the gate itself runs on the
 /// tree; these pin the rules).
 #[test]
 fn the_scanner_finds_production_literals_and_skips_test_code() {

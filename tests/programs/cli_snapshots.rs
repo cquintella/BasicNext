@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! The user-visible text of `bni` and `bnc` (help, option errors) is fixed by
-//! `tests/snapshots/` (bucket 0.6.5c S4.a): moving it out of the two
+//! `tests/snapshots/`: moving it out of the two
 //! `main.rs` files must not change one byte. `{VERSION}` stands for the
 //! package version.
 
@@ -62,7 +62,7 @@ fn option_errors_are_unchanged() {
         command.args(arguments);
         assert_snapshot(command, snapshot, "stderr", status);
     }
-    // Each option has one owner (known issue K3): an option of the other tool
+    // Each option has one owner: an option of the other tool
     // is unknown, and the error is followed by the tool's own help.
     for (arguments, snapshot) in [
         (&["--unknown-opt", ENTRY][..], "bni_unknown_opt.txt"),
@@ -99,7 +99,7 @@ fn option_errors_are_unchanged() {
     }
 }
 
-/// Bucket 0.6.5c AC6: the two `main.rs` hold only the version line and one
+/// the two `main.rs` hold only the version line and one
 /// call into their driver: together at most 80 lines, no option name, help
 /// line or error text.
 #[test]
@@ -119,7 +119,7 @@ fn both_main_files_stay_minimal() {
 }
 
 /// The missing-initializer diagnostic of an alternative names the whole type,
-/// not its first member (known issue K20).
+/// not its first member.
 #[test]
 fn missing_initializer_names_the_whole_alternative() {
     let output = bni()
@@ -138,8 +138,8 @@ fn missing_initializer_names_the_whole_alternative() {
     );
 }
 
-/// A `STRUCT` field read through a value is not an unused binding (known
-/// issue K54): `bni check` passes without a warning.
+/// A `STRUCT` field read through a value is not an unused binding:
+/// `bni check` passes without a warning.
 #[test]
 fn read_struct_fields_are_not_unused_bindings() {
     let output = bni()
@@ -154,7 +154,7 @@ fn read_struct_fields_are_not_unused_bindings() {
 
 /// A vector literal without a declared destination takes the first element's
 /// type; `[1, 2.5]` is a `TYPE_MISMATCH` naming the element, not an
-/// `INVALID_IR` (decision D-2; known issue K31).
+/// `INVALID_IR` (0.6.md, "Vector literals take a declared destination").
 #[test]
 fn mixed_numeric_vector_literal_is_a_type_mismatch() {
     for tool in [bni(), bnc()] {

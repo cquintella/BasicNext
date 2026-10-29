@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 // Imported by main.bn. Its functions copy, reassign, return and test
-// objects of its own class (known issues K52, K57: the IR named the class
+// objects of its own class (the IR named the class
 // "Box" here and "#0.Box" everywhere else, so the IR validator and the
 // native backend did not see these values as ARC objects).
 

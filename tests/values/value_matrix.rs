@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Value conformance matrix (bucket 0.6.5, plan V.1): every value type
+//! Value conformance matrix: every value type
 //! (`STRING`, a scalar `STRUCT`, a `STRUCT` holding a vector, a nested
 //! `STRUCT`, vectors of one and two dimensions, a vector of `STRUCT`) held
 //! in every place (local, parameter, return value, object field, `STRUCT`
@@ -492,7 +492,7 @@ const CELLS: &[(&str, &str, &str)] = &[
 ];
 
 /// Cells that still fail. Empty: STRING iteration and ordering pass on both
-/// backends (S.13).
+/// backends.
 const KNOWN_BNI_FAILURES: KnownFailures = &[];
 const KNOWN_BNC_FAILURES: KnownFailures = &[];
 

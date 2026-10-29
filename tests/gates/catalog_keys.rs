@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Catalog keys (bucket 0.6.5 H.S4.0; AC2's unused-entry half). A text the
+//! Catalog keys. A text the
 //! code names by `bn_catalog::text`, `fill` or `words` (or, inside
 //! `bn_core_log`, by its `catalog::` wrappers) exists in its
 //! `share/bn/catalog/<domain>.txt`; and every entry of a catalog file is

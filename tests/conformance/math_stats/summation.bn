@@ -3,8 +3,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// math.md "Order, summation and overflow" (BDFL decisions D-2 and G-1,
-// 2026-10-26). Expected output: summation.expected, derived by hand:
+// math.md "Order, summation and overflow". Expected output: summation.expected,
+// derived by hand:
 //   - cancellation: the exact sum of 1e16, 1, -1e16, 1 is 2, so MEAN is
 //     0.5; a plain left-to-right sum loses the first 1 against 1e16 (0.25),
 //     and 0.6.9 summed the sorted copy (0.0);

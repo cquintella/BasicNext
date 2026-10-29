@@ -5,7 +5,7 @@
 
 
 // The objects of a vector of more than one dimension are released once each,
-// row by row, when the vector goes out of scope (known issue K30: native
+// row by row, when the vector goes out of scope (native
 // builds walked the rows as if they were objects and stopped with
 // INVALID_IR).
 

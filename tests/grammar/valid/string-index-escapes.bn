@@ -6,7 +6,7 @@
 
 // A character from s[i] or CHAR outlives the frame that produced it: it is
 // returned, kept in a vector, and produced in a loop
-// (known issue K49: native builds returned a pointer into a dead stack
+// (native builds returned a pointer into a dead stack
 // buffer and grew the stack on every iteration).
 
 FUNCTION At(text AS STRING, position AS INTEGER) AS STRING

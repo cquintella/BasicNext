@@ -3,9 +3,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Numeric literals out of range (0.6.md, C1, "Integer constants without a
-//! destination", "Floating-point literals out of range"; bucket 0.6.11 S5.1
-//! to S5.3): a `TYPE_MISMATCH` that names the value and the range.
+//! Numeric literals out of range (0.6.md, "Integer constants without a
+//! destination", "Floating-point literals out of range"): a `TYPE_MISMATCH`
+//! that names the value and the range.
 
 use bn_frontend::lexer::lex;
 use bn_frontend::parser::parse;

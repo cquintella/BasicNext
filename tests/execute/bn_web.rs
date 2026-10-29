@@ -193,7 +193,7 @@ END FUNCTION
 }
 
 /// The in-process `Server.Dispatch` keeps sessions as the network server
-/// does (bucket 0.6.5 E.S0.e): a write creates the session and the `sid`
+/// does: a write creates the session and the `sid`
 /// cookie; `Session()` without `UseSessions` is `UNAVAILABLE`. A header the
 /// response lacks is an `Error`, as `Response.Header` declares.
 #[test]
@@ -341,8 +341,8 @@ END FUNCTION
     assert!(response.ends_with("bn-handler"), "{response}");
 }
 
-/// `examples/bnweb/users_api.bn` over real HTTP (bucket 0.6.5 E.S0.d,
-/// E.S0.e): `POST /auth` checks the form and keeps the user in a server
+/// `examples/bnweb/users_api.bn` over real HTTP:
+/// `POST /auth` checks the form and keeps the user in a server
 /// session, rotating its id; `GET /users?id=` and `GET /users/:id` need it;
 /// `POST /logout` ends it, and the old id is refused afterwards.
 #[test]
@@ -409,7 +409,7 @@ fn bnweb_users_api_example_authenticates_and_serves_users() {
     assert!(replayed.0.starts_with("HTTP/1.1 401"), "{replayed:?}");
 }
 
-/// `Server.UseQueue` runs handlers in parallel (bucket 0.6.5 E.S0.e): eight
+/// `Server.UseQueue` runs handlers in parallel: eight
 /// requests to a handler that waits 300 ms finish together, not one after
 /// the other (2.4 s serially). `UseQueue` on a started server is refused.
 #[test]
@@ -430,7 +430,7 @@ fn bnweb_handlers_run_in_parallel_on_a_dispatch_queue() {
 }
 
 /// Without `UseQueue`, handlers run one at a time (`bnweb.md`, "Server
-/// lifecycle"; known issue K43): four 300 ms handlers take at least 1.2 s.
+/// lifecycle"): four 300 ms handlers take at least 1.2 s.
 #[test]
 fn bnweb_handlers_without_a_queue_run_serially() {
     let Some((elapsed, output)) = slow_requests(&[], 4) else {

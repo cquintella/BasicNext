@@ -52,7 +52,7 @@ with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.
 | `valid/float32-special-constants.bn` | Accept and run | `NAN`, `INF` and `-INF` converted to `FLOAT32` build natively. |
 | `valid/constant-past-int32.bn` | Accept and run | Constant integer expressions past `INT32` (negated minimum, product, sum) initialize an `INT64` binding. |
 | `valid/vector-literal-declared-destination.bn` | Accept and run | A vector literal with a declared destination takes its element type: objects of classes that reach an interface or a base class in a `LET`, a field initializer, an argument, a `RETURN` value and an assignment; integer and float literals that fit a wider or narrower element. |
-| `valid/vector-literal-declared-destination-rows.bn` | Accept and run (`bni`; `bnc` after K30) | Each row of a two-dimensional vector literal takes the declared element type. |
+| `valid/vector-literal-declared-destination-rows.bn` | Accept and run (`bni` and `bnc`) | Each row of a two-dimensional vector literal takes the declared element type. |
 | `valid/override-intermediate.bn` | Accept and run | Polymorphic dispatch executes the nearest override in a multilevel hierarchy. |
 | `valid/region-void-roundtrip.bn` | Accept and run | Typed pointer region round-trip through `POINTER TO VOID` and back with length and elements preserved. |
 | `valid/env-import.bn` | Accept and run | `HOST.Env` import and `Env.Has` usage. |
@@ -72,7 +72,7 @@ with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.
 | `invalid/withdrawn-console-statements.bn` | Reject (semantic) | `CLS(HOST.Console)` / `BEEP(HOST.Console)` are not 0.2 statements. |
 | `invalid/filesystem-unknown-mode.bn` | Reject (semantic) | `FS.Open` rejects literal modes outside `READ`, `WRITE`, `APPEND`. |
 | `invalid/filesystem-seek.bn` | Reject (semantic) | File seeking is outside the 0.2 surface. |
-| `invalid/filesystem-directory-api.bn` | Reject (semantic) | Listing a directory is outside the 0.6.12 surface (bucket 0.6.16). |
+| `invalid/filesystem-directory-api.bn` | Reject (semantic) | Listing a directory is outside the 0.6.12 surface. |
 | `invalid/import-after-declaration.bn` | Reject (syntax) | Import ordering. |
 | `invalid/import-after-constant.bn` | Reject (syntax) | An `IMPORT` cannot follow a module `EXPORT CONST`. |
 | `valid/private-module-constant.bn` | Accept | A module-level `CONST` without `EXPORT` is private to the module. |

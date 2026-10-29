@@ -3,8 +3,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Conformance matrix for alternative types (bucket typed-llvm-emitter,
-//! Sprint 6 phase B). For every alternative of the matrix, one program stores
+//! Conformance matrix for alternative types. For every alternative of the
+//! matrix, one program stores
 //! a value of each member through every flow (linear, parameter, return,
 //! field, widening, literal; a vector element cannot be an alternative,
 //! `vector-element-type` in 0.6.ebnf) and prints `IS` for every
@@ -577,7 +577,7 @@ fn alternatives() -> Vec<Vec<Kind>> {
 
 /// Whether one backend printed `expected`; the error says how it did not.
 /// Cells (`alternative / flow`) the native backend does not run as the
-/// language defines (the Sprint 6 phase C work), each with what it does
+/// language defines (later work), each with what it does
 /// instead: a diagnostic code, or `WRONG` for a wrong result. Remove a cell
 /// when it passes.
 const KNOWN_BNC_FAILURES: KnownFailures = &[];
@@ -585,8 +585,7 @@ const KNOWN_BNC_FAILURES: KnownFailures = &[];
 /// Cells the interpreter does not run as the language defines. All ten are
 /// one defect outside alternatives: an object stored in a `STRUCT` field
 /// (`pair.slot = box`) is reported `USE_AFTER_RELEASE` at scope exit, because
-/// `SetField` skips the ownership protocol (bucket typed-llvm-emitter,
-/// Sprint 8).
+/// `SetField` skips the ownership protocol.
 const KNOWN_BNI_FAILURES: KnownFailures = &[];
 
 #[test]

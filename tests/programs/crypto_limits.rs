@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! `BNCrypto` bounds that return `Error` instead of stopping the program,
-//! identically on both backends (bncrypto.md; bucket 0.6.11, S6.8): a
+//! identically on both backends (bncrypto.md): a
 //! `RandomBytes` length outside 0 through 1 MiB, and a `Key` erased with
 //! `Zeroize()`.
 

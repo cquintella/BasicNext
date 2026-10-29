@@ -1,5 +1,5 @@
 // `IS` on a declared interface alternative holds for an object whose class
-// implements it, directly or through an ancestor (known issue K27): a
+// implements it, directly or through an ancestor: a
 // chain of handlers linked through `Handler OR NULL` fields.
 INTERFACE Handler
     FUNCTION Handle(n AS INT32) AS STRING

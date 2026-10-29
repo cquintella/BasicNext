@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// NIST StRD univariate NumAcc1-NumAcc4 (bucket 0.6.10 B.1, G-11):
+// NIST StRD univariate NumAcc1-NumAcc4:
 // https://www.itl.nist.gov/div898/strd/univ/data/NumAcc1.dat (to NumAcc4),
 // SHA-256 ce7c7a0fc6d7cedd0d5e1f9911afb9337544be6836730beb9968ca0a4571d375,
 // 5be29522dfbe299541f0ec98ec1c22a51a5587bf06561ba21a92c209fb7ef0f9,
