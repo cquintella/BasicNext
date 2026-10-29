@@ -40,6 +40,8 @@
     "bn_lsp::lib/bn_lsp::tests::completion_lists_the_directory_members_and_codes",
     "bn::test/values::ownership_matrix::string_buffers_print_the_same_on_both_backends",
     "bn::test/values::ownership_matrix::native_strings_leave_no_buffer_behind",
+    "bn::test/gates::test_prereqs::test_prerequisites_are_built_by_one_script",
+    "bn::test/gates::test_prereqs::the_one_build_gate_rejects_a_second_prerequisite_build",
     "bn_rt::rlib/bn_rt::secure_fs::entries::tests::only_owner_bits_are_private",
     "bn_rt::rlib/bn_rt::file::entries::tests::system_kinds_map_to_the_entry_failures",
     "bn_rt::rlib/bn_rt::file_abi::tests::directory_exports_check_their_pointers",

@@ -1,4 +1,16 @@
 #!/usr/bin/env bash
+# Test prerequisites: the one place that builds what tests run or link but
+# `cargo test` does not rebuild — the `bni` and `bnc` executables and the
+# static archives native builds link (`bn_rt`, `bn_stdlib`, `bn_web`).
+# Every other build instruction (CI, the agent brief, `test.sh`,
+# `test-battery.sh`) calls this file instead of repeating the package list.
+#
+#   scripts/build-test-prereqs.sh [cargo build options]   # build them
+#   source scripts/build-test-prereqs.sh                  # define prepare_test_artifacts
+#
+# Sourced, `prepare_test_artifacts` builds them and exports their paths as
+# BN_INTERPRETER, BN_COMPILER, BN_RT_LIB, BN_STDLIB_LIB and BN_WEB_LIB.
+# Requires jq.
 
 prepare_test_artifacts() {
     local artifacts interpreter compiler runtime stdlib web
@@ -30,3 +42,10 @@ prepare_test_artifacts() {
     export BN_INTERPRETER="$interpreter" BN_COMPILER="$compiler"
     export BN_RT_LIB="$runtime" BN_STDLIB_LIB="$stdlib" BN_WEB_LIB="$web"
 }
+
+# Run as a command (not sourced): build from the workspace root.
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+    set -euo pipefail
+    cd "$(dirname "${BASH_SOURCE[0]}")/.."
+    prepare_test_artifacts "$@"
+fi

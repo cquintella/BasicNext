@@ -47,7 +47,7 @@ if [[ $GATES_ONLY == 1 ]]; then
   echo "== running pre-tag quality and contract gates"
   cargo fmt --all --check || exit 1
   cargo clippy --workspace --all-targets -- -D warnings || exit 1
-  source scripts/test-artifacts.sh
+  source scripts/build-test-prereqs.sh
   prepare_test_artifacts || exit "$?"
   cargo test --test gates --test codegen --test frontend --test ffi || exit 1
   cargo test --test programs -- cli_snapshots || exit 1
@@ -65,7 +65,7 @@ rm -f "$out"/*.log "$out"/*.status
 touch "$timings"
 
 command -v jq >/dev/null || { echo "test-battery: jq is required" >&2; exit 2; }
-source scripts/test-artifacts.sh
+source scripts/build-test-prereqs.sh
 prepare_test_artifacts || exit "$?"
 
 # 1. Build every test target once (no concurrent compilation later).

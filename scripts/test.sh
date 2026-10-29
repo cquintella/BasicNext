@@ -26,6 +26,6 @@ while [[ $# -gt 0 ]]; do
 done
 
 cd "$script_directory/.."
-source "$script_directory/test-artifacts.sh"
+source "$script_directory/build-test-prereqs.sh"
 prepare_test_artifacts "${build_options[@]+"${build_options[@]}"}"
 exec cargo test --locked "${arguments[@]+"${arguments[@]}"}"

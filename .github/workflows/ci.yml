@@ -114,10 +114,9 @@ jobs:
 
       - name: Build runtime and executables
         shell: bash
-        run: |
-          # Native bnc links these staticlibs; cargo test alone may not emit them.
-          cargo build --locked -p bn_rt -p bn_stdlib -p bn_web
-          cargo build --locked --workspace --bins
+        # Native bnc links the runtime archives; cargo test alone may not emit
+        # them. The script is the one source of that build.
+        run: bash scripts/build-test-prereqs.sh
 
       - name: Test
         shell: bash

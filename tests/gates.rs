@@ -20,6 +20,8 @@ mod shared_logic;
 mod source_size;
 #[path = "gates/suppressions.rs"]
 mod suppressions;
+#[path = "gates/test_prereqs.rs"]
+mod test_prereqs;
 #[path = "gates/test_support.rs"]
 mod test_support;
 #[path = "gates/text_literals.rs"]
