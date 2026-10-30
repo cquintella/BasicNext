@@ -213,3 +213,20 @@ fn the_scanner_finds_the_audited_spellings_and_exempts_only_cited_ones() {
         "{found:?}"
     );
 }
+
+#[test]
+fn the_scanner_skips_the_output_of_a_running_build_in_a_copy_without_git() {
+    // A copy without git (the Windows host) is read file by file, while other
+    // tests build beside their sources: their scratch folders and logs are
+    // build output, not public files.
+    let tree = super::support::TestDir::new("public-references-build").expect("scratch tree");
+    let private_path = format!("See {}/architecture/ir-contract.md.\n", "docs");
+    let scratch = tree.join(".program.bnbuild-4242-17-0");
+    fs::create_dir_all(&scratch).expect("build scratch folder");
+    fs::write(scratch.join("module.ll"), &private_path).expect("build output");
+    fs::write(tree.join("program.bnbuild.log"), &private_path).expect("build log");
+    fs::write(tree.join("public.md"), &private_path).expect("public file");
+    let found = findings_per_file(tree.path());
+    let flagged: Vec<&str> = found.keys().map(String::as_str).collect();
+    assert_eq!(flagged, ["public.md"], "{found:?}");
+}
