@@ -67,13 +67,19 @@ CITED=(
 )
 
 # `.gitignore` names private files to keep them out; that is not a citation.
+# Without git (a copied tree), every file is read except build output: the
+# target folders, and what a running build writes beside its source (the
+# compile driver's `.<stem>.bnbuild-<pid>-<nanos>-<n>/` scratch folder and
+# the `<product>.bnbuild.log` companion log), since tests build while the
+# scan runs.
 list_files() {
     if git -C "$root" rev-parse --show-prefix > /dev/null 2>&1; then
         git -C "$root" ls-files -z -- ':!:.gitignore'
     else
         (cd "$root" && find . -type f -not -path './.git/*' -not -path './target/*' \
             -not -path './fuzz/target/*' -not -path './fuzz/corpus/*' \
-            -not -path './fuzz/artifacts/*' -not -path './.gitignore' -print0)
+            -not -path './fuzz/artifacts/*' -not -path './.gitignore' \
+            -not -path '*/.*.bnbuild-*/*' -not -name '*.bnbuild.log' -print0)
     fi
 }
 
