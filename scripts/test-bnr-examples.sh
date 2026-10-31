@@ -36,6 +36,7 @@ Options:
   -s, --step           Wait for [ENTER] after injecting each line
   -v, --verbose        Show every line as it is injected into bnr
       --no-parity      Do not compare bnr output against bni run
+      --fixtures       Run all .repl interactive transcript fixtures
   -h, --help           Show this help text
 
 Examples:
@@ -63,6 +64,15 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --no-parity)
+            VERIFY_PARITY=0
+            shift
+            ;;
+        --fixtures)
+            for f in "${ROOT_DIR}/crates/bnr/tests/fixtures"/*.repl; do
+                if [[ -f "$f" ]]; then
+                    TARGET_FILES+=("${f}")
+                fi
+            done
             VERIFY_PARITY=0
             shift
             ;;
@@ -148,6 +158,29 @@ for rel_path in "${TARGET_FILES[@]}"; do
 
     # Feed line-by-line
     feed_lines() {
+        if [[ "$file_path" == *.repl ]]; then
+            while IFS= read -r line || [[ -n "$line" ]]; do
+                local input_line=""
+                if [[ "$line" =~ ^bnr\>[[:space:]]?(.*)$ ]]; then
+                    input_line="${BASH_REMATCH[1]}"
+                elif [[ "$line" =~ ^\.\.\.\>[[:space:]]?(.*)$ ]]; then
+                    input_line="${BASH_REMATCH[1]}"
+                else
+                    continue
+                fi
+                if [[ "$VERBOSE" -eq 1 ]]; then
+                    printf "${CLR_GRAY}--> %s${CLR_RESET}\n" "$input_line" >&2
+                fi
+                printf "%s\n" "$input_line"
+                if [[ "$STEP" -eq 1 ]]; then
+                    read -r -u 3 _dummy </dev/tty || true
+                elif (( $(awk -v d="$DELAY" 'BEGIN { print (d > 0) }') )); then
+                    sleep "$DELAY"
+                fi
+            done < "$file_path" 3<&0
+            return
+        fi
+
         local has_start_decl=0
         while IFS= read -r line || [[ -n "$line" ]]; do
             if [[ "$line" =~ ^[[:space:]]*FUNCTION[[:space:]]+Start\( ]]; then
@@ -181,6 +214,29 @@ for rel_path in "${TARGET_FILES[@]}"; do
     bnr_output="$(cat "$bnr_out_file")"
     bnr_error="$(cat "$bnr_err_file")"
     rm -f "$bnr_out_file" "$bnr_err_file"
+
+    if [[ "$file_path" == *.repl ]]; then
+        if grep -q "^!error" "$file_path" 2>/dev/null; then
+            if [[ $bnr_status -ne 0 ]]; then
+                printf "  ${CLR_RED}FAILED (exit %d)${CLR_RESET}\n" "$bnr_status"
+                FAILED=$((FAILED + 1))
+                continue
+            fi
+        elif [[ $bnr_status -ne 0 || "$bnr_error" == *"error["* ]]; then
+            printf "  ${CLR_RED}FAILED (exit %d)${CLR_RESET}\n" "$bnr_status"
+            if [[ -n "$bnr_error" ]]; then
+                printf "%s\n" "$bnr_error" | sed 's/^/    /'
+            fi
+            FAILED=$((FAILED + 1))
+            continue
+        fi
+        printf "  ${CLR_GREEN}✓ PASS (bnr executed transcript cleanly)${CLR_RESET}\n"
+        if [[ "$VERBOSE" -eq 1 && -n "$bnr_output" ]]; then
+            printf "  Output:\n%s\n" "$(printf "%s\n" "$bnr_output" | sed 's/^/    /')"
+        fi
+        PASSED=$((PASSED + 1))
+        continue
+    fi
 
     if [[ $bnr_status -ne 0 || -n "$bnr_error" ]]; then
         # Check if error is just diagnostic warning or actual failure

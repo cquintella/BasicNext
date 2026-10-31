@@ -7,6 +7,10 @@ description = "Basic Next interactive REPL: bnr"
 license.workspace = true
 publish = false
 
+[lib]
+name = "bnr"
+path = "src/lib.rs"
+
 [[bin]]
 name = "bnr"
 path = "src/main.rs"

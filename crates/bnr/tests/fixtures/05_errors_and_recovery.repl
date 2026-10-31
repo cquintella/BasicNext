@@ -1,0 +1,21 @@
+# Test: syntax, type, and runtime errors, verifying that the session recovers and preserves state
+
+bnr> LET safe AS INTEGER = 77
+
+# Syntax error: invalid binding syntax (missing AS)
+bnr> LET bad STRING = "broken"
+!error[E0101]
+
+# Previous binding remains alive after syntax error
+bnr> safe
+77 : INT32
+
+# Runtime error: division by zero
+bnr> safe DIV 0
+!error[DIVISION_BY_ZERO]
+
+# Session remains operable after runtime error
+bnr> safe + 3
+80 : INT32
+
+bnr> :quit

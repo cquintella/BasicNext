@@ -32,8 +32,8 @@ use crate::{
     session::{ExecutionOutcome, ReplSession},
 };
 
-const PROMPT_READY: &str = "bnr> ";
-const PROMPT_COLLECTING: &str = "...> ";
+pub const PROMPT_READY: &str = "bnr> ";
+pub const PROMPT_COLLECTING: &str = "...> ";
 
 struct ReplHelper {
     commands: Vec<String>,

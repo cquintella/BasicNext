@@ -176,6 +176,7 @@ impl InteractiveSession {
                 session_restored_symbols.insert(*symbol_id);
             }
         }
+        let session_captured = session_bindings.clone();
 
         // 3. Move session state into Executor
         let statics = std::mem::take(&mut self.state.statics);
@@ -213,7 +214,7 @@ impl InteractiveSession {
             frame_pool: FramePool::default(),
             session_bindings,
             session_restored_symbols,
-            session_captured_symbols: Some(HashMap::new()),
+            session_captured_symbols: Some(session_captured),
             cancel_flag: Some(Arc::clone(&self.cancel_flag)),
         };
 

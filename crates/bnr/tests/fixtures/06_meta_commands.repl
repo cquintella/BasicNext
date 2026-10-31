@@ -1,0 +1,19 @@
+# Test: meta-commands (:help, :type, :bindings, :reset, :quit)
+
+bnr> :help
+Basic Next REPL Commands:
+
+bnr> :type 10 + 20
+INT32
+
+bnr> LET temp AS INTEGER = 99
+bnr> :bindings
+LET temp AS INT32 [ALIVE]
+
+bnr> :reset
+Session state reset.
+
+bnr> :bindings
+No user bindings in current session.
+
+bnr> :quit

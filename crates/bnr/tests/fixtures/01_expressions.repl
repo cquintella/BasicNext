@@ -1,0 +1,34 @@
+# Test: basic expressions, precedence, types, and the underscore variable
+
+bnr> 1 + 2
+3 : INT32
+
+bnr> 10 * 5 + 3
+53 : INT32
+
+bnr> 100 DIV 4
+25 : INT32
+
+bnr> 2 ** 4
+16 : INT32
+
+bnr> "Hello " + "World"
+Hello World : STRING
+
+bnr> LEN("Basic Next")
+10 : INT32
+
+bnr> 15 > 10
+TRUE : BOOLEAN
+
+bnr> 10 = 20
+FALSE : BOOLEAN
+
+# Underscore variable accumulates previous turn's result
+bnr> 25 + 17
+42 : INT32
+
+bnr> _ * 2
+84 : INT32
+
+bnr> :quit

@@ -6,6 +6,7 @@
 //! Integration test suite for the `bnr` interactive REPL executable.
 
 use std::{
+    fmt::Write as _,
     io::Write,
     process::{Command, Stdio},
 };
@@ -265,4 +266,219 @@ fn bnr_non_interactive_exits_with_error_code_on_syntax_error() {
     let (code, _stdout, stderr) = run_piped_session(input);
     assert_ne!(code, 0);
     assert!(stderr.contains("syntax error") || stderr.contains("Syntax error"));
+}
+
+#[derive(Debug)]
+struct FixtureLine {
+    prompt: String,
+    content: String,
+}
+
+#[derive(Debug)]
+struct FixtureTurn {
+    lines: Vec<FixtureLine>,
+    expected_outputs: Vec<String>,
+    expected_error: Option<String>,
+}
+
+fn parse_fixture(content: &str) -> Vec<FixtureTurn> {
+    let mut turns = Vec::new();
+    let mut current_turn: Option<FixtureTurn> = None;
+
+    for raw_line in content.lines() {
+        let trimmed = raw_line.trim_end();
+        if trimmed.starts_with('#') || trimmed.is_empty() {
+            continue;
+        }
+
+        if let Some(cmd) = trimmed.strip_prefix("bnr> ") {
+            if let Some(turn) = current_turn.take() {
+                turns.push(turn);
+            }
+            current_turn = Some(FixtureTurn {
+                lines: vec![FixtureLine {
+                    prompt: "bnr> ".to_string(),
+                    content: cmd.to_string(),
+                }],
+                expected_outputs: Vec::new(),
+                expected_error: None,
+            });
+        } else if let Some(cmd) = trimmed.strip_prefix("...> ") {
+            if let Some(ref mut turn) = current_turn {
+                turn.lines.push(FixtureLine {
+                    prompt: "...> ".to_string(),
+                    content: cmd.to_string(),
+                });
+            } else {
+                panic!("Encountered continuation prompt '...>' without preceding 'bnr>'");
+            }
+        } else if let Some(err) = trimmed.strip_prefix("!error") {
+            if let Some(ref mut turn) = current_turn {
+                turn.expected_error = Some(err.trim().to_string());
+            }
+        } else if let Some(ref mut turn) = current_turn {
+            turn.expected_outputs.push(trimmed.to_string());
+        }
+    }
+
+    if let Some(turn) = current_turn {
+        turns.push(turn);
+    }
+
+    turns
+}
+
+#[allow(clippy::too_many_lines)]
+fn run_fixture(path: &std::path::Path) {
+    let content = std::fs::read_to_string(path).expect("read fixture file");
+    let turns = parse_fixture(&content);
+
+    let mut interpreter = bn_interpret_driver::options::InterpreterOptions::default();
+    let options =
+        bn_cli::options::parse_options(vec!["<repl>".to_string()].into_iter(), &mut interpreter)
+            .expect("parse options");
+
+    let mut session =
+        bnr::session::ReplSession::new(&options, &interpreter).expect("initialize ReplSession");
+
+    let mut buffer = String::new();
+
+    for (turn_idx, turn) in turns.iter().enumerate() {
+        let mut turn_stdout = String::new();
+        let mut turn_stderr = String::new();
+
+        for line in &turn.lines {
+            let current_prompt = if buffer.is_empty() {
+                bnr::repl::PROMPT_READY
+            } else {
+                bnr::repl::PROMPT_COLLECTING
+            };
+            assert_eq!(
+                current_prompt,
+                line.prompt,
+                "Fixture '{}' turn {}: expected prompt '{}', but session was '{}'",
+                path.display(),
+                turn_idx + 1,
+                line.prompt,
+                current_prompt
+            );
+
+            if buffer.is_empty() && bnr::commands::is_meta_command(&line.content) {
+                let mut out_bytes = Vec::new();
+                let mut err_bytes = Vec::new();
+                let action = bnr::commands::handle_meta_command_to(
+                    &line.content,
+                    &mut session,
+                    &options,
+                    &interpreter,
+                    &mut out_bytes,
+                    &mut err_bytes,
+                );
+                turn_stdout.push_str(&String::from_utf8_lossy(&out_bytes));
+                turn_stderr.push_str(&String::from_utf8_lossy(&err_bytes));
+                if action == bnr::commands::CommandAction::Quit {
+                    return;
+                }
+                continue;
+            }
+
+            buffer.push_str(&line.content);
+            buffer.push('\n');
+
+            match session.classify(&buffer) {
+                bn_frontend::session::SubmissionCompleteness::Incomplete { .. } => {
+                    // Waiting for more lines in the multi-line block
+                }
+                bn_frontend::session::SubmissionCompleteness::Invalid { diagnostic, .. } => {
+                    let source_file = bn_source::SourceFile::new("<session-classify>", &buffer);
+                    let formatted = bn_cli::diagnostics::present_diagnostic(
+                        &diagnostic,
+                        &source_file,
+                        None,
+                        &options,
+                    );
+                    turn_stderr.push_str(&formatted);
+                    buffer.clear();
+                }
+                bn_frontend::session::SubmissionCompleteness::Complete { .. } => {
+                    match session.execute(&buffer, &options) {
+                        bnr::session::ExecutionOutcome::Success {
+                            stdout,
+                            result_value,
+                            result_type,
+                            structured_preview,
+                        } => {
+                            if let Some(preview) = structured_preview {
+                                if let Some(ty) = result_type {
+                                    let _ = writeln!(turn_stdout, "{preview} : {ty}");
+                                } else {
+                                    let _ = writeln!(turn_stdout, "{preview}");
+                                }
+                            } else {
+                                if !stdout.is_empty() {
+                                    turn_stdout.push_str(&stdout);
+                                }
+                                if let (Some(val), Some(ty)) = (result_value, result_type) {
+                                    let _ = writeln!(turn_stdout, "{val} : {ty}");
+                                }
+                            }
+                        }
+                        bnr::session::ExecutionOutcome::Failure { stdout, diagnostic } => {
+                            if !stdout.is_empty() {
+                                turn_stdout.push_str(&stdout);
+                            }
+                            if let Some(diag) = diagnostic {
+                                turn_stderr.push_str(&diag);
+                            }
+                        }
+                    }
+                    buffer.clear();
+                }
+            }
+        }
+
+        for expected in &turn.expected_outputs {
+            assert!(
+                turn_stdout.contains(expected),
+                "Fixture '{}' turn {}: expected stdout to contain '{}', but got stdout:\n{}\nstderr:\n{}",
+                path.display(),
+                turn_idx + 1,
+                expected,
+                turn_stdout,
+                turn_stderr
+            );
+        }
+
+        if let Some(ref expected_err) = turn.expected_error {
+            assert!(
+                turn_stderr.contains(expected_err) || turn_stdout.contains(expected_err),
+                "Fixture '{}' turn {}: expected error '{}', but got stdout:\n{}\nstderr:\n{}",
+                path.display(),
+                turn_idx + 1,
+                expected_err,
+                turn_stdout,
+                turn_stderr
+            );
+        }
+    }
+}
+
+#[test]
+fn bnr_all_transcript_fixtures() {
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let fixtures_dir = manifest_dir.join("tests/fixtures");
+    assert!(fixtures_dir.is_dir(), "fixtures dir exists");
+
+    let mut entries: Vec<_> = std::fs::read_dir(&fixtures_dir)
+        .expect("read fixtures dir")
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|ext| ext == "repl"))
+        .collect();
+    entries.sort();
+
+    assert!(!entries.is_empty(), "found .repl fixtures");
+    for fixture_path in &entries {
+        run_fixture(fixture_path);
+    }
 }

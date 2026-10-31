@@ -1,0 +1,22 @@
+# Test: multi-line procedures, recursion, and class definitions
+
+bnr> FUNCTION Factorial(n AS INTEGER) AS INTEGER
+...>     IF n <= 1 THEN
+...>         RETURN 1
+...>     END IF
+...>     RETURN n * Factorial(n - 1)
+...> END FUNCTION
+
+bnr> Factorial(5)
+120 : INT32
+
+bnr> EXPORT CLASS MathUtil
+...>     PUBLIC STATIC FUNCTION Cube(n AS INTEGER) AS INTEGER
+...>         RETURN n * n * n
+...>     END FUNCTION
+...> END CLASS
+
+bnr> MathUtil.Cube(4)
+64 : INT32
+
+bnr> :quit

@@ -1,0 +1,26 @@
+# Test: multi-line control flow blocks and continuation prompts
+
+bnr> FOR i AS INTEGER = 1 TO 3
+...>     PRINT i * 10
+...> END FOR
+10
+20
+30
+
+bnr> LET count AS INTEGER = 3
+bnr> WHILE count > 0
+...>     PRINT count
+...>     count = count - 1
+...> END WHILE
+3
+2
+1
+
+bnr> IF count = 0 THEN
+...>     PRINT "Count reached zero"
+...> ELSE
+...>     PRINT "Count is non-zero"
+...> END IF
+Count reached zero
+
+bnr> :quit

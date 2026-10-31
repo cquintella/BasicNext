@@ -1,0 +1,21 @@
+# Test: variable declarations, reassignments, cross-turn persistence, and bindings inspection
+
+bnr> LET x AS INTEGER = 100
+bnr> LET y AS INTEGER = 50
+bnr> x - y
+50 : INT32
+
+bnr> x = x + 10
+bnr> x
+110 : INT32
+
+bnr> LET greeting AS STRING = "Welcome to bnr"
+bnr> PRINT greeting
+Welcome to bnr
+
+bnr> :bindings
+LET x AS INT32 [ALIVE]
+LET y AS INT32 [ALIVE]
+LET greeting AS STRING [ALIVE]
+
+bnr> :quit

@@ -5,7 +5,10 @@
 
 //! REPL meta-commands implementation.
 
-use std::fs;
+use std::{
+    fs,
+    io::{self, Write},
+};
 
 use bn_cli::options::Options;
 use bn_interpret_driver::options::InterpreterOptions;
@@ -30,6 +33,20 @@ pub fn handle_meta_command(
     options: &Options,
     interpreter: &InterpreterOptions,
 ) -> CommandAction {
+    let mut out = io::stdout();
+    let mut err = io::stderr();
+    handle_meta_command_to(line, session, options, interpreter, &mut out, &mut err)
+}
+
+#[allow(clippy::too_many_lines)]
+pub fn handle_meta_command_to(
+    line: &str,
+    session: &mut ReplSession,
+    options: &Options,
+    interpreter: &InterpreterOptions,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> CommandAction {
     let trimmed = line.trim();
     let parts: Vec<&str> = trimmed.splitn(2, ' ').collect();
     let command = parts[0];
@@ -37,26 +54,31 @@ pub fn handle_meta_command(
 
     match command {
         ":help" => {
-            println!("{}", bn_catalog::text("cli", "msg.bnr_help_text"));
+            let _ = writeln!(out, "{}", bn_catalog::text("cli", "msg.bnr_help_text"));
             CommandAction::Continue
         }
         ":quit" | ":q" => CommandAction::Quit,
         ":reset" => {
-            if let Err(err) = session.reset(options, interpreter) {
-                eprintln!("{err}");
+            if let Err(msg) = session.reset(options, interpreter) {
+                let _ = writeln!(err, "{msg}");
             } else {
-                println!("{}", bn_catalog::text("cli", "msg.bnr_reset_done"));
+                let _ = writeln!(out, "{}", bn_catalog::text("cli", "msg.bnr_reset_done"));
             }
             CommandAction::Continue
         }
         ":bindings" | ":vars" => {
             let bindings = session.bindings();
             if bindings.is_empty() {
-                println!("{}", bn_catalog::text("cli", "msg.bnr_empty_bindings"));
+                let _ = writeln!(out, "{}", bn_catalog::text("cli", "msg.bnr_empty_bindings"));
             } else {
-                println!("{}", bn_catalog::text("cli", "msg.bnr_active_bindings"));
+                let _ = writeln!(
+                    out,
+                    "{}",
+                    bn_catalog::text("cli", "msg.bnr_active_bindings")
+                );
                 for b in bindings {
-                    println!(
+                    let _ = writeln!(
+                        out,
                         "{}",
                         bn_catalog::fill(
                             "cli",
@@ -74,13 +96,19 @@ pub fn handle_meta_command(
         }
         ":type" => {
             if arg.is_empty() {
-                eprintln!("{}", bn_catalog::text("cli", "msg.bnr_type_missing_expr"));
+                let _ = writeln!(
+                    err,
+                    "{}",
+                    bn_catalog::text("cli", "msg.bnr_type_missing_expr")
+                );
             } else {
                 match session.type_of(arg, options) {
-                    Ok(ty) => println!("{ty}"),
+                    Ok(ty) => {
+                        let _ = writeln!(out, "{ty}");
+                    }
                     Err(diag) => {
                         if !diag.is_empty() {
-                            eprint!("{diag}");
+                            let _ = write!(err, "{diag}");
                         }
                     }
                 }
@@ -88,23 +116,27 @@ pub fn handle_meta_command(
             CommandAction::Continue
         }
         ":policy" => {
-            println!("{}", bn_catalog::text("cli", "msg.bnr_active_policy"));
-            println!(
+            let _ = writeln!(out, "{}", bn_catalog::text("cli", "msg.bnr_active_policy"));
+            let _ = writeln!(
+                out,
                 "  {}: {}",
                 bn_catalog::text("cli", "msg.bnr_sandbox"),
                 options.sandbox
             );
-            println!(
+            let _ = writeln!(
+                out,
                 "  {}: {}",
                 bn_catalog::text("cli", "msg.bnr_filesystem"),
                 interpreter.filesystem
             );
-            println!(
+            let _ = writeln!(
+                out,
                 "  {}: {:?}",
                 bn_catalog::text("cli", "msg.bnr_read_roots"),
                 options.read_roots
             );
-            println!(
+            let _ = writeln!(
+                out,
                 "  {}: {:?}",
                 bn_catalog::text("cli", "msg.bnr_write_roots"),
                 options.write_roots
@@ -114,7 +146,8 @@ pub fn handle_meta_command(
                 .iter()
                 .map(|p| p.path.display().to_string())
                 .collect();
-            println!(
+            let _ = writeln!(
+                out,
                 "  {}: {:?}",
                 bn_catalog::text("cli", "msg.bnr_module_paths"),
                 paths
@@ -124,7 +157,8 @@ pub fn handle_meta_command(
                 .iter()
                 .map(|p| p.display().to_string())
                 .collect();
-            println!(
+            let _ = writeln!(
+                out,
                 "  {}: {:?}",
                 bn_catalog::text("cli", "msg.bnr_ffi_paths"),
                 ffi_paths
@@ -133,7 +167,8 @@ pub fn handle_meta_command(
         }
         ":arc" => {
             let inspection = session.arc_inspection();
-            println!(
+            let _ = writeln!(
+                out,
                 "{}",
                 bn_catalog::fill(
                     "cli",
@@ -149,13 +184,14 @@ pub fn handle_meta_command(
                 )
             );
             if !inspection.live_objects.is_empty() {
-                println!("{}", bn_catalog::text("cli", "msg.bnr_arc_header"));
+                let _ = writeln!(out, "{}", bn_catalog::text("cli", "msg.bnr_arc_header"));
                 for obj in &inspection.live_objects {
                     if arg.is_empty() || obj.class.contains(arg) {
                         let status = if obj.strong > 0 { "ALIVE" } else { "RELEASED" };
                         let slot_str = obj.id.bits().to_string();
                         let strong_str = obj.strong.to_string();
-                        println!(
+                        let _ = writeln!(
+                            out,
                             "{}",
                             bn_catalog::fill(
                                 "cli",
@@ -175,19 +211,23 @@ pub fn handle_meta_command(
         }
         ":ir" => {
             let ir = session.ir_of(arg);
-            println!("{}", bn_catalog::text("cli", "msg.bnr_ir_header"));
-            println!("{ir}");
+            let _ = writeln!(out, "{}", bn_catalog::text("cli", "msg.bnr_ir_header"));
+            let _ = writeln!(out, "{ir}");
             CommandAction::Continue
         }
         ":cfg" => {
             let cfg = session.cfg_of(arg);
-            println!("{}", bn_catalog::text("cli", "msg.bnr_cfg_header"));
-            println!("{cfg}");
+            let _ = writeln!(out, "{}", bn_catalog::text("cli", "msg.bnr_cfg_header"));
+            let _ = writeln!(out, "{cfg}");
             CommandAction::Continue
         }
         ":bench" => {
             if arg.is_empty() {
-                eprintln!("{}", bn_catalog::text("cli", "msg.bnr_bench_missing_expr"));
+                let _ = writeln!(
+                    err,
+                    "{}",
+                    bn_catalog::text("cli", "msg.bnr_bench_missing_expr")
+                );
             } else {
                 match session.bench(arg, 100, options) {
                     Ok(stats) => {
@@ -196,7 +236,8 @@ pub fn handle_meta_command(
                         let med_str = stats.median_us.to_string();
                         let mean_str = stats.mean_us.to_string();
                         let alloc_str = stats.alloc_delta.to_string();
-                        println!(
+                        let _ = writeln!(
+                            out,
                             "{}",
                             bn_catalog::fill(
                                 "cli",
@@ -214,7 +255,7 @@ pub fn handle_meta_command(
                     }
                     Err(diag) => {
                         if !diag.is_empty() {
-                            eprint!("{diag}");
+                            let _ = write!(err, "{diag}");
                         }
                     }
                 }
@@ -223,17 +264,22 @@ pub fn handle_meta_command(
         }
         ":doc" => {
             if arg.is_empty() {
-                eprintln!("{}", bn_catalog::text("cli", "msg.bnr_doc_missing_symbol"));
+                let _ = writeln!(
+                    err,
+                    "{}",
+                    bn_catalog::text("cli", "msg.bnr_doc_missing_symbol")
+                );
             } else {
                 let docs = session.doc_symbol(arg, options);
                 if docs.is_empty() {
-                    eprintln!(
+                    let _ = writeln!(
+                        err,
                         "{}",
                         bn_catalog::fill("cli", "msg.bnr_symbol_not_found", &[("symbol", &arg)])
                     );
                 } else {
                     for line in docs {
-                        println!("  {line}");
+                        let _ = writeln!(out, "  {line}");
                     }
                 }
             }
@@ -241,52 +287,66 @@ pub fn handle_meta_command(
         }
         ":export" => {
             if arg.is_empty() {
-                eprintln!("{}", bn_catalog::text("cli", "msg.bnr_export_missing_path"));
+                let _ = writeln!(
+                    err,
+                    "{}",
+                    bn_catalog::text("cli", "msg.bnr_export_missing_path")
+                );
             } else {
                 let code = session.export_program();
                 match fs::write(arg, code) {
                     Ok(()) => {
-                        println!(
+                        let _ = writeln!(
+                            out,
                             "{}",
                             bn_catalog::fill("cli", "msg.bnr_export_success", &[("path", &arg)])
                         );
                     }
-                    Err(err) => eprintln!("{err}"),
+                    Err(io_err) => {
+                        let _ = writeln!(err, "{io_err}");
+                    }
                 }
             }
             CommandAction::Continue
         }
         ":load" => {
             if arg.is_empty() {
-                eprintln!("{}", bn_catalog::text("cli", "msg.bnr_load_missing_path"));
+                let _ = writeln!(
+                    err,
+                    "{}",
+                    bn_catalog::text("cli", "msg.bnr_load_missing_path")
+                );
             } else {
                 match fs::read_to_string(arg) {
                     Ok(content) => match session.execute(&content, options) {
                         ExecutionOutcome::Success { stdout, .. } => {
                             if !stdout.is_empty() {
-                                print!("{stdout}");
+                                let _ = write!(out, "{stdout}");
                             }
                         }
                         ExecutionOutcome::Failure { stdout, diagnostic } => {
                             if !stdout.is_empty() {
-                                print!("{stdout}");
+                                let _ = write!(out, "{stdout}");
                             }
                             if let Some(diag) = diagnostic {
-                                eprintln!("{diag}");
+                                let _ = writeln!(err, "{diag}");
                             }
                         }
                     },
-                    Err(err) => eprintln!("{err}"),
+                    Err(io_err) => {
+                        let _ = writeln!(err, "{io_err}");
+                    }
                 }
             }
             CommandAction::Continue
         }
         ":clear" => {
-            print!("\x1b[2J\x1b[H");
+            let _ = write!(out, "\x1b[2J\x1b[H");
             CommandAction::Continue
         }
         _ => {
-            eprintln!(
+            let _ = writeln!(
+                err,
                 "{}",
                 bn_catalog::fill("cli", "msg.bnr_unknown_command", &[("command", &command)])
             );
