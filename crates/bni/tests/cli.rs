@@ -1300,6 +1300,26 @@ fn bncrypto_secret_interprets() {
     );
 }
 
+/// The `BNCrypto` secret key slice: generates 256-bit SecretKey, verifies Id/Length/Bits,
+/// masks PRINT as `***`, exports secret bytes, imports from bytes, performs RFC 3394
+/// key wrap and unwrap, and zeroizes memory.
+#[test]
+fn bncrypto_secretkey_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-secretkey/main.bn"])
+        .output()
+        .expect("run the BNCrypto secretkey fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "key-bits-256-ok\nkey-length-32-ok\nkey-purpose-ok\nkey-alg-ok\nkey-id-len-ok\n***\nkey-export-len-ok\nimported-key-id-match-ok\nwrapped-len-40-ok\nunwrap-key-id-match-ok\nzeroized-bits-ok\n"
+    );
+}
+
 /// The `BNJson` DOM slice: build an object, write and read a member, and reject
 /// a missing key instead of yielding an empty STRING. The compiled twin is in
 /// the `bnc` suite; the two must print the same.
