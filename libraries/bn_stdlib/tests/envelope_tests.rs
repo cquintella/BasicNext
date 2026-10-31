@@ -3,13 +3,36 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+#![allow(unsafe_code)]
+
 use bn_stdlib::crypto::{bn_decrypt_envelope, bn_encrypt_envelope};
 use bn_stdlib::crypto_abi::{
     bn_rt_crypto_bytes_from_text, bn_rt_crypto_bytes_length, bn_rt_crypto_bytes_release,
     bn_rt_crypto_decrypt, bn_rt_crypto_decrypt_text, bn_rt_crypto_encrypt,
     bn_rt_crypto_encrypt_text, bn_rt_crypto_secret_key_generate, bn_rt_crypto_secret_key_release,
-    bn_rt_str_release,
 };
+use bn_stdlib::string::{bn_rt_str_release, c_string_from_bytes, slice_from_raw};
+use std::ffi::c_char;
+
+struct BnString(*mut c_char);
+
+impl BnString {
+    fn new(bytes: &[u8]) -> Self {
+        let pointer = c_string_from_bytes(bytes);
+        assert!(!pointer.is_null(), "allocate STRING");
+        Self(pointer)
+    }
+
+    fn as_ptr(&self) -> *const c_char {
+        self.0
+    }
+}
+
+impl Drop for BnString {
+    fn drop(&mut self) {
+        bn_rt_str_release(self.0);
+    }
+}
 
 #[test]
 fn test_envelope_roundtrip_and_tamper() {
@@ -54,7 +77,7 @@ fn test_envelope_c_abi() {
     let key_handle = bn_rt_crypto_secret_key_generate(256, std::ptr::null(), std::ptr::null());
     assert!(key_handle > 0);
 
-    let text = std::ffi::CString::new("Sensitive payload data").unwrap();
+    let text = BnString::new(b"Sensitive payload data");
     let text_handle = bn_rt_crypto_bytes_from_text(text.as_ptr());
     assert!(text_handle > 0);
 
@@ -73,11 +96,8 @@ fn test_envelope_c_abi() {
 
     let recovered_ptr = bn_rt_crypto_decrypt_text(key_handle, token_ptr);
     assert!(!recovered_ptr.is_null());
-    // SAFETY: recovered_ptr is null-terminated C string from runtime.
-    let recovered_str = unsafe { std::ffi::CStr::from_ptr(recovered_ptr) }
-        .to_str()
-        .unwrap()
-        .to_string();
+    let recovered_bytes = slice_from_raw(recovered_ptr).expect("slice from raw STRING");
+    let recovered_str = std::str::from_utf8(recovered_bytes).unwrap();
     assert_eq!(recovered_str, "Sensitive payload data");
 
     // Clean up
