@@ -19,9 +19,11 @@ FUNCTION Start() AS VOID
     END IF
 
     // First 4 bytes are "BNC1" (hex 42 4e 43 31)
-    LET magicHex AS STRING = sealed.Slice(0, 4).ToHex()
-    IF magicHex = "424e4331" THEN
-        PRINT "magic-bnc1-ok"
+    LET magicSlice AS Crypto.Bytes OR Error = Crypto.Slice(sealed, 0, 4)
+    IF magicSlice IS Crypto.Bytes THEN
+        IF magicSlice.ToHex() = "424e4331" THEN
+            PRINT "magic-bnc1-ok"
+        END IF
     END IF
 
     // 3. Decrypt bytes payload
