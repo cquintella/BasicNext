@@ -3,14 +3,15 @@
 ## Status
 
 External standard-library module. Source of truth:
-`modules/bn/BNCrypto.bn`. The digests are **not** implemented in Basic Next: they
-come from `bn_rt::crypto` over the C ABI, so the interpreter (`bni`, through the
-`bn_lib_crypto` provider) and compiled binaries (`bnc`, through the LLVM backend)
-execute one implementation and cannot drift.
+`modules/bn/BNCrypto.bn`. Cryptographic primitives are implemented through
+`bn_rt::crypto` over the shared C ABI, ensuring that the interpreter (`bni`,
+through the `bn_lib_crypto` provider) and compiled native executables (`bnc`,
+through the LLVM backend) execute the identical implementation.
 
-This document covers the whole module: digests, the opaque `Bytes` buffer,
-authenticated encryption, message authentication, password hashing, signatures,
-and the post-quantum primitives. Every member runs on both backends.
+This specification defines the cryptographic architecture: the Two-Layer API,
+CSPRNG generation, memory zeroization, typed key handles, authenticated envelope
+encryption, cryptographic hashes, MACs, password hashing (PHC format), digital
+signatures, post-quantum primitives, and error contracts.
 
 ## Access
 
@@ -18,230 +19,264 @@ and the post-quantum primitives. Every member runs on both backends.
 IMPORT BNCrypto AS Crypto
 
 FUNCTION Start() AS VOID
-    PRINT Crypto.SHA256("abc")
+    LET key AS Crypto.SecretKey OR Error = Crypto.NewSecretKey()
+    IF key IS Crypto.SecretKey THEN
+        LET envelope AS Crypto.Bytes OR Error = Crypto.Encrypt(key, Crypto.FromText("secret"))
+    END IF
 END FUNCTION
 ```
 
-Logical import name: `BNCrypto`. The alias is a convenience; the path is not used
-in source. `BNCrypto` is an explicitly imported external module, never a `HOST`
-capability.
+`BNCrypto` is an imported standard library module, never a `HOST` capability.
 
-## Functions
+---
 
-| Function | Signature | Result |
+## Two-Layer API Design
+
+Basic Next 0.6 has no method overloading, optional parameters, or named parameters.
+To provide simple, safe defaults for typical use cases while enabling fine-grained
+tuning for advanced applications without duplicating library abstractions, the API
+follows the Two-Layer pattern:
+
+* **Layer A (Need):** Direct functions with safe, hardened defaults (e.g., `NewSecretKey()`, `NewKeyPair()`, `Encrypt(key, data)`, `HashPassword(password)`).
+* **Layer B (Options):** Companion functions taking an options `STRUCT` with initializers, named with the `With` suffix (e.g., `NewSecretKeyWith(opts)`, `EncryptWith(key, data, opts)`, `HashPasswordWith(password, opts)`). The user instantiates the options `STRUCT` and modifies only the parameters they need to tune.
+
+Entities use `STATIC` factories. Operations that fail return `T OR Error`.
+
+---
+
+## Algorithm Registry
+
+Cryptographic algorithms are selected using typed integer constants exposed by the static class `Alg`:
+
+```basic
+EXPORT CLASS Alg
+    PUBLIC STATIC ED25519 AS INTEGER = 1
+    PUBLIC STATIC X25519 AS INTEGER = 2
+    PUBLIC STATIC ECDSA_P256 AS INTEGER = 3
+    PUBLIC STATIC XCHACHA20_POLY1305 AS INTEGER = 4
+    PUBLIC STATIC AES_256_GCM AS INTEGER = 5
+    PUBLIC STATIC AES_128_GCM AS INTEGER = 6
+    PUBLIC STATIC CHACHA20_POLY1305 AS INTEGER = 7
+    PUBLIC STATIC AES_256_GCM_SIV AS INTEGER = 8
+    PUBLIC STATIC SHA256 AS INTEGER = 9
+    PUBLIC STATIC SHA384 AS INTEGER = 10
+    PUBLIC STATIC SHA512 AS INTEGER = 11
+    PUBLIC STATIC SHA512_256 AS INTEGER = 12
+    PUBLIC STATIC SHA3_256 AS INTEGER = 13
+    PUBLIC STATIC SHA3_512 AS INTEGER = 14
+    PUBLIC STATIC BLAKE2B AS INTEGER = 15
+    PUBLIC STATIC BLAKE3 AS INTEGER = 16
+    PUBLIC STATIC HMAC_SHA256 AS INTEGER = 17
+    PUBLIC STATIC HMAC_SHA384 AS INTEGER = 18
+    PUBLIC STATIC HMAC_SHA512 AS INTEGER = 19
+    PUBLIC STATIC ARGON2ID AS INTEGER = 20
+    PUBLIC STATIC SCRYPT AS INTEGER = 21
+    PUBLIC STATIC PBKDF2_SHA256 AS INTEGER = 22
+    PUBLIC STATIC ML_KEM_768 AS INTEGER = 23
+    PUBLIC STATIC ML_DSA_65 AS INTEGER = 24
+END CLASS
+```
+
+---
+
+## Types and Memory Safety
+
+| Type | Nature | Lifecycle and Safety |
 | --- | --- | --- |
-| `SHA256` | `SHA256(data AS STRING) AS STRING` | 64 lowercase hex characters |
-| `SHA512` | `SHA512(data AS STRING) AS STRING` | 128 lowercase hex characters |
+| `Crypto.Bytes` | Opaque buffer | Owned byte buffer. Does not implicitly convert to `STRING`. Wiped (`zeroize`) upon last `RELEASE`. Supports `.Length()`, `.ToHex()`, `.ToText()`. |
+| `Crypto.SecretKey` | Opaque symmetric key | Zeroized on drop or `RELEASE`. Memory locked (`mlock`) where platform permits. Not printable; `ToHex()` is forbidden. Exports only via explicit `ExportSecret`. |
+| `Crypto.PrivateKey` | Opaque asymmetric private key | Zeroized on drop or `RELEASE`. Memory locked (`mlock`) where platform permits. Exports only encrypted via `.ExportPem(format, password)` or explicit `.ExportPemUnencrypted(format)`. |
+| `Crypto.PublicKey` | Opaque asymmetric public key | Public key representation. Supports `.ExportPem()`, `.Fingerprint(hashAlg)`. |
+| `Crypto.KeyPair` | `STRUCT` | Contains `PublicKey AS PublicKey` and `PrivateKey AS PrivateKey`. |
+| `Crypto.Secret` | Sensitive text | Prints as `"***"`. Cannot be concatenated. Converts explicitly to `Bytes`. |
 
-Both hash the **UTF-8 bytes** of the argument. The digest width is fixed and does
-not depend on input length. Output is always lowercase hexadecimal.
+### Key Identifiers (KeyId)
 
-## Normative behaviour
+Every key carries a KeyId (`key.Id() AS STRING`):
+* For asymmetric keys (`PublicKey`, `PrivateKey`): SHA-256 digest of the canonical SPKI (SubjectPublicKeyInfo) DER encoding, represented as a 64-character lowercase hexadecimal string.
+* For symmetric keys (`SecretKey`): SHA-256 digest of `("BNC-KEYID\0" || raw_bytes)`, represented as a 64-character lowercase hexadecimal string.
 
-- The digests follow **NIST FIPS 180-4**. Conformance vectors live in
-  `tests/fixtures/crypto/sha-vectors.json`; their inputs are the published FIPS
-  example messages and their expected values were produced by an implementation
-  independent of the one under test. A mismatch is an implementation defect and
-  is never resolved by editing the expectation.
-- A non-`STRING` argument is a type error at the call site.
-- Digests are pure: the same argument always yields the same result, with no
-  host capability, no I/O, and no `HOST` permission required.
+---
 
-## Types
+## Randomness and CSPRNG
 
-| Type | Role |
-| --- | --- |
-| `Crypto.Bytes` | Opaque byte buffer. No implicit conversion to `STRING`, so byte data cannot be printed, concatenated or logged by accident. Owned: `RELEASE` frees it, and releasing twice is reported. |
-| `Crypto.Key` | Opaque cryptographic key or private seed. Never converts to `STRING` or exposes raw hex. Guarantees memory zeroization (`ZeroizeOnDrop`) upon scope exit or `RELEASE`. Supports explicit `.Zeroize()`. |
+All cryptographic randomness derives directly from the operating system CSPRNG (`getrandom` / `OsRng`).
 
-| Function | Signature | Result |
+| Function | Signature | Behaviour |
 | --- | --- | --- |
-| `FromText` | `FromText(text AS STRING) AS Bytes` | The UTF-8 bytes of `text` |
-| `FromHex` | `FromHex(text AS STRING) AS Bytes OR Error` | Decoded bytes, or `Error` when the string is not even-length hex |
-| `RandomBytes` | `RandomBytes(length AS INTEGER) AS Bytes OR Error` | Cryptographically secure random bytes from operating-system entropy |
-| `GenerateNonce` | `GenerateNonce(cipherAlgorithm AS INTEGER) AS Bytes OR Error` | 12-byte CSPRNG nonce suitable for AEAD ciphers |
-| `GenerateKey` | `GenerateKey(algorithm AS INTEGER) AS Key OR Error` | Random key generated via CSPRNG with algorithm-specific length |
-| `ImportKey` | `ImportKey(material AS Bytes, algorithm AS INTEGER) AS Key OR Error` | Validates length for `algorithm` and encapsulates into a zeroizing `Key` |
-| `Length` | `<bytes>.Length() AS INTEGER` | Byte count |
-| `ToHex` | `<bytes>.ToHex() AS STRING` | Lowercase hex (for `Bytes` only; `Key` does not support `ToHex`) |
+| `RandomBytes` | `RandomBytes(length AS INTEGER) AS Bytes OR Error` | Returns `length` secure random bytes (0 to 1 MiB). Rejects length outside range. |
+| `RandomInt` | `RandomInt(min, max AS INTEGER) AS INTEGER OR Error` | Unbiased random integer in `[min, max]` via rejection sampling. Rejects `min > max`. |
+| `RandomToken` | `RandomToken(nBytes AS INTEGER) AS STRING OR Error` | URL-safe base64 string from `nBytes` random bytes (default 32 bytes). Rejects `nBytes <= 0`. |
+| `RandomUuidV4` | `RandomUuidV4() AS STRING` | Canonical RFC 4122 UUID version 4 string. |
+| `UuidV7` | `UuidV7() AS STRING` | Time-ordered RFC 9562 UUID version 7 string. |
+| `RandomPassword` | `RandomPassword(opts AS PasswordGenOptions) AS STRING OR Error` | Secure password generated with configurable character classes and length (default 20). |
 
-`FromHex` rejects odd-length input instead of truncating: an odd number of hex
-characters is not a byte sequence.
+**Prohibition:** The CSPRNG never accepts a user seed in production. Cryptographic nonces and keys must never be derived from pseudo-random generators (`HOST.Random`).
 
-`RandomBytes` accepts a `length` from 0 through 1 MiB (1 048 576 bytes); any other
-length is an `Error` with `Code` `INVALID_ARGUMENT`, and nothing is allocated. Keys,
-seeds and nonces need tens of bytes; the bound keeps a mistaken length from
-exhausting memory (BDFL decision, 2026-10-27, delegated to an audit).
+---
 
-A `Key` whose material was erased with `.Zeroize()` stays a valid handle but holds
-no key: every operation that uses it returns an `Error` with `Code`
-`INVALID_ARGUMENT`, on both backends, and the program continues (BDFL decision,
-2026-10-27, delegated to an audit).
+## Constant-Time Operations and Zeroization
 
-### Algorithm Constants
+* `ConstantTimeEquals(a, b AS Bytes) AS BOOLEAN`: Compares two byte buffers in constant time without short-circuiting, mitigating side-channel timing attacks.
+* `Zeroize(b AS Bytes) AS VOID`: Explicitly overwrites buffer memory with zeros. Temporary allocations in cryptographic primitives are zeroized prior to return.
 
-| Constant | Value | Algorithm / Key Length |
+---
+
+## Authenticated Symmetric Encryption (AEAD)
+
+### Sealed Envelopes (Layer A)
+
+High-level encryption produces a versioned, self-contained envelope with an internal CSPRNG nonce:
+
+| Function | Signature |
+| --- | --- |
+| `Encrypt` | `Encrypt(key AS SecretKey, plaintext AS Bytes) AS Bytes OR Error` |
+| `Decrypt` | `Decrypt(key AS SecretKey, sealed AS Bytes) AS Bytes OR Error` |
+| `EncryptText` | `EncryptText(key AS SecretKey, plaintext AS STRING) AS STRING OR Error` |
+| `DecryptText` | `DecryptText(key AS SecretKey, sealed AS STRING) AS STRING OR Error` |
+
+Default algorithm: **XChaCha20-Poly1305** (24-byte random nonce, safe against nonce reuse).
+
+### Envelope Format (`BNC1`)
+
+```
++---------------+---------+--------+------------------+----------+------------+----------+
+| Magic "BNC1"  | Version | Alg ID | KeyId (optional) |  Nonce   | Ciphertext |   Tag    |
+|   (4 bytes)   | (1 byte)|(1 byte)|   (32 bytes)     | (N bytes)| (L bytes)  |(16 bytes)|
++---------------+---------+--------+------------------+----------+------------+----------+
+```
+The header bytes preceding the ciphertext are included in the authenticated additional data (AAD).
+
+### Options & Streaming (Layer B)
+
+```basic
+EXPORT STRUCT AeadOptions
+    alg AS INTEGER = 4           // Crypto.Alg.XCHACHA20_POLY1305
+    aad AS Bytes                 // Additional authenticated data (default empty)
+    includeKeyId AS BOOLEAN = 0  // Whether to embed 32-byte KeyId in envelope
+END STRUCT
+```
+
+* `EncryptWith(key AS SecretKey, plaintext AS Bytes, opts AS AeadOptions) AS Bytes OR Error`
+* `DecryptWith(key AS SecretKey, sealed AS Bytes, opts AS AeadOptions) AS Bytes OR Error`
+* `EncryptFile(key AS SecretKey, inPath, outPath AS STRING) AS VOID OR Error`
+* `DecryptFile(key AS SecretKey, inPath, outPath AS STRING) AS VOID OR Error`
+* `EncryptFileWithPassword(inPath, outPath, password AS STRING) AS VOID OR Error`
+* `DecryptFileWithPassword(inPath, outPath, password AS STRING) AS VOID OR Error`
+
+File encryption streams in 64 KiB authenticated chunks. New target files use atomic creation (`FS.OpenNew`). Decryption failure deletes partial output and fails closed.
+
+### Raw AEAD (Legacy / Expert)
+
+`SealAesGcm`, `OpenAesGcm`, `SealChaCha20`, and `OpenChaCha20` accept explicit caller nonces. They are preserved for wire compatibility but documented as hazardous due to nonce collision risks. Forbidden modes: ECB, unauthenticated CBC, unauthenticated CTR, RC4, DES/3DES.
+
+---
+
+## Cryptographic Hashes
+
+| Function | Signature |
+| --- | --- |
+| `Hash` | `Hash(data AS Bytes) AS Bytes` (default SHA-256) |
+| `HashText` | `HashText(text AS STRING) AS STRING` (lowercase hex) |
+| `HashFile` | `HashFile(path AS STRING) AS Bytes OR Error` (streaming from disk) |
+| `HashWith` | `HashWith(data AS Bytes, opts AS HashOptions) AS Bytes OR Error` |
+
+Supported in `HashOptions.alg`: SHA-256, SHA-384, SHA-512, SHA-512/256, SHA3-256, SHA3-512, BLAKE2b, BLAKE3.
+Streaming hash updates are provided via `Hasher.New(alg)`. Legacy digests (MD5, SHA-1) are rejected unless `Crypto.Policy.allowLegacy = 1` and are restricted to non-signature checksums.
+
+---
+
+## Message Authentication (MAC)
+
+| Function | Signature |
+| --- | --- |
+| `Mac` | `Mac(key AS SecretKey, data AS Bytes) AS Bytes OR Error` — default HMAC-SHA-256 |
+| `VerifyMac` | `VerifyMac(key AS SecretKey, data, tag AS Bytes) AS BOOLEAN` |
+| `MacWith` | `MacWith(key AS SecretKey, data AS Bytes, opts AS MacOptions) AS Bytes OR Error` |
+
+`VerifyMac` operates in constant time. Streaming MAC computation is supported via `MacStream.New(key, opts)`.
+
+---
+
+## Passwords and Key Derivation
+
+| Function | Signature | Description |
+| --- | --- | --- |
+| `HashPassword` | `HashPassword(password AS STRING) AS STRING OR Error` | Produces an Argon2id PHC string with OWASP recommended floor (m=19456 KiB, t=2, p=1, 16-byte random salt). |
+| `VerifyPassword` | `VerifyPassword(password AS STRING, phc AS STRING) AS BOOLEAN` | Constant-time verification against an Argon2id PHC string. |
+| `NeedsRehash` | `NeedsRehash(phc AS STRING, opts AS PasswordOptions) AS BOOLEAN` | Checks if a PHC string is below target cost parameters. |
+| `DeriveKey` | `DeriveKey(password AS STRING, salt AS Bytes) AS SecretKey OR Error` | Password-based key derivation using Argon2id. |
+| `Hkdf` | `Hkdf(ikm AS SecretKey, salt, info AS Bytes, length AS INTEGER) AS SecretKey OR Error` | RFC 5869 extract-and-expand key derivation returning a typed `SecretKey`. |
+| `DeriveSubkey` | `DeriveSubkey(master AS SecretKey, context AS STRING) AS SecretKey OR Error` | Domain-separated subkey derivation. |
+
+---
+
+## Asymmetric Key Pairs and Signatures
+
+### Key Generation
+
+| Function | Signature | Description |
+| --- | --- | --- |
+| `NewKeyPair` | `NewKeyPair() AS KeyPair OR Error` | Generates an Ed25519 key pair using system CSPRNG. |
+| `NewKeyPairFor` | `NewKeyPairFor(alg AS INTEGER) AS KeyPair OR Error` | Supports `Alg.ED25519`, `Alg.X25519`, `Alg.ECDSA_P256`. |
+| `NewKeyPairWith` | `NewKeyPairWith(opts AS KeyPairOptions) AS KeyPair OR Error` | Configured generation without accepting deterministic seeds. |
+
+### Signatures
+
+| Function | Signature |
+| --- | --- |
+| `Sign` | `Sign(key AS PrivateKey, message AS Bytes) AS Bytes OR Error` |
+| `Verify` | `Verify(key AS PublicKey, message, signature AS Bytes) AS BOOLEAN` |
+| `SignFile` | `SignFile(key AS PrivateKey, path AS STRING) AS Bytes OR Error` |
+| `VerifyFile` | `VerifyFile(key AS PublicKey, path AS STRING, signature AS Bytes) AS BOOLEAN` |
+
+Deterministic signatures (RFC 8032 for Ed25519, RFC 6979 for ECDSA P-256). `Verify` returns `FALSE` for invalid signatures or mismatched keys.
+
+### Key Import and Export
+
+* `ExportPem(key AS PrivateKey, format AS INTEGER, password AS STRING) AS STRING OR Error`: Encrypts private keys using PKCS#8 with PBES2 (Argon2id/scrypt).
+* `ExportPemUnencrypted(key AS PrivateKey, format AS INTEGER) AS STRING OR Error`: Explicit unencrypted PKCS#8 export.
+* `ExportPem(key AS PublicKey) AS STRING OR Error`: Exports SPKI PEM.
+* `LoadPrivateKey(pem AS STRING, password AS STRING OR NULL) AS PrivateKey OR Error`: Unambiguous header detection; fails closed (`PARSE_ERROR`) on ambiguous inputs.
+* `LoadPublicKey(pem AS STRING) AS PublicKey OR Error`: Parses SPKI PEM.
+
+---
+
+## Post-Quantum Cryptography (ML-KEM and ML-DSA)
+
+* ML-KEM-768 (FIPS 203) key encapsulation: `MlKemEncapsulate`, `MlKemDecapsulate`.
+* ML-DSA-65 (FIPS 204) digital signatures: `MlDsaSign`, `MlDsaVerify`.
+* Decapsulation follows **implicit rejection**: a well-sized invalid ciphertext produces an independent pseudo-random shared secret rather than `AUTHENTICATION_FAILED`.
+
+---
+
+## Errors
+
+Error codes returned by BNCrypto operations:
+
+| Constant | Value | Condition |
 | --- | ---: | --- |
-| `ALG_AES_GCM_256` | 1 | AES-256-GCM (32-byte key, 12-byte nonce) |
-| `ALG_CHACHA20` | 2 | ChaCha20-Poly1305 (32-byte key, 12-byte nonce) |
-| `ALG_HMAC_SHA256` | 3 | HMAC-SHA-256 (arbitrary key, minimum 32 recommended) |
-| `ALG_ED25519` | 4 | Ed25519 signing seed (32 bytes) |
-| `ALG_ECDSA_P256` | 5 | ECDSA P-256 private scalar (32 bytes) |
-| `ALG_ML_KEM_768` | 6 | ML-KEM-768 seed (64 bytes) |
-| `ALG_ML_DSA_65` | 7 | ML-DSA-65 signing seed (32 bytes) |
+| `INVALID_ARGUMENT` | 1 | Parameter out of accepted range; zeroized key; length constraint violation |
+| `AUTHENTICATION_FAILED` | 2 | AEAD tag verification failure, tampered envelope or ciphertext |
+| `UNAVAILABLE` | 3 | Primitive or hardware feature not supported in current environment |
+| `UNSUPPORTED_ALGORITHM` | 4 | Requested algorithm ID not recognized or not enabled |
+| `LEGACY_DISABLED` | 5 | Insecure or legacy algorithm requested without explicit policy opt-in |
+| `PARSE_ERROR` | 6 | Malformed PEM, DER, PHC, or serialized cryptographic structure |
+| `WRONG_KEY_TYPE` | 7 | Key type mismatch (e.g., signing key supplied to encryption operation) |
+| `IO_ERROR` | 8 | File I/O failure during streaming operations |
+| `WRONG_PASSWORD` | 9 | Decryption password failed authentication |
 
-## Authenticated encryption
+---
 
-| Function | Signature |
-| --- | --- |
-| `SealAesGcm` | `SealAesGcm(key AS Key, nonce, plaintext, aad AS Bytes) AS Bytes OR Error` |
-| `OpenAesGcm` | `OpenAesGcm(key AS Key, nonce, ciphertext, aad AS Bytes) AS Bytes OR Error` |
-| `SealChaCha20` | `SealChaCha20(key AS Key, nonce, plaintext, aad AS Bytes) AS Bytes OR Error` |
-| `OpenChaCha20` | `OpenChaCha20(key AS Key, nonce, ciphertext, aad AS Bytes) AS Bytes OR Error` |
+## Per-Call Cryptographic Policy
 
-AES-256-GCM follows **NIST SP 800-38D**; ChaCha20-Poly1305 follows **RFC 7539**.
-Both take a **32-byte `Key`** and a **12-byte nonce**, and both append a **16-byte
-authentication tag** to the ciphertext. The additional authenticated data may be
-empty, but it is authenticated, not encrypted.
+Policy constraints are scoped to individual operations via parameter structs:
 
-`Open` **fails closed**. A tampered ciphertext, a changed AAD, a wrong key or a
-truncated tag all yield `Error` and no plaintext whatsoever — never a partial or
-unauthenticated result. `Seal` yields `Error` when the key or nonce length is
-wrong rather than padding or truncating it.
+```basic
+EXPORT STRUCT Policy
+    allowLegacy AS BOOLEAN = 0  // Permits MD5, SHA-1 checksums or legacy verification
+    fipsOnly AS BOOLEAN = 0     // Enforces strict FIPS-approved algorithms
+END STRUCT
+```
 
-A nonce must never be reused with the same key. Derive nonces using `Crypto.GenerateNonce(cipherAlgorithm)` or `Crypto.RandomBytes(12)` from the system CSPRNG, or maintain a strictly monotonic counter. Nonces must never be derived from pseudo-random number generators (`HOST.Random`).
-
-## Message authentication and password hashing
-
-| Function | Signature |
-| --- | --- |
-| `HmacSha256` | `HmacSha256(key AS Key, data AS Bytes) AS Bytes` |
-| `VerifyHmacSha256` | `VerifyHmacSha256(key AS Key, data, tag AS Bytes) AS BOOLEAN` |
-| `Argon2id` | `Argon2id(password, salt AS Bytes, memoryKiB, iterations, parallelism AS INTEGER) AS Bytes OR Error` |
-
-HMAC-SHA-256 follows RFC 2104. **`VerifyHmacSha256` compares in constant time**: it
-never short-circuits on the first differing byte, which would leak the tag to a
-timing attack.
-
-Argon2id follows RFC 9106 and returns a 32-byte tag. Cost parameters outside the
-algorithm's accepted range are **rejected**, never clamped to something weaker.
-
-## Signatures
-
-| Function | Signature |
-| --- | --- |
-| `Ed25519PublicKey` | `Ed25519PublicKey(key AS Key) AS Bytes OR Error` |
-| `Ed25519Sign` | `Ed25519Sign(key AS Key, message AS Bytes) AS Bytes OR Error` |
-| `Ed25519Verify` | `Ed25519Verify(publicKey, message, signature AS Bytes) AS BOOLEAN` |
-| `EcdsaP256PublicKey` | `EcdsaP256PublicKey(key AS Key) AS Bytes OR Error` |
-| `EcdsaP256Sign` | `EcdsaP256Sign(key AS Key, message AS Bytes) AS Bytes OR Error` |
-| `EcdsaP256Verify` | `EcdsaP256Verify(publicKey, message, signature AS Bytes) AS BOOLEAN` |
-
-Ed25519 keys are a 32-byte seed (RFC 8032). ECDSA P-256 keys are a 32-byte
-big-endian scalar in 1 through n - 1, n the group order; `GenerateKey(ALG_ECDSA_P256)`
-draws again until the scalar is in that range (rejection sampling, FIPS 186-5
-A.2.2), so a generated key always signs;
-the public key is SEC1 uncompressed (65 bytes) and signatures are raw `r || s`
-(64 bytes) over SHA-256, with the nonce derived per RFC 6979.
-
-Both schemes sign **deterministically**: the same key and message always produce
-the same signature. `Verify` returns `FALSE` for a malformed key, a tampered
-message or a signature from another key — never an error resembling success.
-
-## Post-quantum
-
-| Function | Signature |
-| --- | --- |
-| `MlKemKeypair` | `MlKemKeypair(seed AS Key) AS Bytes OR Error` — `publicKey \|\| privateKey` |
-| `MlKemEncapsulate` | `MlKemEncapsulate(publicKey AS Bytes) AS Bytes OR Error` — `ciphertext \|\| sharedSecret` |
-| `MlKemDecapsulate` | `MlKemDecapsulate(key AS Key, ciphertext AS Bytes) AS Bytes OR Error` |
-| `MlDsaKeypair` | `MlDsaKeypair(seed AS Key) AS Bytes OR Error` — `verifyingKey \|\| seed` |
-| `MlDsaSign` | `MlDsaSign(key AS Key, message AS Bytes) AS Bytes OR Error` |
-| `MlDsaVerify` | `MlDsaVerify(publicKey, message, signature AS Bytes) AS BOOLEAN` |
-| `Slice` | `Slice(data AS Bytes, start, length AS INTEGER) AS Bytes OR Error` |
-
-ML-KEM-768 follows **FIPS 203** and ML-DSA-65 follows **FIPS 204**. BN has no
-tuple, so the members that produce two values concatenate them and `Slice` splits
-them; the sizes are fixed by the standard:
-
-| Object | Bytes |
-| --- | --- |
-| ML-KEM-768 public key | 1184 |
-| ML-KEM-768 private key (seed) | 64 |
-| ML-KEM-768 ciphertext | 1088 |
-| Shared secret | 32 |
-| ML-DSA-65 verifying key | 1952 |
-| ML-DSA-65 seed | 32 |
-| ML-DSA-65 signature | 3309 |
-
-`Slice` rejects an out-of-range window instead of clamping it, so a bad offset can
-never yield a short buffer that looks like a key.
-
-Key generation is deterministic from its seed. **Encapsulation is not, and
-deliberately offers no deterministic variant**: reusing its randomness even once
-is a catastrophic failure, so the choice is not exposed to BN at all.
-
-### A weaker verification basis, stated plainly
-
-Every other family in this module is checked byte-for-byte against an independent
-implementation. The post-quantum primitives are not, because no independent
-ML-KEM / ML-DSA implementation was available to check against. What is verified
-here: round-trip agreement, key-generation determinism, encapsulation
-non-determinism, tamper rejection, and object sizes equal to the FIPS parameters.
-The algorithms themselves rest on the upstream crates' Wycheproof suites
-(`ml-kem`, `ml-dsa`, both RustCrypto). Treat this as integration-verified rather
-than KAT-verified locally.
-
-## Errors (0.6.2)
-
-`Code` of a BNCrypto `Error` ([error.md](error.md)) is one of these `INTEGER`
-constants of the module (`Crypto.AUTHENTICATION_FAILED` under
-`IMPORT BNCrypto AS Crypto`):
-
-| Constant | Value | When |
-| --- | ---: | --- |
-| `INVALID_ARGUMENT` | 1 | A key, nonce, or seed of the wrong length or not valid for the algorithm; a `Key` erased with `.Zeroize()`; a `RandomBytes` length outside 0 through 1 MiB; Argon2id cost parameters out of range; `FromHex` of odd-length or non-hex text; a `Slice` range outside the buffer |
-| `AUTHENTICATION_FAILED` | 2 | `Open*` rejects the ciphertext (tampered data, AAD, key, nonce, or tag); `MlKemDecapsulate` rejects the ciphertext |
-| `UNAVAILABLE` | 3 | The build provides no implementation of the algorithm |
-
-`Verify*` return `FALSE` for any rejected input; they never return `Error`.
-
-## Target support
-
-Every member listed above is supported by **both** backends. Digests route
-through `bn_rt_crypto_sha256` / `bn_rt_crypto_sha512`, which return an owned
-NUL-terminated UTF-8 string under the same ownership convention as
-`bn_rt_str_to_lower`. A `Bytes` handle travels as a pointer carrying the `bn_rt`
-table index, as `BNLog` resources do; a value narrowed out of `Bytes OR Error`
-keeps the `{ i1, ptr, i64 }` aggregate and the handle is extracted from it,
-exactly as `FS.File` does.
-
-A call whose argument has the wrong type fails the target support check with
-`TARGET_UNSUPPORTED_OP`, which is a support diagnostic, not a language error.
-
-## Evidence
-
-| Claim | Check |
-| --- | --- |
-| Digests match FIPS 180-4 | `cargo test -p bn_rt crypto` |
-| Hex rejects odd-length input | `cargo test -p bn_rt crypto` |
-| Handles are distinct and release once | `cargo test -p bn_rt crypto_abi` |
-| Interpreter serves `IMPORT BNCrypto` | `cargo test -p bni --test cli bncrypto` |
-| Compiled digests equal interpreted digests | `cargo test -p bnc --test cli compiled_bncrypto_digests` |
-| Compiled `Bytes` equals interpreted `Bytes` | `cargo test -p bnc --test cli compiled_bncrypto_bytes` |
-| Compiled `FromHex` and narrowed-value methods match | `cargo test -p bnc --test cli compiled_bncrypto_bytes_full_surface` |
-| AEAD matches an independent implementation | `cargo test -p bn_rt crypto` |
-| AEAD fails closed on tamper, AAD change and wrong key | `cargo test -p bn_rt crypto` |
-| AEAD interprets and compiles identically | `cargo test -p bnc --test cli compiled_bncrypto_aead` |
-| HMAC matches an independent tag; verify is constant-time | `cargo test -p bn_rt crypto` |
-| Argon2id reproduces the RFC 9106 test vector | `cargo test -p bn_rt crypto` |
-| Ed25519 matches an independent implementation byte-for-byte | `cargo test -p bn_rt crypto` |
-| P-256 accepts an OpenSSL-produced signature | `cargo test -p bn_rt crypto` |
-| PQC round-trips, rejects tampering, matches FIPS sizes | `cargo test -p bn_rt crypto` |
-| Signatures and PQC compile and match the interpreter | `cargo test -p bnc --test cli bncrypto` |
-
-## Not here
-
-OAuth / BNWeb Auth, ORM field encryption, `HOST.Ui`, full TLS / X.509, and
-RSA-RS256 are outside this module by decision, not by omission; see the bucket
-that scoped it.
+No global process-wide switch exists; policies never leak across unrelated calls.
