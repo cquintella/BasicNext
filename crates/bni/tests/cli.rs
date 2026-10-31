@@ -1243,8 +1243,8 @@ fn bncrypto_post_quantum_interprets() {
     );
 }
 
-/// CSPRNG additions interpret: RandomInt, RandomToken, RandomUuidV4, UuidV7,
-/// and RandomPassword, plus error handling on invalid bounds or options.
+/// CSPRNG additions interpret: `RandomInt`, `RandomToken`, `RandomUuidV4`, `UuidV7`,
+/// and `RandomPassword`, plus error handling on invalid bounds or options.
 #[test]
 fn bncrypto_csprng_interprets() {
     let output = bni()
