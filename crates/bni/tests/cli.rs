@@ -1262,6 +1262,25 @@ fn bncrypto_csprng_interprets() {
     );
 }
 
+/// Memory zeroization interprets: explicit `Zeroize` method and module function
+/// on `Bytes` overwrites memory with zeros.
+#[test]
+fn bncrypto_zeroize_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-zeroize/main.bn"])
+        .output()
+        .expect("run the BNCrypto zeroize fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "b1-init-len-ok\nb1-zeroized-len-ok\nb1-zeroized-hex-ok\nb2-zeroized-len-ok\nb2-zeroized-hex-ok\n"
+    );
+}
+
 /// The `BNJson` DOM slice: build an object, write and read a member, and reject
 /// a missing key instead of yielding an empty STRING. The compiled twin is in
 /// the `bnc` suite; the two must print the same.
