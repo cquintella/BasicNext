@@ -1,57 +1,57 @@
 IMPORT BNCrypto AS Crypto
 
 FUNCTION Start() AS VOID
-    ' 1. Generate 256-bit SecretKey with defaults
+    // 1. Generate 256-bit SecretKey with defaults
     LET key AS Crypto.SecretKey = Crypto.NewSecretKey()
-    IF key.Bits() == 256 THEN
+    IF key.Bits() = 256 THEN
         PRINT "key-bits-256-ok"
     END IF
-    IF key.Length() == 32 THEN
+    IF key.Length() = 32 THEN
         PRINT "key-length-32-ok"
     END IF
-    IF key.Purpose() == "AEAD" THEN
+    IF key.Purpose() = "AEAD" THEN
         PRINT "key-purpose-ok"
     END IF
-    IF key.Algorithm() == "AES256" THEN
+    IF key.Algorithm() = "AES256" THEN
         PRINT "key-alg-ok"
     END IF
 
-    ' 2. KeyId
+    // 2. KeyId
     LET id AS STRING = key.Id()
-    IF LEN(id) == 64 THEN
+    IF LEN(id) = 64 THEN
         PRINT "key-id-len-ok"
     END IF
 
-    ' 3. Masked printing
+    // 3. Masked printing
     PRINT key
 
-    ' 4. Export secret bytes
+    // 4. Export secret bytes
     LET raw AS Crypto.Bytes = key.ExportSecret("RAW")
-    IF raw.Length() == 32 THEN
+    IF raw.Length() = 32 THEN
         PRINT "key-export-len-ok"
     END IF
 
-    ' 5. Import SecretKey from bytes
+    // 5. Import SecretKey from bytes
     LET key2 AS Crypto.SecretKey = Crypto.SecretKeyFromBytes(raw, "AEAD")
-    IF key.Id() == key2.Id() THEN
+    IF key.Id() = key2.Id() THEN
         PRINT "imported-key-id-match-ok"
     END IF
 
-    ' 6. RFC 3394 Key Wrap and Unwrap
+    // 6. RFC 3394 Key Wrap and Unwrap
     LET kek AS Crypto.SecretKey = Crypto.NewSecretKey()
     LET wrapped AS Crypto.Bytes = Crypto.WrapKey(kek, key)
-    IF wrapped.Length() == 40 THEN
+    IF wrapped.Length() = 40 THEN
         PRINT "wrapped-len-40-ok"
     END IF
 
     LET unwrapped AS Crypto.SecretKey = Crypto.UnwrapKey(kek, wrapped)
-    IF unwrapped.Id() == key.Id() THEN
+    IF unwrapped.Id() = key.Id() THEN
         PRINT "unwrap-key-id-match-ok"
     END IF
 
-    ' 7. Explicit Zeroize
+    // 7. Explicit Zeroize
     key.Zeroize()
-    IF key.Bits() == 0 THEN
+    IF key.Bits() = 0 THEN
         PRINT "zeroized-bits-ok"
     END IF
 END FUNCTION
