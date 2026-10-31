@@ -11,11 +11,32 @@ use bn_stdlib::crypto_abi::{
     bn_rt_crypto_bytes_to_hex, bn_rt_crypto_bytes_zeroize, bn_rt_crypto_generate_key,
     bn_rt_crypto_generate_nonce, bn_rt_crypto_key_zeroize, bn_rt_crypto_open, bn_rt_crypto_seal,
 };
-use std::ffi::CString;
+use bn_stdlib::string::{bn_rt_str_release, c_string_from_bytes};
+use std::ffi::c_char;
+
+struct BnString(*mut c_char);
+
+impl BnString {
+    fn new(bytes: &[u8]) -> Self {
+        let pointer = c_string_from_bytes(bytes);
+        assert!(!pointer.is_null(), "allocate STRING");
+        Self(pointer)
+    }
+
+    fn as_ptr(&self) -> *const c_char {
+        self.0
+    }
+}
+
+impl Drop for BnString {
+    fn drop(&mut self) {
+        bn_rt_str_release(self.0);
+    }
+}
 
 #[test]
 fn test_bytes_zeroize_overwrites_memory_with_zeros() {
-    let text = CString::new("super-secret-password-123").unwrap();
+    let text = BnString::new(b"super-secret-password-123");
     let handle = bn_rt_crypto_bytes_from_text(text.as_ptr());
     assert_ne!(handle, 0);
 
@@ -36,8 +57,7 @@ fn test_bytes_zeroize_overwrites_memory_with_zeros() {
         .to_str()
         .unwrap();
     assert_eq!(hex_str, "00".repeat(25));
-    // SAFETY: hex_ptr was allocated with libc::malloc and must be freed.
-    unsafe { libc::free(hex_ptr.cast()) };
+    bn_rt_str_release(hex_ptr);
 
     // Release buffer
     assert_eq!(bn_rt_crypto_bytes_release(handle), 0);
@@ -48,14 +68,16 @@ fn test_bytes_zeroize_overwrites_memory_with_zeros() {
 
 #[test]
 fn test_temporary_buffers_in_seal_and_open() {
-    let key_handle = bn_rt_crypto_generate_key(1); // AES-GCM
+    let mut key_handle = 0u64;
+    assert_eq!(bn_rt_crypto_generate_key(1, &mut key_handle), 0); // AES-GCM
     assert_ne!(key_handle, 0);
-    let nonce_handle = bn_rt_crypto_generate_nonce();
+    let mut nonce_handle = 0u64;
+    assert_eq!(bn_rt_crypto_generate_nonce(1, &mut nonce_handle), 0);
     assert_ne!(nonce_handle, 0);
 
-    let text = CString::new("confidential-message").unwrap();
+    let text = BnString::new(b"confidential-message");
     let pt_handle = bn_rt_crypto_bytes_from_text(text.as_ptr());
-    let aad_text = CString::new("public-aad").unwrap();
+    let aad_text = BnString::new(b"public-aad");
     let aad_handle = bn_rt_crypto_bytes_from_text(aad_text.as_ptr());
 
     let mut ct_handle = 0u64;
@@ -88,8 +110,7 @@ fn test_temporary_buffers_in_seal_and_open() {
         .to_str()
         .unwrap();
     assert_eq!(hex_str, "636f6e666964656e7469616c2d6d657373616765");
-    // SAFETY: hex_ptr was allocated with libc::malloc and must be freed.
-    unsafe { libc::free(hex_ptr.cast()) };
+    bn_rt_str_release(hex_ptr);
 
     // Clean up
     bn_rt_crypto_bytes_release(pt_handle);
