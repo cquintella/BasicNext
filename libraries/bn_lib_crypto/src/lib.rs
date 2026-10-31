@@ -814,17 +814,13 @@ fn csprng_dispatch(
         }
         "RandomUuidV4" => {
             require_arity(member, arguments, 0, span)?;
-            match bn_stdlib::crypto::random_uuid_v4() {
-                Ok(uuid) => Ok(Value::String(shared_string(uuid))),
-                Err(err) => failure(&err),
-            }
+            Ok(Value::String(shared_string(
+                bn_stdlib::crypto::random_uuid_v4(),
+            )))
         }
         "UuidV7" => {
             require_arity(member, arguments, 0, span)?;
-            match bn_stdlib::crypto::uuid_v7() {
-                Ok(uuid) => Ok(Value::String(shared_string(uuid))),
-                Err(err) => failure(&err),
-            }
+            Ok(Value::String(shared_string(bn_stdlib::crypto::uuid_v7())))
         }
         "RandomPassword" => {
             require_arity(member, arguments, 1, span)?;

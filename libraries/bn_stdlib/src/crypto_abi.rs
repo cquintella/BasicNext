@@ -679,6 +679,14 @@ pub extern "C" fn bn_rt_crypto_random_bytes(length: i64, out: *mut u64) -> i32 {
     BN_CRYPTO_OK
 }
 
+/// Struct layout offsets for `PasswordGenOptions` (16-byte header + fields).
+const PASSWORD_OPTS_HEADER_BYTES: usize = 16;
+const PASSWORD_OPTS_LENGTH_OFFSET: usize = PASSWORD_OPTS_HEADER_BYTES;
+const PASSWORD_OPTS_UPPER_OFFSET: usize = PASSWORD_OPTS_HEADER_BYTES + 4;
+const PASSWORD_OPTS_LOWER_OFFSET: usize = PASSWORD_OPTS_HEADER_BYTES + 5;
+const PASSWORD_OPTS_DIGITS_OFFSET: usize = PASSWORD_OPTS_HEADER_BYTES + 6;
+const PASSWORD_OPTS_SYMBOLS_OFFSET: usize = PASSWORD_OPTS_HEADER_BYTES + 7;
+
 /// Generates an unbiased random integer in `[min, max]`.
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
@@ -686,9 +694,11 @@ pub extern "C" fn bn_rt_crypto_random_int(min: i64, max: i64, out: *mut i64) -> 
     if out.is_null() {
         return BN_CRYPTO_INVALID_ARGUMENT;
     }
+    // SAFETY: out was checked non-null and points at an allocated i64 slot.
+    unsafe { *out = 0 };
     match crate::crypto::random_int(min, max) {
         Ok(val) => {
-            // SAFETY: out was checked non-null and points at a writable i64 slot allocated by caller.
+            // SAFETY: out is valid and writable.
             unsafe { *out = val };
             BN_CRYPTO_OK
         }
@@ -703,9 +713,11 @@ pub extern "C" fn bn_rt_crypto_random_token(n_bytes: i64, out: *mut *mut c_char)
     if out.is_null() {
         return BN_CRYPTO_INVALID_ARGUMENT;
     }
+    // SAFETY: out was checked non-null and points at an allocated pointer slot.
+    unsafe { *out = std::ptr::null_mut() };
     match crate::crypto::random_token(n_bytes) {
         Ok(tok) => {
-            // SAFETY: out was checked non-null and points at a writable pointer slot.
+            // SAFETY: out is valid and writable.
             unsafe { *out = c_string(&tok) };
             BN_CRYPTO_OK
         }
@@ -717,7 +729,7 @@ pub extern "C" fn bn_rt_crypto_random_token(n_bytes: i64, out: *mut *mut c_char)
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_random_uuid_v4() -> *mut c_char {
-    let u = crate::crypto::random_uuid_v4().unwrap_or_default();
+    let u = crate::crypto::random_uuid_v4();
     c_string(&u)
 }
 
@@ -725,7 +737,7 @@ pub extern "C" fn bn_rt_crypto_random_uuid_v4() -> *mut c_char {
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_uuid_v7() -> *mut c_char {
-    let u = crate::crypto::uuid_v7().unwrap_or_default();
+    let u = crate::crypto::uuid_v7();
     c_string(&u)
 }
 
@@ -733,17 +745,29 @@ pub extern "C" fn bn_rt_crypto_uuid_v7() -> *mut c_char {
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_random_password(opts_ptr: *const u8, out: *mut *mut c_char) -> i32 {
-    if opts_ptr.is_null() || out.is_null() {
+    if out.is_null() {
         return BN_CRYPTO_INVALID_ARGUMENT;
     }
+    // SAFETY: out was checked non-null and points at an allocated pointer slot.
+    unsafe { *out = std::ptr::null_mut() };
+    if opts_ptr.is_null() {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    }
+    // SAFETY: opts_ptr points to a Basic Next PasswordGenOptions struct whose ABI
+    // layout has a 16-byte object header followed by 4-byte length and 4 single-byte booleans.
+    // Reading length via copy_nonoverlapping prevents unaligned pointer dereference.
     let (length, upper, lower, digits, symbols) = unsafe {
         let mut len_bytes = [0u8; 4];
-        std::ptr::copy_nonoverlapping(opts_ptr.add(16), len_bytes.as_mut_ptr(), 4);
+        std::ptr::copy_nonoverlapping(
+            opts_ptr.add(PASSWORD_OPTS_LENGTH_OFFSET),
+            len_bytes.as_mut_ptr(),
+            4,
+        );
         let length = i32::from_ne_bytes(len_bytes);
-        let upper = *opts_ptr.add(20) != 0;
-        let lower = *opts_ptr.add(21) != 0;
-        let digits = *opts_ptr.add(22) != 0;
-        let symbols = *opts_ptr.add(23) != 0;
+        let upper = *opts_ptr.add(PASSWORD_OPTS_UPPER_OFFSET) != 0;
+        let lower = *opts_ptr.add(PASSWORD_OPTS_LOWER_OFFSET) != 0;
+        let digits = *opts_ptr.add(PASSWORD_OPTS_DIGITS_OFFSET) != 0;
+        let symbols = *opts_ptr.add(PASSWORD_OPTS_SYMBOLS_OFFSET) != 0;
         (length, upper, lower, digits, symbols)
     };
     let opts = crate::crypto::PasswordGenOptions {

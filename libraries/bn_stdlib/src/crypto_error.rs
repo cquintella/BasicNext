@@ -48,8 +48,6 @@ pub enum CryptoFailure {
     ZeroizedKey,
     /// `RandomBytes` with a length outside 0 through [`crate::crypto::MAX_RANDOM_BYTES`].
     RandomLength(i128),
-    /// Generic invalid argument.
-    InvalidArgument(&'static str),
     /// `RandomInt` with `min > max`.
     RandomIntRange { min: i64, max: i64 },
     /// `RandomToken` with length <= 0 or > `MAX_RANDOM_BYTES`.
@@ -89,7 +87,6 @@ impl CryptoFailure {
             Self::Algorithm(_) | Self::KeyLength { .. } => "BNCrypto.ImportKey",
             Self::ZeroizedKey => "BNCrypto.Key",
             Self::RandomLength(_) => "BNCrypto.RandomBytes",
-            Self::InvalidArgument(op) => op,
             Self::RandomIntRange { .. } => "BNCrypto.RandomInt",
             Self::RandomTokenLength(_) => "BNCrypto.RandomToken",
             Self::PasswordLength(_) | Self::PasswordNoClasses => "BNCrypto.RandomPassword",
@@ -127,7 +124,6 @@ impl CryptoFailure {
             Self::RandomLength(length) => {
                 bn_catalog::fill("crypto", "random.length.message", &[("length", length)])
             }
-            Self::InvalidArgument(msg) => (*msg).into(),
             Self::RandomIntRange { min, max } => bn_catalog::fill(
                 "crypto",
                 "random.int.range.message",
@@ -193,7 +189,6 @@ impl CryptoFailure {
                 "random.length.cause",
                 &[("limit", &crate::crypto::MAX_RANDOM_BYTES)],
             ),
-            Self::InvalidArgument(_) => "the supplied argument is invalid".into(),
             Self::RandomIntRange { .. } => {
                 bn_catalog::text("crypto", "random.int.range.cause").into()
             }

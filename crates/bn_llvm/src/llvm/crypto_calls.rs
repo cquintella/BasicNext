@@ -203,6 +203,7 @@ pub(super) fn lower_bncrypto_call(
             }
             let slot = O::reg(format!("cryout{dest}"));
             text.assign(format!("cryout{dest}"), I::alloca(T::I64));
+            text.emit(I::store(T::I64, O::int(0), slot.clone()));
             args.push((T::Ptr, slot));
             text.assign(
                 format!("cryrc{dest}"),
@@ -237,6 +238,7 @@ pub(super) fn lower_bncrypto_call(
             };
             let slot = O::reg(format!("cryout{dest}"));
             text.assign(format!("cryout{dest}"), I::alloca(T::Ptr));
+            text.emit(I::store(T::Ptr, O::null(), slot.clone()));
             let args = vec![(T::I64, arg_op), (T::Ptr, slot)];
             text.assign(
                 format!("cryrc{dest}"),
@@ -259,6 +261,7 @@ pub(super) fn lower_bncrypto_call(
         "RandomPassword" => {
             let slot = O::reg(format!("cryout{dest}"));
             text.assign(format!("cryout{dest}"), I::alloca(T::Ptr));
+            text.emit(I::store(T::Ptr, O::null(), slot.clone()));
             let args = vec![(T::Ptr, v(arguments[0])), (T::Ptr, slot)];
             text.assign(
                 format!("cryrc{dest}"),

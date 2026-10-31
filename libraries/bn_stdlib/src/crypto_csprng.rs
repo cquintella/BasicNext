@@ -134,12 +134,13 @@ fn format_uuid(b: &[u8; 16]) -> String {
 }
 
 /// Generates a canonical RFC 4122 UUID version 4 string using CSPRNG entropy.
-pub fn random_uuid_v4() -> Result<String, CryptoFailure> {
+#[must_use]
+pub fn random_uuid_v4() -> String {
     let mut bytes = [0u8; 16];
-    getrandom::getrandom(&mut bytes).map_err(|_| CryptoFailure::Random("BNCrypto.RandomUuidV4"))?;
+    getrandom::getrandom(&mut bytes).expect("system entropy failed");
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    Ok(format_uuid(&bytes))
+    format_uuid(&bytes)
 }
 
 static UUID_V7_STATE: std::sync::Mutex<(u64, u16)> = std::sync::Mutex::new((0, 0));
@@ -148,13 +149,14 @@ static UUID_V7_STATE: std::sync::Mutex<(u64, u16)> = std::sync::Mutex::new((0, 0
 ///
 /// Guaranteed to be monotonically increasing even when generated within the
 /// same millisecond, using an RFC 9562 monotonic counter.
-pub fn uuid_v7() -> Result<String, CryptoFailure> {
+#[must_use]
+pub fn uuid_v7() -> String {
     let mut bytes = [0u8; 16];
-    getrandom::getrandom(&mut bytes).map_err(|_| CryptoFailure::Random("BNCrypto.UuidV7"))?;
+    getrandom::getrandom(&mut bytes).expect("system entropy failed");
     let millis = u64::try_from(
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|_| CryptoFailure::Random("BNCrypto.UuidV7"))?
+            .expect("system clock before UNIX epoch")
             .as_millis(),
     )
     .unwrap_or(0);
@@ -162,13 +164,19 @@ pub fn uuid_v7() -> Result<String, CryptoFailure> {
     let (ms, counter) = {
         let mut state = UUID_V7_STATE
             .lock()
-            .map_err(|_| CryptoFailure::Random("BNCrypto.UuidV7"))?;
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if millis > state.0 {
             let initial_counter = u16::from_be_bytes([bytes[6] & 0x0f, bytes[7]]) & 0x07ff;
             *state = (millis, initial_counter);
         } else {
             // Same millisecond or backward clock step: increment counter monotonically
-            state.1 = (state.1 + 1) & 0x0fff;
+            state.1 = state.1.saturating_add(1);
+            if state.1 > 0x0fff {
+                // When 12-bit counter rolls over within the same millisecond,
+                // advance the simulated timestamp by 1 ms (RFC 9562 §6.2)
+                state.0 = state.0.saturating_add(1);
+                state.1 = 0;
+            }
         }
         *state
     };
@@ -181,7 +189,7 @@ pub fn uuid_v7() -> Result<String, CryptoFailure> {
     bytes[7] = counter_bytes[1];
     // Variant RFC 9562 (10xx)
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    Ok(format_uuid(&bytes))
+    format_uuid(&bytes)
 }
 
 /// Options for password generation.
@@ -211,6 +219,7 @@ const UPPER: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const LOWER: &[u8] = b"abcdefghijklmnopqrstuvwxyz";
 const DIGITS: &[u8] = b"0123456789";
 const SYMBOLS: &[u8] = b"!@#$%^&*()-_=+[]{}|;:,.<>?~";
+const TOTAL_POOL_CAPACITY: usize = UPPER.len() + LOWER.len() + DIGITS.len() + SYMBOLS.len();
 
 /// Generates a secure random password with requested length and character classes.
 ///
@@ -228,7 +237,7 @@ pub fn random_password(opts: PasswordGenOptions) -> Result<String, CryptoFailure
     {
         return Err(CryptoFailure::PasswordNoClasses);
     }
-    let mut pool: Vec<u8> = Vec::with_capacity(92);
+    let mut pool: Vec<u8> = Vec::with_capacity(TOTAL_POOL_CAPACITY);
     let mut required: Vec<&'static [u8]> = Vec::with_capacity(4);
     if opts.include_uppercase {
         pool.extend_from_slice(UPPER);
