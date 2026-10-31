@@ -248,7 +248,7 @@ pub fn hmac_sha256(key: &[u8], data: &[u8]) -> Vec<u8> {
 #[must_use]
 pub fn hmac_verify(key: &[u8], data: &[u8], tag: &[u8]) -> bool {
     use subtle::ConstantTimeEq;
-    let expected = hmac_sha256(key, data);
+    let expected = zeroize::Zeroizing::new(hmac_sha256(key, data));
     expected.len() == tag.len() && bool::from(expected.ct_eq(tag))
 }
 

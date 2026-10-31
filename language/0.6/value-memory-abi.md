@@ -619,6 +619,7 @@ bn_rt_crypto_bytes_length
 bn_rt_crypto_bytes_release
 bn_rt_crypto_bytes_retain
 bn_rt_crypto_bytes_to_hex
+bn_rt_crypto_bytes_zeroize
 bn_rt_crypto_dsa_keypair
 bn_rt_crypto_dsa_sign
 bn_rt_crypto_dsa_verify

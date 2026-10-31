@@ -58,7 +58,31 @@ pub(super) fn lower_bncrypto_call(
                 let call = I::call(T::I32, "bn_rt_crypto_key_algorithm", args);
                 text.assign(format!("v{dest}"), call);
             } else if member == "Zeroize" {
-                let call = I::call(T::I32, "bn_rt_crypto_key_zeroize", args);
+                let is_key = analysis
+                    .values
+                    .get(&arguments[0])
+                    .is_some_and(|ty| match ty {
+                        Type::Named(name)
+                        | Type::ImportedNamed { name, .. }
+                        | Type::ImportedTypeName { name, .. } => {
+                            name == "Key" || name.ends_with(".Key")
+                        }
+                        Type::Alternative(alternatives) => alternatives.iter().any(|a| match a {
+                            Type::Named(name)
+                            | Type::ImportedNamed { name, .. }
+                            | Type::ImportedTypeName { name, .. } => {
+                                name == "Key" || name.ends_with(".Key")
+                            }
+                            _ => false,
+                        }),
+                        _ => false,
+                    });
+                let symbol = if is_key {
+                    "bn_rt_crypto_key_zeroize"
+                } else {
+                    "bn_rt_crypto_bytes_zeroize"
+                };
+                let call = I::call(T::I32, symbol, args);
                 text.assign(format!("cryrc{dest}"), call);
             } else {
                 let is_key = analysis

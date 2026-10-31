@@ -33,7 +33,7 @@ use bn_stdlib::crypto::KeyEntry;
 /// hand out opaque `u64` handles.
 #[derive(Debug, Default)]
 pub struct CryptoProvider {
-    buffers: HashMap<u64, Vec<u8>>,
+    buffers: HashMap<u64, zeroize::Zeroizing<Vec<u8>>>,
     holders: HashMap<u64, usize>,
     keys: HashMap<u64, KeyEntry>,
     key_holders: HashMap<u64, usize>,
@@ -44,7 +44,7 @@ impl CryptoProvider {
     fn insert(&mut self, bytes: Vec<u8>) -> Value {
         self.next += 1;
         let handle = self.next;
-        self.buffers.insert(handle, bytes);
+        self.buffers.insert(handle, zeroize::Zeroizing::new(bytes));
         self.holders.insert(handle, 1);
         Value::CryptoBytes(handle)
     }
@@ -106,7 +106,7 @@ impl CryptoProvider {
                 span,
             ));
         };
-        Ok(self.buffer(*handle, span)?.clone())
+        Ok(self.buffer(*handle, span)?.to_vec())
     }
 
     /// ML-KEM-768 and ML-DSA-65 (FIPS 203 / FIPS 204). Key generation is
@@ -294,7 +294,7 @@ impl CryptoProvider {
             }
             _ => {
                 require_arity(member, arguments, 5, span)?;
-                let password = self.bytes_at(arguments, 0, member, span)?;
+                let password = zeroize::Zeroizing::new(self.bytes_at(arguments, 0, member, span)?);
                 let salt = self.bytes_at(arguments, 1, member, span)?;
                 let mut costs = [0_u32; 3];
                 for (slot, argument) in costs.iter_mut().zip(&arguments[2..5]) {
@@ -471,8 +471,8 @@ impl CryptoProvider {
             Ok(material) => material,
             Err(failed) => return failure(&failed),
         };
-        let nonce = self.bytes_at(arguments, 1, member, span)?;
-        let data = self.bytes_at(arguments, 2, member, span)?;
+        let nonce = zeroize::Zeroizing::new(self.bytes_at(arguments, 1, member, span)?);
+        let data = zeroize::Zeroizing::new(self.bytes_at(arguments, 2, member, span)?);
         let aad = self.bytes_at(arguments, 3, member, span)?;
         let algorithm = if method.ends_with("AesGcm") {
             bn_stdlib::crypto::Aead::Aes256Gcm
@@ -613,37 +613,53 @@ impl CryptoProvider {
             }
             "Zeroize" => {
                 require_arity(member, arguments, 1, span)?;
-                let Value::CryptoKey(handle) = &arguments[0] else {
-                    return Err(type_mismatch(
-                        "BNCrypto.Key",
-                        "non-BNCrypto.Key value",
+                match &arguments[0] {
+                    Value::CryptoKey(handle) => {
+                        let entry = self.keys.get_mut(handle).ok_or_else(|| {
+                            runtime_error(
+                                bn_diag::DiagId::USE_AFTER_RELEASE,
+                                "BNCrypto.Key is invalid",
+                                span,
+                            )
+                        })?;
+                        entry.material.zeroize();
+                        entry.zeroized = true;
+                        Ok(Value::Null)
+                    }
+                    Value::CryptoBytes(handle) => {
+                        let buf = self.buffers.get_mut(handle).ok_or_else(|| {
+                            runtime_error(
+                                bn_diag::DiagId::USE_AFTER_RELEASE,
+                                "BNCrypto.Bytes is invalid",
+                                span,
+                            )
+                        })?;
+                        buf.as_mut_slice().zeroize();
+                        Ok(Value::Null)
+                    }
+                    _ => Err(type_mismatch(
+                        "BNCrypto.Bytes or BNCrypto.Key",
+                        "non-crypto value",
                         member,
                         span,
-                    ));
-                };
-                let entry = self.keys.get_mut(handle).ok_or_else(|| {
-                    runtime_error(
-                        bn_diag::DiagId::USE_AFTER_RELEASE,
-                        "BNCrypto.Key is invalid",
-                        span,
-                    )
-                })?;
-                entry.material.zeroize();
-                entry.zeroized = true;
-                Ok(Value::Null)
+                    )),
+                }
             }
             _ => Err(name_not_found(method, "BNCrypto function", span)),
         }
     }
 
-    fn buffer(&self, handle: u64, span: Span) -> Result<&Vec<u8>, Diagnostic> {
-        self.buffers.get(&handle).ok_or_else(|| {
-            runtime_error(
-                bn_diag::DiagId::USE_AFTER_RELEASE,
-                "BNCrypto.Bytes is invalid",
-                span,
-            )
-        })
+    fn buffer(&self, handle: u64, span: Span) -> Result<&[u8], Diagnostic> {
+        self.buffers
+            .get(&handle)
+            .map(|b| b.as_slice())
+            .ok_or_else(|| {
+                runtime_error(
+                    bn_diag::DiagId::USE_AFTER_RELEASE,
+                    "BNCrypto.Bytes is invalid",
+                    span,
+                )
+            })
     }
 }
 
@@ -728,7 +744,9 @@ impl Provider for CryptoProvider {
                     *holders -= 1;
                     if *holders == 0 {
                         self.holders.remove(handle);
-                        self.buffers.remove(handle);
+                        if let Some(mut buf) = self.buffers.remove(handle) {
+                            buf.zeroize();
+                        }
                     }
                     Ok(())
                 } else {

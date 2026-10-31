@@ -294,11 +294,17 @@ pub(crate) fn call_instruction_supported(
                             .and_then(llvm_type)
                             .is_some_and(|ty| ty.is_integer())
                 }
-                "Algorithm" | "Zeroize" => {
+                "Algorithm" => {
                     arguments.len() == 1
                         && values
                             .get(&arguments[0])
                             .is_some_and(|ty| carries_bncrypto_key(module, ty))
+                }
+                "Zeroize" => {
+                    arguments.len() == 1
+                        && values.get(&arguments[0]).is_some_and(|ty| {
+                            carries_bncrypto_key(module, ty) || carries_bncrypto_bytes(module, ty)
+                        })
                 }
                 "RandomInt" => {
                     arguments.len() == 2

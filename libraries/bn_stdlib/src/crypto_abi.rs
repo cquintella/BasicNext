@@ -73,7 +73,7 @@ fn get_key_material(handle: u64) -> Result<zeroize::Zeroizing<Vec<u8>>, i32> {
 /// (`bn_core_copy`): a task's are freed when the task ends.
 #[derive(Default)]
 struct Buffers {
-    values: Mutex<HashMap<u64, Vec<u8>>>,
+    values: Mutex<HashMap<u64, zeroize::Zeroizing<Vec<u8>>>>,
     holders: Mutex<HashMap<u64, usize>>,
 }
 
@@ -82,7 +82,9 @@ fn next_handle() -> u64 {
     NEXT.fetch_add(1, Ordering::Relaxed)
 }
 
-fn with_buffers<T>(operation: impl FnOnce(&mut HashMap<u64, Vec<u8>>) -> T) -> T {
+fn with_buffers<T>(
+    operation: impl FnOnce(&mut HashMap<u64, zeroize::Zeroizing<Vec<u8>>>) -> T,
+) -> T {
     let buffers = bn_core_copy::table::<Buffers>();
     operation(
         &mut buffers
@@ -94,7 +96,7 @@ fn with_buffers<T>(operation: impl FnOnce(&mut HashMap<u64, Vec<u8>>) -> T) -> T
 
 fn store(bytes: Vec<u8>) -> u64 {
     let handle = next_handle();
-    with_buffers(|buffers| buffers.insert(handle, bytes));
+    with_buffers(|buffers| buffers.insert(handle, zeroize::Zeroizing::new(bytes)));
     let buffers = bn_core_copy::table::<Buffers>();
     buffers
         .holders
@@ -199,9 +201,30 @@ pub extern "C" fn bn_rt_crypto_bytes_release(handle: u64) -> i32 {
     if *count == 0 {
         holders.remove(&handle);
         drop(holders);
-        with_buffers(|buffers| buffers.remove(&handle));
+        with_buffers(|buffers| {
+            if let Some(mut buf) = buffers.remove(&handle) {
+                buf.zeroize();
+            }
+        });
     }
     BN_CRYPTO_OK
+}
+
+/// Explicitly zeroizes the buffer memory in `handle`.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_bytes_zeroize(handle: u64) -> i32 {
+    let buffers = bn_core_copy::table::<Buffers>();
+    let mut values = buffers
+        .values
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    if let Some(buf) = values.get_mut(&handle) {
+        buf.as_mut_slice().zeroize();
+        BN_CRYPTO_OK
+    } else {
+        BN_CRYPTO_INVALID_HANDLE
+    }
 }
 
 /// Algorithm selector shared with the backends: `0` is AES-256-GCM, `1` is
@@ -225,18 +248,23 @@ fn algorithm(selector: i32) -> Option<Aead> {
     }
 }
 
-/// The four operands an AEAD call needs: key, nonce, message and AAD. The key
-/// stays in `Zeroizing`, so this copy is erased when the call ends.
-type AeadOperands = (zeroize::Zeroizing<Vec<u8>>, Vec<u8>, Vec<u8>, Vec<u8>);
+/// The four operands an AEAD call needs: key, nonce, message and AAD. Key,
+/// nonce and message stay in `Zeroizing`, so these copies are erased when the call ends.
+type AeadOperands = (
+    zeroize::Zeroizing<Vec<u8>>,
+    zeroize::Zeroizing<Vec<u8>>,
+    zeroize::Zeroizing<Vec<u8>>,
+    Vec<u8>,
+);
 
 /// The AEAD operands, or the status to return (see [`get_key_material`]).
 fn borrow_aead(key_handle: u64, b: u64, c: u64, d: u64) -> Result<AeadOperands, i32> {
     let key = get_key_material(key_handle)?;
     let (nonce, msg, aad) = with_buffers(|buffers| {
         Some((
-            buffers.get(&b)?.clone(),
-            buffers.get(&c)?.clone(),
-            buffers.get(&d)?.clone(),
+            zeroize::Zeroizing::new(buffers.get(&b)?.to_vec()),
+            zeroize::Zeroizing::new(buffers.get(&c)?.to_vec()),
+            buffers.get(&d)?.to_vec(),
         ))
     })
     .ok_or(BN_CRYPTO_INVALID_HANDLE)?;
@@ -317,7 +345,11 @@ pub extern "C" fn bn_rt_crypto_hmac(key: u64, data: u64, out: *mut u64) -> i32 {
         Ok(material) => material,
         Err(status) => return status,
     };
-    let Some(data) = with_buffers(|buffers| buffers.get(&data).cloned()) else {
+    let Some(data) = with_buffers(|buffers| {
+        buffers
+            .get(&data)
+            .map(|b| zeroize::Zeroizing::new(b.to_vec()))
+    }) else {
         return BN_CRYPTO_INVALID_HANDLE;
     };
     let handle = store(hmac_sha256(&key, &data));
@@ -335,9 +367,12 @@ pub extern "C" fn bn_rt_crypto_hmac_verify(key: u64, data: u64, tag: u64) -> i32
         Ok(material) => material,
         Err(status) => return status,
     };
-    let Some((data, tag)) =
-        with_buffers(|buffers| Some((buffers.get(&data)?.clone(), buffers.get(&tag)?.clone())))
-    else {
+    let Some((data, tag)) = with_buffers(|buffers| {
+        Some((
+            zeroize::Zeroizing::new(buffers.get(&data)?.to_vec()),
+            buffers.get(&tag)?.to_vec(),
+        ))
+    }) else {
         return BN_CRYPTO_INVALID_HANDLE;
     };
     i32::from(hmac_verify(&key, &data, &tag))
@@ -367,7 +402,10 @@ pub extern "C" fn bn_rt_crypto_argon2id(
         return failed(&crate::crypto_error::CryptoFailure::Argon2id);
     };
     let Some((password, salt)) = with_buffers(|buffers| {
-        Some((buffers.get(&password)?.clone(), buffers.get(&salt)?.clone()))
+        Some((
+            zeroize::Zeroizing::new(buffers.get(&password)?.to_vec()),
+            buffers.get(&salt)?.to_vec(),
+        ))
     }) else {
         return BN_CRYPTO_INVALID_HANDLE;
     };
@@ -844,8 +882,7 @@ pub extern "C" fn bn_rt_crypto_import_key(
             actual: raw_bytes.len(),
         });
     }
-    let material = zeroize::Zeroizing::new(raw_bytes);
-    let handle = store_key(algorithm, material);
+    let handle = store_key(algorithm, raw_bytes);
     // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe { *out = handle };
     BN_CRYPTO_OK

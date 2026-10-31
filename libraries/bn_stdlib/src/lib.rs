@@ -19,7 +19,7 @@ pub use bn_rt::*;
 
 pub mod compress_abi;
 pub mod crypto;
-mod crypto_abi;
+pub mod crypto_abi;
 pub mod crypto_csprng;
 pub mod crypto_error;
 pub mod data_error;
