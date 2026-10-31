@@ -241,3 +241,28 @@ fn bnr_export_and_native_compilation() {
     let _ = std::fs::remove_file(&export_path);
     let _ = std::fs::remove_file(&bin_path);
 }
+
+#[test]
+fn bnr_accumulates_exported_classes_and_method_calls() {
+    let input = "\
+EXPORT CLASS Counter
+    PUBLIC STATIC FUNCTION Sum(a AS INTEGER, b AS INTEGER) AS INTEGER
+        RETURN a + b
+    END FUNCTION
+END CLASS
+Counter.Sum(15, 27)
+:quit
+";
+    let (code, stdout, stderr) = run_piped_session(input);
+    assert_eq!(code, 0);
+    assert!(stderr.is_empty(), "unexpected stderr: {stderr}");
+    assert!(stdout.contains("42 : INT32"));
+}
+
+#[test]
+fn bnr_non_interactive_exits_with_error_code_on_syntax_error() {
+    let input = "THIS IS NOT VALID BASIC NEXT\n";
+    let (code, _stdout, stderr) = run_piped_session(input);
+    assert_ne!(code, 0);
+    assert!(stderr.contains("syntax error") || stderr.contains("Syntax error"));
+}

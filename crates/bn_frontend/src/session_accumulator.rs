@@ -110,24 +110,29 @@ impl SessionAccumulator {
 
     /// Commits the successful result of an executed turn into session history and active bindings.
     pub fn commit_turn(&mut self, source: &str, new_variables: BTreeMap<String, String>) {
+        let (top_kind, decl_name) = classify_top_level_source(source);
         let trimmed = source.trim();
-        if trimmed.starts_with("IMPORT ") {
-            if !self.imports.iter().any(|i| i == trimmed) {
-                self.imports.push(trimmed.to_string());
+        match top_kind {
+            TopLevelKind::Import => {
+                if !self.imports.iter().any(|i| i == trimmed) {
+                    self.imports.push(trimmed.to_string());
+                }
             }
-        } else if trimmed.starts_with("CONST ") {
-            self.constants.push(trimmed.to_string());
-        } else if trimmed.starts_with("FUNCTION ")
-            || trimmed.starts_with("CLASS ")
-            || trimmed.starts_with("STRUCT ")
-            || trimmed.starts_with("INTERFACE ")
-            || trimmed.starts_with("ENUM ")
-        {
-            if let Some(decl_name) = extract_decl_name(trimmed) {
-                self.declarations
-                    .retain(|d| extract_decl_name(d).as_deref() != Some(&decl_name));
+            TopLevelKind::Constant => {
+                if let Some(ref name) = decl_name {
+                    self.constants
+                        .retain(|c| extract_decl_name(c).as_ref() != Some(name));
+                }
+                self.constants.push(trimmed.to_string());
             }
-            self.declarations.push(trimmed.to_string());
+            TopLevelKind::Declaration => {
+                if let Some(ref name) = decl_name {
+                    self.declarations
+                        .retain(|d| extract_decl_name(d).as_ref() != Some(name));
+                }
+                self.declarations.push(trimmed.to_string());
+            }
+            _ => {}
         }
         for (name, ty) in new_variables {
             self.variables.insert(name, ty);
@@ -152,29 +157,19 @@ impl SessionAccumulator {
         submission_source: &str,
     ) -> Result<PreparedSubmission, Diagnostic> {
         let trimmed = submission_source.trim();
-        if trimmed.is_empty() {
+        let (top_kind, _) = classify_top_level_source(submission_source);
+
+        if top_kind == TopLevelKind::Empty {
             let synthetic = self.synthesize_program("");
             return self.prepare_synthetic(synthetic, SubmissionKind::Empty, None);
         }
 
-        if trimmed.starts_with("IMPORT ") {
+        if top_kind == TopLevelKind::Import {
             let synthetic = self.synthesize_program_with_decl(trimmed, "");
             return self.prepare_synthetic(synthetic, SubmissionKind::Import, None);
         }
 
-        let is_const = trimmed.starts_with("CONST ");
-        let is_decl = trimmed.starts_with("FUNCTION ")
-            || trimmed.starts_with("CLASS ")
-            || trimmed.starts_with("STRUCT ")
-            || trimmed.starts_with("INTERFACE ")
-            || trimmed.starts_with("ENUM ");
-
-        if is_const {
-            let synthetic = self.synthesize_program_with_decl(trimmed, "");
-            return self.prepare_synthetic(synthetic, SubmissionKind::Declaration, None);
-        }
-
-        if is_decl {
+        if top_kind == TopLevelKind::Constant || top_kind == TopLevelKind::Declaration {
             let synthetic = self.synthesize_program_with_decl(trimmed, "");
             return self.prepare_synthetic(synthetic, SubmissionKind::Declaration, None);
         }
@@ -375,15 +370,11 @@ impl SessionAccumulator {
         if !has_user_start {
             push_export_start_header(&mut buffer);
             for turn_code in &self.history {
-                let trimmed = turn_code.trim();
-                if trimmed.starts_with("IMPORT ")
-                    || trimmed.starts_with("CONST ")
-                    || trimmed.starts_with("FUNCTION ")
-                    || trimmed.starts_with("CLASS ")
-                    || trimmed.starts_with("STRUCT ")
-                    || trimmed.starts_with("INTERFACE ")
-                    || trimmed.starts_with("ENUM ")
-                {
+                let (kind, _) = classify_top_level_source(turn_code);
+                if matches!(
+                    kind,
+                    TopLevelKind::Import | TopLevelKind::Constant | TopLevelKind::Declaration
+                ) {
                     continue;
                 }
                 for line in turn_code.lines() {
@@ -395,6 +386,80 @@ impl SessionAccumulator {
             push_end_function(&mut buffer);
         }
         buffer
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TopLevelKind {
+    Empty,
+    Import,
+    Constant,
+    Declaration,
+    Other,
+}
+
+fn classify_top_level_tokens(tokens: &[Token]) -> (TopLevelKind, Option<String>) {
+    let meaningful: Vec<&Token> = tokens
+        .iter()
+        .filter(|t| !matches!(t.kind, TokenKind::Newline | TokenKind::Eof))
+        .collect();
+
+    if meaningful.is_empty() {
+        return (TopLevelKind::Empty, None);
+    }
+
+    let mut idx = 0;
+    if matches!(&meaningful[idx].kind, TokenKind::Keyword(w) if w == "EXPORT") {
+        idx += 1;
+        if idx >= meaningful.len() {
+            return (TopLevelKind::Other, None);
+        }
+    }
+
+    match &meaningful[idx].kind {
+        TokenKind::Keyword(w) if w == "IMPORT" => (TopLevelKind::Import, None),
+        TokenKind::Keyword(w) if w == "CONST" => {
+            let name = meaningful.get(idx + 1).and_then(|t| match &t.kind {
+                TokenKind::Identifier(name) => Some(name.to_ascii_uppercase()),
+                _ => None,
+            });
+            (TopLevelKind::Constant, name)
+        }
+        TokenKind::Keyword(w) if w == "ASYNC" => {
+            if let Some(next_tok) = meaningful.get(idx + 1)
+                && matches!(&next_tok.kind, TokenKind::Keyword(fn_kw) if fn_kw == "FUNCTION")
+            {
+                let name = meaningful.get(idx + 2).and_then(|t| match &t.kind {
+                    TokenKind::Identifier(name) => Some(name.to_ascii_uppercase()),
+                    _ => None,
+                });
+                (TopLevelKind::Declaration, name)
+            } else {
+                (TopLevelKind::Other, None)
+            }
+        }
+        TokenKind::Keyword(w)
+            if matches!(
+                w.as_str(),
+                "FUNCTION" | "CLASS" | "STRUCT" | "INTERFACE" | "ENUM"
+            ) =>
+        {
+            let name = meaningful.get(idx + 1).and_then(|t| match &t.kind {
+                TokenKind::Identifier(name) => Some(name.to_ascii_uppercase()),
+                _ => None,
+            });
+            (TopLevelKind::Declaration, name)
+        }
+        _ => (TopLevelKind::Other, None),
+    }
+}
+
+fn classify_top_level_source(source: &str) -> (TopLevelKind, Option<String>) {
+    let source_file = SourceFile::new("top_level_probe.bn", source);
+    if let Ok(tokens) = lex(&source_file) {
+        classify_top_level_tokens(&tokens)
+    } else {
+        (TopLevelKind::Other, None)
     }
 }
 
@@ -454,17 +519,10 @@ fn push_variable_decl(buffer: &mut String, name: &str, ty: &str) {
 }
 
 fn extract_decl_name(source: &str) -> Option<String> {
-    let mut words = source.split_whitespace();
-    let kind = words.next()?;
-    if kind == "FUNCTION"
-        || kind == "CLASS"
-        || kind == "STRUCT"
-        || kind == "INTERFACE"
-        || kind == "ENUM"
-    {
-        let name_part = words.next()?;
-        let name = name_part.split('(').next()?;
-        return Some(name.to_ascii_uppercase());
+    let (kind, name) = classify_top_level_source(source);
+    if matches!(kind, TopLevelKind::Declaration | TopLevelKind::Constant) {
+        name
+    } else {
+        None
     }
-    None
 }

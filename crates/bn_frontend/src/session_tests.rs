@@ -238,3 +238,40 @@ fn session_accumulator_incremental_workflow() {
     assert_eq!(session.turn_count(), 0);
     assert!(session.variables().is_empty());
 }
+
+#[test]
+fn session_accumulator_exported_declarations_and_classes() {
+    let mut session = SessionAccumulator::new();
+
+    // Turn 1: Exported class declaration
+    let class_code = "\
+EXPORT CLASS Another
+    PUBLIC STATIC FUNCTION CountTo(limit AS INTEGER) AS VOID
+        FOR i AS INTEGER = 1 TO limit
+            PRINT i
+        END FOR
+    END FUNCTION
+END CLASS";
+    let class_res = session.compile_submission(class_code).unwrap();
+    assert_eq!(class_res.kind, SubmissionKind::Declaration);
+    session.commit_turn(class_code, BTreeMap::new());
+    assert_eq!(session.turn_count(), 1);
+    assert_eq!(session.declarations().len(), 1);
+
+    // Turn 2: Calling static method from the exported class
+    let call_res = session.compile_submission("Another.CountTo(3)").unwrap();
+    assert_eq!(call_res.kind, SubmissionKind::Statement);
+
+    // Turn 3: Exported constant
+    let const_code = "EXPORT CONST MAX_LIMIT = 100";
+    let const_res = session.compile_submission(const_code).unwrap();
+    assert_eq!(const_res.kind, SubmissionKind::Declaration);
+    session.commit_turn(const_code, BTreeMap::new());
+    assert_eq!(session.constants().len(), 1);
+
+    // Reconstructed program contains declarations at top level and does not wrap them in Start
+    let exported = session.export_program();
+    assert!(exported.contains("EXPORT CLASS Another"));
+    assert!(exported.contains("EXPORT CONST MAX_LIMIT = 100"));
+    assert!(!exported.contains("    EXPORT CLASS Another"));
+}

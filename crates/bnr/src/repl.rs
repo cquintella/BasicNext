@@ -49,10 +49,20 @@ impl Completer for ReplHelper {
         pos: usize,
         _ctx: &rustyline::Context<'_>,
     ) -> rustyline::Result<(usize, Vec<Pair>)> {
-        let prefix = &line[..pos];
+        let safe_pos = if line.is_char_boundary(pos) {
+            pos
+        } else {
+            line.char_indices()
+                .map(|(i, _)| i)
+                .take_while(|&i| i <= pos)
+                .last()
+                .unwrap_or(0)
+        };
+        let prefix = &line[..safe_pos];
         let word_start = prefix
-            .rfind(|c: char| !c.is_alphanumeric() && c != '_' && c != ':' && c != '.')
-            .map_or(0, |i| i + 1);
+            .char_indices()
+            .rfind(|(_, c)| !c.is_alphanumeric() && *c != '_' && *c != ':' && *c != '.')
+            .map_or(0, |(i, c)| i + c.len_utf8());
         let word = &prefix[word_start..];
         let mut matches = Vec::new();
 
@@ -294,6 +304,7 @@ pub fn run_repl(options: &Options, interpreter: &InterpreterOptions, version: &s
 fn run_non_interactive(session: &mut ReplSession, options: &Options) -> ExitCode {
     let stdin = io::stdin();
     let mut buffer = String::new();
+    let mut had_error = false;
 
     for line in stdin.lock().lines() {
         let Ok(line) = line else { break };
@@ -302,7 +313,7 @@ fn run_non_interactive(session: &mut ReplSession, options: &Options) -> ExitCode
             if let CommandAction::Quit =
                 handle_meta_command(&line, session, options, &default_interp)
             {
-                break;
+                return ExitCode::SUCCESS;
             }
             continue;
         }
@@ -321,6 +332,7 @@ fn run_non_interactive(session: &mut ReplSession, options: &Options) -> ExitCode
                 let formatted = present_diagnostic(&diagnostic, &source_file, None, options);
                 eprint!("{formatted}");
                 buffer.clear();
+                had_error = true;
             }
             SubmissionCompleteness::Complete { .. } => {
                 match session.execute(&buffer, options) {
@@ -352,6 +364,7 @@ fn run_non_interactive(session: &mut ReplSession, options: &Options) -> ExitCode
                         if let Some(diag) = diagnostic {
                             eprint!("{diag}");
                         }
+                        had_error = true;
                     }
                 }
                 buffer.clear();
@@ -359,5 +372,9 @@ fn run_non_interactive(session: &mut ReplSession, options: &Options) -> ExitCode
         }
     }
 
-    ExitCode::SUCCESS
+    if had_error || !buffer.trim().is_empty() {
+        tool_error()
+    } else {
+        ExitCode::SUCCESS
+    }
 }
