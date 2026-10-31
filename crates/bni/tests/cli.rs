@@ -1281,6 +1281,25 @@ fn bncrypto_zeroize_interprets() {
     );
 }
 
+/// Secret type and constant-time operations interpret: print output is masked as
+/// `***`, constant-time equality compares accurately, and zeroization wipes memory.
+#[test]
+fn bncrypto_secret_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-secret/main.bn"])
+        .output()
+        .expect("run the BNCrypto secret fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "s1-len-ok\ns1-eq-s2-ok\ns1-neq-s3-ok\nb1-eq-b2-ok\nb1-neq-b3-ok\nmod-b1-eq-b2-ok\nmod-b1-neq-b3-ok\n***\ns1-zeroized-neq-s2-ok\ns1-zeroized-hex-ok\n"
+    );
+}
+
 /// The `BNJson` DOM slice: build an object, write and read a member, and reject
 /// a missing key instead of yielding an empty STRING. The compiled twin is in
 /// the `bnc` suite; the two must print the same.

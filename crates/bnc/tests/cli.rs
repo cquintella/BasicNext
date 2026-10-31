@@ -1595,6 +1595,41 @@ fn compiled_bncrypto_zeroize_matches_the_interpreter() {
     );
 }
 
+/// Secret type and constant-time operations compile: print output is masked as
+/// `***`, constant-time equality compares accurately, and native binary matches interpreter.
+#[test]
+fn compiled_bncrypto_secret_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_secret_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-secret/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "s1-len-ok\ns1-eq-s2-ok\ns1-neq-s3-ok\nb1-eq-b2-ok\nb1-neq-b3-ok\nmod-b1-eq-b2-ok\nmod-b1-neq-b3-ok\n***\ns1-zeroized-neq-s2-ok\ns1-zeroized-hex-ok\n"
+    );
+}
+
 /// `BNJson` survives compilation: the DOM slice links against the `bn_rt`
 /// document table and the native binary prints what the interpreter prints.
 /// Before 0.6.1 the backend had no `BNJson` support at all.
