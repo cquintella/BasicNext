@@ -100,6 +100,36 @@ EXPORT CLASS Key
     END FUNCTION
 END CLASS
 
+EXPORT STRUCT KeyOptions
+    bits AS INTEGER = 256
+    purpose AS STRING = "AEAD"
+    alg AS STRING = "AES256"
+END STRUCT
+
+EXPORT CLASS SecretKey
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Id() AS STRING
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION Bits() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION Length() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION Purpose() AS STRING
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION Algorithm() AS STRING
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION ExportSecret(format AS STRING) AS Bytes
+    END FUNCTION
+    PUBLIC FUNCTION Zeroize() AS VOID
+    END FUNCTION
+END CLASS
+
 EXPORT STRUCT PasswordGenOptions
     length AS INTEGER = 20
     includeUppercase AS BOOLEAN = TRUE
@@ -151,6 +181,24 @@ EXPORT FUNCTION NewSecret(text AS STRING) AS Secret
 END FUNCTION
 
 EXPORT FUNCTION SecretFromText(text AS STRING) AS Secret
+END FUNCTION
+
+EXPORT FUNCTION NewSecretKey() AS SecretKey
+END FUNCTION
+
+EXPORT FUNCTION NewSecretKeyWith(opts AS KeyOptions) AS SecretKey
+END FUNCTION
+
+EXPORT FUNCTION SecretKeyFromBytes(bytes AS Bytes, purpose AS STRING) AS SecretKey
+END FUNCTION
+
+EXPORT FUNCTION WrapKey(kek AS SecretKey, key AS SecretKey) AS Bytes
+END FUNCTION
+
+EXPORT FUNCTION UnwrapKey(kek AS SecretKey, wrapped AS Bytes) AS SecretKey
+END FUNCTION
+
+EXPORT FUNCTION UnwrapKeyWith(kek AS SecretKey, wrapped AS Bytes, opts AS KeyOptions) AS SecretKey
 END FUNCTION
 
 EXPORT FUNCTION ConstantTimeEquals(a AS Bytes, b AS Bytes) AS BOOLEAN

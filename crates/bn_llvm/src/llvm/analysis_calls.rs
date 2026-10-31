@@ -296,9 +296,10 @@ pub(crate) fn call_instruction_supported(
                 }
                 "Algorithm" => {
                     arguments.len() == 1
-                        && values
-                            .get(&arguments[0])
-                            .is_some_and(|ty| carries_bncrypto_key(module, ty))
+                        && values.get(&arguments[0]).is_some_and(|ty| {
+                            carries_bncrypto_key(module, ty)
+                                || carries_bncrypto_secret_key(module, ty)
+                        })
                 }
                 "Zeroize" => {
                     arguments.len() == 1
@@ -306,6 +307,7 @@ pub(crate) fn call_instruction_supported(
                             carries_bncrypto_key(module, ty)
                                 || carries_bncrypto_bytes(module, ty)
                                 || carries_bncrypto_secret(module, ty)
+                                || carries_bncrypto_secret_key(module, ty)
                         })
                 }
                 "ConstantTimeEquals" => {
@@ -328,6 +330,53 @@ pub(crate) fn call_instruction_supported(
                         && values
                             .get(&arguments[0])
                             .is_some_and(|ty| carries_bncrypto_secret(module, ty))
+                }
+                "NewSecretKey" => arguments.is_empty(),
+                "NewSecretKeyWith" => arguments.len() == 1,
+                "SecretKeyFromBytes" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "WrapKey" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_secret_key(module, ty))
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| carries_bncrypto_secret_key(module, ty))
+                }
+                "UnwrapKey" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_secret_key(module, ty))
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "UnwrapKeyWith" => {
+                    arguments.len() == 3
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_secret_key(module, ty))
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "Id" | "Bits" | "Purpose" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_secret_key(module, ty))
+                }
+                "ExportSecret" => {
+                    (arguments.len() == 1 || arguments.len() == 2)
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_secret_key(module, ty))
                 }
                 "RandomInt" => {
                     arguments.len() == 2
@@ -360,6 +409,7 @@ pub(crate) fn call_instruction_supported(
                                 carries_bncrypto_bytes(module, ty)
                                     || carries_bncrypto_key(module, ty)
                                     || carries_bncrypto_secret(module, ty)
+                                    || carries_bncrypto_secret_key(module, ty)
                             }
                             "ToHex" => carries_bncrypto_bytes(module, ty),
                             _ => *ty == Type::String,

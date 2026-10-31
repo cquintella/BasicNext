@@ -138,6 +138,7 @@ pub enum Value {
     CryptoBytes(u64),
     CryptoKey(u64),
     CryptoSecret(u64),
+    CryptoSecretKey(u64),
     CompressBytes(u64),
     CompressZip(u64),
     DispatchQueue(u64),

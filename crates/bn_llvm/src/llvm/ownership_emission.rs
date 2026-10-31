@@ -481,6 +481,10 @@ fn release_call(module: &Module, ty: &Type) -> Option<(&'static str, &'static st
         ("cry", "bn_rt_crypto_bytes_release", Rc::Named)
     } else if is_bncrypto_key_type(module, ty) {
         ("cryk", "bn_rt_crypto_key_release", Rc::Named)
+    } else if is_bncrypto_secret_type(module, ty) {
+        ("crys", "bn_rt_crypto_secret_release", Rc::Named)
+    } else if is_bncrypto_secret_key_type(module, ty) {
+        ("crysk", "bn_rt_crypto_secret_key_release", Rc::Named)
     } else if is_bncompress_bytes_type(module, ty) {
         ("cmp", "bn_rt_compress_bytes_release", Rc::Named)
     } else if is_bncompress_zip_type(module, ty) {

@@ -9,7 +9,11 @@
 
 use std::ffi::c_char;
 
+use aes_gcm::aes::cipher::{BlockDecrypt, BlockEncrypt};
+use aes_gcm::aes::{Aes128, Aes192, Aes256};
 use sha2::{Digest, Sha256, Sha512};
+use subtle::ConstantTimeEq;
+use zeroize::Zeroizing;
 
 use crate::crypto_error::CryptoFailure;
 use crate::{c_str, c_string};
@@ -486,6 +490,139 @@ impl std::fmt::Debug for KeyEntry {
             .field("length", &self.material.len())
             .field("zeroized", &self.zeroized)
             .finish_non_exhaustive()
+    }
+}
+
+/// `KeyId` for `SecretKey`: SHA-256 of `("BNC-KEYID\0" || raw_bytes)` formatted as 64-character lowercase hex.
+#[must_use]
+pub fn compute_secret_key_id(material: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"BNC-KEYID\0");
+    hasher.update(material);
+    encode_hex(&hasher.finalize())
+}
+
+const RFC3394_IV: [u8; 8] = [0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6];
+
+enum AesCipher {
+    Aes128(Aes128),
+    Aes192(Aes192),
+    Aes256(Aes256),
+}
+
+impl AesCipher {
+    fn new(kek: &[u8]) -> Option<Self> {
+        use aes_gcm::aes::cipher::KeyInit;
+        match kek.len() {
+            16 => Aes128::new_from_slice(kek).ok().map(AesCipher::Aes128),
+            24 => Aes192::new_from_slice(kek).ok().map(AesCipher::Aes192),
+            32 => Aes256::new_from_slice(kek).ok().map(AesCipher::Aes256),
+            _ => None,
+        }
+    }
+
+    fn encrypt_block(&self, block: &mut [u8; 16]) {
+        let b = aes_gcm::aes::cipher::generic_array::GenericArray::from_mut_slice(block);
+        match self {
+            AesCipher::Aes128(c) => c.encrypt_block(b),
+            AesCipher::Aes192(c) => c.encrypt_block(b),
+            AesCipher::Aes256(c) => c.encrypt_block(b),
+        }
+    }
+
+    fn decrypt_block(&self, block: &mut [u8; 16]) {
+        let b = aes_gcm::aes::cipher::generic_array::GenericArray::from_mut_slice(block);
+        match self {
+            AesCipher::Aes128(c) => c.decrypt_block(b),
+            AesCipher::Aes192(c) => c.decrypt_block(b),
+            AesCipher::Aes256(c) => c.decrypt_block(b),
+        }
+    }
+}
+
+/// RFC 3394 AES Key Wrap.
+#[allow(clippy::chunks_exact_to_as_chunks)]
+pub fn rfc3394_key_wrap(kek: &[u8], key_data: &[u8]) -> Result<Vec<u8>, CryptoFailure> {
+    let cipher = AesCipher::new(kek).ok_or(CryptoFailure::KeyLength {
+        expected: 32,
+        actual: kek.len(),
+    })?;
+    if key_data.len() < 16 || !key_data.len().is_multiple_of(8) {
+        return Err(CryptoFailure::KeyWrapLength);
+    }
+    let n = key_data.len() / 8;
+    let mut a = RFC3394_IV;
+    let mut r: Vec<[u8; 8]> = Vec::with_capacity(n);
+    for chunk in key_data.chunks_exact(8) {
+        let mut block = [0u8; 8];
+        block.copy_from_slice(chunk);
+        r.push(block);
+    }
+
+    let mut buf = [0u8; 16];
+    for j in 0..6 {
+        for i in 1..=n {
+            buf[..8].copy_from_slice(&a);
+            buf[8..].copy_from_slice(&r[i - 1]);
+            cipher.encrypt_block(&mut buf);
+            let t = (n * j + i) as u64;
+            let mut msb = [0u8; 8];
+            msb.copy_from_slice(&buf[..8]);
+            let msb_int = u64::from_be_bytes(msb) ^ t;
+            a = msb_int.to_be_bytes();
+            r[i - 1].copy_from_slice(&buf[8..]);
+        }
+    }
+
+    let mut out = Vec::with_capacity((n + 1) * 8);
+    out.extend_from_slice(&a);
+    for block in r {
+        out.extend_from_slice(&block);
+    }
+    Ok(out)
+}
+
+/// RFC 3394 AES Key Unwrap.
+#[allow(clippy::chunks_exact_to_as_chunks)]
+pub fn rfc3394_key_unwrap(kek: &[u8], wrapped: &[u8]) -> Result<Vec<u8>, CryptoFailure> {
+    let cipher = AesCipher::new(kek).ok_or(CryptoFailure::KeyLength {
+        expected: 32,
+        actual: kek.len(),
+    })?;
+    if wrapped.len() < 24 || !wrapped.len().is_multiple_of(8) {
+        return Err(CryptoFailure::KeyWrapLength);
+    }
+    let n = (wrapped.len() / 8) - 1;
+    let mut a = [0u8; 8];
+    a.copy_from_slice(&wrapped[..8]);
+    let mut r: Vec<[u8; 8]> = Vec::with_capacity(n);
+    for chunk in wrapped[8..].chunks_exact(8) {
+        let mut block = [0u8; 8];
+        block.copy_from_slice(chunk);
+        r.push(block);
+    }
+
+    let mut buf = [0u8; 16];
+    for j in (0..6).rev() {
+        for i in (1..=n).rev() {
+            let t = (n * j + i) as u64;
+            let a_int = u64::from_be_bytes(a) ^ t;
+            buf[..8].copy_from_slice(&a_int.to_be_bytes());
+            buf[8..].copy_from_slice(&r[i - 1]);
+            cipher.decrypt_block(&mut buf);
+            a.copy_from_slice(&buf[..8]);
+            r[i - 1].copy_from_slice(&buf[8..]);
+        }
+    }
+
+    if a.ct_eq(&RFC3394_IV).into() {
+        let mut out = Zeroizing::new(Vec::with_capacity(n * 8));
+        for block in r {
+            out.extend_from_slice(&block);
+        }
+        Ok(out.to_vec())
+    } else {
+        Err(CryptoFailure::KeyUnwrapAuth)
     }
 }
 

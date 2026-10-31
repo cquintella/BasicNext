@@ -366,6 +366,258 @@ pub extern "C" fn bn_rt_crypto_secret_release(handle: u64) -> i32 {
     BN_CRYPTO_OK
 }
 
+/// The secret key representation for the C ABI runtime.
+#[derive(Debug)]
+pub struct SecretKeyEntry {
+    pub material: zeroize::Zeroizing<Vec<u8>>,
+    pub bits: usize,
+    pub purpose: String,
+    pub alg: String,
+    pub zeroized: bool,
+}
+
+#[derive(Default)]
+struct SecretKeys {
+    values: Mutex<HashMap<u64, SecretKeyEntry>>,
+    holders: Mutex<HashMap<u64, usize>>,
+}
+
+fn with_secret_keys<T>(operation: impl FnOnce(&mut HashMap<u64, SecretKeyEntry>) -> T) -> T {
+    let keys = bn_core_copy::table::<SecretKeys>();
+    operation(&mut keys.values.lock().unwrap_or_else(PoisonError::into_inner))
+}
+
+fn store_secret_key(entry: SecretKeyEntry) -> u64 {
+    let handle = next_handle();
+    with_secret_keys(|keys| keys.insert(handle, entry));
+    let keys = bn_core_copy::table::<SecretKeys>();
+    keys.holders
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(handle, 1);
+    handle
+}
+
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_secret_key_generate(
+    bits: i64,
+    purpose: *const c_char,
+    alg: *const c_char,
+) -> u64 {
+    let num_bits = usize::try_from(bits).unwrap_or(256);
+    let byte_len = if num_bits == 0 { 32 } else { num_bits / 8 };
+    let mut material = vec![0u8; byte_len];
+    if getrandom::getrandom(&mut material).is_err() {
+        return 0;
+    }
+    let purpose_str = c_str(purpose).unwrap_or("AEAD").to_string();
+    let alg_str = c_str(alg).unwrap_or("AES256").to_string();
+    store_secret_key(SecretKeyEntry {
+        material: zeroize::Zeroizing::new(material),
+        bits: if num_bits == 0 { 256 } else { num_bits },
+        purpose: purpose_str,
+        alg: alg_str,
+        zeroized: false,
+    })
+}
+
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_secret_key_from_bytes(
+    bytes_handle: u64,
+    purpose: *const c_char,
+    alg: *const c_char,
+) -> u64 {
+    let bytes = match with_buffers(|b| b.get(&bytes_handle).cloned()) {
+        Some(b) => b.to_vec(),
+        None => return 0,
+    };
+    let bits = bytes.len() * 8;
+    let purpose_str = c_str(purpose).unwrap_or("AEAD").to_string();
+    let alg_str = c_str(alg).unwrap_or("AES256").to_string();
+    store_secret_key(SecretKeyEntry {
+        material: zeroize::Zeroizing::new(bytes),
+        bits,
+        purpose: purpose_str,
+        alg: alg_str,
+        zeroized: false,
+    })
+}
+
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_secret_key_id(handle: u64) -> *mut c_char {
+    with_secret_keys(|keys| {
+        keys.get(&handle).map_or(std::ptr::null_mut(), |entry| {
+            let id = crate::crypto::compute_secret_key_id(&entry.material);
+            c_string(&id)
+        })
+    })
+}
+
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_secret_key_bits(handle: u64) -> i64 {
+    with_secret_keys(|keys| {
+        keys.get(&handle).map_or(-1, |entry| {
+            if entry.zeroized {
+                0
+            } else {
+                i64::try_from(entry.bits).unwrap_or(-1)
+            }
+        })
+    })
+}
+
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_secret_key_length(handle: u64) -> i64 {
+    with_secret_keys(|keys| {
+        keys.get(&handle).map_or(-1, |entry| {
+            if entry.zeroized {
+                0
+            } else {
+                i64::try_from(entry.material.len()).unwrap_or(-1)
+            }
+        })
+    })
+}
+
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_secret_key_purpose(handle: u64) -> *mut c_char {
+    with_secret_keys(|keys| {
+        keys.get(&handle)
+            .map_or(std::ptr::null_mut(), |entry| c_string(&entry.purpose))
+    })
+}
+
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_secret_key_algorithm(handle: u64) -> *mut c_char {
+    with_secret_keys(|keys| {
+        keys.get(&handle)
+            .map_or(std::ptr::null_mut(), |entry| c_string(&entry.alg))
+    })
+}
+
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_secret_key_export(handle: u64, format: *const c_char) -> u64 {
+    let bytes = with_secret_keys(|keys| keys.get(&handle).map(|entry| entry.material.to_vec()));
+    let Some(material) = bytes else {
+        return 0;
+    };
+    let fmt = c_str(format).unwrap_or("RAW");
+    if fmt == "HEX" {
+        let hex = crate::crypto::encode_hex(&material);
+        store(hex.into_bytes())
+    } else {
+        store(material)
+    }
+}
+
+#[allow(unsafe_code, clippy::similar_names)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_secret_key_wrap(kek_handle: u64, key_handle: u64) -> u64 {
+    let kek_bytes = with_secret_keys(|keys| keys.get(&kek_handle).map(|e| e.material.to_vec()));
+    let key_bytes = with_secret_keys(|keys| keys.get(&key_handle).map(|e| e.material.to_vec()));
+    let (Some(kek), Some(key_data)) = (kek_bytes, key_bytes) else {
+        return 0;
+    };
+    match crate::crypto::rfc3394_key_wrap(&kek, &key_data) {
+        Ok(wrapped) => store(wrapped),
+        Err(_) => 0,
+    }
+}
+
+#[allow(unsafe_code, clippy::similar_names)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_secret_key_unwrap(
+    kek_handle: u64,
+    wrapped_handle: u64,
+    bits: i64,
+    purpose: *const c_char,
+    alg: *const c_char,
+) -> u64 {
+    let kek_bytes = with_secret_keys(|keys| keys.get(&kek_handle).map(|e| e.material.to_vec()));
+    let wrapped_bytes = match with_buffers(|b| b.get(&wrapped_handle).cloned()) {
+        Some(b) => b.to_vec(),
+        None => return 0,
+    };
+    let Some(kek) = kek_bytes else {
+        return 0;
+    };
+    match crate::crypto::rfc3394_key_unwrap(&kek, &wrapped_bytes) {
+        Ok(unwrapped) => {
+            let num_bits = if bits <= 0 {
+                unwrapped.len() * 8
+            } else {
+                usize::try_from(bits).unwrap_or(256)
+            };
+            let purpose_str = c_str(purpose).unwrap_or("AEAD").to_string();
+            let alg_str = c_str(alg).unwrap_or("AES256").to_string();
+            store_secret_key(SecretKeyEntry {
+                material: zeroize::Zeroizing::new(unwrapped),
+                bits: num_bits,
+                purpose: purpose_str,
+                alg: alg_str,
+                zeroized: false,
+            })
+        }
+        Err(_) => 0,
+    }
+}
+
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_secret_key_zeroize(handle: u64) -> i32 {
+    with_secret_keys(|keys| {
+        if let Some(entry) = keys.get_mut(&handle) {
+            entry.material.as_mut_slice().zeroize();
+            entry.zeroized = true;
+            BN_CRYPTO_OK
+        } else {
+            BN_CRYPTO_INVALID_HANDLE
+        }
+    })
+}
+
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_secret_key_retain(handle: u64) -> i32 {
+    let keys = bn_core_copy::table::<SecretKeys>();
+    let mut holders = keys.holders.lock().unwrap_or_else(PoisonError::into_inner);
+    if let Some(count) = holders.get_mut(&handle) {
+        *count += 1;
+        BN_CRYPTO_OK
+    } else {
+        BN_CRYPTO_INVALID_HANDLE
+    }
+}
+
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_secret_key_release(handle: u64) -> i32 {
+    let keys = bn_core_copy::table::<SecretKeys>();
+    let mut holders = keys.holders.lock().unwrap_or_else(PoisonError::into_inner);
+    let Some(count) = holders.get_mut(&handle) else {
+        return BN_CRYPTO_INVALID_HANDLE;
+    };
+    *count -= 1;
+    if *count == 0 {
+        holders.remove(&handle);
+        drop(holders);
+        with_secret_keys(|keys| {
+            if let Some(mut entry) = keys.remove(&handle) {
+                entry.material.as_mut_slice().zeroize();
+            }
+        });
+    }
+    BN_CRYPTO_OK
+}
+
 /// Algorithm selector shared with the backends: `0` is AES-256-GCM, `1` is
 /// ChaCha20-Poly1305. Anything else is rejected.
 /// Records `failure` for the emitted code's `Error` and returns the status.

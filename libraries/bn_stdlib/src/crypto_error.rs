@@ -56,6 +56,10 @@ pub enum CryptoFailure {
     PasswordLength(usize),
     /// `RandomPassword` with all character classes disabled.
     PasswordNoClasses,
+    /// `WrapKey` with key material not >= 16 bytes or not a multiple of 8.
+    KeyWrapLength,
+    /// `UnwrapKey` authentication/integrity verification failure.
+    KeyUnwrapAuth,
 }
 
 impl CryptoFailure {
@@ -63,7 +67,9 @@ impl CryptoFailure {
     #[must_use]
     pub const fn code(&self) -> i32 {
         match self {
-            Self::Open(_) | Self::Decapsulate => crypto::AUTHENTICATION_FAILED,
+            Self::Open(_) | Self::Decapsulate | Self::KeyUnwrapAuth => {
+                crypto::AUTHENTICATION_FAILED
+            }
             Self::Random(_) => crypto::UNAVAILABLE,
             _ => crypto::INVALID_ARGUMENT,
         }
@@ -90,6 +96,8 @@ impl CryptoFailure {
             Self::RandomIntRange { .. } => "BNCrypto.RandomInt",
             Self::RandomTokenLength(_) => "BNCrypto.RandomToken",
             Self::PasswordLength(_) | Self::PasswordNoClasses => "BNCrypto.RandomPassword",
+            Self::KeyWrapLength => "BNCrypto.WrapKey",
+            Self::KeyUnwrapAuth => "BNCrypto.UnwrapKey",
         }
     }
 
@@ -142,6 +150,10 @@ impl CryptoFailure {
             Self::PasswordNoClasses => {
                 bn_catalog::text("crypto", "random.password.classes.message").into()
             }
+            Self::KeyWrapLength => {
+                "key data length must be at least 16 bytes and a multiple of 8".into()
+            }
+            Self::KeyUnwrapAuth => "RFC 3394 key unwrap integrity check failed".into(),
         }
     }
 
@@ -200,6 +212,12 @@ impl CryptoFailure {
             }
             Self::PasswordNoClasses => {
                 bn_catalog::text("crypto", "random.password.classes.cause").into()
+            }
+            Self::KeyWrapLength => {
+                "key data length must be at least 16 bytes and a multiple of 8".into()
+            }
+            Self::KeyUnwrapAuth => {
+                "unwrapped key failed integrity check; key or KEK mismatch".into()
             }
         }
     }

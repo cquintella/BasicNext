@@ -30,7 +30,7 @@ pub fn render(value: &Value) -> String {
         Value::Json(_) => "BNJson.Json".into(),
         Value::CryptoBytes(_) => "BNCrypto.Bytes".into(),
         Value::CryptoKey(_) => bn_catalog::text("modules", "type.crypto_key").into(),
-        Value::CryptoSecret(_) => "***".into(),
+        Value::CryptoSecret(_) | Value::CryptoSecretKey(_) => "***".into(),
         Value::CompressBytes(_) => bn_catalog::text("modules", "type.compress_bytes").into(),
         Value::CompressZip(_) => bn_catalog::text("modules", "type.compress_zip_archive").into(),
         Value::DispatchQueue(id) => {

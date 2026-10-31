@@ -153,6 +153,31 @@ pub(crate) fn carries_bncrypto_secret(module: &Module, ty: &Type) -> bool {
     }
 }
 
+/// True when `ty` is `BNCrypto.SecretKey` from a module this program imports.
+pub(crate) fn is_bncrypto_secret_key_type(module: &Module, ty: &Type) -> bool {
+    matches!(
+        ty,
+        Type::ImportedNamed {
+            module: module_id,
+            name
+        } if name == "SecretKey"
+            && module
+                .bncrypto_providers
+                .contains(&bn_ir::ModuleId::from(*module_id))
+    )
+}
+
+/// True when `ty` carries a `BNCrypto.SecretKey`, either directly or inside an
+/// `OR Error` alternative.
+pub(crate) fn carries_bncrypto_secret_key(module: &Module, ty: &Type) -> bool {
+    match ty {
+        Type::Alternative(alternatives) => alternatives
+            .iter()
+            .any(|alternative| is_bncrypto_secret_key_type(module, alternative)),
+        other => is_bncrypto_secret_key_type(module, other),
+    }
+}
+
 /// The `BNCrypto` member `name` selects, if this module imports `BNCrypto` and
 /// the callee is part of the supported surface.
 pub(crate) fn bncrypto_method<'a>(module: &Module, name: &'a str) -> Option<&'a str> {
@@ -206,6 +231,16 @@ pub(crate) fn bncrypto_method<'a>(module: &Module, name: &'a str) -> Option<&'a 
                 | "RandomUuidV4"
                 | "UuidV7"
                 | "RandomPassword"
+                | "NewSecretKey"
+                | "NewSecretKeyWith"
+                | "SecretKeyFromBytes"
+                | "WrapKey"
+                | "UnwrapKey"
+                | "UnwrapKeyWith"
+                | "Id"
+                | "Bits"
+                | "Purpose"
+                | "ExportSecret"
         ))
     .then_some(method)
 }

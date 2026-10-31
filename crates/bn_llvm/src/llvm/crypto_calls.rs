@@ -21,6 +21,18 @@ enum Out {
     Bytes,
 }
 
+fn carries_type(ty: &Type, target: &str) -> bool {
+    match ty {
+        Type::Named(name)
+        | Type::ImportedNamed { name, .. }
+        | Type::ImportedTypeName { name, .. } => {
+            name == target || name.ends_with(&format!(".{target}"))
+        }
+        Type::Alternative(alternatives) => alternatives.iter().any(|a| carries_type(a, target)),
+        _ => false,
+    }
+}
+
 pub(super) fn lower_bncrypto_call(
     text: &mut crate::ir::LlvmModule,
     analysis: &LoweringAnalysis<'_>,
@@ -117,48 +129,33 @@ pub(super) fn lower_bncrypto_call(
                 let call = I::call(T::Ptr, "bn_rt_crypto_bytes_to_hex", args);
                 text.assign(format!("v{dest}"), call);
             } else if member == "Algorithm" {
-                let call = I::call(T::I32, "bn_rt_crypto_key_algorithm", args);
-                text.assign(format!("v{dest}"), call);
+                let is_secret_key = analysis
+                    .values
+                    .get(&arguments[0])
+                    .is_some_and(|ty| carries_type(ty, "SecretKey"));
+                if is_secret_key {
+                    let call = I::call(T::Ptr, "bn_rt_crypto_secret_key_algorithm", args);
+                    text.assign(format!("v{dest}"), call);
+                } else {
+                    let call = I::call(T::I32, "bn_rt_crypto_key_algorithm", args);
+                    text.assign(format!("v{dest}"), call);
+                }
             } else if member == "Zeroize" {
+                let is_secret_key = analysis
+                    .values
+                    .get(&arguments[0])
+                    .is_some_and(|ty| carries_type(ty, "SecretKey"));
                 let is_key = analysis
                     .values
                     .get(&arguments[0])
-                    .is_some_and(|ty| match ty {
-                        Type::Named(name)
-                        | Type::ImportedNamed { name, .. }
-                        | Type::ImportedTypeName { name, .. } => {
-                            name == "Key" || name.ends_with(".Key")
-                        }
-                        Type::Alternative(alternatives) => alternatives.iter().any(|a| match a {
-                            Type::Named(name)
-                            | Type::ImportedNamed { name, .. }
-                            | Type::ImportedTypeName { name, .. } => {
-                                name == "Key" || name.ends_with(".Key")
-                            }
-                            _ => false,
-                        }),
-                        _ => false,
-                    });
+                    .is_some_and(|ty| carries_type(ty, "Key"));
                 let is_secret = analysis
                     .values
                     .get(&arguments[0])
-                    .is_some_and(|ty| match ty {
-                        Type::Named(name)
-                        | Type::ImportedNamed { name, .. }
-                        | Type::ImportedTypeName { name, .. } => {
-                            name == "Secret" || name.ends_with(".Secret")
-                        }
-                        Type::Alternative(alternatives) => alternatives.iter().any(|a| match a {
-                            Type::Named(name)
-                            | Type::ImportedNamed { name, .. }
-                            | Type::ImportedTypeName { name, .. } => {
-                                name == "Secret" || name.ends_with(".Secret")
-                            }
-                            _ => false,
-                        }),
-                        _ => false,
-                    });
-                let symbol = if is_key {
+                    .is_some_and(|ty| carries_type(ty, "Secret"));
+                let symbol = if is_secret_key {
+                    "bn_rt_crypto_secret_key_zeroize"
+                } else if is_key {
                     "bn_rt_crypto_key_zeroize"
                 } else if is_secret {
                     "bn_rt_crypto_secret_zeroize"
@@ -168,45 +165,21 @@ pub(super) fn lower_bncrypto_call(
                 let call = I::call(T::I32, symbol, args);
                 text.assign(format!("cryrc{dest}"), call);
             } else {
+                let is_secret_key = analysis
+                    .values
+                    .get(&arguments[0])
+                    .is_some_and(|ty| carries_type(ty, "SecretKey"));
                 let is_key = analysis
                     .values
                     .get(&arguments[0])
-                    .is_some_and(|ty| match ty {
-                        Type::Named(name)
-                        | Type::ImportedNamed { name, .. }
-                        | Type::ImportedTypeName { name, .. } => {
-                            name == "Key" || name.ends_with(".Key")
-                        }
-                        Type::Alternative(alternatives) => alternatives.iter().any(|a| match a {
-                            Type::Named(name)
-                            | Type::ImportedNamed { name, .. }
-                            | Type::ImportedTypeName { name, .. } => {
-                                name == "Key" || name.ends_with(".Key")
-                            }
-                            _ => false,
-                        }),
-                        _ => false,
-                    });
+                    .is_some_and(|ty| carries_type(ty, "Key"));
                 let is_secret = analysis
                     .values
                     .get(&arguments[0])
-                    .is_some_and(|ty| match ty {
-                        Type::Named(name)
-                        | Type::ImportedNamed { name, .. }
-                        | Type::ImportedTypeName { name, .. } => {
-                            name == "Secret" || name.ends_with(".Secret")
-                        }
-                        Type::Alternative(alternatives) => alternatives.iter().any(|a| match a {
-                            Type::Named(name)
-                            | Type::ImportedNamed { name, .. }
-                            | Type::ImportedTypeName { name, .. } => {
-                                name == "Secret" || name.ends_with(".Secret")
-                            }
-                            _ => false,
-                        }),
-                        _ => false,
-                    });
-                let sym = if is_key {
+                    .is_some_and(|ty| carries_type(ty, "Secret"));
+                let sym = if is_secret_key {
+                    "bn_rt_crypto_secret_key_length"
+                } else if is_key {
                     "bn_rt_crypto_key_length"
                 } else if is_secret {
                     "bn_rt_crypto_secret_length"
@@ -221,6 +194,127 @@ pub(super) fn lower_bncrypto_call(
                     I::cast(CastOp::Trunc, T::I64, length, T::I32),
                 );
             }
+            return;
+        }
+        "NewSecretKey" | "NewSecretKeyWith" => {
+            let args = vec![
+                (T::I64, O::int(256)),
+                (T::Ptr, O::null()),
+                (T::Ptr, O::null()),
+            ];
+            let call = I::call(T::I64, "bn_rt_crypto_secret_key_generate", args);
+            text.assign(format!("cryh{dest}"), call);
+            text.assign(
+                format!("v{dest}"),
+                I::cast(CastOp::IntToPtr, T::I64, cryh(), T::Ptr),
+            );
+            return;
+        }
+        "SecretKeyFromBytes" => {
+            emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
+            let args = vec![
+                (T::I64, cryh()),
+                (T::Ptr, v(arguments[1])),
+                (T::Ptr, O::null()),
+            ];
+            let call = I::call(T::I64, "bn_rt_crypto_secret_key_from_bytes", args);
+            text.assign(format!("crys{dest}"), call);
+            text.assign(
+                format!("v{dest}"),
+                I::cast(
+                    CastOp::IntToPtr,
+                    T::I64,
+                    O::reg(format!("crys{dest}")),
+                    T::Ptr,
+                ),
+            );
+            return;
+        }
+        "WrapKey" => {
+            emit_handle_index(text, analysis, &format!("crya{dest}"), arguments[0]);
+            emit_handle_index(text, analysis, &format!("cryb{dest}"), arguments[1]);
+            let args = vec![
+                (T::I64, O::reg(format!("crya{dest}"))),
+                (T::I64, O::reg(format!("cryb{dest}"))),
+            ];
+            let call = I::call(T::I64, "bn_rt_crypto_secret_key_wrap", args);
+            text.assign(format!("cryw{dest}"), call);
+            text.assign(
+                format!("v{dest}"),
+                I::cast(
+                    CastOp::IntToPtr,
+                    T::I64,
+                    O::reg(format!("cryw{dest}")),
+                    T::Ptr,
+                ),
+            );
+            return;
+        }
+        "UnwrapKey" | "UnwrapKeyWith" => {
+            emit_handle_index(text, analysis, &format!("crya{dest}"), arguments[0]);
+            emit_handle_index(text, analysis, &format!("cryb{dest}"), arguments[1]);
+            let args = vec![
+                (T::I64, O::reg(format!("crya{dest}"))),
+                (T::I64, O::reg(format!("cryb{dest}"))),
+                (T::I64, O::int(256)),
+                (T::Ptr, O::null()),
+                (T::Ptr, O::null()),
+            ];
+            let call = I::call(T::I64, "bn_rt_crypto_secret_key_unwrap", args);
+            text.assign(format!("cryu{dest}"), call);
+            text.assign(
+                format!("v{dest}"),
+                I::cast(
+                    CastOp::IntToPtr,
+                    T::I64,
+                    O::reg(format!("cryu{dest}")),
+                    T::Ptr,
+                ),
+            );
+            return;
+        }
+        "Id" | "Purpose" => {
+            emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
+            let args = vec![(T::I64, cryh())];
+            let sym = if member == "Id" {
+                "bn_rt_crypto_secret_key_id"
+            } else {
+                "bn_rt_crypto_secret_key_purpose"
+            };
+            let call = I::call(T::Ptr, sym, args);
+            text.assign(format!("v{dest}"), call);
+            return;
+        }
+        "Bits" => {
+            emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
+            let args = vec![(T::I64, cryh())];
+            let call = I::call(T::I64, "bn_rt_crypto_secret_key_bits", args);
+            text.assign(format!("cryb{dest}"), call);
+            text.assign(
+                format!("v{dest}"),
+                I::cast(CastOp::Trunc, T::I64, O::reg(format!("cryb{dest}")), T::I32),
+            );
+            return;
+        }
+        "ExportSecret" => {
+            emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
+            let fmt_op = if arguments.len() > 1 {
+                v(arguments[1])
+            } else {
+                O::null()
+            };
+            let args = vec![(T::I64, cryh()), (T::Ptr, fmt_op)];
+            let call = I::call(T::I64, "bn_rt_crypto_secret_key_export", args);
+            text.assign(format!("crye{dest}"), call);
+            text.assign(
+                format!("v{dest}"),
+                I::cast(
+                    CastOp::IntToPtr,
+                    T::I64,
+                    O::reg(format!("crye{dest}")),
+                    T::Ptr,
+                ),
+            );
             return;
         }
         "RandomBytes" => {
