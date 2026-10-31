@@ -52,7 +52,7 @@ pub enum CryptoFailure {
     InvalidArgument(&'static str),
     /// `RandomInt` with `min > max`.
     RandomIntRange { min: i64, max: i64 },
-    /// `RandomToken` with length <= 0 or > MAX_RANDOM_BYTES.
+    /// `RandomToken` with length <= 0 or > `MAX_RANDOM_BYTES`.
     RandomTokenLength(i64),
     /// `RandomPassword` with length <= 0.
     PasswordLength(usize),

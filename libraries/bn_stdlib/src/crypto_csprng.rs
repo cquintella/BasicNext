@@ -5,7 +5,7 @@
 
 //! OS-backed CSPRNG utilities for Basic Next cryptography:
 //! unbiased random integers via rejection sampling, URL-safe base64 tokens,
-//! RFC 4122 UUIDv4, RFC 9562 UUIDv7, and structured password generation.
+//! RFC 4122 `UUIDv4`, RFC 9562 `UUIDv7`, and structured password generation.
 
 use crate::crypto_error::CryptoFailure;
 
@@ -42,7 +42,8 @@ pub fn random_int(min: i64, max: i64) -> Result<i64, CryptoFailure> {
     if min == max {
         return Ok(min);
     }
-    let diff = (max as i128 - min as i128) as u64;
+    let diff_i128 = i128::from(max) - i128::from(min);
+    let diff = u64::try_from(diff_i128).unwrap_or(u64::MAX);
     if diff == u64::MAX {
         let mut buf = [0u8; 8];
         getrandom::getrandom(&mut buf).map_err(|_| CryptoFailure::Random("BNCrypto.RandomInt"))?;
@@ -55,7 +56,7 @@ pub fn random_int(min: i64, max: i64) -> Result<i64, CryptoFailure> {
         getrandom::getrandom(&mut buf).map_err(|_| CryptoFailure::Random("BNCrypto.RandomInt"))?;
         let x = u64::from_le_bytes(buf);
         if x < zone {
-            return Ok(min.wrapping_add((x % n) as i64));
+            return Ok(min.wrapping_add((x % n).cast_signed()));
         }
     }
 }
@@ -66,9 +67,9 @@ const BASE64URL_CHARS: &[u8; 64] =
 /// Encodes `bytes` as an unpadded URL-safe base64 string (RFC 4648 §5).
 #[must_use]
 pub fn encode_base64url_unpadded(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity((bytes.len() * 4 + 2) / 3);
-    let mut chunks = bytes.chunks_exact(3);
-    for chunk in &mut chunks {
+    let mut out = String::with_capacity((bytes.len() * 4).div_ceil(3));
+    let (chunks, rem) = bytes.as_chunks::<3>();
+    for chunk in chunks {
         let b0 = chunk[0];
         let b1 = chunk[1];
         let b2 = chunk[2];
@@ -77,7 +78,6 @@ pub fn encode_base64url_unpadded(bytes: &[u8]) -> String {
         out.push(BASE64URL_CHARS[(((b1 & 0x0f) << 2) | (b2 >> 6)) as usize] as char);
         out.push(BASE64URL_CHARS[(b2 & 0x3f) as usize] as char);
     }
-    let rem = chunks.remainder();
     match rem.len() {
         1 => {
             let b0 = rem[0];
@@ -102,10 +102,11 @@ pub fn encode_base64url_unpadded(bytes: &[u8]) -> String {
 ///
 /// `RandomTokenLength` when `n_bytes <= 0` or exceeds [`MAX_RANDOM_BYTES`].
 pub fn random_token(n_bytes: i64) -> Result<String, CryptoFailure> {
-    if n_bytes <= 0 || (n_bytes as usize) > MAX_RANDOM_BYTES {
-        return Err(CryptoFailure::RandomTokenLength(n_bytes));
-    }
-    let mut buf = vec![0u8; n_bytes as usize];
+    let length = usize::try_from(n_bytes)
+        .ok()
+        .filter(|&len| len > 0 && len <= MAX_RANDOM_BYTES)
+        .ok_or(CryptoFailure::RandomTokenLength(n_bytes))?;
+    let mut buf = vec![0u8; length];
     getrandom::getrandom(&mut buf).map_err(|_| CryptoFailure::Random("BNCrypto.RandomToken"))?;
     Ok(encode_base64url_unpadded(&buf))
 }
@@ -172,21 +173,19 @@ pub fn uuid_v7() -> Result<String, CryptoFailure> {
         *state
     };
 
-    bytes[0] = (ms >> 40) as u8;
-    bytes[1] = (ms >> 32) as u8;
-    bytes[2] = (ms >> 24) as u8;
-    bytes[3] = (ms >> 16) as u8;
-    bytes[4] = (ms >> 8) as u8;
-    bytes[5] = ms as u8;
+    let ms_bytes = ms.to_be_bytes();
+    bytes[0..6].copy_from_slice(&ms_bytes[2..8]);
+    let counter_bytes = counter.to_be_bytes();
     // Version 7 (0111) in high nibble + 4 counter bits in low nibble
-    bytes[6] = 0x70 | ((counter >> 8) as u8 & 0x0f);
-    bytes[7] = (counter & 0xff) as u8;
+    bytes[6] = 0x70 | (counter_bytes[0] & 0x0f);
+    bytes[7] = counter_bytes[1];
     // Variant RFC 9562 (10xx)
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
     Ok(format_uuid(&bytes))
 }
 
 /// Options for password generation.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PasswordGenOptions {
     pub length: usize,
@@ -252,17 +251,20 @@ pub fn random_password(opts: PasswordGenOptions) -> Result<String, CryptoFailure
 
     if opts.length >= required.len() {
         for class in &required {
-            let idx = random_int(0, i64::try_from(class.len() - 1).unwrap_or(0))? as usize;
+            let max_idx = i64::try_from(class.len().saturating_sub(1)).unwrap_or(0);
+            let idx = usize::try_from(random_int(0, max_idx)?).unwrap_or(0);
             result.push(class[idx]);
         }
     }
     while result.len() < opts.length {
-        let idx = random_int(0, i64::try_from(pool.len() - 1).unwrap_or(0))? as usize;
+        let max_idx = i64::try_from(pool.len().saturating_sub(1)).unwrap_or(0);
+        let idx = usize::try_from(random_int(0, max_idx)?).unwrap_or(0);
         result.push(pool[idx]);
     }
 
     for i in (1..result.len()).rev() {
-        let j = random_int(0, i64::try_from(i).unwrap_or(0))? as usize;
+        let max_i = i64::try_from(i).unwrap_or(0);
+        let j = usize::try_from(random_int(0, max_i)?).unwrap_or(0);
         result.swap(i, j);
     }
 

@@ -737,7 +737,9 @@ pub extern "C" fn bn_rt_crypto_random_password(opts_ptr: *const u8, out: *mut *m
         return BN_CRYPTO_INVALID_ARGUMENT;
     }
     let (length, upper, lower, digits, symbols) = unsafe {
-        let length = *opts_ptr.add(16).cast::<i32>();
+        let mut len_bytes = [0u8; 4];
+        std::ptr::copy_nonoverlapping(opts_ptr.add(16), len_bytes.as_mut_ptr(), 4);
+        let length = i32::from_ne_bytes(len_bytes);
         let upper = *opts_ptr.add(20) != 0;
         let lower = *opts_ptr.add(21) != 0;
         let digits = *opts_ptr.add(22) != 0;
