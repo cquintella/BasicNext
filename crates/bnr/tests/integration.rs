@@ -482,3 +482,73 @@ fn bnr_all_transcript_fixtures() {
         run_fixture(fixture_path);
     }
 }
+
+#[test]
+fn bnr_history_retains_last_error_and_subsequent_successes() {
+    use bnr::history::BnrHistory;
+    use rustyline::history::{History as _, SearchDirection};
+
+    let mut history = BnrHistory::new();
+    assert!(history.record_success("LET a = 10").unwrap());
+    assert!(history.record_success("LET b = 20").unwrap());
+    history.record_failure("LET c = 30 + broken_expr");
+
+    assert_eq!(history.len(), 3);
+
+    let turn1 = history.get(2, SearchDirection::Reverse).unwrap().unwrap();
+    assert_eq!(turn1.entry, "LET c = 30 + broken_expr");
+
+    let turn2 = history.get(1, SearchDirection::Reverse).unwrap().unwrap();
+    assert_eq!(turn2.entry, "LET b = 20");
+
+    let turn3 = history.get(0, SearchDirection::Reverse).unwrap().unwrap();
+    assert_eq!(turn3.entry, "LET a = 10");
+
+    history.record_failure("LET d = broken_again");
+    assert_eq!(history.len(), 3);
+
+    assert_eq!(
+        history
+            .get(2, SearchDirection::Reverse)
+            .unwrap()
+            .unwrap()
+            .entry,
+        "LET d = broken_again"
+    );
+    assert_eq!(
+        history
+            .get(1, SearchDirection::Reverse)
+            .unwrap()
+            .unwrap()
+            .entry,
+        "LET b = 20"
+    );
+
+    assert!(history.record_success("LET d = 40").unwrap());
+    assert_eq!(history.len(), 3);
+
+    assert_eq!(
+        history
+            .get(2, SearchDirection::Reverse)
+            .unwrap()
+            .unwrap()
+            .entry,
+        "LET d = 40"
+    );
+    assert_eq!(
+        history
+            .get(1, SearchDirection::Reverse)
+            .unwrap()
+            .unwrap()
+            .entry,
+        "LET b = 20"
+    );
+    assert_eq!(
+        history
+            .get(0, SearchDirection::Reverse)
+            .unwrap()
+            .unwrap()
+            .entry,
+        "LET a = 10"
+    );
+}

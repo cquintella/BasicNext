@@ -19,6 +19,7 @@ use crate::session::{ExecutionOutcome, ReplSession};
 pub enum CommandAction {
     Continue,
     Quit,
+    Failure,
 }
 
 #[must_use]
@@ -61,10 +62,11 @@ pub fn handle_meta_command_to(
         ":reset" => {
             if let Err(msg) = session.reset(options, interpreter) {
                 let _ = writeln!(err, "{msg}");
+                CommandAction::Failure
             } else {
                 let _ = writeln!(out, "{}", bn_catalog::text("cli", "msg.bnr_reset_done"));
+                CommandAction::Continue
             }
-            CommandAction::Continue
         }
         ":bindings" | ":vars" => {
             let bindings = session.bindings();
@@ -101,19 +103,21 @@ pub fn handle_meta_command_to(
                     "{}",
                     bn_catalog::text("cli", "msg.bnr_type_missing_expr")
                 );
+                CommandAction::Failure
             } else {
                 match session.type_of(arg, options) {
                     Ok(ty) => {
                         let _ = writeln!(out, "{ty}");
+                        CommandAction::Continue
                     }
                     Err(diag) => {
                         if !diag.is_empty() {
                             let _ = write!(err, "{diag}");
                         }
+                        CommandAction::Failure
                     }
                 }
             }
-            CommandAction::Continue
         }
         ":policy" => {
             let _ = writeln!(out, "{}", bn_catalog::text("cli", "msg.bnr_active_policy"));
@@ -269,6 +273,7 @@ pub fn handle_meta_command_to(
                     "{}",
                     bn_catalog::text("cli", "msg.bnr_doc_missing_symbol")
                 );
+                CommandAction::Failure
             } else {
                 let docs = session.doc_symbol(arg, options);
                 if docs.is_empty() {
@@ -277,13 +282,14 @@ pub fn handle_meta_command_to(
                         "{}",
                         bn_catalog::fill("cli", "msg.bnr_symbol_not_found", &[("symbol", &arg)])
                     );
+                    CommandAction::Failure
                 } else {
                     for line in docs {
                         let _ = writeln!(out, "  {line}");
                     }
+                    CommandAction::Continue
                 }
             }
-            CommandAction::Continue
         }
         ":export" => {
             if arg.is_empty() {
@@ -292,6 +298,7 @@ pub fn handle_meta_command_to(
                     "{}",
                     bn_catalog::text("cli", "msg.bnr_export_missing_path")
                 );
+                CommandAction::Failure
             } else {
                 let code = session.export_program();
                 match fs::write(arg, code) {
@@ -301,13 +308,14 @@ pub fn handle_meta_command_to(
                             "{}",
                             bn_catalog::fill("cli", "msg.bnr_export_success", &[("path", &arg)])
                         );
+                        CommandAction::Continue
                     }
                     Err(io_err) => {
                         let _ = writeln!(err, "{io_err}");
+                        CommandAction::Failure
                     }
                 }
             }
-            CommandAction::Continue
         }
         ":load" => {
             if arg.is_empty() {
@@ -316,6 +324,7 @@ pub fn handle_meta_command_to(
                     "{}",
                     bn_catalog::text("cli", "msg.bnr_load_missing_path")
                 );
+                CommandAction::Failure
             } else {
                 match fs::read_to_string(arg) {
                     Ok(content) => match session.execute(&content, options) {
@@ -323,6 +332,7 @@ pub fn handle_meta_command_to(
                             if !stdout.is_empty() {
                                 let _ = write!(out, "{stdout}");
                             }
+                            CommandAction::Continue
                         }
                         ExecutionOutcome::Failure { stdout, diagnostic } => {
                             if !stdout.is_empty() {
@@ -331,14 +341,15 @@ pub fn handle_meta_command_to(
                             if let Some(diag) = diagnostic {
                                 let _ = writeln!(err, "{diag}");
                             }
+                            CommandAction::Failure
                         }
                     },
                     Err(io_err) => {
                         let _ = writeln!(err, "{io_err}");
+                        CommandAction::Failure
                     }
                 }
             }
-            CommandAction::Continue
         }
         ":clear" => {
             let _ = write!(out, "\x1b[2J\x1b[H");
@@ -350,7 +361,7 @@ pub fn handle_meta_command_to(
                 "{}",
                 bn_catalog::fill("cli", "msg.bnr_unknown_command", &[("command", &command)])
             );
-            CommandAction::Continue
+            CommandAction::Failure
         }
     }
 }

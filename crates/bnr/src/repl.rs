@@ -29,6 +29,7 @@ use rustyline::{
 
 use crate::{
     commands::{CommandAction, handle_meta_command, is_meta_command},
+    history::BnrHistory,
     session::{ExecutionOutcome, ReplSession},
 };
 
@@ -164,7 +165,9 @@ pub fn run_repl(options: &Options, interpreter: &InterpreterOptions, version: &s
         )
     );
 
-    let mut rl = match rustyline::Editor::new() {
+    let config = rustyline::Config::default();
+    let history = BnrHistory::with_config(config);
+    let mut rl = match rustyline::Editor::with_history(config, history) {
         Ok(editor) => editor,
         Err(err) => {
             eprintln!("{err}");
@@ -218,10 +221,19 @@ pub fn run_repl(options: &Options, interpreter: &InterpreterOptions, version: &s
         match rl.readline(prompt) {
             Ok(line) => {
                 if buffer.is_empty() && is_meta_command(&line) {
-                    let _ = rl.add_history_entry(&line);
                     match handle_meta_command(&line, &mut session, options, interpreter) {
-                        CommandAction::Quit => break,
-                        CommandAction::Continue => continue,
+                        CommandAction::Quit => {
+                            let _ = rl.add_history_entry(&line);
+                            break;
+                        }
+                        CommandAction::Continue => {
+                            let _ = rl.add_history_entry(&line);
+                            continue;
+                        }
+                        CommandAction::Failure => {
+                            rl.history_mut().record_failure(&line);
+                            continue;
+                        }
                     }
                 }
 
@@ -239,10 +251,11 @@ pub fn run_repl(options: &Options, interpreter: &InterpreterOptions, version: &s
                         let formatted =
                             present_diagnostic(&diagnostic, &source_file, None, options);
                         eprint!("{formatted}");
+                        rl.history_mut().record_failure(buffer.trim_end());
                         buffer.clear();
                     }
                     SubmissionCompleteness::Complete { .. } => {
-                        let _ = rl.add_history_entry(buffer.trim_end());
+                        let submission = buffer.trim_end().to_string();
                         match session.execute(&buffer, options) {
                             ExecutionOutcome::Success {
                                 stdout,
@@ -250,6 +263,7 @@ pub fn run_repl(options: &Options, interpreter: &InterpreterOptions, version: &s
                                 result_type,
                                 structured_preview,
                             } => {
+                                let _ = rl.add_history_entry(&submission);
                                 if let Some(preview) = structured_preview {
                                     if let Some(ty) = result_type {
                                         println!("{preview} : {ty}");
@@ -266,6 +280,7 @@ pub fn run_repl(options: &Options, interpreter: &InterpreterOptions, version: &s
                                 }
                             }
                             ExecutionOutcome::Failure { stdout, diagnostic } => {
+                                rl.history_mut().record_failure(&submission);
                                 if !stdout.is_empty() {
                                     print!("{stdout}");
                                 }
@@ -310,10 +325,10 @@ fn run_non_interactive(session: &mut ReplSession, options: &Options) -> ExitCode
         let Ok(line) = line else { break };
         if buffer.is_empty() && is_meta_command(&line) {
             let default_interp = InterpreterOptions::default();
-            if let CommandAction::Quit =
-                handle_meta_command(&line, session, options, &default_interp)
-            {
-                return ExitCode::SUCCESS;
+            match handle_meta_command(&line, session, options, &default_interp) {
+                CommandAction::Quit => return ExitCode::SUCCESS,
+                CommandAction::Continue => {}
+                CommandAction::Failure => had_error = true,
             }
             continue;
         }
