@@ -1243,6 +1243,25 @@ fn bncrypto_post_quantum_interprets() {
     );
 }
 
+/// CSPRNG additions interpret: RandomInt, RandomToken, RandomUuidV4, UuidV7,
+/// and RandomPassword, plus error handling on invalid bounds or options.
+#[test]
+fn bncrypto_csprng_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-csprng/main.bn"])
+        .output()
+        .expect("run the BNCrypto CSPRNG fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "random-int-range-ok\nrandom-int-error-caught\nrandom-token-len-ok\nrandom-token-error-caught\nrandom-uuid-v4-ok\nuuid-v7-monotonic-ok\nrandom-pwd-default-ok\nrandom-pwd-error-caught\n"
+    );
+}
+
 /// The `BNJson` DOM slice: build an object, write and read a member, and reject
 /// a missing key instead of yielding an empty STRING. The compiled twin is in
 /// the `bnc` suite; the two must print the same.

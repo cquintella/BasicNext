@@ -79,7 +79,7 @@ fn random_token_validates_length_and_generates_unpadded_base64url() {
 fn random_uuid_v4_format_and_version() {
     let mut seen = HashSet::new();
     for _ in 0..100 {
-        let u = random_uuid_v4().expect("uuid v4");
+        let u = random_uuid_v4();
         assert_eq!(u.len(), 36);
         let bytes = u.as_bytes();
         assert_eq!(bytes[8], b'-');
@@ -112,7 +112,7 @@ fn uuid_v7_format_version_and_ordering() {
     let mut seen = HashSet::new();
     let mut prev = String::new();
     for _ in 0..50 {
-        let u = uuid_v7().expect("uuid v7");
+        let u = uuid_v7();
         assert_eq!(u.len(), 36);
         let bytes = u.as_bytes();
         assert_eq!(bytes[8], b'-');
@@ -143,6 +143,16 @@ fn uuid_v7_format_version_and_ordering() {
         seen.insert(u);
     }
     assert_eq!(seen.len(), 50);
+}
+
+#[test]
+fn uuid_v7_monotonic_under_high_throughput_counter_rollover() {
+    let mut prev = uuid_v7();
+    for _ in 0..5000 {
+        let u = uuid_v7();
+        assert!(u > prev, "uuid v7 strictly monotonic failed: {u} <= {prev}");
+        prev = u;
+    }
 }
 
 #[test]

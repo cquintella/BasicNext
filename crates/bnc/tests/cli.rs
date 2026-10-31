@@ -1527,6 +1527,40 @@ fn compiled_bncrypto_post_quantum_matches_the_interpreter() {
     );
 }
 
+/// CSPRNG additions survive compilation and match the interpreter output byte for byte.
+#[test]
+fn compiled_bncrypto_csprng_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_csprng_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-csprng/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "random-int-range-ok\nrandom-int-error-caught\nrandom-token-len-ok\nrandom-token-error-caught\nrandom-uuid-v4-ok\nuuid-v7-monotonic-ok\nrandom-pwd-default-ok\nrandom-pwd-error-caught\n"
+    );
+}
+
 /// `BNJson` survives compilation: the DOM slice links against the `bn_rt`
 /// document table and the native binary prints what the interpreter prints.
 /// Before 0.6.1 the backend had no `BNJson` support at all.
