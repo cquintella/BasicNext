@@ -5,7 +5,10 @@
 
 #![allow(unsafe_code)]
 
-use bn_stdlib::crypto_abi::{bn_rt_crypto_bytes_length, bn_rt_crypto_bytes_release};
+use bn_stdlib::crypto_abi::{
+    bn_rt_crypto_bytes_from_hex, bn_rt_crypto_bytes_length, bn_rt_crypto_bytes_release,
+    bn_rt_crypto_bytes_to_hex,
+};
 use bn_stdlib::string::{bn_rt_str_release, c_string_from_bytes};
 use std::ffi::{CStr, c_char};
 
@@ -71,7 +74,10 @@ fn test_secret_key_lifecycle_and_wrap_abi() {
 
     let id_ptr = unsafe { bn_rt_crypto_secret_key_id(k1) };
     assert!(!id_ptr.is_null());
-    let id_str = unsafe { CStr::from_ptr(id_ptr) }.to_str().unwrap();
+    let id_str = unsafe { CStr::from_ptr(id_ptr) }
+        .to_str()
+        .unwrap()
+        .to_string();
     assert_eq!(id_str.len(), 64);
     bn_rt_str_release(id_ptr);
 
@@ -136,6 +142,56 @@ fn test_secret_key_lifecycle_and_wrap_abi() {
         bn_rt_crypto_secret_key_release(k1);
         bn_rt_crypto_secret_key_release(k1_imported);
         bn_rt_crypto_secret_key_release(kek);
+        bn_rt_crypto_secret_key_release(unwrapped);
+    }
+}
+
+#[test]
+fn test_rfc3394_vectors() {
+    // RFC 3394 Section 4.1: Wrap 128 bits of Key Data with a 128-bit KEK
+    let hex_kek = BnString::new(b"000102030405060708090A0B0C0D0E0F");
+    let hex_key = BnString::new(b"00112233445566778899AABBCCDDEEFF");
+    let purpose = BnString::new(b"AEAD");
+    let alg = BnString::new(b"AES128");
+
+    let mut b_kek = 0u64;
+    let mut b_key = 0u64;
+    assert_eq!(
+        unsafe { bn_rt_crypto_bytes_from_hex(hex_kek.as_ptr(), &mut b_kek) },
+        0
+    );
+    assert_eq!(
+        unsafe { bn_rt_crypto_bytes_from_hex(hex_key.as_ptr(), &mut b_key) },
+        0
+    );
+
+    let k_kek =
+        unsafe { bn_rt_crypto_secret_key_from_bytes(b_kek, purpose.as_ptr(), alg.as_ptr()) };
+    let k_key =
+        unsafe { bn_rt_crypto_secret_key_from_bytes(b_key, purpose.as_ptr(), alg.as_ptr()) };
+
+    let wrapped = unsafe { bn_rt_crypto_secret_key_wrap(k_kek, k_key) };
+    assert_ne!(wrapped, 0);
+    let hex_ptr = unsafe { bn_rt_crypto_bytes_to_hex(wrapped) };
+    let hex_str = unsafe { CStr::from_ptr(hex_ptr) }
+        .to_str()
+        .unwrap()
+        .to_uppercase();
+    assert_eq!(hex_str, "1FA68B0A8112B447AEF34BD8FB5A7B829D3E862371D2CFE5");
+    bn_rt_str_release(hex_ptr);
+
+    let unwrapped = unsafe {
+        bn_rt_crypto_secret_key_unwrap(k_kek, wrapped, 128, purpose.as_ptr(), alg.as_ptr())
+    };
+    assert_ne!(unwrapped, 0);
+    assert_eq!(unsafe { bn_rt_crypto_secret_key_bits(unwrapped) }, 128);
+
+    bn_rt_crypto_bytes_release(b_kek);
+    bn_rt_crypto_bytes_release(b_key);
+    bn_rt_crypto_bytes_release(wrapped);
+    unsafe {
+        bn_rt_crypto_secret_key_release(k_kek);
+        bn_rt_crypto_secret_key_release(k_key);
         bn_rt_crypto_secret_key_release(unwrapped);
     }
 }
