@@ -106,12 +106,12 @@ All cryptographic randomness derives directly from the operating system CSPRNG (
 | --- | --- | --- |
 | `RandomBytes` | `RandomBytes(length AS INTEGER) AS Bytes OR Error` | Returns `length` secure random bytes (0 to 1 MiB). Rejects length outside range. |
 | `RandomInt` | `RandomInt(min, max AS INTEGER) AS INTEGER OR Error` | Unbiased random integer in `[min, max]` via rejection sampling. Rejects `min > max`. |
-| `RandomToken` | `RandomToken(nBytes AS INTEGER) AS STRING OR Error` | URL-safe base64 string from `nBytes` random bytes (default 32 bytes). Rejects `nBytes <= 0`. |
+| `RandomToken` | `RandomToken(nBytes AS INTEGER) AS STRING OR Error` | URL-safe base64 string from `nBytes` random bytes without padding. Rejects `nBytes <= 0` or length above 1 MiB. |
 | `RandomUuidV4` | `RandomUuidV4() AS STRING` | Canonical RFC 4122 UUID version 4 string. |
 | `UuidV7` | `UuidV7() AS STRING` | Time-ordered RFC 9562 UUID version 7 string. |
 | `RandomPassword` | `RandomPassword(opts AS PasswordGenOptions) AS STRING OR Error` | Secure password generated with configurable character classes and length (default 20). |
 
-**Prohibition:** The CSPRNG never accepts a user seed in production. Cryptographic nonces and keys must never be derived from pseudo-random generators (`HOST.Random`).
+**Prohibition:** The CSPRNG never accepts a user seed in production. Cryptographic nonces and keys must never be derived from pseudo-random generators (`HOST.Random`); they must be drawn directly from the operating system CSPRNG via `Crypto.RandomBytes`.
 
 ---
 
