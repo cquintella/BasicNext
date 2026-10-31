@@ -364,7 +364,7 @@ FUNCTION Start() AS VOID
     RELEASE right
 
     PRINT "=== BNData tour: ReadCSV + ConvertTo* + WriteCSV ==="
-    LET csvFile AS FS.File OR Error = FS.Open("tests/fixtures/bndata-sprint6.csv", FS.READ)
+    LET csvFile AS FS.File OR Error = FS.Open("tests/fixtures/bndata-tour.csv", FS.READ)
     IF csvFile IS Error THEN
         PRINT "SKIP: ReadCSV (open) — ", csvFile.Code
     ELSE

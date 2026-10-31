@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// The storage of fixed vectors of two or more dimensions (known issue K21):
+// The storage of fixed vectors of two or more dimensions:
 // one block per binding with every row level, the elements and the
 // dimensions, which `bn_rt_vector_nest` links and fills, so a copy takes the
 // elements and never shares a row.

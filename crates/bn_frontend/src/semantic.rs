@@ -107,7 +107,7 @@ pub struct SemanticModel {
     pub class_model: ClassModel,
     pub bnmath_modules: HashSet<ModuleId>,
     /// The `BNLog` modules this module imports: their `Logger` is a counted
-    /// handle (ARC), released when its last binding ends (known issue K61).
+    /// handle (ARC), released when its last binding ends.
     pub bnlog_modules: HashSet<ModuleId>,
     /// The standard (`modules/bn/`) modules this module imports.
     pub standard_modules: HashSet<ModuleId>,

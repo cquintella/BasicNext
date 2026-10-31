@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Dependency gate (bucket 0.6.5 E.S1.a, AC9):
+//! Dependency gate:
 //! Asserts that `bnc` (the native compiler executable) and the default
 //! runtime archive (`bn_rt`) have zero dependencies on async web crates
 //! (`tokio`, `hyper`, `rustls`).

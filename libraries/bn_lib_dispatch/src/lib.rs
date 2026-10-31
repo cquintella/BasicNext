@@ -11,7 +11,7 @@
     clippy::too_many_lines,
     clippy::needless_return,
     clippy::ignored_unit_patterns
-)] // Moved verbatim from the core (bucket 0.5.1d); one arm per BNDispatch member.
+)] // Moved verbatim from the core; one arm per BNDispatch member.
 
 mod dispatch;
 

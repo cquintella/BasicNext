@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// SPRINT 2 — Clone, SetJson (move), GetJson (fresh handle). Use-after-move is a
+// Clone, SetJson (move), GetJson (fresh handle). Use-after-move is a
 // USE_AFTER_RELEASE diagnostic under bni (not an Error value), so invalidation
 // is pinned by the json_abi unit test; this fixture proves the happy path and
 // that GetJson does not consume the parent.

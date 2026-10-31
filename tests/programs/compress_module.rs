@@ -5,7 +5,7 @@
 
 //! The `BNCompress` tour (`tests/modules/bncompress/main.bn`) prints the same
 //! lines on both backends: buffers, Deflate, Gzip, and a ZIP written, read
-//! and extracted (bncompress.md; bucket 0.6.11, S2.6 and S6.7, finding A16).
+//! and extracted (bncompress.md).
 
 use super::support::{TestDir, bnc, bni, run};
 use std::fs;

@@ -212,8 +212,7 @@ impl Executor<'_, '_> {
 const STRING_INDEX_CONTEXT: &str = "string";
 
 /// `text[index]`, one Unicode scalar value: by byte when the text is ASCII,
-/// otherwise in one pass; the scalar count is computed only for the error
-/// (bucket 0.6.10 F.6).
+/// otherwise in one pass; the scalar count is computed only for the error.
 fn string_character(text: &str, index: i128, span: Span) -> Result<Value, Diagnostic> {
     if text.is_ascii() {
         let index = checked_index(index, text.len(), STRING_INDEX_CONTEXT, span)?;

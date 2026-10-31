@@ -17,8 +17,8 @@ DAP servers, and calls `bn_interpret_driver::cli::main`.
 | Debug Adapter Protocol (stdio) | `bn_dap` |
 | Tree-walking execution over validated IR | `bn_interp` (via the driver) |
 
-Compilation is a separate executable: `bnc`. Architecture:
-`docs/architecture/library-first-drivers.md`.
+Compilation is a separate executable: `bnc`; both executables are thin
+wrappers over the driver libraries.
 
 ## Layout
 

@@ -7,7 +7,7 @@
 // structs and interfaces are written `#<module>.Name`, the spelling every IR
 // registry (`$fields`, field layouts, class globals) and the entry module
 // already use, so the IR validator and the backends resolve them without
-// knowing which module a function came from (known issues K52, K57).
+// knowing which module a function came from.
 
 use std::collections::{HashMap, HashSet};
 

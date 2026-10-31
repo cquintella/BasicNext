@@ -296,8 +296,8 @@ mod tests {
         assert_eq!(bn_rt_arc_release(id, 1, 1), 0);
     }
 
-    /// A task runs on a fresh core; what it still holds at its end is freed
-    /// (K88), and the thread's own core and objects come back untouched.
+    /// A task runs on a fresh core; what it still holds at its end is freed,
+    /// and the thread's own core and objects come back untouched.
     #[test]
     #[allow(unsafe_code)] // Allocates the block the task leaves behind.
     fn a_task_core_frees_what_the_task_left_and_restores_the_outer_core() {

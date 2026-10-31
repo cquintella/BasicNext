@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Entry operations of `FsPolicy` (bucket 0.6.12, FS-CORE-1): owner-only
+//! Entry operations of `FsPolicy`: owner-only
 //! creates, removal, rename and change of directory never follow a final
 //! symbolic link, never act outside the policy roots, and treat a root as
 //! readable but not writable. Unix only: the Windows host runs the same
@@ -246,7 +246,7 @@ fn rename_replaces_a_regular_file_only() {
 
 /// A directory that becomes a link to `outside` while files are created in
 /// it: the create walks the parent without following it, so nothing ever
-/// lands outside the root (bucket risk R4).
+/// lands outside the root.
 #[test]
 fn a_swapped_parent_never_receives_a_created_file() {
     let fixture = Fixture::new("swap");
@@ -278,7 +278,7 @@ fn a_swapped_parent_never_receives_a_created_file() {
 
 /// A FIFO opened for reading would block until a writer comes; the read
 /// open is non-blocking, so a FIFO swapped in for a checked file cannot hang
-/// a copy (end-of-sprint audit, bucket 0.6.12).
+/// a copy (end-of-sprint audit).
 #[test]
 fn a_fifo_never_blocks_the_read_open() {
     const OPEN_DEADLINE: std::time::Duration = std::time::Duration::from_secs(5);

@@ -3,8 +3,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Ownership conformance matrix (bucket typed-llvm-emitter, Sprint 8 phase
-//! A): every way of holding an object (local, parameter, return, field from
+//! Ownership conformance matrix: every way of holding an object (local,
+//! parameter, return, field from
 //! outside and from a method, `STRUCT` field, vector element, `STATIC`,
 //! `WEAK`, alternatives) crossed with every way of letting it go (end of
 //! scope, reassignment, `RELEASE`, end of the owner). Each cell is one
@@ -534,7 +534,7 @@ fn concurrent_tasks_destroy_every_object_once_on_both_backends() {
     }
 }
 
-/// Native memory safety of the ARC operations (Sprint 8, phase A): every
+/// Native memory safety of the ARC operations: every
 /// cell both backends run, and the concurrent tasks, built with
 /// `AddressSanitizer` through the `[toolchain]` clang of `bnc`'s `config.toml`,
 /// print the expected output with no sanitizer report (no double release, no
@@ -647,7 +647,7 @@ fn string_buffers_print_the_same_on_both_backends() {
 }
 
 /// A native program frees every STRING buffer it made: nothing is left
-/// unreachable at exit (R1).
+/// unreachable at exit.
 #[cfg(unix)]
 #[test]
 fn native_strings_leave_no_buffer_behind() {

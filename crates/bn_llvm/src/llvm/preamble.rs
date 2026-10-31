@@ -281,7 +281,7 @@ fn prints_null(function: &Function, analysis: &LoweringAnalysis<'_>) -> bool {
 /// The `bn_rt` dispatch trampoline of an async task: unpacks the 16-byte
 /// argument cells, calls the task, and writes its result (`kind` at 0, the
 /// payload at 8) or its `Error` (code at 0, record at 8). A task starts on
-/// its own fresh copy of the `STATIC` fields (`statics.rs`, K44).
+/// its own fresh copy of the `STATIC` fields (`statics.rs`).
 fn emit_trampoline(
     text: &mut crate::ir::LlvmModule,
     task_fn: &Function,

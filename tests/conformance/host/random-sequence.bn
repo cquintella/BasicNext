@@ -6,7 +6,7 @@
 // Conformance: HOST.Random after Seed(n) is the xorshift64* sequence of
 // host.md, "Random (0.2)", on both backends.
 // Expected output: random-sequence.expected, from an independent program that
-// follows host.md step by step (scratchpad rnd/main.rs, bucket 0.6.10 E.0):
+// follows host.md step by step (scratchpad rnd/main.rs):
 // state = n as INT64 reinterpreted unsigned, 0 -> 1; each Random(): x ^= x >>
 // 12; x ^= x << 25; x ^= x >> 27; x *= 0x2545F4914F6CDD1D (wrapping); the
 // result is the top 53 bits / 2^53. Seed(0) is the state 1; Seed(-1) is the

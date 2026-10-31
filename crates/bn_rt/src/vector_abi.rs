@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! Fixed vectors of two or more dimensions in compiled programs (0.6.md,
-//! value semantics; known issue K21): links the rows of a binding's own
+//! value semantics): links the rows of a binding's own
 //! storage and copies the elements of another vector of the same shape into
 //! it, so no binding shares a row with another.
 

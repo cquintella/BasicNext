@@ -1,4 +1,4 @@
-//! Execution policy for HOST calls (bucket 0.5.2a): one value type,
+//! Execution policy for HOST calls: one value type,
 //! [`Policy`], shared by the interpreter (`HostEnv` owns one) and the compiled
 //! image (one `RwLock` static installed by `bn_rt_policy_init`); one
 //! environment parser, [`Policy::narrow_from_env`]; the filesystem decision
@@ -230,8 +230,7 @@ impl FsPolicy {
     }
 
     /// The anchor of `path` in the read or the write roots: the root walk
-    /// when the scope is rooted, a plain open otherwise (bucket 0.6.12,
-    /// FS-CORE-1).
+    /// when the scope is rooted, a plain open otherwise.
     fn anchor(&self, path: &Path, write: bool) -> io::Result<Anchor> {
         if write && self.read_only {
             return Err(denied(FS_WRITES_DENIED));
@@ -263,7 +262,7 @@ impl FsPolicy {
     }
 
     /// Whether `path` names a policy root itself, which is never a write
-    /// target (bucket 0.6.12, G-3).
+    /// target.
     #[must_use]
     pub fn names_a_root(&self, path: &Path) -> bool {
         [&self.read, &self.write]
@@ -662,8 +661,8 @@ fn path_text(path: *const c_char) -> Option<String> {
 }
 
 /// Narrows the effective policy below the artifact ceiling, as a host that
-/// denies more would (tests only: no compiled program narrows it; bucket
-/// 0.6.5 H.S3.a removed the unused `bn_rt_policy_restrict` export).
+/// denies more would (tests only: no compiled program narrows it, and the
+/// unused `bn_rt_policy_restrict` export was removed).
 #[cfg(test)]
 pub(crate) fn restrict_for_tests(mask: u64) {
     current_mut().restrict(mask);

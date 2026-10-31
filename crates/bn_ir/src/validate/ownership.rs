@@ -34,7 +34,7 @@ pub(super) fn is_arc_type(module: &Module, ty: &Type) -> bool {
         Type::Named(name) => is_declared(module, name),
         // A `BNLog.Logger` is a counted handle; any other type of a natively
         // implemented library is a handle the IR does not count (the same
-        // rule the lowering applies; K61, K63).
+        // rule the lowering applies).
         Type::ImportedNamed { module: id, name }
             if module.standard_library_of((*id).into()).is_some() =>
         {
@@ -124,7 +124,7 @@ fn consumed(
 
 /// Whether `instruction` yields a STRING buffer of its own: a concatenation,
 /// or `AS STRING` of a value whose type (`source`) is not STRING. Its one
-/// reference belongs to the value (R1, 2026-10-29: read as borrowed, a store
+/// reference belongs to the value (2026-10-29: read as borrowed, a store
 /// retained it and the first reference leaked). `AS STRING` of a STRING is
 /// the same buffer. A backend that folds the result to a constant hands out
 /// an immortal literal, which a release leaves alone.

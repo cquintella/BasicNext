@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! `GenerateKey(ALG_ECDSA_P256)` keeps only scalars in 1 through n - 1
-//! (`ongoing/issues.md`, A14): the acceptance rule at the curve-order
+//! (rejection sampling, not reduction modulo n): the acceptance rule at the curve-order
 //! boundary, and generated keys that always sign.
 
 use bn_stdlib::crypto::{ALG_ECDSA_P256, generate_key_material, is_p256_scalar, p256_sign};

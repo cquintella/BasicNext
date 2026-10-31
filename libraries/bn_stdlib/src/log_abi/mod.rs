@@ -61,7 +61,7 @@ impl bn_core_log::LogSink for RuntimeSink {
 /// (`bn_core_copy`): a task's close their destinations when the task ends.
 struct Registry {
     next: AtomicU64,
-    /// Each logger with the number of bindings that hold it (K61).
+    /// Each logger with the number of bindings that hold it.
     loggers: Mutex<HashMap<u64, (Logger, usize)>>,
 }
 

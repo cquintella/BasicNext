@@ -1,4 +1,4 @@
-# BNCompress texts (bn_catalog; AGENTS.md "No hard-coded messages").
+# BNCompress texts (bn_catalog: no message is hard-coded).
 # One `key = value` per line; `{name}` is filled by the code.
 
 error.policy_denied.message = file access denied by execution policy: {path}

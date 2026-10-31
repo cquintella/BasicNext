@@ -154,11 +154,11 @@ pub(super) fn remove_file(root: &Path, relative: &Path) -> io::Result<()> {
 /// as `NotADirectory` (POSIX `ENOTDIR`).
 const ERROR_DIRECTORY: i32 = 267;
 
-/// Where an entry operation acts (bucket 0.6.12, FS-CORE-1): the full path
+/// Where an entry operation acts: the full path
 /// of the entry, with the handles of its parents held so that no parent can
 /// be renamed or replaced, or a directory with no name to act on (a policy
 /// root, a drive root). Windows sets no DACL on what it creates: the entry
-/// inherits the parent's (G-5).
+/// inherits the parent's.
 pub(crate) struct Anchor {
     path: PathBuf,
     is_root: bool,

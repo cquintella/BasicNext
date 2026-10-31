@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Spec 0.6.5 item S.13: the decided control-flow, module, vector, narrowing
+//! The decided control-flow, module, vector, narrowing
 //! and value rules, on the interpreter and on the native compiler.
 
 use super::support;

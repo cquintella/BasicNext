@@ -51,4 +51,4 @@ evidence directory.
 Quorra **ARC compliance gate** on every M* wave: reject reintroduction of
 `DELETE`, force-dispose, or semi-manual “must dispose to be correct” teaching.
 
-- **2026-09-16** — F14–F15 added (pointer regions under ARC; Carlos lock recorded in `language/0.5/0.5.md`). Known failing at lock time on both backends; corrective bucket 0.5.1b.
+- **2026-09-16** — F14–F15 added (pointer regions under ARC; BDFL decision recorded in `language/0.5/0.5.md`). Known failing at lock time on both backends; a corrective item.

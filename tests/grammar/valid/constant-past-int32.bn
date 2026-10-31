@@ -1,6 +1,6 @@
 // Constant integer expressions whose value lies past INT32 initialize a wider
 // binding (0.6.md C1: the minus applies to the literal's value, which must
-// fit the declared type). Known issue K33: bni stopped with NUMERIC_OVERFLOW;
+// fit the declared type). bni stopped with NUMERIC_OVERFLOW;
 // bnc panicked on the UINT64 difference.
 FUNCTION Start() AS VOID
     LET minimum AS INT64 = -9223372036854775808

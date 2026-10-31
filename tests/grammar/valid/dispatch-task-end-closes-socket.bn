@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 // The end of an ASYNC task ends its copy's program (0.6.md, "Isolation and
-// conformance"; known issue K90): a listener the task keeps in a STATIC
+// conformance"): a listener the task keeps in a STATIC
 // closes with the copy, so the program can bind the same port afterwards.
 IMPORT BNDispatch AS Dispatch
 IMPORT HOST.Net AS Net

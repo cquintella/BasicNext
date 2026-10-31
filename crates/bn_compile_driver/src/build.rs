@@ -266,7 +266,7 @@ fn build_inner(
         format: DebugInfo::format_for(),
     });
     // Runtime traps print what `bni` prints: the same renderer, catalog,
-    // and source (R6); the text is rendered here, not in the program.
+    // and source; the text is rendered here, not in the program.
     let result = match lower_validated_module_with_diagnostics(
         module,
         &policy,

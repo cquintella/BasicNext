@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Suppression gate (bucket 0.6.5 H.S3.b, AC4). `#[allow(dead_code)]` and
+//! Suppression gate. `#[allow(dead_code)]` and
 //! `#[allow(unused…)]` hide code from the compiler, so each one in
 //! `crates/*/src` is listed in `tests/suppressions.list` as
 //! `path<TAB>lint<TAB>reason`. The list only shrinks: an unlisted
@@ -151,7 +151,7 @@ fn every_suppression_is_listed_with_its_reason() {
         poison_panics.join("\n")
     );
 
-    // Cross-platform test determinism gate (bucket 0.6.7c): forbid inline `cfg!(target_os`
+    // Cross-platform test determinism gate: forbid inline `cfg!(target_os`
     // or `if std::mem::size_of::<` test branch bifurcations in FFI and compile-driver tests.
     for test_file in [
         "libraries/bn_stdlib/src/ffi_tests.rs",

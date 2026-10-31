@@ -1,4 +1,4 @@
-# bn_rt C exports no emitted code reaches (tests/abi_exports.rs; bucket 0.6.5
-# H.S3.a). symbol<TAB>category<TAB>reason. `pending` entries only shrink.
+# bn_rt C exports no emitted code reaches (tests/abi_exports.rs).
+# symbol<TAB>category<TAB>reason. `pending` entries only shrink.
 bn_rt_arc_dump	debugger	book ch. 20: a person calls it from lldb or gdb on a `bnc -g` program
 bn_rt_arc_info	debugger	book ch. 20: prints one object from a native debugger

@@ -4,8 +4,8 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! The 0.6.12 `HOST.FileSystem` operations under every execution policy
-//! (language/0.6/host.md, "Directories, private files, copy and move";
-//! bucket 0.6.12, FS-TEST-1): the same codes on `bni` and `bnc`, nothing
+//! (language/0.6/host.md, "Directories, private files, copy and move"):
+//! the same codes on `bni` and `bnc`, nothing
 //! written outside a `--write-root`, no link followed, a root never written,
 //! relative paths checked after a change of directory, and owner-only modes.
 //! Unix only: the fixture plants symbolic links.

@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 // An index of any integer type reads and writes the element it names on
-// both backends (known issue K71: wide indices were narrowed natively).
+// both backends (wide indices were narrowed natively).
 CLASS Box
     PUBLIC items AS INTEGER[3]
 

@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 // Each ASYNC task runs on its own fresh copy of the STATIC fields (0.6.md,
-// "Isolation and conformance"; known issue K44): it sees the values before
+// "Isolation and conformance"): it sees the values before
 // Start, vector rows included, not the caller's; its writes reach neither
 // the caller nor the next task, also when a serial queue reuses one worker
 // thread.

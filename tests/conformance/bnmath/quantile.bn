@@ -3,8 +3,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// BNMath.Quantile, R type 7 (math.md, "Descriptive statistics"; BDFL
-// decision G-5, 2026-10-27). Expected output: quantile.expected, every
+// BNMath.Quantile, R type 7 (math.md, "Descriptive statistics").
+// Expected output: quantile.expected, every
 // value from R 4.5.1 quantile(x, p, type = 7), checked with == against the
 // printed decimal (3.0999999999999996 is one unit below 3.1, as in R):
 //   - 7, 1, 6, 2, 5, 3, 4 at p = 0, 0.1, 0.25, 0.5, 0.9, 1;

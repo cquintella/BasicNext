@@ -10,7 +10,7 @@
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
     clippy::cast_precision_loss
-)] // Moved verbatim from the core (bucket 0.5.1d 1.5).
+)] // Moved verbatim from the core.
 
 use bn_diag::Diagnostic;
 use bn_source::Span;

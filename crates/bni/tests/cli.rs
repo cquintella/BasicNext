@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! Integration tests of the `bni` executable relocated verbatim from the
-//! root `tests/cli.rs` (bucket 0.6.0, 2.4 / D-060-05): the command words are
+//! root `tests/cli.rs`: the command words are
 //! unchanged, only the binary and the working directory differ.
 
 // Multi-line raw-string BN program templates read more clearly with named
@@ -822,8 +822,7 @@ fn socket_examples_exchange_tcp_and_udp_messages() {
         for family in [None, Some("--ipv6")] {
             // `{family:?}` would put quotes in the name, invalid on Windows. The
             // log and the port are this run's own: two suites running at once
-            // (two gates) shared the example's fixed ports and log names
-            // (bucket 0.6.5 Q.1).
+            // (two gates) shared the example's fixed ports and log names.
             let log = std::env::temp_dir()
                 .join(format!(
                     "basicnext-socket{protocol}{}-{}.jsonl",
@@ -890,7 +889,7 @@ fn socket_examples_exchange_tcp_and_udp_messages() {
                 .expect("read server status");
             // The server binds first: anything but "listening" (a port in use
             // exits with 3) is its failure, and the client must not run
-            // against whatever else holds the port (bucket 0.6.5 Q.1).
+            // against whatever else holds the port.
             if first_line.trim() != "listening" {
                 let mut rest = String::new();
                 let _ = server_stdout.read_to_string(&mut rest);
@@ -1042,7 +1041,7 @@ fn run_without_filesystem_rejects_an_unused_import() {
     assert!(!String::from_utf8_lossy(&output.stdout).contains("ran"));
 }
 
-/// Bucket 0.5.2a (2.5) — `bn run` honours `BN_EXEC_CAPTURE_LIMIT` and
+/// `bni run` honours `BN_EXEC_CAPTURE_LIMIT` and
 /// `BN_EXEC_TIMEOUT_MS` with the same observables as the native E10b/E14
 /// fixtures: one policy parser on both backends.
 #[test]
@@ -1339,7 +1338,7 @@ fn bnjson_companion_interprets() {
     );
 }
 
-/// D6: a syntax error says what was expected once, and a rule violation is
+/// A syntax error says what was expected once, and a rule violation is
 /// its own identity (E0101), both with cause and help.
 #[test]
 fn syntax_errors_state_the_expectation_or_the_rule() {

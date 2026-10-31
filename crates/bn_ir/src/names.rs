@@ -4,12 +4,12 @@
 
 //! The function-name protocol of the IR.
 //!
-//! Lowering spells synthesised functions by convention; since bucket 0.5.1c
-//! §3.2 what a function *is* lives in `Function::kind` / `owner`, and this
+//! Lowering spells synthesised functions by convention;
+//! what a function *is* lives in `Function::kind` / `owner`, and this
 //! table is informative for lowered functions. It stays load-bearing for
 //! callees that have no body in the module — intrinsics and provider-backed
 //! stubs (standard modules are not lowered) — which backends classify through
-//! [`classify`]. Documented in `docs/architecture/ir-contract.md`.
+//! [`classify`].
 
 /// What a function name says about the function.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -136,8 +136,8 @@ fn is_identifier(text: &str) -> bool {
 
 /// The `BNLog` class whose values are counted handles: a copy retains one,
 /// the end of a binding releases one, and the last release destroys it,
-/// closing its destination (known issue K61). Lowering and the ownership
-/// check apply the same rule; other library types are not counted yet (K63).
+/// closing its destination. Lowering and the ownership
+/// check apply the same rule; other library types are not counted yet.
 pub const BNLOG_COUNTED_CLASS: &str = "Logger";
 
 #[cfg(test)]

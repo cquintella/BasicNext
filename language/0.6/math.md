@@ -112,7 +112,7 @@ hold the same bits on every platform.
 | `BNMath.Gcd(a, b)` | Method, `(a AS INT64, b AS INT64) AS INT64`: the greatest common divisor, the largest integer that divides both, never negative. `Gcd(a, 0)` is `|a|` and `Gcd(0, 0)` is `0`. |
 | `BNMath.Lcm(a, b)` | Method, `(a AS INT64, b AS INT64) AS INT64`: the least common multiple, the smallest non-negative integer that both divide, `|a| / Gcd(a, b) * |b|`. A zero argument gives `0`. |
 
-BDFL decision, 2026-10-27 (bucket 0.6.10, G-5). An argument may be of any
+Decided (BDFL decision, 2026-10-27). An argument may be of any
 integer type whose values all fit `INT64` (every signed type, `BYTE`,
 `UINT16`, `UINT32`); a `UINT64` argument is a `TYPE_MISMATCH`, as it may not
 fit (write `AS INT64`). The result is computed exactly; a result outside
@@ -301,11 +301,11 @@ region's element count.
 `RANGE` → `NAN`. Empty one-argument `MIN`/`MAX` raises
 `INDEX_OUT_OF_BOUNDS`, regardless of the numeric element type. `STDEV` /
 `VARIANCE` with `n<2` → `NAN`. `PStdev` / `PVariance` with `n<1` → `NAN`;
-with one value they are `0.0` (BDFL decision G-5, 2026-10-27).
+with one value they are `0.0` (BDFL decision, 2026-10-27).
 
 #### Order, summation and overflow (0.6.10)
 
-BDFL decisions D-2, G-1 and G-11, 2026-10-26. `MEAN`, `VARIANCE`, `STDEV` and
+Decided (BDFL decision, 2026-10-26). `MEAN`, `VARIANCE`, `STDEV` and
 `RANGE` read the values in index order and neither sort nor copy
 them. Only `MEDIAN`, `QUARTILE1`, `QUARTILE3` and `MODE` sort a copy.
 
@@ -320,7 +320,7 @@ them. Only `MEDIAN`, `QUARTILE1`, `QUARTILE3` and `MODE` sort a copy.
   compensation recovers what a plain sum loses: `MEAN([1e16, 1, -1e16, 1])`
   is `0.5`.
 - `VARIANCE` uses the corrected two-pass algorithm (Chan, Golub and
-  LeVeque; BDFL decision G-11, 2026-10-26): with `m` the `MEAN` of the
+  LeVeque; BDFL decision, 2026-10-26): with `m` the `MEAN` of the
   values and `d = x − m` for each value in index order, the variance is
   `(Σd² − (Σd)² / n) / (n − 1)`, both sums compensated as `MEAN`'s.
   `STDEV` is the `SQRT` of `VARIANCE`. An infinite value gives `NAN`. With
@@ -344,7 +344,7 @@ the median of the lower half; `QUARTILE3` is the median of the upper half.
 When `n` is odd the overall median element is excluded from both halves.
 
 `Quantile(values, p)` is R's type 7 (`quantile(x, p, type = 7)`, R 4.5.1;
-BDFL decision G-5, 2026-10-27). `p` is any numeric argument, read as
+BDFL decision, 2026-10-27). `p` is any numeric argument, read as
 `FLOAT`. Sort a copy `x[1] ≤ … ≤ x[n]`; let `index = 1 + (n − 1) · p`,
 `lo = FLOOR(index)` and `hi = CEIL(index)` (R applies no fuzz to type 7).
 The result is `x[lo]`, or, when
@@ -354,8 +354,8 @@ or outside `[0, 1]` give `NAN` (R stops with an error for the last).
 Infinite values take part as in R: the quantile between `−INF` and `INF`
 is `NAN`.
 
-`Covariance(x, y)` and `Correlation(x, y)` (BDFL decisions G-5 and the
-overflow rules, 2026-10-27) take two numeric vectors or regions of the
+`Covariance(x, y)` and `Correlation(x, y)` (BDFL decision, 2026-10-27, for them and their
+overflow rules) take two numeric vectors or regions of the
 same length, of any element types; different lengths stop the program
 with `VECTOR_LENGTH_MISMATCH`. With `d = x − MEAN(x)` and
 `e = y − MEAN(y)` in index order, the covariance is the corrected
@@ -393,7 +393,7 @@ mode ties without `NAN` return `NA`.
 ### Algebraic reductions (0.6.11)
 
 `BNMath.Sum(values)`, `BNMath.Product(values)` and `BNMath.Dot(x, y)`
-(BDFL decision, 2026-10-27, bucket 0.6.11 S3.3). The operand is the same
+(BDFL decision, 2026-10-27). The operand is the same
 numeric vector or region as the descriptive statistics, and each element
 is converted to `FLOAT` the same way. The result is `FLOAT`. The walk is
 in index order and allocates nothing beyond that conversion: no copy and
@@ -439,8 +439,8 @@ overflows, even though the true sum is finite.
 ### Student's t (0.6.11)
 
 `BNMath.StudentT(t, df)`, `BNMath.StudentTPvalue(t, df)` and
-`BNMath.StudentTQuantile(p, df)` (BDFL decision, 2026-10-27, bucket
-0.6.11 S3.1 and S3.2). Each argument is numeric and is read as `FLOAT`.
+`BNMath.StudentTQuantile(p, df)` (BDFL decision, 2026-10-27). Each
+argument is numeric and is read as `FLOAT`.
 `df` is the degrees of freedom. The three are one rule in `bn_core_math`,
 built from `+`, `−`, `×`, `÷` and `SQRT` only, so both backends and every
 platform produce the same bits. The cumulative value and the p-value are

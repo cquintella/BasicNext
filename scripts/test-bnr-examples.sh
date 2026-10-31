@@ -86,14 +86,13 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Ensure binaries are built
-if [[ ! -x "$BNR_BIN" || ! -x "$BNI_BIN" ]]; then
-    printf "${CLR_CYAN}==> Building bnr and bni...${CLR_RESET}\n"
-    (cd "$ROOT_DIR" && cargo build -p bnr -p bni) || {
-        printf "${CLR_RED}Failed to build bnr/bni${CLR_RESET}\n" >&2
-        exit 1
-    }
-fi
+# Always build: an existing binary may be older than the sources. Cargo
+# makes this a no-op when nothing changed.
+printf "${CLR_CYAN}==> Building bnr and the test prerequisites...${CLR_RESET}\n"
+(cd "$ROOT_DIR" && bash scripts/build-test-prereqs.sh && cargo build --locked -p bnr) || {
+    printf "${CLR_RED}Failed to build bnr/bni${CLR_RESET}\n" >&2
+    exit 1
+}
 
 # Determine file list
 if [[ ${#TARGET_FILES[@]} -eq 0 ]]; then

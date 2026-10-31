@@ -1,4 +1,4 @@
-# BNSqlite texts (bn_catalog; AGENTS.md "No hard-coded messages").
+# BNSqlite texts (bn_catalog: no message is hard-coded).
 # One `key = value` per line; `{name}` is filled by the code.
 
 error.file_not_found.message = database file not found: {path}

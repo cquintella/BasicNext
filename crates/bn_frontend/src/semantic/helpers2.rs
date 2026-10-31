@@ -171,7 +171,7 @@ pub(crate) fn error(id: DiagId, message: impl Into<String>, span: Span) -> Diagn
 
 /// `TYPE_MISMATCH` for a value of type `actual` where `expected` is required.
 /// An integer literal out of the range of an integer type names its value
-/// and the range (bucket 0.6.11 S5.1); "INT32, but found INT32" said neither.
+/// and the range; "INT32, but found INT32" said neither.
 pub(crate) fn value_mismatch(
     expected: &Type,
     actual: &Type,

@@ -22,7 +22,7 @@ pub(crate) const I32_ALIGNMENT: u32 = 4;
 pub(crate) const POINTER_ALIGNMENT: u32 = 8;
 pub(crate) const AGGREGATE_ALIGNMENT: u32 = 8;
 
-/// Bytes of a STRING header before the payload: count, then length (G7-D2).
+/// Bytes of a STRING header before the payload: count, then length.
 pub(crate) const STRING_HEADER_BYTES: i64 = 16;
 /// Signed distance from the payload back to the length field.
 pub(crate) const STRING_LEN_FROM_PAYLOAD: i64 = (POINTER_BYTES as i64) - STRING_HEADER_BYTES;

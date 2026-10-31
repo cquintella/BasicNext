@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 // BNData failure messages carry their facts (column name, lengths, row
-// counts) on both backends (bucket 0.6.5c AC5, R6).
+// counts) on both backends.
 IMPORT BNData AS Data
 
 FUNCTION Start() AS INTEGER

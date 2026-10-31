@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! A `STRUCT` literal as an element of a vector literal (0.6.md, "STRUCT
-//! literals"; bucket 0.6.11, S5.5) builds the same values on both backends.
+//! literals") builds the same values on both backends.
 
 use super::support::{TestDir, bnc, bni, run};
 use std::process::Command;

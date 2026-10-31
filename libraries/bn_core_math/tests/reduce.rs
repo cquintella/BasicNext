@@ -193,7 +193,7 @@ fn float_of(statistic: Statistic, values: &[f64]) -> f64 {
     }
 }
 
-/// math.md "Order, summation and overflow" (D-2, G-1): `MEAN` is a
+/// math.md "Order, summation and overflow": `MEAN` is a
 /// Neumaier sum in index order over `n`; non-finite values are resolved
 /// first, and an overflowing sum is `±INF`, never `NaN`.
 #[test]
@@ -218,7 +218,7 @@ fn mean_is_a_compensated_sum_in_index_order() {
     assert_eq!(float_of(Statistic::Mean, &[-max, max, max]), max / 3.0);
 }
 
-/// The corrected two-pass variance (G-11): an infinite value gives `NAN`, an
+/// The corrected two-pass variance: an infinite value gives `NAN`, an
 /// overflow gives `INF`, and the classic shifted data is exact.
 #[test]
 fn variance_is_a_corrected_two_pass_in_index_order() {
@@ -228,7 +228,7 @@ fn variance_is_a_corrected_two_pass_in_index_order() {
     assert_eq!(float_of(Statistic::Variance, &[max, -max]), f64::INFINITY);
     assert_eq!(float_of(Statistic::Variance, &[-max, max]), f64::INFINITY);
     assert_eq!(float_of(Statistic::Stdev, &[max, -max]), f64::INFINITY);
-    // The mean of [MAX, MAX] overflows, so the variance is INF (G-1, the
+    // The mean of [MAX, MAX] overflows, so the variance is INF (math.md: the
     // derived rule decided (b) on 2026-10-26), though its true value is 0.
     assert_eq!(float_of(Statistic::Variance, &[max, max]), f64::INFINITY);
     let shifted = [1e9 + 4.0, 1e9 + 7.0, 1e9 + 13.0, 1e9 + 16.0];
@@ -263,7 +263,7 @@ fn zeros_keep_their_sign_through_mean_and_range() {
 /// (`https://www.itl.nist.gov/div898/strd/univ/data/NumAcc{1..4}.dat`):
 /// three values, then a centre followed by 500 (low, high) pairs. The
 /// expected standard deviation is the exact one of the binary64 data,
-/// computed with `bc` at 60 digits (G-11), so it tests the algorithm and
+/// computed with `bc` at 60 digits, so it tests the algorithm and
 /// not the decimal-to-binary error of the data itself.
 fn numacc(centre: f64, low: f64, high: f64) -> Vec<f64> {
     const PAIRS: usize = 500;
@@ -307,7 +307,7 @@ fn stdev_of_nist_numacc_is_the_exact_value_of_the_data() {
 
 /// `PStdev` on NIST `NumAcc1`–`NumAcc4` is within one unit in the last place of the
 /// exact population value of the binary64 data (`bc`, 60 digits): the same
-/// kernel as `STDEV` with divisor `n` (math.md, G-5); the variance and its
+/// kernel as `STDEV` with divisor `n` (math.md); the variance and its
 /// `SQRT` round once each, so `NumAcc4` lands one unit above. `NumAcc1` is
 /// `sqrt(2/3)`.
 #[test]

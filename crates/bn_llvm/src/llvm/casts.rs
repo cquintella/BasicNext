@@ -27,7 +27,7 @@ pub(crate) fn lower_cast(
     state: &mut EmissionState,
 ) {
     // An absence (`NULL`, `NA`, `EOF`) is FALSE as BOOLEAN, as in the
-    // interpreter (T.K9).
+    // interpreter.
     if matches!(source_ty, Type::Null | Type::NotAvailable | Type::EndOfFile) {
         super::emission3::emit_boolean_assignment(text, destination, false);
         return;

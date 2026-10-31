@@ -5,7 +5,7 @@
 
 //! The directory, private-create, copy and move operations of
 //! `HOST.FileSystem` (language/0.6/host.md, "Directories, private files, copy
-//! and move"; bucket 0.6.12, FS-CORE-2): one implementation for the
+//! and move"): one implementation for the
 //! interpreter provider and the native C ABI, over the entry operations of
 //! [`FsPolicy`], which never follow a final symbolic link. The kind of an
 //! entry is read first only to name the right failure; the act itself still
@@ -19,7 +19,7 @@ use crate::file_error::{Failure, FileError, FsOperation};
 use crate::policy::FsPolicy;
 use crate::secure_fs::EntryKind;
 
-/// Classifies a failed entry operation on `path`: the codes of bucket 0.6.12
+/// Classifies a failed entry operation on `path`: the entry codes of 0.6.12
 /// first, then the classification `FS.Open` uses (policy, directory, system).
 fn entry_failure(policy: &FsPolicy, path: &Path, write: bool, error: io::Error) -> Failure {
     match error.kind() {
@@ -31,7 +31,7 @@ fn entry_failure(policy: &FsPolicy, path: &Path, write: bool, error: io::Error) 
     }
 }
 
-/// A policy root is never a write target (bucket 0.6.12, G-3).
+/// A policy root is never a write target.
 fn root_refusal() -> Failure {
     Failure::PolicyDenied(bn_catalog::text("file", "entry.root_not_target"))
 }
@@ -259,7 +259,7 @@ mod tests {
     use std::path::Path;
 
     /// `EXDEV` (`ERROR_NOT_SAME_DEVICE`) is hard to provoke in a test; its
-    /// kind maps to `IO_FAILED` with no copy (bucket 0.6.12, R6).
+    /// kind maps to `IO_FAILED` with no copy.
     #[test]
     fn system_kinds_map_to_the_entry_failures() {
         let policy = FsPolicy::unrestricted();

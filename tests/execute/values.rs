@@ -739,7 +739,7 @@ END FUNCTION
 
 /// `IS` on a class of a BN-written standard module through its alias
 /// (`Str.Tokenizer`): the test uses the class identity its objects carry
-/// (known issue K41; `TRUE` was impossible before).
+/// (`TRUE` was impossible before).
 #[test]
 fn is_names_an_imported_bn_class_through_its_alias() {
     let source = r#"IMPORT BNString AS Str

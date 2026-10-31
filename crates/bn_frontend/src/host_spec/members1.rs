@@ -332,7 +332,7 @@ pub(super) fn declare_6(catalog: &mut Catalog) {
     catalog.members.insert("Float".into(), BTreeMap::new());
 }
 
-/// The `HOST.FileSystem` methods of bucket 0.6.12 (host.md, "Directories,
+/// The `HOST.FileSystem` methods added in 0.6.12 (host.md, "Directories,
 /// private files, copy and move"), added to the members `declare_4` lists.
 pub(super) fn declare_filesystem_directories(catalog: &mut Catalog) {
     let members = catalog

@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Parsing functions for Basic Next temporal literals and types (R8):
+//! Parsing functions for Basic Next temporal literals and types:
 //! DATE (`YYYY-MM-DD`), TIME (`HH:MM:SS.mmm`), and RFC 3339 TIMESTAMP.
 
 use super::civil::{self, DAY_MS, days_from_civil};

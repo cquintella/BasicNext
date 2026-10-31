@@ -1,14 +1,21 @@
 #![allow(clippy::map_unwrap_or)]
 
 //! Integration tests of the `bnc` executable (Clang-like surface).
-//! Relocated from the root `tests/bnc.rs` (bucket 0.6.0, 2.2/2.4); tests
+//! Relocated from the root `tests/bnc.rs`; tests
 //! of the deleted wrapper profiles (`-c`, `--check`, default interpret)
-//! were retired with those flags (D-060-07).
+//! were retired with those flags.
 use std::process::Command;
 
 const WORKSPACE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 
+// The binary comes fresh from `CARGO_BIN_EXE_bnc`, but the runtime archives
+// it links do not: the shared check stops on a stale build.
+#[allow(dead_code)]
+#[path = "../../../tests/support/prerequisites.rs"]
+mod prerequisites;
+
 fn bnc() -> Command {
+    prerequisites::ensure_fresh(std::path::Path::new(WORKSPACE));
     let path = std::env::var_os("BN_COMPILER")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_BIN_EXE_bnc")));
@@ -135,8 +142,8 @@ fn bnc_builds_and_runs_a_native_executable() {
     assert_eq!(String::from_utf8_lossy(&ran.stdout).trim(), "42");
 }
 
-/// Without `-g` the link drops runtime code the program never reaches (bucket
-/// 0.6.5 E, D2), so `bn_rt_arc_dump`, which only a debugger calls, is absent;
+/// Without `-g` the link drops runtime code the program never reaches, so
+/// `bn_rt_arc_dump`, which only a debugger calls, is absent;
 /// `a_native_debugger_reads_the_arc_core` shows a `-g` build keeps it.
 #[cfg(unix)]
 #[test]

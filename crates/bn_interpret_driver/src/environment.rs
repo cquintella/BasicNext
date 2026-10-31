@@ -14,7 +14,7 @@ pub use bn_lib_data::{CsvProvider, DataFailure};
 /// The providers this build ships. A `HostEnv` starts with **empty**
 /// registries (the language alone); the binaries and tests add the shipped
 /// `BN*` libraries and HOST capabilities through this trait, so the core
-/// never names a provider (bucket 0.5.1d, D-F2-07).
+/// never names a provider.
 pub trait HostEnvDefaults {
     #[must_use]
     fn with_default_providers(self) -> Self;

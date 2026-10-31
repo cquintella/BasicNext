@@ -295,7 +295,7 @@ method. A denied call is `FS.POLICY_DENIED` and changes nothing.
 
 The values 10 to 12 follow the existing ones (BDFL decision, 2026-10-28).
 
-Outside 0.6.12: listing a directory (`ListDirectory`, bucket 0.6.16),
+Outside 0.6.12: listing a directory (`ListDirectory`, planned for a later release),
 `chmod` / `chown`, `Seek`, `Flush`, and a `Path` object.
 
 The Jupyter 0.2 kernel does not grant files: a module that imports

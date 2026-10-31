@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! The IR function-name protocol is a contract (bucket 0.5.1c §3.1):
+//! The IR function-name protocol is a contract:
 //! the frontend may only emit documented name shapes, and the backends may
 //! only decode documented shapes. `bn_ir::names` is the single table.
 
@@ -118,7 +118,7 @@ fn every_emitted_function_name_follows_a_documented_shape() {
 }
 
 /// String literals a backend may still compare a callee name against. Since
-/// `FunctionKind` (bucket 0.5.1c §3.2) function identity is read from the
+/// `FunctionKind` function identity is read from the
 /// IR; only the super-call prefix and the intrinsic callees remain a string
 /// protocol. Synthesised suffixes (`.CONSTRUCTOR`, `.$fields`, …) are
 /// informative and must not be matched by a backend.
@@ -155,7 +155,7 @@ fn backends_only_decode_documented_name_shapes() {
             rust_files(&entry.path().join("src"), &mut sources);
         }
     }
-    // The shipped HOST shells and environment composition (bucket 0.6.0 1.2a).
+    // The shipped HOST shells and environment composition.
     rust_files(Path::new("crates/bn_interpret_driver/src"), &mut sources);
     let mut offenders = Vec::new();
     for path in &sources {

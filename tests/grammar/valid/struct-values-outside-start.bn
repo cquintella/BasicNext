@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// STRUCT values outside Start (known issue K13): made in a function and
+// STRUCT values outside Start: made in a function and
 // returned, made in a loop, copied (value semantics), holding an object
 // that is released once.
 

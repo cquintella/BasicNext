@@ -354,12 +354,12 @@ struct Instance {
 }
 
 /// The bindings of one call that ownership needs at run time. Every `Load`
-/// asks both questions, so neither may hash with `SipHash` (bucket 0.6.10 F.2).
+/// asks both questions, so neither may hash with `SipHash`.
 struct OwnershipFrame<'a> {
     /// Ended by `RELEASE` (`EndBinding`) and not stored again.
     released_symbols: IdSet<SymbolId>,
     /// `AS WEAK` locals, which read `NULL` once their object is gone: the
-    /// function's own set, borrowed for the call (F.5).
+    /// function's own set, borrowed for the call.
     weak_symbols: &'a std::collections::HashSet<SymbolId>,
 }
 
@@ -566,7 +566,7 @@ pub fn execute_named_with_host(
             )
         })?;
     // A fresh module copy: the handles it opens end with it (0.6.md,
-    // "Isolation and conformance"; K90).
+    // "Isolation and conformance").
     bn_core_copy::run(|| {
         let mut executor =
             Executor::new(validated.as_module(), input, output, host, None, None, None);
@@ -792,7 +792,7 @@ pub fn run_isolated<R>(
     host: &HostEnv,
     f: impl FnOnce(&mut dyn provider::CoreContext) -> R,
 ) -> R {
-    // A fresh module copy, as for an `ASYNC` task (K90).
+    // A fresh module copy, as for an `ASYNC` task.
     bn_core_copy::run(|| {
         let mut input = std::io::Cursor::new(Vec::<u8>::new());
         let mut output = Vec::<u8>::new();
@@ -952,7 +952,7 @@ pub fn default_span() -> Span {
 
 /// Stack the interpreter lets BN calls use on a thread whose size nobody
 /// told it: a thread Rust spawns has 2 MiB, so 1 MiB leaves the rest for
-/// the frames of one more call and the error report (known issue K53).
+/// the frames of one more call and the error report.
 pub(crate) const DEFAULT_STACK_BUDGET: usize = 1024 * 1024;
 
 thread_local! {

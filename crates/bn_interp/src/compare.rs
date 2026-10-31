@@ -70,7 +70,7 @@ pub fn equals(left: &Value, right: &Value) -> bool {
 /// `value IS test`. An object holds a class or interface alternative when its
 /// class is that type or reaches it through `classes` (a subclass, or a
 /// class implementing the interface: `0.6.md`, "IS" on declared
-/// alternatives; K27).
+/// alternatives).
 pub(super) fn is_value(
     value: &Value,
     test: &str,

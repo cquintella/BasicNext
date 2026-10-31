@@ -91,7 +91,7 @@ use super::support;
 use std::{fs, process::Command};
 use support::{TestDir, compile_native, run};
 
-/// General alternative ownership (T.6.C2): strings and objects in an alternative
+/// General alternative ownership: strings and objects in an alternative
 /// undergo exactly one release on reassignment or scope end, with no leak or double free.
 #[test]
 fn general_alternative_releases_strings_and_objects_cleanly() {
@@ -139,10 +139,10 @@ END FUNCTION
     assert_eq!(stdout, expected);
 }
 
-/// K89: Destroying an object releases the element buffer of its fixed-vector fields.
+/// Destroying an object releases the element buffer of its fixed-vector fields.
 #[test]
 fn object_destruction_releases_fixed_vector_element_buffer() {
-    let directory = TestDir::new("heap-k89-vector-field").expect("create directory");
+    let directory = TestDir::new("heap-vector-field").expect("create directory");
     let path = directory.join("vec_field.bn");
     fs::write(
         &path,

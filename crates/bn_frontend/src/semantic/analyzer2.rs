@@ -11,7 +11,7 @@ impl Analyzer {
             .split_once('.')
             .and_then(|(alias, name)| {
                 let module = self.module_imports.get(alias)?;
-                // `IMPLEMENTS Alias.Name` uses the import (K26).
+                // `IMPLEMENTS Alias.Name` uses the import.
                 self.type_alias_uses.borrow_mut().insert(alias.to_owned());
                 Some(format!("#{}.{name}", module.0))
             })

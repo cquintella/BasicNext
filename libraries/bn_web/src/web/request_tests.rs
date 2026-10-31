@@ -3,8 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Route parameters, request cookies and response cookies (bucket 0.6.5
-//! E.S0.d).
+//! Route parameters, request cookies and response cookies.
 
 use super::Route;
 use super::route_for_request;
@@ -12,7 +11,7 @@ use std::net::IpAddr;
 
 /// `Request.Param` reads the matched `:name` segments; `Request.Cookie`
 /// reads every `Cookie` header (RFC 6265 §5.4), unquotes a quoted value and
-/// keeps the first pair with the name (bucket 0.6.5 E.S0.d).
+/// keeps the first pair with the name.
 #[test]
 fn request_params_and_cookies_follow_the_route_and_rfc_6265() {
     let peer: IpAddr = "127.0.0.1".parse().unwrap();

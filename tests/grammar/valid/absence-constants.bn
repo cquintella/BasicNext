@@ -1,5 +1,5 @@
 // NULL, NA and EOF as BOOLEAN are FALSE, and EOF is a value a method can
-// return as STRING OR EOF; both build natively (T.K9, T.K8: bnc refused the
+// return as STRING OR EOF; both build natively (bnc refused the
 // cast and the EOF constant).
 CLASS Reader
     PUBLIC FUNCTION CONSTRUCTOR()

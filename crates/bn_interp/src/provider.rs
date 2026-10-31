@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! The seam between the language core and everything the core does not
-//! implement itself (bucket 0.5.1d): HOST capabilities and `BN*` library
+//! implement itself: HOST capabilities and `BN*` library
 //! modules. The core routes a callee to a provider and hands it a
 //! [`CoreContext`]; the provider owns its own resources and never sees the
 //! `Executor`.
@@ -21,7 +21,7 @@ use crate::HostEnv;
 use bn_runtime::{Handle, Heap};
 
 /// What a provider may ask of the core while serving a call. Grows only when
-/// a migrated provider needs it (`docs/architecture/interp-extraction.md`).
+/// a migrated provider needs it, so providers stay outside the core.
 pub trait CoreContext {
     /// Pointer regions (`NEW T[n]`), for providers that read vectors by handle.
     fn memory(&self) -> &Heap<Value>;

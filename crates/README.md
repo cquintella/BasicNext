@@ -153,6 +153,6 @@ A arquitetura do projeto impõe um fluxo de compilação estritamente desacoplad
 
 ## Regras Arquiteturais Obrigatórias
 
-* **Especificação Precede a Implementação**: Todos os crates seguem rigorosamente os contratos documentados em `docs/architecture/` e as especificações ativas em `language/0.6/`.
+* **Especificação Precede a Implementação**: Todos os crates seguem rigorosamente as especificações ativas em `language/0.6/`.
 * **IR Canônica Única**: Tanto o interpretador (`bn_runtime`/`bn_interp`) quanto o compilador nativo (`bn_llvm`) operam sobre a mesma representação validada produzida por `bn_ir::validate`.
 * **Grafo de Dependências Acíclico**: Não são permitidas dependências circulares entre crates. A hierarquia estrita é verificada continuamente pelo script `scripts/check-forbidden-deps.sh`.

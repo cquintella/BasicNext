@@ -43,7 +43,7 @@ impl Builder<'_> {
             Type::Named(name) => declared(name),
             // A `BNLog.Logger` is a counted handle: a copy retains it and the
             // end of its last binding destroys it, which closes its
-            // destination (known issue K61).
+            // destination.
             Type::ImportedNamed { module, name }
                 if self.model.bnlog_modules.contains(module)
                     && name == bn_ir::names::BNLOG_COUNTED_CLASS =>
@@ -52,7 +52,7 @@ impl Builder<'_> {
             }
             // Any other type of a natively implemented library (`BNJson`,
             // `BNData`, …) is a library handle the IR does not count yet
-            // (known issue K63: the same gap as K61).
+            // (the same gap a logger had before its handles were released).
             Type::ImportedNamed { module, .. } if self.model.standard_modules.contains(module) => {
                 false
             }

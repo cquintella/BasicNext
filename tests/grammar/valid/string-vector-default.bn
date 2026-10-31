@@ -6,7 +6,7 @@
 
 // The elements of a STRING vector without an initializer are "", in a local
 // and in a class field, and read, compare and concatenate as "" (known issue
-// K50: native builds stored a null pointer, printed "(null)" and stopped on
+// native builds stored a null pointer, printed "(null)" and stopped on
 // LEN).
 
 CLASS Holder

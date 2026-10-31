@@ -6,7 +6,7 @@
 //! Source-level debug information for `bnc -g`: the request type, the span
 //! markers `emit_function` records in the module, and the metadata table
 //! whose nodes the module attaches as `!dbg` when it renders
-//! (`LlvmModule::render_debug`, bucket 0.6.5 T.5.6c).
+//! (`LlvmModule::render_debug`).
 
 use std::{collections::BTreeMap, path::PathBuf};
 

@@ -238,8 +238,7 @@ fn completion_lists_host_members_from_the_frontend_catalog() {
     assert!(items.contains(&"SetTimeouts".into()), "{items:?}");
 }
 
-/// The 0.6.12 `HOST.FileSystem` members and codes come from the same table
-/// (bucket 0.6.12, FS-FE-1).
+/// The 0.6.12 `HOST.FileSystem` members and codes come from the same table.
 #[test]
 fn completion_lists_the_directory_members_and_codes() {
     let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nFS.\nEND FUNCTION\n";

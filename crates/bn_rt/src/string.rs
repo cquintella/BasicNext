@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! C ABI for Basic Next native strings (Sprint 7, G7-D1).
+//! C ABI for Basic Next native strings.
 //!
 //! Every non-null STRING payload is preceded by a 16-byte header. Callers
 //! read it directly: nothing guesses whether the header exists.
@@ -20,7 +20,7 @@ use super::{LibcStdout, trap_abi};
 /// Sentinel reference count of a static literal. Retain and release leave it.
 pub(crate) const IMMORTAL_REF_COUNT: u64 = u64::MAX;
 
-/// Highest count a heap string may reach. The next retain traps (G7-D3).
+/// Highest count a heap string may reach. The next retain traps.
 pub(crate) const MAX_STRING_REF_COUNT: u64 = i64::MAX as u64;
 
 /// Count a fresh heap string starts at.
@@ -49,14 +49,14 @@ pub(crate) fn live_string_count() -> u64 {
 ///
 /// # Safety
 ///
-/// G7-D1: `ptr` is null or points at a payload whose header occupies the
+/// `ptr` is null or points at a payload whose header occupies the
 /// `HEADER_SIZE` bytes before it, aligned to 8.
 #[allow(unsafe_code, clippy::cast_ptr_alignment)]
 fn header_mut<'a>(ptr: *mut c_char) -> Option<&'a StringHeader> {
     if ptr.is_null() || !(ptr as usize).is_multiple_of(std::mem::align_of::<StringHeader>()) {
         return None;
     }
-    // SAFETY: G7-D1. Every non-null STRING payload has this header.
+    // SAFETY: Every non-null STRING payload has this header.
     let header_ptr = unsafe { ptr.cast::<u8>().sub(HEADER_SIZE).cast::<StringHeader>() };
     let header = unsafe { &*header_ptr };
     let rc = header.ref_count.load(Ordering::Relaxed);
@@ -69,7 +69,7 @@ fn header_mut<'a>(ptr: *mut c_char) -> Option<&'a StringHeader> {
     Some(header)
 }
 
-/// Ends the program. The sentence comes from the string catalog (G7-D3).
+/// Ends the program. The sentence comes from the string catalog.
 fn trap_count(key: &'static str) -> ! {
     let message = bn_catalog::text("string", key);
     let _ = writeln!(std::io::stderr(), "{message}");
@@ -127,7 +127,7 @@ pub extern "C" fn bn_rt_str_release(ptr: *const c_char) -> i32 {
         if current == 1 {
             std::sync::atomic::fence(Ordering::Acquire);
             LIVE_STRINGS.fetch_sub(1, Ordering::Release);
-            // SAFETY: G7-D1: a non-null STRING is preceded by its header; the allocation is the header, the payload and a trailing NUL, and a null allocation is not read.
+            // SAFETY: a non-null STRING is preceded by its header; the allocation is the header, the payload and a trailing NUL, and a null allocation is not read.
             let base = unsafe { ptr.cast::<u8>().sub(HEADER_SIZE) };
             // SAFETY: `base` is the block `c_string_from_bytes` allocated, and
             // this thread observed the count fall from 1 to 0.
@@ -198,7 +198,7 @@ pub extern "C" fn bn_rt_cstr_copy(ptr: *const c_char) -> *mut c_char {
 pub fn slice_from_raw<'a>(ptr: *const c_char) -> Option<&'a [u8]> {
     let header = header_mut(ptr.cast_mut())?;
     let count = usize::try_from(header.len).ok()?;
-    // SAFETY: G7-D1. The header's `len` is the number of payload bytes this
+    // SAFETY: The header's `len` is the number of payload bytes this
     // constructor, or the compiler's static header, wrote.
     Some(unsafe { std::slice::from_raw_parts(ptr.cast::<u8>(), count) })
 }
@@ -265,7 +265,7 @@ pub extern "C" fn bn_rt_str_concat(
 }
 
 /// Orders two strings by Unicode scalar (`-1`, `0`, `1`). Valid UTF-8 byte
-/// order is scalar order (0.6.md, STRING comparisons, A5).
+/// order is scalar order (0.6.md, STRING comparisons).
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_str_cmp(left: *const c_char, right: *const c_char) -> i32 {
@@ -273,7 +273,7 @@ pub extern "C" fn bn_rt_str_cmp(left: *const c_char, right: *const c_char) -> i3
         return 0;
     }
     // `slice_from_raw` reads only the header length that precedes a STRING
-    // payload (G7-D1). A null pointer is an empty string.
+    // payload. A null pointer is an empty string.
     let left = slice_from_raw(left).unwrap_or(&[]);
     let right = slice_from_raw(right).unwrap_or(&[]);
     match left.cmp(right) {
@@ -387,7 +387,7 @@ pub extern "C" fn bn_rt_print_str(text: *const c_char, _len: i64) {
 }
 
 /// One line from stdin, without its trailing newline. Null means end of input.
-/// `reusable` is unused: the caller releases the previous buffer (G7-D5).
+/// `reusable` is unused: the caller releases the previous buffer.
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_input_line(_reusable: *mut c_char) -> *mut c_char {

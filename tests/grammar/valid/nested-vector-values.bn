@@ -1,6 +1,6 @@
 // Fixed vectors of two and three dimensions are values on both backends:
 // a copy, an argument and a returned vector never share a row (0.6.md,
-// value semantics; known issue K21).
+// value semantics).
 CLASS Grid
     PUBLIC STATIC cells AS INTEGER[2][3]
 END CLASS

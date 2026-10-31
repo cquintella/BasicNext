@@ -177,7 +177,7 @@ impl RootedDir {
     }
 
     /// Whether `path` is the root or lies under it: a read may name the root
-    /// itself (bucket 0.6.12, G-3); a write to it is refused by the entry
+    /// itself; a write to it is refused by the entry
     /// operation.
     #[must_use]
     pub(crate) fn covers(&self, path: &Path) -> bool {
@@ -383,7 +383,7 @@ fn open_or_make_directory_at(parent: &File, name: &std::ffi::CStr) -> io::Result
 }
 
 /// The mode a created directory asks for; the process umask narrows it, as
-/// for every file `FS.Open` creates (bucket 0.6.11, CMP-SEC-2).
+/// for every file `FS.Open` creates.
 #[cfg(unix)]
 const NEW_DIRECTORY_MODE: libc::mode_t = 0o777;
 

@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Shared string literals for runtime traps, numeric conversions and language intrinsics (R7).
+//! Shared string literals for runtime traps, numeric conversions and language intrinsics.
 //!
 //! One single source of truth used across `bn_interp`, `bn_llvm` and `bn_rt`.
 

@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// The end of an ASYNC task ends its copy's program (known issue K90): 200
+// The end of an ASYNC task ends its copy's program: 200
 // tasks each keep an open file in a STATIC; each closes with its copy, so a
 // low descriptor limit (the test runs it under `ulimit -n 64`) is never
 // reached. Writes fd.txt and seed.txt in the working directory.

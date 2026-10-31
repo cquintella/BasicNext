@@ -4,9 +4,9 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! Gate against logic duplicated between the interpreter side and the native
-//! side (bucket 0.6.5c S5.a, AC7). A rule lives once, in a shared core
+//! side. A rule lives once, in a shared core
 //! (`bn_core_*`, `bn_host_*` cores, `bn_types`, `bn_ir`, `bn_diag`); the two
-//! sides only adapt it. Two signals, both from the §1.2 scan of the bucket:
+//! sides only adapt it. Two signals:
 //! an identical window of six normalized lines, and an identical string
 //! literal of 24 characters or more, found on both sides. Test code is not
 //! scanned. `tests/shared_logic.allow` lists the accepted findings, each with
@@ -20,7 +20,7 @@ use std::{
 };
 
 /// Interpreter side: the interpreter, its library adapters, its driver and
-/// the HOST adapters that are not cores yet (bucket 0.6.5c D4, §5).
+/// the HOST adapters that are not cores yet.
 const INTERPRETER_SIDE: &[&str] = &[
     "crates/bn_interp/src",
     "crates/bn_interpret_driver/src",

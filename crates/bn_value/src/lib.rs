@@ -181,7 +181,7 @@ impl Value {
     }
 
     /// An `Error` with `code` and `message`. `Operation` and `Cause` stay
-    /// empty until the producer's domain supplies them (bucket 0.6.2b R4-R8).
+    /// empty until the producer's domain supplies them.
     #[must_use]
     pub const fn error(code: i32, message: SharedString) -> Self {
         Self::Error {

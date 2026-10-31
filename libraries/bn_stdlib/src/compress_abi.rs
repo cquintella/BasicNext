@@ -94,7 +94,7 @@ fn get_buffer(handle: u64) -> Option<Vec<u8>> {
 /// The execution policy of the compiled program (`bn_rt`), through which
 /// every file `BNCompress` touches is checked and opened
 /// (`language/0.6/bncompress.md`); its rooted operations never follow a
-/// symlink (bucket 0.6.11, CMP-SEC-1).
+/// symlink.
 struct CompiledPolicy;
 
 impl FileAccess for CompiledPolicy {

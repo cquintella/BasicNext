@@ -265,7 +265,7 @@ fn struct_fields(
 }
 
 /// Whether `ty` holds a counted `BNLog.Logger`: the logger itself, or the
-/// `Logger OR Error` that `Logger.New` makes (known issue K61).
+/// `Logger OR Error` that `Logger.New` makes.
 pub(crate) fn holds_counted_logger(module: &Module, ty: &Type) -> bool {
     bnlog_argument_kind(module, ty) == Some(BNLOG_LOGGER)
 }

@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Dead C ABI gate (bucket 0.6.5 H.S3.a, AC3). Every C export of `bn_rt`
+//! Dead C ABI gate. Every C export of `bn_rt`
 //! (`#[unsafe(no_mangle)] pub extern "C" fn`) is reached by code `bnc`
 //! emits (`crates/bn_llvm/src`) or by the Wasm host (`bin/`), or is listed
 //! in `tests/abi_exports.list` with a category and a reason:
@@ -82,31 +82,11 @@ fn archive_exports(archive: &Path) -> BTreeSet<String> {
 
 /// The C exports of `bn_rt` and `bn_stdlib`, read from the built archives
 /// (`nm -g`, as the ABI gate of `compiler_capabilities.rs` does), so the
-/// exports a macro generates are seen too. Run `cargo build -p bn_rt -p bn_stdlib`
-/// first (or set `BN_RT_LIB` / `BN_STDLIB_LIB`).
+/// exports a macro generates are seen too (archives resolved and checked
+/// fresh by the shared support).
 fn exports() -> BTreeSet<String> {
-    let rt_archive = std::env::var_os("BN_RT_LIB").map_or_else(
-        || {
-            let name = if cfg!(windows) {
-                "bn_rt.lib"
-            } else {
-                "libbn_rt.a"
-            };
-            PathBuf::from("target/debug").join(name)
-        },
-        PathBuf::from,
-    );
-    let stdlib_archive = std::env::var_os("BN_STDLIB_LIB").map_or_else(
-        || {
-            let name = if cfg!(windows) {
-                "bn_stdlib.lib"
-            } else {
-                "libbn_stdlib.a"
-            };
-            PathBuf::from("target/debug").join(name)
-        },
-        PathBuf::from,
-    );
+    let rt_archive = crate::support::runtime_archive("bn_rt");
+    let stdlib_archive = crate::support::runtime_archive("bn_stdlib");
     let mut symbols = archive_exports(&rt_archive);
     if stdlib_archive.is_file() {
         symbols.extend(archive_exports(&stdlib_archive));

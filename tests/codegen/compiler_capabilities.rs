@@ -6,7 +6,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use super::support::{ProcessOutput, TestDir, bnc, bni, run, workspace_root};
+use super::support::{ProcessOutput, TestDir, bnc, bni, run, runtime_archive, workspace_root};
 use serde::Deserialize;
 
 const PROCESS_TIMEOUT: Duration = Duration::from_secs(30);
@@ -650,7 +650,7 @@ fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
 }
 
 /// Every `bn_rt` function the backend can declare: the symbols of its one
-/// signature table (bucket 0.6.5 T.5.1).
+/// signature table.
 fn llvm_declared_runtime_symbols() -> BTreeSet<String> {
     let table = workspace_root().join("crates/bn_llvm/src/llvm/runtime_abi.rs");
     let source = fs::read_to_string(table).expect("read the signature table");
@@ -678,28 +678,8 @@ fn archive_exported_symbols(archive: &Path) -> BTreeSet<String> {
 }
 
 fn runtime_exported_symbols() -> BTreeSet<String> {
-    let rt_archive = std::env::var_os("BN_RT_LIB").map_or_else(
-        || {
-            let name = if cfg!(windows) {
-                "bn_rt.lib"
-            } else {
-                "libbn_rt.a"
-            };
-            workspace_root().join("target/debug").join(name)
-        },
-        PathBuf::from,
-    );
-    let stdlib_archive = std::env::var_os("BN_STDLIB_LIB").map_or_else(
-        || {
-            let name = if cfg!(windows) {
-                "bn_stdlib.lib"
-            } else {
-                "libbn_stdlib.a"
-            };
-            workspace_root().join("target/debug").join(name)
-        },
-        PathBuf::from,
-    );
+    let rt_archive = runtime_archive("bn_rt");
+    let stdlib_archive = runtime_archive("bn_stdlib");
     let mut symbols = archive_exported_symbols(&rt_archive);
     for symbol in &symbols {
         for forbidden_prefix in [

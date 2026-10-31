@@ -1,4 +1,4 @@
-// Basic Next interactive session symbol accumulator (Cluster A.2)
+// Basic Next interactive session symbol accumulator
 // Accumulates module declarations and variables across REPL / interactive turns
 // while compiling each submission into validated BN IR before execution (W1–W5).
 

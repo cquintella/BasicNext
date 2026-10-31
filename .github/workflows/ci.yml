@@ -12,7 +12,7 @@
 # bn_rt-windows-x86_64.lib, SHA256SUMS, bni.1, bnc.1, bnr.1.
 #
 # Third-party actions are pinned by commit SHA; the comment names the release.
-# LLVM is pinned to 22.1.8 on every OS (docs/project/usage.md requires 22).
+# LLVM is pinned to 22.1.8 on every OS (the toolchain requires LLVM 22).
 
 name: ci
 
@@ -44,10 +44,8 @@ jobs:
       - name: Clippy
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: Repository gates
-        run: |
-          tests/check-forbidden-deps.sh
-          tests/check-shared-cores.sh
-          bash tests/check-value-layout.sh
+        # The one gate list, shared with scripts/test-battery.sh --gates.
+        run: bash scripts/repository-gates.sh
 
   test:
     strategy:
@@ -114,10 +112,9 @@ jobs:
 
       - name: Build runtime and executables
         shell: bash
-        run: |
-          # Native bnc links these staticlibs; cargo test alone may not emit them.
-          cargo build --locked -p bn_rt -p bn_stdlib -p bn_web
-          cargo build --locked --workspace --bins
+        # Native bnc links the runtime archives; cargo test alone may not emit
+        # them. The script is the one source of that build.
+        run: bash scripts/build-test-prereqs.sh
 
       - name: Test
         shell: bash

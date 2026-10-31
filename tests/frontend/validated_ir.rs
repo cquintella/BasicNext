@@ -95,7 +95,7 @@ fn nested_default(dimensions: [u64; 2]) -> bn_ir::Module {
 
 /// W4: valid IR the target cannot represent fails the support check, not
 /// validation. A row longer than `u32::MAX` elements has no native layout;
-/// a `[2][3]` default has one (known issue K21).
+/// a `[2][3]` default has one.
 #[test]
 fn target_support_is_checked_after_language_validation() {
     let validated = validate_module(nested_default([2, 5_000_000_000])).expect("valid IR");
@@ -439,7 +439,7 @@ fn dispatch_await_requires_a_ticket_and_integer_timeout() {
     assert_eq!(error.code, "INVALID_IR");
 }
 
-/// `bnc` represents `EOF` constants (bucket 0.6.5, the `EOF` constant fix);
+/// `bnc` represents `EOF` constants;
 /// target-support rejection (W4) stays covered by the vector and literal
 /// cases.
 #[test]

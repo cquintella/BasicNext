@@ -298,7 +298,7 @@ pub extern "C" fn bn_rt_dispatch_submit(
                 let mut error = BNDispatchError::empty();
                 // The task runs on a fresh module copy: its objects and
                 // handle tables end when it returns (0.6.md, "Isolation and
-                // conformance"; K88, K90).
+                // conformance").
                 let status = bn_core_copy::run(|| {
                     crate::arc_abi::run_in_fresh_core(|| {
                         task(

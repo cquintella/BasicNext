@@ -1004,7 +1004,7 @@ fn host_env_with_import_is_accepted() {
 
 #[test]
 fn vector_literal_elements_are_checked_against_the_declared_destination() {
-    // A.S6.n: the element that is not assignable is named; an integer literal
+    // The element that is not assignable is named; an integer literal
     // is not a FLOAT64 element (0.6.md C2 converts only a scalar binding
     // initializer) and must fit a narrower integer element.
     let path = "tests/grammar/invalid/vector-literal-unrelated-element.bn";
@@ -1084,8 +1084,8 @@ fn async_function_parameter_count_and_types_are_validated() {
 
 #[test]
 fn imported_module_diagnostics_use_that_modules_source_and_spelling() {
-    let library = Path::new("/bn-k58-semantic/lib.bn");
-    let entry = Path::new("/bn-k58-semantic/main.bn");
+    let library = Path::new("/bn-module-semantic/lib.bn");
+    let entry = Path::new("/bn-module-semantic/main.bn");
     let class =
         "EXPORT CLASS Box\n    PUBLIC FUNCTION CONSTRUCTOR()\n    END FUNCTION\nEND CLASS\n";
     let mut overlays = std::collections::BTreeMap::new();

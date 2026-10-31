@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Construction gate for bucket 0.5.2a (Fragilidades 3 + 5): every HOST
+# Construction gate: every HOST
 # capability with a native twin has ONE core, execution policy is ONE type
 # behind ONE static, and the policy environment is parsed in ONE place.
 # Fails closed: a missing `rg` is a failure, never a pass.
@@ -26,7 +26,7 @@ scan_dirs=(src crates)
 [[ -d libraries ]] && scan_dirs+=(libraries)
 
 # (a) Process spawning: HOST.Exec core, trusted-path neighbor lookup, the
-# compilation driver (clang, bucket 0.6.0 1.3), and test
+# compilation driver (clang), and test
 # helpers that re-execute the test binary. Integration tests under
 # crates/*/tests drive the executables and are not scanned. Nothing else
 # may spawn.
@@ -79,7 +79,7 @@ while IFS= read -r file; do
   [[ $file =~ $allowed_arc ]] || fail "ARC mechanism outside bn_rt::arc: $file"
 done < <(rg -l 'strong_count|strong \+=|strong -=|weak_(register|unregister|invalidate)|bn_arc_weak_(objects|locations)|struct ArcCore|fn bn_rt_arc_' "${scan_dirs[@]}" --type rust || true)
 
-# (g) HOST.Env has one environment reader (bucket 0.6.5b): a source that
+# (g) HOST.Env has one environment reader: a source that
 # implements a HOST.Env operation reads the environment only through
 # bn_host_env; it never calls `env::var` or `var_os` itself.
 allowed_env_reader='^crates/bn_host_env/src/lib\.rs$'
@@ -90,7 +90,7 @@ while IFS= read -r file; do
 done < <(rg -l 'HOST\.Env\.' "${scan_dirs[@]}" --type rust -g '!*_tests.rs' -g '!**/tests.rs' -g '!crates/*/tests/**' -g '!libraries/*/tests/**' || true)
 
 # (h) BNDispatch queue worker pool and pending queue state live only in
-# bn_core_dispatch (bucket 0.6.5c S1).
+# bn_core_dispatch.
 allowed_dispatch_core='^(crates|libraries)/bn_core_dispatch/src/.*\.rs$'
 while IFS= read -r file; do
   file=${file//\\/\/}
@@ -98,7 +98,7 @@ while IFS= read -r file; do
   fail "BNDispatch worker pool or queue state outside bn_core_dispatch: $file"
 done < <(rg -l 'struct QueueInner|worker_handles' "${scan_dirs[@]}" --type rust -g '!*_tests.rs' -g '!**/tests.rs' -g '!crates/*/tests/**' -g '!libraries/*/tests/**' || true)
 
-# (i) Core text / civil temporal arithmetic lives only in bn_core_text (bucket 0.6.5c S2).
+# (i) Core text / civil temporal arithmetic lives only in bn_core_text.
 allowed_text_core='^crates/bn_core_text/src/.*\.rs$'
 while IFS= read -r file; do
   file=${file//\\/\/}
@@ -106,7 +106,7 @@ while IFS= read -r file; do
   fail "civil calendar conversions outside bn_core_text: $file"
 done < <(rg -l 'fn days_from_civil\(|fn civil_from_days\(' "${scan_dirs[@]}" --type rust -g '!*_tests.rs' -g '!**/tests.rs' -g '!crates/*/tests/**' -g '!libraries/*/tests/**' || true)
 
-# (j) Statistical reductions live only in bn_core_math (bucket 0.6.5c S2).
+# (j) Statistical reductions live only in bn_core_math.
 allowed_math_core='^(crates|libraries)/bn_core_math/src/.*\.rs$'
 while IFS= read -r file; do
   file=${file//\\/\/}
@@ -114,8 +114,8 @@ while IFS= read -r file; do
   fail "statistical reduction core outside bn_core_math: $file"
 done < <(rg -l 'fn reduce_f64\(name: &str' "${scan_dirs[@]}" --type rust -g '!*_tests.rs' -g '!**/tests.rs' -g '!crates/*/tests/**' -g '!libraries/*/tests/**' || true)
 
-# (k) BNLog record redaction and writing live only in bn_core_log (bucket 0.6.5c S3;
-# the record write is `Logger::write_event` since 0.6.5 P.15).
+# (k) BNLog record redaction and writing live only in bn_core_log (the
+# record write is `Logger::write_event` since 0.6.5).
 allowed_log_core='^(crates|libraries)/bn_core_log/src/.*\.rs$'
 while IFS= read -r file; do
   file=${file//\\/\/}
@@ -123,7 +123,7 @@ while IFS= read -r file; do
   fail "log record writing outside bn_core_log: $file"
 done < <(rg -l 'fn write_event\(' "${scan_dirs[@]}" --type rust -g '!*_tests.rs' -g '!**/tests.rs' -g '!crates/*/tests/**' -g '!libraries/*/tests/**' || true)
 
-# (l) A core is safe Rust for both adapters (bucket 0.6.5c AC4): no
+# (l) A core is safe Rust for both adapters: no
 # bn_value, no extern "C", no policy variable of its own (the
 # caller passes the policy). Every bn_core_* crate is a core; so are the HOST
 # cores bn_host_exec and bn_host_env.
@@ -135,7 +135,7 @@ for core in crates/bn_core_* libraries/bn_core_* crates/bn_host_exec crates/bn_h
   done < <(rg -l 'bn_value|extern "C"|"BN_[A-Z_]*POLICY"' "$core/src" --type rust -g '!*_tests.rs' -g '!**/tests.rs' || true)
 done
 
-# (m) bn_rt shrinks to the C ABI (bucket 0.6.5c S5.b, §5): its modules that
+# (m) bn_rt shrinks to the C ABI: its modules that
 # are not `*_abi` are listed in tests/bn_rt_modules.list. A module not
 # listed fails (no new domain logic in bn_rt), and so does a listed one that
 # is gone (the list only shrinks).

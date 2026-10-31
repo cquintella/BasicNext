@@ -235,7 +235,7 @@ fn emit_static_is(
     // analysis rejects the rest). `IS POINTER TO VOID` holds for every
     // non-NULL pointer (`0.6.md`). Any other `IS POINTER TO T` reads the
     // allocation: the element code (field 2 of a `POINTER TO VOID`, the
-    // static element of a typed pointer) and the length (K55).
+    // static element of a typed pointer) and the length.
     if matches!(left_ty, Type::Pointer { .. }) {
         return emit_pointer_is(text, destination, left, left_ty, test_name);
     }

@@ -5,8 +5,8 @@
 
 //! Cross-backend tests that need both executables (interpreter and
 //! compiler parity, shared-fixture matrices, help/man consistency). They
-//! drive `bni` and `bnc` from the workspace target directory (bucket 0.6.0,
-//! 2.4; the `bn` dispatcher was removed in 0.6.0 by Carlos's decision).
+//! drive `bni` and `bnc` from the workspace target directory (the `bn`
+//! dispatcher was removed in 0.6.0).
 
 // Multi-line raw-string BN program templates read more clearly with named
 // placeholders than with inlined path expressions.
@@ -29,22 +29,10 @@ use rustix::{
 #[cfg(unix)]
 use wait_timeout::ChildExt;
 
-/// The executables under test live in the workspace `target/<profile>/`;
-/// this package has no binary of its own, so build them first
-/// (`cargo build -p bni -p bnc`; `scripts/test-battery.sh` does).
+/// The executables under test, resolved and checked fresh by the shared
+/// support (this package has no binary of its own).
 fn executable(name: &str) -> Command {
-    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target");
-    path.push(if cfg!(debug_assertions) {
-        "debug"
-    } else {
-        "release"
-    });
-    path.push(format!("{name}{}", std::env::consts::EXE_SUFFIX));
-    assert!(
-        path.is_file(),
-        "{name} must be built first: cargo build -p bni -p bnc"
-    );
-    Command::new(path)
+    Command::new(crate::support::executable_path(name))
 }
 
 fn bni() -> Command {
@@ -1390,7 +1378,7 @@ fn build_keeps_distinct_input_values_alive_across_later_reads() {
 }
 
 /// A copy of a line `INPUT` read survives the next read of the same variable
-/// and the end of the reading function (bucket typed-llvm-emitter, defect of
+/// and the end of the reading function (a defect of
 /// 2026-10-07: the native copies read a freed, reused line buffer).
 #[test]
 fn build_keeps_copies_of_an_input_line_after_the_variable_reads_again() {
@@ -1676,7 +1664,7 @@ fn console_size_uses_stdout_when_stdin_is_piped() {
     assert_eq!(stdout, "80 24\n");
 }
 
-/// Bucket 0.5.2a (2.3 / 2.5, D-P-04) — a malformed policy input stops the
+/// a malformed policy input stops the
 /// process before `Start` on both backends: `CONFIG_INVALID`, exit 2, no
 /// program output, never a silent fallback to the defaults.
 #[test]
@@ -2013,7 +2001,7 @@ fn literal_into_numeric_alternative_matches_across_backends() {
     native_matches_interpreter(path);
 }
 
-/// TODO (bucket typed-llvm-emitter, Sprint 6 phase C): add
+/// TODO: add
 /// `native_matches_interpreter(path)` once `bnc` returns a vector by value.
 /// Until then `bnc` must refuse with a support diagnostic: its `{ ptr, len }`
 /// pointed into the returning function's frame.
@@ -2031,7 +2019,7 @@ fn vector_returns_and_vector_type_tests_follow_the_grammar() {
 
 /// Fixed vectors are values (`0.6.md`, "value / copy semantics") on both
 /// backends: assignment, argument, `STATIC` and return copy the elements
-/// (bucket typed-llvm-emitter, defect of 2026-10-07: the native backend
+/// (a defect of 2026-10-07: the native backend
 /// shared the storage, or pointed into a dead frame).
 #[test]
 fn fixed_vectors_are_copied_at_every_boundary() {
@@ -2047,7 +2035,7 @@ fn fixed_vectors_are_copied_at_every_boundary() {
 
 /// A parameter the body never reads takes its declared type in the native
 /// signature, its callers and an ASYNC trampoline, and a FLOAT32 argument
-/// crosses ASYNC widened (bucket typed-llvm-emitter, defects of 2026-10-07:
+/// crosses ASYNC widened (defects of 2026-10-07:
 /// `bnc` panicked on the unused ASYNC parameter, typed the plain one `ptr`,
 /// and stored the FLOAT32 as a `double` it was not).
 #[test]
@@ -2130,7 +2118,7 @@ fn upcast_argument_passed_to_ancestor_parameter() {
 
 #[test]
 fn interface_inherited_method_dispatch() {
-    // K6: a call through an interface reference dispatches natively too.
+    // a call through an interface reference dispatches natively too.
     native_and_interpreter_print(
         "tests/grammar/valid/interface-inherited-method.bn",
         "base\n",
@@ -2167,8 +2155,8 @@ fn upcast_to_imported_class_and_interface() {
 
 #[test]
 fn imported_class_implements_an_interface_through_its_own_alias() {
-    // K18: `Zoo` names `Shapes.Named` through its alias `Kinds`; the importer
-    // sees `Zoo.Dog` as a `Shapes.Named`. K26: the alias used only in
+    // `Zoo` names `Shapes.Named` through its alias `Kinds`; the importer
+    // sees `Zoo.Dog` as a `Shapes.Named`. the alias used only in
     // `IMPLEMENTS` is a use, so no unused-import warning.
     let path = "tests/modules/imported-qualified-interface/main.bn";
     native_and_interpreter_print(path, "hello Rex\nRex\n");
@@ -2179,7 +2167,7 @@ fn imported_class_implements_an_interface_through_its_own_alias() {
 
 #[test]
 fn is_holds_for_a_class_implementing_the_interface_alternative() {
-    // K27: `bni` compared only the class name, so `x IS Handler` was FALSE
+    // `bni` compared only the class name, so `x IS Handler` was FALSE
     // for a `Node` implementing `Handler`, and the chain stopped early.
     native_and_interpreter_print(
         "tests/grammar/valid/is-interface-alternative.bn",
@@ -2189,7 +2177,7 @@ fn is_holds_for_a_class_implementing_the_interface_alternative() {
 
 #[test]
 fn vectors_of_an_interface_or_base_class_hold_reaching_classes() {
-    // K28: the IR validator refused a vector of objects stored into a vector
+    // the IR validator refused a vector of objects stored into a vector
     // of a base class or interface (`INVALID_IR` on both backends).
     native_and_interpreter_print(
         "tests/grammar/valid/interface-vector.bn",
@@ -2215,7 +2203,7 @@ fn float32_special_constants_build_natively() {
 
 #[test]
 fn constant_integer_expressions_past_int32_fill_a_wider_binding() {
-    // K33: the interpreter checked a literal-typed result against INT32.
+    // the interpreter checked a literal-typed result against INT32.
     native_and_interpreter_print(
         "tests/grammar/valid/constant-past-int32.bn",
         "-9223372036854775808 8000000000 2147483648 -3000000000 18446744073709551614\n",
@@ -2224,7 +2212,7 @@ fn constant_integer_expressions_past_int32_fill_a_wider_binding() {
 
 #[test]
 fn vector_literals_take_their_declared_destination() {
-    // A.S6.n (D-1 = B): each element is checked against the declared element
+    // Each element is checked against the declared element
     // type, in every destination the specification names.
     native_and_interpreter_print(
         "tests/grammar/valid/vector-literal-declared-destination.bn",
@@ -2233,7 +2221,7 @@ fn vector_literals_take_their_declared_destination() {
          field got stored\n3000000001\n127\n3.75\n",
     );
     // Rows take the element type too; their objects are released once on
-    // both backends (known issue K30).
+    // both backends.
     native_and_interpreter_print(
         "tests/grammar/valid/vector-literal-declared-destination-rows.bn",
         "I GOT ROW\nH GOT ROW\nj got row\n",
@@ -2242,7 +2230,7 @@ fn vector_literals_take_their_declared_destination() {
 
 #[test]
 fn pattern_examples_that_needed_interface_dispatch_run() {
-    // K25: these four printed "UNSUPPORTED" until K6, K27 and K28 were fixed.
+    // these four printed "UNSUPPORTED" until interface dispatch, `IS` on an interface and vector upcasts were fixed.
     for (path, expected) in [
         (
             "examples/patterns/chain_of_responsibility.bn",
@@ -2270,7 +2258,7 @@ fn region_round_trip_through_pointer_to_void() {
 }
 
 /// `BNData` failure messages carry their facts on both backends, from typed
-/// `DataFailure` values (bucket 0.6.5c R6, AC5): no text mapping, no facts
+/// `DataFailure` values: no text mapping, no facts
 /// refilled with zeros. Also the spec rules both backends now share:
 /// a duplicate or empty label is `INVALID_ARGUMENT`; a negative index or
 /// slice bound is reported as written; conversion follows `VAL`.
@@ -2298,7 +2286,7 @@ fn data_failure_messages_carry_their_facts() {
 
 /// A `DataFrame` receiver still typed `DataFrame OR Error` (narrowed by an
 /// `IS Error` branch) reaches `Select` and `Slice` natively: one handle helper
-/// for every `BNData` operation (known issue K4; the native build emitted
+/// for every `BNData` operation (the native build emitted
 /// invalid LLVM before).
 #[test]
 fn bndata_operations_on_a_narrowed_receiver_build_natively() {
@@ -2316,7 +2304,7 @@ fn a_program_in_three_files_imports_through_both_backends() {
     native_and_interpreter_print("examples/two_files.bn", "20\n1\n2\n3\n");
 }
 
-/// S6 parity fixtures (bucket 0.6.5 E.S1.c): all six fixtures pass under `bni`
+/// S6 parity fixtures: all six fixtures pass under `bni`
 /// and fail under `bnc` with `TARGET_UNSUPPORTED_OP: ... BNWeb calls`.
 /// `BNWeb` S6 parity: all 6 normative fixtures produce identical output across `bni` and `bnc`.
 #[test]

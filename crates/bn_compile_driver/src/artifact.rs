@@ -61,8 +61,8 @@ pub(crate) fn native_program_link_args() -> &'static [&'static str] {
     native_program_link_args_for_os(std::env::consts::OS)
 }
 
-/// Link-time removal of runtime code the program never reaches (bucket
-/// 0.6.5 E, D2: a program links only what it uses, so the runtime archive can
+/// Link-time removal of runtime code the program never reaches (a program
+/// links only what it uses, so the runtime archive can
 /// hold `BNWeb` without growing other programs). The MSVC linker already
 /// applies `/OPT:REF` by default.
 pub(crate) fn dead_code_link_args_for_os(target_os: &str) -> &'static [&'static str] {
@@ -115,7 +115,7 @@ pub(crate) fn write_new(path: &Path, bytes: &str) -> io::Result<()> {
 }
 
 /// The private directory a native build keeps its LLVM IR and object file in
-/// (known issue K24; Carlos, 2026-10-09: beside the source being compiled).
+/// (Carlos, 2026-10-09: beside the source being compiled).
 /// Created exclusively (`mkdir` fails on an existing name, a planted
 /// symlink included), mode 0700 on Unix so nobody else can place a link
 /// inside it, and removed with its contents when dropped, on every path.

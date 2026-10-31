@@ -173,7 +173,7 @@ From a checkout, `cargo run -p bni -- run <file>` uses this tree's toolchain.
 - **`BNMath`**: compensated `Sum`, `Product`, `Dot` and Student's t distribution.
 - **Numeric literals**: out-of-range literals are `TYPE_MISMATCH` in every destination; an integer constant with no destination is `INT32`.
 - **Native string memory**: `bnc` programs free every new `STRING` buffer (a concatenation, `AS STRING` of a number); before, each one leaked.
-- Details: `docs/releases/0.6.11.md` and `docs/releases/0.6.12.md` in the documentation tree.
+- Details: the 0.6.11 and 0.6.12 release notes (https://github.com/cquintella/BasicNext/releases).
 
 ### 0.6.10
 

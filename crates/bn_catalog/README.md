@@ -2,7 +2,7 @@
 
 Text catalog for Basic Next: every user-visible string and every contract
 name that code looks up by identifier lives here, not as a string literal in
-Rust (`AGENTS.md`, “No hard-coded messages”; bucket 0.6.5 section H).
+Rust: no message is hard-coded.
 
 evita que tenha hardcodded no codigo do bn
 

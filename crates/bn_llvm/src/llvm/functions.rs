@@ -284,7 +284,7 @@ pub(crate) fn emit_function(
                     text.assign(format!("vret{}", destination.0), I::alloca(array));
                 }
             }
-            // Vector literals reserve storage at function entry so loops do not grow the stack (K62).
+            // Vector literals reserve storage at function entry so loops do not grow the stack.
             for instruction in function.blocks.iter().flat_map(|block| &block.instructions) {
                 if let Instruction::Vector {
                     destination,

@@ -139,7 +139,7 @@ if ((${#frontend_paths[@]} > 0)); then
     "${frontend_paths[@]}" || true)
 fi
 
-# Interpreter core (bucket 0.5.1d): `bn_interp` is the language alone. It
+# Interpreter core: `bn_interp` is the language alone. It
 # never names a HOST capability or `BN*` library implementation, nor the
 # god-crate modules that host them, nor a transport/crypto crate.
 interp_src="$repo_root/crates/bn_interp/src"

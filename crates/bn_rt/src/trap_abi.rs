@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Native runtime diagnostics (bucket 0.6.2b R6). `bnc` renders each trap
+//! Native runtime diagnostics. `bnc` renders each trap
 //! site's diagnostic from the shared catalog at compile time; the runtime
 //! only fills the facts known when the trap fires and prints the text. No
 //! catalog text lives here.

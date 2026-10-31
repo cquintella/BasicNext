@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// Runtime trap: HOST.Args read past its end (known issue K70: the native
+// Runtime trap: HOST.Args read past its end (the native
 // binary read past argv into the environment and printed a variable).
 FUNCTION Start() AS INTEGER
     LET at AS INTEGER = LEN(HOST.Args) + 1

@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// SPRINT 2 — array Append* / Get*At / Set*At with OOB fail-closed.
+// array Append* / Get*At / Set*At with OOB fail-closed.
 
 IMPORT BNJson AS Json
 

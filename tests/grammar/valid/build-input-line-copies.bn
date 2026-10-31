@@ -5,7 +5,7 @@
 
 // A line INPUT read keeps its text after the same variable reads again: a
 // copy in a vector, in another variable, returned by a function, or held by
-// a function parameter's caller. bucket typed-llvm-emitter, defect of
+// a function parameter's caller. A defect of
 // 2026-10-07 (the native copies read a freed, reused buffer).
 
 FUNCTION ReadLine() AS STRING

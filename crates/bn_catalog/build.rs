@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Generates the catalog constants (bucket 0.6.5h AC2): one module per file
+//! Generates the catalog constants: one module per file
 //! of `share/bn/catalog/`, one `&str` constant per entry, so a reference to
 //! a missing entry is a compile error; plus the embedded files and the
 //! sorted entry table that `text` searches.

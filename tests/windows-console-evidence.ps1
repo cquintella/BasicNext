@@ -1,5 +1,5 @@
 param(
-    [string]$Bn = ""
+    [string]$Bni = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -7,45 +7,49 @@ $repo = Split-Path -Parent $PSScriptRoot
 if ([Console]::IsOutputRedirected) {
     throw "Run this script directly in Windows Terminal or conhost; stdout must remain a TTY."
 }
-if (-not $Bn) {
+if (-not $Bni) {
+    # The one build of the test prerequisites, through Git Bash (the `bash`
+    # that PowerShell finds first may be the WSL launcher in System32).
+    $gitBash = Join-Path $env:ProgramFiles "Git\bin\bash.exe"
     Push-Location $repo
     try {
-        cargo build --locked
+        & $gitBash scripts/build-test-prereqs.sh
+        if ($LASTEXITCODE -ne 0) { throw "build-test-prereqs.sh failed: $LASTEXITCODE" }
     } finally {
         Pop-Location
     }
-    $Bn = Join-Path $repo "target\debug\bn.exe"
+    $Bni = Join-Path $repo "target\debug\bni.exe"
 }
-if (-not (Test-Path $Bn)) {
-    throw "bn executable not found: $Bn"
+if (-not (Test-Path $Bni)) {
+    throw "bni executable not found: $Bni"
 }
 
-$evidence = Join-Path $repo "done\project\windows-console-evidence.txt"
+$evidence = Join-Path $repo "target\windows-console-evidence.txt"
 Start-Transcript -Path $evidence -Force
 try {
     Write-Host "Host: $([System.Environment]::OSVersion.VersionString)"
     Write-Host "Terminal: $($Host.Name)"
     Write-Host "Initial RawUI window: $($Host.UI.RawUI.WindowSize.Width)x$($Host.UI.RawUI.WindowSize.Height)"
-    & $Bn run (Join-Path $repo "tests\grammar\valid\console-size.bn")
+    & $Bni run (Join-Path $repo "tests\grammar\valid\console-size.bn")
     if ($LASTEXITCODE -ne 0) { throw "initial console-size failed: $LASTEXITCODE" }
 
     Read-Host "Resize the terminal, then press Enter"
     Write-Host "Resized RawUI window: $($Host.UI.RawUI.WindowSize.Width)x$($Host.UI.RawUI.WindowSize.Height)"
-    & $Bn run (Join-Path $repo "tests\grammar\valid\console-size.bn")
+    & $Bni run (Join-Path $repo "tests\grammar\valid\console-size.bn")
     if ($LASTEXITCODE -ne 0) { throw "resized console-size failed: $LASTEXITCODE" }
 
-    & $Bn run (Join-Path $repo "tests\grammar\valid\console-print-at.bn")
+    & $Bni run (Join-Path $repo "tests\grammar\valid\console-print-at.bn")
     if ($LASTEXITCODE -ne 0) { throw "in-bounds PrintAt failed: $LASTEXITCODE" }
     Write-Host "PrintAt(1, 1): exit 0"
 
     foreach ($fixture in @("console-print-at-column-oob.bn", "console-print-at-row-oob.bn")) {
-        & $Bn run (Join-Path $repo "tests\grammar\valid\$fixture")
+        & $Bni run (Join-Path $repo "tests\grammar\valid\$fixture")
         if ($LASTEXITCODE -ne 1) { throw "$fixture returned $LASTEXITCODE instead of 1" }
         Write-Host "$fixture: exit 1 (expected INDEX_OUT_OF_BOUNDS above)"
     }
 
     $start = [System.Diagnostics.ProcessStartInfo]::new()
-    $start.FileName = $Bn
+    $start.FileName = $Bni
     $start.Arguments = "run `"$(Join-Path $repo 'tests\grammar\valid\console-size.bn')`""
     $start.UseShellExecute = $false
     $start.RedirectStandardInput = $true

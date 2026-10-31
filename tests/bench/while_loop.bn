@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// bni benchmark (bucket 0.6.10 F.0): the WHILE form of for_counted.bn.
+// bni benchmark: the WHILE form of for_counted.bn.
 FUNCTION Start() AS VOID
     LET s AS INTEGER = 0
     LET i AS INTEGER = 1

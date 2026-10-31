@@ -5,7 +5,7 @@
 
 
 // IS POINTER TO INTEGER on a POINTER TO VOID that holds one INTEGER.
-// The test reads the allocation (K55): true exactly when the conversion
+// The test reads the allocation: true exactly when the conversion
 // back to POINTER TO INTEGER would succeed.
 
 FUNCTION Start() AS VOID

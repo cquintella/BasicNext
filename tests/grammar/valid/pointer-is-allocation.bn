@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// IS POINTER TO T reads the allocation (0.6.md, K55). VOID matches every
+// IS POINTER TO T reads the allocation (0.6.md). VOID matches every
 // non-NULL pointer. A typed test matches the element and, when it names a
 // length, that length. NULL is not a pointer.
 FUNCTION Start() AS VOID

@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// The end of an ASYNC task ends its copy's program (known issue K90): a
+// The end of an ASYNC task ends its copy's program: a
 // connection the task keeps in a STATIC closes with the copy, so the
 // transaction it left open rolls back and the database is free for the
 // program. Writes probe.db in the working directory.

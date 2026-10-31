@@ -48,7 +48,7 @@ resolved by an operation whose contract requires an address.
 
 ### CIDR text (0.6.5)
 
-Decided 2026-10-10 (Carlos; known issue K39). `CIDR.Parse(text)` accepts
+Decided (BDFL decision, 2026-10-10). `CIDR.Parse(text)` accepts
 `<address>/<prefix>` and nothing else:
 
 - the address follows the strict address parse (`Address.Parse`);
@@ -82,7 +82,7 @@ and idempotent close. Every received datagram reports its source endpoint.
 Truncation is an explicit result; it must not be reported as a complete
 datagram. A received `UDPPacket` reports it with `WasTruncated()`
 (`TRUE` when the datagram was larger than the buffer and only its first
-bytes were kept). Decided 2026-10-10 (Carlos; K39): `WasTruncated` is the
+bytes were kept). Decided (BDFL decision, 2026-10-10): `WasTruncated` is the
 one name; the synonym `Truncated()` is removed. Arbitrary raw IP packets are outside 0.3.
 
 ## ICMP Echo

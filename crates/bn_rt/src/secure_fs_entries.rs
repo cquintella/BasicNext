@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Entry operations of `HOST.FileSystem` on Unix (bucket 0.6.12, FS-CORE-1):
+//! Entry operations of `HOST.FileSystem` on Unix:
 //! the kind of an entry, an owner-only create of a directory or a file, a
 //! read open, the removal of an empty directory, a rename and a change of
 //! directory, none of which follows a final symbolic link. Each acts through
@@ -318,7 +318,7 @@ impl Anchor {
     }
 
     /// Opens the final directory without following a symbolic link. A link is
-    /// not a directory here (G-2): Linux reports `ELOOP` and macOS `ENOTDIR`
+    /// not a directory here: Linux reports `ELOOP` and macOS `ENOTDIR`
     /// for it, and both become `ENOTDIR`.
     fn open_final_directory(&self, name: &CStr) -> io::Result<File> {
         // SAFETY: the parent descriptor is live and `name` is a NUL-terminated
@@ -352,7 +352,7 @@ impl Anchor {
 }
 
 /// Sets `mode` on the open entry and checks that no group or other bit is
-/// left (G-6: the mode bits are the check; inherited ACLs are not read).
+/// left (the mode bits are the check; inherited ACLs are not read).
 // `mode_t` is `u16` on macOS and `u32` on Linux: the conversion is needed
 // on the first and the same type on the second.
 #[allow(clippy::useless_conversion)]

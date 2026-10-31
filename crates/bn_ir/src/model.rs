@@ -145,7 +145,7 @@ pub struct Module {
     pub bnffi_import: Option<Span>,
 }
 
-/// Role of a function in the module (bucket 0.5.1c §3.2). The name of a
+/// Role of a function in the module. The name of a
 /// synthesised function still follows `crate::names`, but that spelling is
 /// informative; `validate` and both backends rely on this field.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

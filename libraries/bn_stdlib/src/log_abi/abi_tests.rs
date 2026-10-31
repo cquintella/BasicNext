@@ -164,7 +164,7 @@ fn file_transport_reports_policy_denial_after_intermediate_symlink_swap() {
 }
 
 /// A logger lives while a binding holds it: a copy retains it, each binding's
-/// end releases one, and the last release destroys it (known issue K61).
+/// end releases one, and the last release destroys it.
 #[test]
 fn the_last_release_destroys_a_logger() {
     let label = bn_string("app");

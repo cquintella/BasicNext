@@ -688,7 +688,7 @@ mod tests {
 
     /// The 0.6.12 exports reject a null or non-UTF-8 path and a null out
     /// pointer, clear every out slot before work, and register a handle only
-    /// for a created file (bucket 0.6.12, FS-NAT-1).
+    /// for a created file.
     #[test]
     #[allow(clippy::borrow_as_ptr)]
     fn directory_exports_check_their_pointers() {

@@ -12,6 +12,12 @@ mod catalog_keys;
 mod dependency_gate;
 #[path = "gates/migration_ledger.rs"]
 mod migration_ledger;
+#[path = "gates/no_python.rs"]
+mod no_python;
+#[path = "gates/pre_commit.rs"]
+mod pre_commit;
+#[path = "gates/public_references.rs"]
+mod public_references;
 #[path = "gates/shared_cores.rs"]
 mod shared_cores;
 #[path = "gates/shared_logic.rs"]
@@ -20,6 +26,8 @@ mod shared_logic;
 mod source_size;
 #[path = "gates/suppressions.rs"]
 mod suppressions;
+#[path = "gates/test_prereqs.rs"]
+mod test_prereqs;
 #[path = "gates/test_support.rs"]
 mod test_support;
 #[path = "gates/text_literals.rs"]

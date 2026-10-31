@@ -16,7 +16,7 @@ impl Executor<'_, '_> {
     ) -> Result<Value, Diagnostic> {
         // The language intrinsics first: a counted FOR calls two of them on
         // every iteration, and none has a dot, a `HOST.` or `#` prefix, or a
-        // temporal name, so no later test would claim them (bucket 0.6.10 F.4).
+        // temporal name, so no later test would claim them.
         if name == bn_ir::names::STOPPING {
             let code = self.stop_code.take();
             self.unwinding = code;

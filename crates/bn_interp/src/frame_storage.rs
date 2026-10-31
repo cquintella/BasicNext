@@ -5,7 +5,7 @@
 
 //! The storage of one call frame: the SSA values, indexed by their dense
 //! `ValueId`, and the bindings, keyed by `SymbolId` with a hasher made for
-//! compiler-assigned integer ids (bucket 0.6.10 F.2: every instruction reads
+//! compiler-assigned integer ids (every instruction reads
 //! or writes them, and `SipHash` was the largest cost of the interpreter).
 
 use std::collections::{HashMap, HashSet};
@@ -113,7 +113,7 @@ type FrameStorage = (IdMap<SymbolId, Value>, ValueSlots);
 const FRAME_POOL_CAPACITY: usize = 64;
 
 /// Frames of returned calls, reused so a call does not allocate its maps
-/// again (bucket 0.6.10 F.5). A call takes a frame for itself, so nested
+/// again. A call takes a frame for itself, so nested
 /// calls never share one, and a frame comes back empty: a reused slot must
 /// never show a value of an earlier call.
 #[derive(Debug, Default)]

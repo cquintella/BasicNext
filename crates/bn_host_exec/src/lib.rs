@@ -3,8 +3,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! `HOST.Exec.Run` — the one implementation both backends call (bucket
-//! 0.5.1d, D-F2-04). This file holds the execution policy the caller hands
+//! `HOST.Exec.Run` — the one implementation both backends call. This file
+//! holds the execution policy the caller hands
 //! in, the portable failure codes, and [`run`]: spawn with a closed stdin,
 //! capture both streams concurrently under a per-stream ceiling, enforce
 //! the wall-clock timeout, and map the exit status. The interpreter provider
@@ -407,8 +407,8 @@ mod tests {
         assert!(start.elapsed() < Duration::from_secs(2));
     }
 
-    /// A process the child started keeps stdout open after the child exits
-    /// (known issue K72): its output is kept, not dropped as an empty
+    /// A process the child started keeps stdout open after the child exits:
+    /// its output is kept, not dropped as an empty
     /// success.
     #[cfg(unix)]
     #[test]

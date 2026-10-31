@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Construction gate for bucket 0.5.2.1b: keep runtime records positional,
+# Construction gate: keep runtime records positional,
 # field references resolved, and LLVM layout metadata-driven. Fails closed.
 set -euo pipefail
 

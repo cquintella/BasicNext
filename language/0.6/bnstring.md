@@ -53,7 +53,7 @@ Logical import name: `BNString`. Path is not used in source.
 | `Next() AS STRING OR EOF` | Next field |
 | `Reset() AS VOID` | Rewind |
 
-Preferred over Split→`STRING[]` (see `todo/proposals/string-extras.md`).
+Preferred over Split→`STRING[]`.
 
 ## Precompiled objects
 

@@ -1,7 +1,22 @@
 #!/usr/bin/env bash
+#   tests/check-forbidden-deps.sh            # the working tree
+#   tests/check-forbidden-deps.sh --cached   # the index (pre-commit hook)
 set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+# --cached checks what a commit would hold: the index is exported to a
+# scratch tree and this gate, as staged, runs there against the staged
+# manifests and lock (its repo_root is the snapshot).
+if [[ ${1:-} == --cached ]]; then
+  snapshot=$(mktemp -d "${TMPDIR:-/tmp}/bn-forbidden-deps-index.XXXXXX")
+  trap 'rm -rf "$snapshot"' EXIT
+  git -C "$repo_root" checkout-index --all --prefix="$snapshot/"
+  status=0
+  (cd "$snapshot" && CARGO_TARGET_DIR="$repo_root/target" bash tests/check-forbidden-deps.sh) \
+    || status=$?
+  exit "$status"
+fi
 checker="$repo_root/scripts/check-forbidden-deps.sh"
 
 if [[ ! -x "$checker" ]]; then
@@ -102,23 +117,32 @@ fi
 echo "IR model dependency check passed"
 
 # E.S1.a / AC9: bnc and bn_rt must not link or depend on external BN* library stacks.
+# One `cargo tree` per package, from this tree's manifest and lock: it must
+# succeed (an error is a failure, never "no such dependency"), and
+# `--locked` never rewrites Cargo.lock.
+dependencies_of() {
+  (cd "$repo_root" && cargo tree --locked -p "$1" --prefix none --format '{p}') \
+    | sed 's/ .*//' | sort -u
+}
+bnc_dependencies=$(dependencies_of bnc) || { echo "cargo tree failed for bnc" >&2; exit 1; }
+runtime_dependencies=$(dependencies_of bn_rt) || { echo "cargo tree failed for bn_rt" >&2; exit 1; }
 for forbidden in tokio hyper rustls rusqlite libffi libloading bn_core_json bn_stdlib bn_web; do
-  if cargo tree -p bnc -i "$forbidden" >/dev/null 2>&1; then
+  if grep -qx "$forbidden" <<< "$bnc_dependencies"; then
     echo "bnc unexpectedly depends on optional library crate: $forbidden" >&2
     exit 1
   fi
-  if cargo tree -p bn_rt -i "$forbidden" >/dev/null 2>&1; then
+  if grep -qx "$forbidden" <<< "$runtime_dependencies"; then
     echo "bn_rt unexpectedly depends on optional library crate: $forbidden" >&2
     exit 1
   fi
 done
-if cargo tree -p bn_rt -i serde_json >/dev/null 2>&1; then
+if grep -qx serde_json <<< "$runtime_dependencies"; then
   echo "bn_rt unexpectedly depends on serde_json" >&2
   exit 1
 fi
-# Positive sanity check: ensure inverted search works on an actual dependency
-if ! cargo tree -p bnc -i bn_frontend >/dev/null 2>&1; then
-  echo "cargo tree inverted query sanity check failed for bn_frontend" >&2
+# Positive sanity check: the listing holds a real dependency.
+if ! grep -qx bn_frontend <<< "$bnc_dependencies"; then
+  echo "cargo tree listing sanity check failed for bn_frontend" >&2
   exit 1
 fi
 echo "bnc web-runtime dependency gate (AC9) passed"

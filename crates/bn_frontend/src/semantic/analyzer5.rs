@@ -113,8 +113,8 @@ impl Analyzer {
                 let mut element_type = Type::Unknown;
                 for value in values {
                     let actual = self.expression(value, locals)?;
-                    // Decision D-2 (0.6.md, "Vector literals take a declared
-                    // destination"): a scalar element is checked against the
+                    // The rule of 0.6.md, "Vector literals take a declared
+                    // destination": a scalar element is checked against the
                     // first element's type by the assignment rules; rows keep
                     // their own check.
                     let rows = matches!(element_type, Type::Vector { .. });
@@ -356,7 +356,7 @@ impl Analyzer {
                     self.validate_is_test(&left_type, right, expression.span)?;
                     Ok(Type::Boolean)
                 } else if (operator == "AND" || operator == "OR") && left_type == Type::Boolean {
-                    // The right operand sees a narrowed binding (0.6.md, IS, D1).
+                    // The right operand sees a narrowed binding (0.6.md, "`IS` narrowing").
                     let narrowed = self.narrowed_locals(left, locals, operator == "AND")?;
                     let right_type = self.expression(right, &narrowed)?;
                     if right_type != Type::Boolean {

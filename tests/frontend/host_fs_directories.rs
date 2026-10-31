@@ -5,7 +5,7 @@
 
 //! The 0.6.12 `HOST.FileSystem` members type-check from the same table as
 //! the older ones (language/0.6/host.md, "Directories, private files, copy
-//! and move"; bucket 0.6.12, FS-FE-1): the lifecycle fixture passes, and a
+//! and move"): the lifecycle fixture passes, and a
 //! wrong arity, argument or result type is a `TYPE_MISMATCH`.
 
 use bn_frontend::lexer::lex;

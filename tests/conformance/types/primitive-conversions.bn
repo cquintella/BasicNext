@@ -17,8 +17,8 @@
 //   - AS STRING is the text PRINT writes (0.6.md C3): floats as the shortest
 //     decimal that reads back as the same value of their own type, always
 //     with a decimal point.
-// Spec silent (examples/conversions.bn is the reference; normative gap
-// recorded in ongoing/known_issues.md K32): the integer conversion table, the
+// Spec silent (examples/conversions.bn is the reference; a normative gap):
+// the integer conversion table, the
 // PRINT text of TIMESTAMP (taken as its INT64 alias), NAN AS BOOLEAN.
 
 FUNCTION PassByte(value AS BYTE) AS BYTE

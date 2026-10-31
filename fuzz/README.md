@@ -70,6 +70,5 @@ errors are not.
 
 ## History
 
-Introduced on the closed 0.5.1 architecture line (see `done/bucket-0.5.1a.md`
-and `AGENTS.md`). Corpus and artifacts stay local; only the crate and targets
-are tracked.
+Introduced with the 0.5.1 architecture line. Corpus and artifacts stay local;
+only the crate and targets are tracked.

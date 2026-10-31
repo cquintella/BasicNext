@@ -54,12 +54,12 @@ pub(crate) fn slice_from_raw<'a>(ptr: *const c_char) -> Option<&'a [u8]> {
     if ptr.is_null() || !(ptr as usize).is_multiple_of(std::mem::align_of::<StringHeader>()) {
         return None;
     }
-    // SAFETY: G7-D1. A non-null, aligned STRING payload is preceded by its header.
+    // SAFETY: A non-null, aligned STRING payload is preceded by its header.
     let header_ptr = unsafe { ptr.cast::<u8>().sub(HEADER_SIZE).cast::<StringHeader>() };
-    // SAFETY: G7-D1. `header_ptr` is that header, and it stays live for this read.
+    // SAFETY: `header_ptr` is that header, and it stays live for this read.
     let header = unsafe { &*header_ptr };
     let count = usize::try_from(header.len).ok()?;
-    // SAFETY: G7-D1. `header.len` is the number of payload bytes at `ptr`.
+    // SAFETY: `header.len` is the number of payload bytes at `ptr`.
     Some(unsafe { std::slice::from_raw_parts(ptr.cast::<u8>(), count) })
 }
 
@@ -82,12 +82,12 @@ pub(crate) fn string_text(ptr: *const c_char) -> Option<String> {
 pub(crate) fn c_string_from_bytes(bytes: &[u8]) -> *mut c_char {
     let len = bytes.len();
     let total_alloc = HEADER_SIZE + len + 1;
-    // SAFETY: G7-D1: a non-null STRING is preceded by its header; the allocation is the header, the payload and a trailing NUL, and a null allocation is not read.
+    // SAFETY: a non-null STRING is preceded by its header; the allocation is the header, the payload and a trailing NUL, and a null allocation is not read.
     let base = unsafe { libc::malloc(total_alloc) }.cast::<u8>();
     if base.is_null() {
         return std::ptr::null_mut();
     }
-    // SAFETY: G7-D1: a non-null STRING is preceded by its header; the allocation is the header, the payload and a trailing NUL, and a null allocation is not read.
+    // SAFETY: a non-null STRING is preceded by its header; the allocation is the header, the payload and a trailing NUL, and a null allocation is not read.
     unsafe {
         base.cast::<StringHeader>().write(StringHeader {
             ref_count: std::sync::atomic::AtomicU64::new(1),

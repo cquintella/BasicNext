@@ -12,7 +12,7 @@ use std::path::PathBuf;
 
 use bn_interp::provider::Providers;
 
-/// The libraries this build of `bn` ships (bucket 0.5.1d, D-F2-07).
+/// The libraries this build of `bn` ships.
 #[must_use]
 pub(crate) fn default_libraries(ffi_paths: &[PathBuf]) -> Providers {
     let _ = ffi_paths;

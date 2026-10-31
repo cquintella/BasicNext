@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Behaviour locks for the bni performance work (bucket 0.6.10 F.1): the
+//! Behaviour locks for the bni performance work: the
 //! runtime errors and ownership results an interpreter rewrite could change,
 //! held equal on both backends. The value-semantics locks are the
 //! conformance cell `tests/conformance/interp/value-semantics.bn`; the
@@ -47,7 +47,7 @@ const LOCKS: &[Lock] = &[
         stdout: "",
     },
     // An integer constant with no destination is INT32 arithmetic (0.6.md,
-    // "Integer constants without a destination"; bucket 0.6.11 S5.2).
+    // "Integer constants without a destination").
     Lock {
         name: "int32-constant-plus-one",
         program: "    PRINT 2147483647 + 1\n",
@@ -106,8 +106,7 @@ const LOCKS: &[Lock] = &[
         code: None,
         stdout: "1152921504606846976 1500000000 15 -2 1\n",
     },
-    // Only the exact uppercase spelling is reserved (keywords.md, bucket
-    // 0.6.11 S5.4).
+    // Only the exact uppercase spelling is reserved (keywords.md).
     Lock {
         name: "mixed-case-reserved-spellings",
         program: "    LET New AS INTEGER = 1\n    LET while AS INTEGER = 2\n    LET Date AS INTEGER = 3\n    PRINT New + while + Date\n",

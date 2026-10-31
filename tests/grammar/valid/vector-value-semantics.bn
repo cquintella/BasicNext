@@ -5,7 +5,7 @@
 
 // Fixed vectors are values (0.6.md, "value / copy semantics"): assignment,
 // argument, STATIC and RETURN copy the elements, and a vector of objects
-// releases the replaced elements. bucket typed-llvm-emitter, defect of
+// releases the replaced elements. A defect of
 // 2026-10-07 (the native backend shared storage or kept a dead frame).
 
 CLASS Box

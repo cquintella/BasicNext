@@ -1,8 +1,8 @@
 # Contributing
 
-Before implementing a language change, open a proposal in `todo/proposals/`
+Before implementing a language change, describe it in an issue of this repository
 that states the motivation, examples, and grammar or semantic impact.
-Accepted proposals are archived under `done/proposals/`.
+An accepted change is written into the specification under `language/0.6/`.
 
 For changes to 0.1:
 

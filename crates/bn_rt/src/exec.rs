@@ -18,7 +18,7 @@ struct ExecResult {
 
 fn input<'a>(ptr: *const c_char) -> Option<&'a str> {
     // A program or argument is a STRING. An interior NUL stays in the text so
-    // `bn_host_exec` rejects it the same way `bni` does (G7-D4).
+    // `bn_host_exec` rejects it the same way `bni` does.
     std::str::from_utf8(crate::string::slice_from_raw(ptr)?).ok()
 }
 

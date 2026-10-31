@@ -127,7 +127,7 @@ fn abi_records_the_failure_for_the_emitted_code() {
     assert!(release(handle));
 }
 
-/// A document belongs to the module copy that made it (known issue K90): a
+/// A document belongs to the module copy that made it: a
 /// task's copy starts with none of the program's, and its own are freed
 /// when the task ends.
 #[test]

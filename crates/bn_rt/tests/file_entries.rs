@@ -4,8 +4,8 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! The 0.6.12 `HOST.FileSystem` operations of `bn_rt::file` (language/0.6/
-//! host.md, "Directories, private files, copy and move"; bucket 0.6.12,
-//! FS-CORE-2): every row of gate G-3 and every field of the `Error`, the
+//! host.md, "Directories, private files, copy and move"): every row of its
+//! failure-code table and every field of the `Error`, the
 //! same for both backends. Paths are absolute: the working directory is
 //! tested alone in `file_working_directory.rs`.
 

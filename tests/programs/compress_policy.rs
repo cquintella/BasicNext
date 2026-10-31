@@ -6,7 +6,7 @@
 //! `BNCompress` obeys the file execution policy (bncompress.md, "File access
 //! and execution policy"): under `BN_FS_POLICY=deny` and under a sandbox,
 //! `ZipArchive.Open`, `Create` and `AddFile` return `POLICY_DENIED` and touch
-//! nothing, the same on both backends (bucket 0.6.11, S6.5).
+//! nothing, the same on both backends.
 
 use super::support::{ProcessOutput, TestDir, bnc, bni, run};
 use std::fs;
@@ -153,7 +153,7 @@ fn bncompress_obeys_the_file_policy_on_both_backends() {
 /// Extracts `HOST.Args[1]` through three symlinks a `--write-root` holds,
 /// each pointing outside it: `ExtractFile` to a dangling link, `ExtractAll`
 /// through a linked directory, and `Create` at a dangling link. Each is
-/// `POLICY_DENIED` (bucket 0.6.11, CMP-SEC-1).
+/// `POLICY_DENIED`.
 const SYMLINK_PROGRAM: &str = "IMPORT BNCompress AS Z
 
 FUNCTION Start() AS VOID

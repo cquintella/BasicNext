@@ -264,7 +264,7 @@ fn protected_members_reach_subclasses_in_other_modules_only() {
 }
 
 /// A module path names its directories and file letter for letter on every
-/// platform (0.6.md, "Module names and files"; known issue K47): `IMPORT
+/// platform (0.6.md, "Module names and files"): `IMPORT
 /// Lib` does not load `lib.bn`, nor `IMPORT Geo.shape` load `geo/shape.bn`,
 /// even where the file system ignores case.
 #[test]

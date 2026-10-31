@@ -3,7 +3,7 @@ use super::*;
 
 impl<'a> Parser<'a> {
     /// `OVERRIDE` is accepted only immediately before `FUNCTION`
-    /// (`PUBLIC OVERRIDE FUNCTION Name…`, lock §2.2 of bucket 0.5.2).
+    /// (`PUBLIC OVERRIDE FUNCTION Name…`).
     pub(crate) fn override_modifier(&self) -> Result<bool, Diagnostic> {
         let line = self.line_tokens();
         let Some(position) = line.iter().position(

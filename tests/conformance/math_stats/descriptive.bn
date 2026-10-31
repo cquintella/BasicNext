@@ -5,11 +5,11 @@
 
 // Conformance: BNMath descriptive statistics (math.md, "Descriptive
 // statistics"). Only cases whose result does not depend on the summation
-// algorithm (D-2 changes it): empty and n < 2, NAN propagation, MODE ties,
+// algorithm (math.md, "Order, summation and overflow"): empty and n < 2, NAN propagation, MODE ties,
 // Tukey quartiles, RANGE, MIN/MAX, and means whose partial sums are exact.
 // Expected output: descriptive.expected, derived by hand from math.md:
 //   - empty MEAN/MEDIAN/QUARTILE*/RANGE -> NAN; empty MODE -> NA;
-//     STDEV/VARIANCE with n < 2 -> NAN; QUARTILE* with n = 1 -> NAN (G-2);
+//     STDEV/VARIANCE with n < 2 -> NAN; QUARTILE* with n = 1 -> NAN;
 //   - NAN in the data propagates, MODE included;
 //   - MODE: unique most frequent value, a tie is NA;
 //   - MEDIAN: middle element, or the mean of the two central ones;

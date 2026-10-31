@@ -3,8 +3,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// DataFrame.CountNA, DropNA and FillNA (bndata.md, "Missing values";
-// BDFL decisions D-3 and G-5). Expected output: na-helpers.expected, by
+// DataFrame.CountNA, DropNA and FillNA (bndata.md, "Missing values").
+// Expected output: na-helpers.expected, by
 // hand. The frame has the rows (a, 4, 1.5), (b, NA, 2.5), (c, 6, NA) and
 // (d, NA, 4.0):
 //   - CountNA: qty 2, price 1, name 0;

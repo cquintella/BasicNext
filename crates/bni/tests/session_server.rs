@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! End-to-end integration tests for the interactive session server in `bni`:
-//! `bni eval --session --format json` (Cluster D.1).
+//! `bni eval --session --format json`.
 
 #![allow(clippy::map_unwrap_or)]
 
