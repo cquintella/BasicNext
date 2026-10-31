@@ -1,0 +1,39 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT BNCrypto AS Crypto
+
+FUNCTION Start() AS VOID
+    // 1. Generate SecretKey
+    LET key AS Crypto.SecretKey = Crypto.NewSecretKey()
+
+    // 2. Encrypt bytes payload
+    LET plain AS Crypto.Bytes = Crypto.FromText("Hello authenticated envelope world!")
+    LET sealed AS Crypto.Bytes = Crypto.Encrypt(key, plain)
+
+    // Header (31) + plaintext (35) + tag (16) = 82
+    IF sealed.Length() = 82 THEN
+        PRINT "sealed-len-82-ok"
+    END IF
+
+    // First 4 bytes are "BNC1" (hex 42 4e 43 31)
+    LET magicHex AS STRING = sealed.Slice(0, 4).ToHex()
+    IF magicHex = "424e4331" THEN
+        PRINT "magic-bnc1-ok"
+    END IF
+
+    // 3. Decrypt bytes payload
+    LET unsealed AS Crypto.Bytes = Crypto.Decrypt(key, sealed)
+    IF Crypto.ConstantTimeEquals(unsealed, plain) = TRUE THEN
+        PRINT "unsealed-matches-plain-ok"
+    END IF
+
+    // 4. EncryptText / DecryptText string helpers
+    LET token AS STRING = Crypto.EncryptText(key, "Secret string payload")
+    LET recovered AS STRING = Crypto.DecryptText(key, token)
+    IF recovered = "Secret string payload" THEN
+        PRINT "decrypt-text-ok"
+    END IF
+END FUNCTION

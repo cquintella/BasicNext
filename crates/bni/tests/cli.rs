@@ -1320,6 +1320,25 @@ fn bncrypto_secretkey_interprets() {
     );
 }
 
+/// The `BNCrypto` authenticated envelope slice: verifies Encrypt produces versioned
+/// BNC1 envelope, Decrypt authenticates and round-trips, and EncryptText/DecryptText work.
+#[test]
+fn bncrypto_envelope_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-envelope/main.bn"])
+        .output()
+        .expect("run the BNCrypto envelope fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "sealed-len-82-ok\nmagic-bnc1-ok\nunsealed-matches-plain-ok\ndecrypt-text-ok\n"
+    );
+}
+
 /// The `BNJson` DOM slice: build an object, write and read a member, and reject
 /// a missing key instead of yielding an empty STRING. The compiled twin is in
 /// the `bnc` suite; the two must print the same.
