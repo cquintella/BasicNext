@@ -696,6 +696,7 @@ fn printable_type(ty: &Type) -> bool {
             | Type::Float(_)
             | Type::FloatLiteral
             | Type::Named(_)
+            | Type::ImportedNamed { .. }
             | Type::NotAvailable
             | Type::EndOfFile
             | Type::Null
@@ -1004,11 +1005,11 @@ mod platform_stdio;
 use arc::{REGION_HEADER_BYTES, held_object, is_class_type, is_region_type, object_class};
 use helpers::{
     bncompress_method, bncrypto_method, carries_bncompress_bytes, carries_bncompress_zip,
-    carries_bncrypto_bytes, carries_bncrypto_key, class_init_flag, coerce_return_operand,
-    coerce_to_type, emit_input_runtime, extend_to_i64, float_additive_identity, float_constant,
-    instruction_name, integer_constant, integer_kind, is_bncompress_bytes_type,
-    is_bncompress_zip_type, is_bncrypto_bytes_type, is_bncrypto_key_type, is_unsigned,
-    parse_float_constant, parse_integer, sanitize_symbol, static_global_name,
+    carries_bncrypto_bytes, carries_bncrypto_key, carries_bncrypto_secret, class_init_flag,
+    coerce_return_operand, coerce_to_type, emit_input_runtime, extend_to_i64,
+    float_additive_identity, float_constant, instruction_name, integer_constant, integer_kind,
+    is_bncompress_bytes_type, is_bncompress_zip_type, is_bncrypto_bytes_type, is_bncrypto_key_type,
+    is_unsigned, parse_float_constant, parse_integer, sanitize_symbol, static_global_name,
     unsupported_call_detail, unsupported_instruction, unsupported_instruction_detail,
 };
 #[cfg(feature = "json")]

@@ -592,7 +592,12 @@ pub(crate) fn lower_print_value(
         && llvm_type(ty) == Some(LlvmType::Ptr)
     {
         let short_name = name.rsplit('.').next().unwrap_or(name.as_str());
-        let name_sym = print_emission::type_name_global(short_name);
+        let display_name = if matches!(short_name, "Secret" | "SecretKey" | "PrivateKey") {
+            "***"
+        } else {
+            short_name
+        };
+        let name_sym = print_emission::type_name_global(display_name);
         let count = state.print_count;
         let args = vec![
             (LlvmType::Ptr, global(".bn_fmt_str")),
@@ -618,7 +623,12 @@ pub(crate) fn lower_print_value(
         && llvm_type(ty) == Some(LlvmType::Ptr)
     {
         let short_name = name.rsplit('.').next().unwrap_or(name.as_str());
-        let name_sym = print_emission::type_name_global(short_name);
+        let display_name = if matches!(short_name, "Secret" | "SecretKey" | "PrivateKey") {
+            "***"
+        } else {
+            short_name
+        };
+        let name_sym = print_emission::type_name_global(display_name);
         let count = state.print_count;
         let args = vec![
             (LlvmType::Ptr, global(".bn_fmt_str")),

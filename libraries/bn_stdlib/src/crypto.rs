@@ -252,6 +252,16 @@ pub fn hmac_verify(key: &[u8], data: &[u8], tag: &[u8]) -> bool {
     expected.len() == tag.len() && bool::from(expected.ct_eq(tag))
 }
 
+/// Compares two byte slices in constant time without short-circuiting.
+#[must_use]
+pub fn constant_time_equals(a: &[u8], b: &[u8]) -> bool {
+    use subtle::ConstantTimeEq;
+    if a.len() != b.len() {
+        return false;
+    }
+    a.ct_eq(b).into()
+}
+
 /// Cost and optional inputs for [`argon2id`]. `secret` and `associated_data`
 /// are the RFC 9106 optional key and AD inputs and may be empty.
 #[derive(Clone, Copy, Debug)]

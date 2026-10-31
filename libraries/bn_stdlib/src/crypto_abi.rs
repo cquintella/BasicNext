@@ -227,6 +227,145 @@ pub extern "C" fn bn_rt_crypto_bytes_zeroize(handle: u64) -> i32 {
     }
 }
 
+/// Compares two `Bytes` buffers in constant time without short-circuiting.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_bytes_constant_time_equals(a: u64, b: u64) -> i32 {
+    let a_bytes = with_buffers(|buffers| buffers.get(&a).cloned());
+    let b_bytes = with_buffers(|buffers| buffers.get(&b).cloned());
+    match (a_bytes, b_bytes) {
+        (Some(a_buf), Some(b_buf)) => {
+            i32::from(crate::crypto::constant_time_equals(&a_buf, &b_buf))
+        }
+        _ => 0,
+    }
+}
+
+/// The secret buffers of the module copy that runs on this thread.
+#[derive(Default)]
+struct Secrets {
+    values: Mutex<HashMap<u64, zeroize::Zeroizing<Vec<u8>>>>,
+    holders: Mutex<HashMap<u64, usize>>,
+}
+
+fn with_secrets<T>(
+    operation: impl FnOnce(&mut HashMap<u64, zeroize::Zeroizing<Vec<u8>>>) -> T,
+) -> T {
+    let secrets = bn_core_copy::table::<Secrets>();
+    operation(
+        &mut secrets
+            .values
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner),
+    )
+}
+
+fn store_secret(bytes: Vec<u8>) -> u64 {
+    let handle = next_handle();
+    with_secrets(|secrets| secrets.insert(handle, zeroize::Zeroizing::new(bytes)));
+    let secrets = bn_core_copy::table::<Secrets>();
+    secrets
+        .holders
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(handle, 1);
+    handle
+}
+
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_secret_from_text(text: *const c_char) -> u64 {
+    store_secret(
+        c_str(text)
+            .map(|text| text.as_bytes().to_vec())
+            .unwrap_or_default(),
+    )
+}
+
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_secret_length(handle: u64) -> i64 {
+    with_secrets(|secrets| {
+        secrets
+            .get(&handle)
+            .and_then(|bytes| i64::try_from(bytes.len()).ok())
+            .unwrap_or(-1)
+    })
+}
+
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_secret_to_bytes(handle: u64) -> u64 {
+    let bytes = with_secrets(|secrets| secrets.get(&handle).map(|b| b.to_vec()));
+    bytes.map_or(0, store)
+}
+
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_secret_constant_time_equals(a: u64, b: u64) -> i32 {
+    let a_bytes = with_secrets(|secrets| secrets.get(&a).cloned());
+    let b_bytes = with_secrets(|secrets| secrets.get(&b).cloned());
+    match (a_bytes, b_bytes) {
+        (Some(a_buf), Some(b_buf)) => {
+            i32::from(crate::crypto::constant_time_equals(&a_buf, &b_buf))
+        }
+        _ => 0,
+    }
+}
+
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_secret_zeroize(handle: u64) -> i32 {
+    with_secrets(|secrets| {
+        if let Some(buf) = secrets.get_mut(&handle) {
+            buf.as_mut_slice().zeroize();
+            BN_CRYPTO_OK
+        } else {
+            BN_CRYPTO_INVALID_HANDLE
+        }
+    })
+}
+
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_secret_retain(handle: u64) -> i32 {
+    let secrets = bn_core_copy::table::<Secrets>();
+    let mut holders = secrets
+        .holders
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    if let Some(count) = holders.get_mut(&handle) {
+        *count += 1;
+        BN_CRYPTO_OK
+    } else {
+        BN_CRYPTO_INVALID_HANDLE
+    }
+}
+
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_secret_release(handle: u64) -> i32 {
+    let secrets = bn_core_copy::table::<Secrets>();
+    let mut holders = secrets
+        .holders
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    let Some(count) = holders.get_mut(&handle) else {
+        return BN_CRYPTO_INVALID_HANDLE;
+    };
+    *count -= 1;
+    if *count == 0 {
+        holders.remove(&handle);
+        drop(holders);
+        with_secrets(|secrets| {
+            if let Some(mut buf) = secrets.remove(&handle) {
+                buf.as_mut_slice().zeroize();
+            }
+        });
+    }
+    BN_CRYPTO_OK
+}
+
 /// Algorithm selector shared with the backends: `0` is AES-256-GCM, `1` is
 /// ChaCha20-Poly1305. Anything else is rejected.
 /// Records `failure` for the emitted code's `Error` and returns the status.

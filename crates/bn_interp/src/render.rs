@@ -30,6 +30,7 @@ pub fn render(value: &Value) -> String {
         Value::Json(_) => "BNJson.Json".into(),
         Value::CryptoBytes(_) => "BNCrypto.Bytes".into(),
         Value::CryptoKey(_) => bn_catalog::text("modules", "type.crypto_key").into(),
+        Value::CryptoSecret(_) => "***".into(),
         Value::CompressBytes(_) => bn_catalog::text("modules", "type.compress_bytes").into(),
         Value::CompressZip(_) => bn_catalog::text("modules", "type.compress_zip_archive").into(),
         Value::DispatchQueue(id) => {
@@ -43,11 +44,14 @@ pub fn render(value: &Value) -> String {
         Value::DispatchMutex(id) => format!("BNDispatch.Mutex#{id}"),
         Value::Handle { type_name } => type_name.to_string(),
         Value::Record { record } => record.type_name().to_string(),
-        Value::Object { class, .. } => class
-            .rsplit('.')
-            .next()
-            .unwrap_or(class.as_ref())
-            .to_string(),
+        Value::Object { class, .. } => {
+            let short = class.rsplit('.').next().unwrap_or(class.as_ref());
+            if matches!(short, "Secret" | "SecretKey" | "PrivateKey") {
+                "***".into()
+            } else {
+                short.to_string()
+            }
+        }
         Value::Pointer { .. } => "POINTER".into(),
         Value::File(_) => "FS.File".into(),
         Value::DataFrame(_) => "DataFrame".into(),

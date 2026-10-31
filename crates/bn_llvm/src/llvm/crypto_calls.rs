@@ -48,6 +48,68 @@ pub(super) fn lower_bncrypto_call(
             );
             return;
         }
+        "NewSecret" | "SecretFromText" => {
+            let args = vec![(T::Ptr, v(arguments[0]))];
+            let call = I::call(T::I64, "bn_rt_crypto_secret_from_text", args);
+            text.assign(format!("cryh{dest}"), call);
+            text.assign(
+                format!("v{dest}"),
+                I::cast(CastOp::IntToPtr, T::I64, cryh(), T::Ptr),
+            );
+            return;
+        }
+        "ToBytes" => {
+            emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
+            let args = vec![(T::I64, cryh())];
+            let call = I::call(T::I64, "bn_rt_crypto_secret_to_bytes", args);
+            text.assign(format!("cryb{dest}"), call);
+            text.assign(
+                format!("v{dest}"),
+                I::cast(
+                    CastOp::IntToPtr,
+                    T::I64,
+                    O::reg(format!("cryb{dest}")),
+                    T::Ptr,
+                ),
+            );
+            return;
+        }
+        "ConstantTimeEquals" => {
+            emit_handle_index(text, analysis, &format!("crya{dest}"), arguments[0]);
+            emit_handle_index(text, analysis, &format!("cryb{dest}"), arguments[1]);
+            let is_secret = analysis
+                .values
+                .get(&arguments[0])
+                .is_some_and(|ty| match ty {
+                    Type::Named(name)
+                    | Type::ImportedNamed { name, .. }
+                    | Type::ImportedTypeName { name, .. } => {
+                        name == "Secret" || name.ends_with(".Secret")
+                    }
+                    _ => false,
+                });
+            let sym = if is_secret {
+                "bn_rt_crypto_secret_constant_time_equals"
+            } else {
+                "bn_rt_crypto_bytes_constant_time_equals"
+            };
+            let args = vec![
+                (T::I64, O::reg(format!("crya{dest}"))),
+                (T::I64, O::reg(format!("cryb{dest}"))),
+            ];
+            let call = I::call(T::I32, sym, args);
+            text.assign(format!("cryrc{dest}"), call);
+            text.assign(
+                format!("v{dest}"),
+                I::icmp(
+                    ICmpCond::Eq,
+                    T::I32,
+                    O::reg(format!("cryrc{dest}")),
+                    O::int(1),
+                ),
+            );
+            return;
+        }
         "Length" | "ToHex" | "Algorithm" | "Zeroize" => {
             emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
             let args = vec![(T::I64, cryh())];
@@ -77,8 +139,29 @@ pub(super) fn lower_bncrypto_call(
                         }),
                         _ => false,
                     });
+                let is_secret = analysis
+                    .values
+                    .get(&arguments[0])
+                    .is_some_and(|ty| match ty {
+                        Type::Named(name)
+                        | Type::ImportedNamed { name, .. }
+                        | Type::ImportedTypeName { name, .. } => {
+                            name == "Secret" || name.ends_with(".Secret")
+                        }
+                        Type::Alternative(alternatives) => alternatives.iter().any(|a| match a {
+                            Type::Named(name)
+                            | Type::ImportedNamed { name, .. }
+                            | Type::ImportedTypeName { name, .. } => {
+                                name == "Secret" || name.ends_with(".Secret")
+                            }
+                            _ => false,
+                        }),
+                        _ => false,
+                    });
                 let symbol = if is_key {
                     "bn_rt_crypto_key_zeroize"
+                } else if is_secret {
+                    "bn_rt_crypto_secret_zeroize"
                 } else {
                     "bn_rt_crypto_bytes_zeroize"
                 };
@@ -104,8 +187,29 @@ pub(super) fn lower_bncrypto_call(
                         }),
                         _ => false,
                     });
+                let is_secret = analysis
+                    .values
+                    .get(&arguments[0])
+                    .is_some_and(|ty| match ty {
+                        Type::Named(name)
+                        | Type::ImportedNamed { name, .. }
+                        | Type::ImportedTypeName { name, .. } => {
+                            name == "Secret" || name.ends_with(".Secret")
+                        }
+                        Type::Alternative(alternatives) => alternatives.iter().any(|a| match a {
+                            Type::Named(name)
+                            | Type::ImportedNamed { name, .. }
+                            | Type::ImportedTypeName { name, .. } => {
+                                name == "Secret" || name.ends_with(".Secret")
+                            }
+                            _ => false,
+                        }),
+                        _ => false,
+                    });
                 let sym = if is_key {
                     "bn_rt_crypto_key_length"
+                } else if is_secret {
+                    "bn_rt_crypto_secret_length"
                 } else {
                     "bn_rt_crypto_bytes_length"
                 };

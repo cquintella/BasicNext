@@ -613,6 +613,7 @@ bn_rt_json_set_string
 bn_rt_json_set_string_at
 bn_rt_json_stringify
 bn_rt_crypto_argon2id
+bn_rt_crypto_bytes_constant_time_equals
 bn_rt_crypto_bytes_from_hex
 bn_rt_crypto_bytes_from_text
 bn_rt_crypto_bytes_length
@@ -644,6 +645,13 @@ bn_rt_crypto_random_password
 bn_rt_crypto_random_token
 bn_rt_crypto_random_uuid_v4
 bn_rt_crypto_seal
+bn_rt_crypto_secret_constant_time_equals
+bn_rt_crypto_secret_from_text
+bn_rt_crypto_secret_length
+bn_rt_crypto_secret_release
+bn_rt_crypto_secret_retain
+bn_rt_crypto_secret_to_bytes
+bn_rt_crypto_secret_zeroize
 bn_rt_crypto_sha256
 bn_rt_crypto_sha512
 bn_rt_crypto_sign

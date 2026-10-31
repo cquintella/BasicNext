@@ -365,6 +365,7 @@ pub(super) fn coerce(value: Value, ty: &Type, span: Span) -> Result<Value, Diagn
             | Value::Json(_)
             | Value::CryptoBytes(_)
             | Value::CryptoKey(_)
+            | Value::CryptoSecret(_)
             | Value::CompressBytes(_)
             | Value::CompressZip(_),
             Type::Named(_)

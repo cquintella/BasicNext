@@ -303,8 +303,31 @@ pub(crate) fn call_instruction_supported(
                 "Zeroize" => {
                     arguments.len() == 1
                         && values.get(&arguments[0]).is_some_and(|ty| {
-                            carries_bncrypto_key(module, ty) || carries_bncrypto_bytes(module, ty)
+                            carries_bncrypto_key(module, ty)
+                                || carries_bncrypto_bytes(module, ty)
+                                || carries_bncrypto_secret(module, ty)
                         })
+                }
+                "ConstantTimeEquals" => {
+                    arguments.len() == 2
+                        && arguments.iter().all(|argument| {
+                            values.get(argument).is_some_and(|ty| {
+                                carries_bncrypto_bytes(module, ty)
+                                    || carries_bncrypto_secret(module, ty)
+                            })
+                        })
+                }
+                "NewSecret" | "SecretFromText" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| *ty == Type::String)
+                }
+                "ToBytes" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_secret(module, ty))
                 }
                 "RandomInt" => {
                     arguments.len() == 2
@@ -336,6 +359,7 @@ pub(crate) fn call_instruction_supported(
                             "Length" => {
                                 carries_bncrypto_bytes(module, ty)
                                     || carries_bncrypto_key(module, ty)
+                                    || carries_bncrypto_secret(module, ty)
                             }
                             "ToHex" => carries_bncrypto_bytes(module, ty),
                             _ => *ty == Type::String,

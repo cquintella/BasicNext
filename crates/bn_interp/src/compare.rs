@@ -135,6 +135,9 @@ pub(super) fn is_value(
             Value::CryptoKey(_) => {
                 test == bn_catalog::text("modules", "type.crypto_key") || test == "Key"
             }
+            Value::CryptoSecret(_) => {
+                test == "BNCrypto.Secret" || test == "Secret" || test.ends_with(".Secret")
+            }
             Value::CompressBytes(_) => {
                 test == bn_catalog::text("modules", "type.compress_bytes")
                     || test == "Bytes"
@@ -258,6 +261,12 @@ pub(super) fn value_matches_type(value: &Value, ty: &Type) -> bool {
                 || name == "Key"
                 || name.ends_with(".Key")
         }
+        (
+            Value::CryptoSecret(_),
+            Type::Named(name)
+            | Type::ImportedNamed { name, .. }
+            | Type::ImportedTypeName { name, .. },
+        ) => name == "BNCrypto.Secret" || name == "Secret" || name.ends_with(".Secret"),
         (
             Value::CompressBytes(_),
             Type::Named(name)
