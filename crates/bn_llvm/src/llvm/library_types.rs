@@ -172,6 +172,11 @@ pub(crate) fn bncrypto_method<'a>(module: &Module, name: &'a str) -> Option<&'a 
                 | "ImportKey"
                 | "Algorithm"
                 | "Zeroize"
+                | "RandomInt"
+                | "RandomToken"
+                | "RandomUuidV4"
+                | "UuidV7"
+                | "RandomPassword"
         ))
     .then_some(method)
 }

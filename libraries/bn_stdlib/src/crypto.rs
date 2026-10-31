@@ -39,26 +39,7 @@ pub const fn required_key_length(algorithm: i32) -> Option<usize> {
     }
 }
 
-/// The most bytes one `RandomBytes` call returns (`bncrypto.md`): keys,
-/// seeds and nonces need tens of bytes, and the bound keeps a mistaken
-/// length from exhausting memory.
-pub const MAX_RANDOM_BYTES: usize = 1024 * 1024;
-
-/// Generates `length` random bytes using the operating system CSPRNG (`getrandom`).
-///
-/// # Errors
-///
-/// `RandomLength` for a length outside 0 through [`MAX_RANDOM_BYTES`];
-/// `Random` when the system entropy source fails.
-pub fn random_bytes(length: i128) -> Result<Vec<u8>, CryptoFailure> {
-    let length = usize::try_from(length)
-        .ok()
-        .filter(|length| *length <= MAX_RANDOM_BYTES)
-        .ok_or(CryptoFailure::RandomLength(length))?;
-    let mut buf = vec![0u8; length];
-    getrandom::getrandom(&mut buf).map_err(|_| CryptoFailure::Random("BNCrypto.RandomBytes"))?;
-    Ok(buf)
-}
+pub use crate::crypto_csprng::*;
 
 /// Generates a CSPRNG nonce of appropriate length for the cipher specified by `algorithm`.
 pub fn generate_nonce(algorithm: i32) -> Result<Vec<u8>, CryptoFailure> {

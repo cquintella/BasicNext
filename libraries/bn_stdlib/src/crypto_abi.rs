@@ -679,6 +679,88 @@ pub extern "C" fn bn_rt_crypto_random_bytes(length: i64, out: *mut u64) -> i32 {
     BN_CRYPTO_OK
 }
 
+/// Generates an unbiased random integer in `[min, max]`.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_random_int(min: i64, max: i64, out: *mut i64) -> i32 {
+    if out.is_null() {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    }
+    match crate::crypto::random_int(min, max) {
+        Ok(val) => {
+            // SAFETY: out was checked non-null and points at a writable i64 slot allocated by caller.
+            unsafe { *out = val };
+            BN_CRYPTO_OK
+        }
+        Err(err) => failed(&err),
+    }
+}
+
+/// Generates a URL-safe base64 string from `n_bytes` random bytes without padding.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_random_token(n_bytes: i64, out: *mut *mut c_char) -> i32 {
+    if out.is_null() {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    }
+    match crate::crypto::random_token(n_bytes) {
+        Ok(tok) => {
+            // SAFETY: out was checked non-null and points at a writable pointer slot.
+            unsafe { *out = c_string(&tok) };
+            BN_CRYPTO_OK
+        }
+        Err(err) => failed(&err),
+    }
+}
+
+/// Generates a canonical RFC 4122 UUID version 4 string.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_random_uuid_v4() -> *mut c_char {
+    let u = crate::crypto::random_uuid_v4().unwrap_or_default();
+    c_string(&u)
+}
+
+/// Generates a time-ordered RFC 9562 UUID version 7 string.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_uuid_v7() -> *mut c_char {
+    let u = crate::crypto::uuid_v7().unwrap_or_default();
+    c_string(&u)
+}
+
+/// Generates a secure random password with requested length and character classes.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_random_password(opts_ptr: *const u8, out: *mut *mut c_char) -> i32 {
+    if opts_ptr.is_null() || out.is_null() {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    }
+    let (length, upper, lower, digits, symbols) = unsafe {
+        let length = *opts_ptr.add(16).cast::<i32>();
+        let upper = *opts_ptr.add(20) != 0;
+        let lower = *opts_ptr.add(21) != 0;
+        let digits = *opts_ptr.add(22) != 0;
+        let symbols = *opts_ptr.add(23) != 0;
+        (length, upper, lower, digits, symbols)
+    };
+    let opts = crate::crypto::PasswordGenOptions {
+        length: usize::try_from(length).unwrap_or(0),
+        include_uppercase: upper,
+        include_lowercase: lower,
+        include_digits: digits,
+        include_symbols: symbols,
+    };
+    match crate::crypto::random_password(opts) {
+        Ok(pwd) => {
+            // SAFETY: out was checked non-null and points at a writable pointer slot.
+            unsafe { *out = c_string(&pwd) };
+            BN_CRYPTO_OK
+        }
+        Err(err) => failed(&err),
+    }
+}
+
 /// Generates a CSPRNG nonce suitable for `algorithm` and stores it in a new buffer.
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]

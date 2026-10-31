@@ -576,6 +576,94 @@ impl CryptoProvider {
                 let material = zeroize::Zeroizing::new(raw_bytes);
                 Ok(self.insert_key(alg, material))
             }
+            "RandomInt" => {
+                require_arity(member, arguments, 2, span)?;
+                let Value::Integer(min, _) = &arguments[0] else {
+                    return Err(type_mismatch("INTEGER", "non-INTEGER value", member, span));
+                };
+                let Value::Integer(max, _) = &arguments[1] else {
+                    return Err(type_mismatch("INTEGER", "non-INTEGER value", member, span));
+                };
+                let Ok(min_i64) = i64::try_from(*min) else {
+                    return Err(type_mismatch("INTEGER", "out-of-range value", member, span));
+                };
+                let Ok(max_i64) = i64::try_from(*max) else {
+                    return Err(type_mismatch("INTEGER", "out-of-range value", member, span));
+                };
+                match bn_stdlib::crypto::random_int(min_i64, max_i64) {
+                    Ok(val) => Ok(Value::Integer(i128::from(val), IntegerType::Int64)),
+                    Err(err) => failure(&err),
+                }
+            }
+            "RandomToken" => {
+                require_arity(member, arguments, 1, span)?;
+                let Value::Integer(n_bytes, _) = &arguments[0] else {
+                    return Err(type_mismatch("INTEGER", "non-INTEGER value", member, span));
+                };
+                let Ok(n_bytes_i64) = i64::try_from(*n_bytes) else {
+                    return Err(type_mismatch("INTEGER", "out-of-range value", member, span));
+                };
+                match bn_stdlib::crypto::random_token(n_bytes_i64) {
+                    Ok(token) => Ok(Value::String(shared_string(token))),
+                    Err(err) => failure(&err),
+                }
+            }
+            "RandomUuidV4" => {
+                require_arity(member, arguments, 0, span)?;
+                match bn_stdlib::crypto::random_uuid_v4() {
+                    Ok(uuid) => Ok(Value::String(shared_string(uuid))),
+                    Err(err) => failure(&err),
+                }
+            }
+            "UuidV7" => {
+                require_arity(member, arguments, 0, span)?;
+                match bn_stdlib::crypto::uuid_v7() {
+                    Ok(uuid) => Ok(Value::String(shared_string(uuid))),
+                    Err(err) => failure(&err),
+                }
+            }
+            "RandomPassword" => {
+                require_arity(member, arguments, 1, span)?;
+                let Value::Record { record } = &arguments[0] else {
+                    return Err(type_mismatch(
+                        "Crypto.PasswordGenOptions",
+                        "non-record value",
+                        member,
+                        span,
+                    ));
+                };
+                let length = match record.get(0) {
+                    Some(Value::Integer(len, _)) => usize::try_from(*len).unwrap_or(0),
+                    _ => 20,
+                };
+                let upper = match record.get(1) {
+                    Some(Value::Boolean(b)) => *b,
+                    _ => true,
+                };
+                let lower = match record.get(2) {
+                    Some(Value::Boolean(b)) => *b,
+                    _ => true,
+                };
+                let digits = match record.get(3) {
+                    Some(Value::Boolean(b)) => *b,
+                    _ => true,
+                };
+                let symbols = match record.get(4) {
+                    Some(Value::Boolean(b)) => *b,
+                    _ => true,
+                };
+                let opts = bn_stdlib::crypto::PasswordGenOptions {
+                    length,
+                    include_uppercase: upper,
+                    include_lowercase: lower,
+                    include_digits: digits,
+                    include_symbols: symbols,
+                };
+                match bn_stdlib::crypto::random_password(opts) {
+                    Ok(pwd) => Ok(Value::String(shared_string(pwd))),
+                    Err(err) => failure(&err),
+                }
+            }
             _ => self.key_inspection(method, member, arguments, span),
         }
     }
@@ -673,7 +761,8 @@ impl Provider for CryptoProvider {
             "MlKemKeypair" | "MlKemEncapsulate" | "MlKemDecapsulate" | "MlDsaKeypair"
             | "MlDsaSign" | "MlDsaVerify" => self.post_quantum(method, member, &arguments, span),
             "RandomBytes" | "GenerateNonce" | "GenerateKey" | "ImportKey" | "Algorithm"
-            | "Zeroize" => self.key_or_entropy(method, member, &arguments, span),
+            | "Zeroize" | "RandomInt" | "RandomToken" | "RandomUuidV4" | "UuidV7"
+            | "RandomPassword" => self.key_or_entropy(method, member, &arguments, span),
             "CONSTRUCTOR" => Ok(Value::Null),
             _ => Err(name_not_found(method, "BNCrypto function", span)),
         }

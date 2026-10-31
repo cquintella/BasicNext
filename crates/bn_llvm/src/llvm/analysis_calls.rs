@@ -300,6 +300,30 @@ pub(crate) fn call_instruction_supported(
                             .get(&arguments[0])
                             .is_some_and(|ty| carries_bncrypto_key(module, ty))
                 }
+                "RandomInt" => {
+                    arguments.len() == 2
+                        && arguments.iter().all(|argument| {
+                            values
+                                .get(argument)
+                                .and_then(llvm_type)
+                                .is_some_and(|ty| ty.is_integer())
+                        })
+                }
+                "RandomToken" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .and_then(llvm_type)
+                            .is_some_and(|ty| ty.is_integer())
+                }
+                "RandomUuidV4" | "UuidV7" => arguments.is_empty(),
+                "RandomPassword" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .and_then(llvm_type)
+                            .is_some_and(|ty| ty == LlvmType::Ptr)
+                }
                 method => {
                     arguments.len() == 1
                         && values.get(&arguments[0]).is_some_and(|ty| match method {

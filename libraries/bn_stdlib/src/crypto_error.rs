@@ -48,6 +48,16 @@ pub enum CryptoFailure {
     ZeroizedKey,
     /// `RandomBytes` with a length outside 0 through [`crate::crypto::MAX_RANDOM_BYTES`].
     RandomLength(i128),
+    /// Generic invalid argument.
+    InvalidArgument(&'static str),
+    /// `RandomInt` with `min > max`.
+    RandomIntRange { min: i64, max: i64 },
+    /// `RandomToken` with length <= 0 or > MAX_RANDOM_BYTES.
+    RandomTokenLength(i64),
+    /// `RandomPassword` with length <= 0.
+    PasswordLength(usize),
+    /// `RandomPassword` with all character classes disabled.
+    PasswordNoClasses,
 }
 
 impl CryptoFailure {
@@ -79,6 +89,10 @@ impl CryptoFailure {
             Self::Algorithm(_) | Self::KeyLength { .. } => "BNCrypto.ImportKey",
             Self::ZeroizedKey => "BNCrypto.Key",
             Self::RandomLength(_) => "BNCrypto.RandomBytes",
+            Self::InvalidArgument(op) => op,
+            Self::RandomIntRange { .. } => "BNCrypto.RandomInt",
+            Self::RandomTokenLength(_) => "BNCrypto.RandomToken",
+            Self::PasswordLength(_) | Self::PasswordNoClasses => "BNCrypto.RandomPassword",
         }
     }
 
@@ -112,6 +126,25 @@ impl CryptoFailure {
             Self::ZeroizedKey => "key material has already been zeroized".into(),
             Self::RandomLength(length) => {
                 bn_catalog::fill("crypto", "random.length.message", &[("length", length)])
+            }
+            Self::InvalidArgument(msg) => (*msg).into(),
+            Self::RandomIntRange { min, max } => bn_catalog::fill(
+                "crypto",
+                "random.int.range.message",
+                &[("min", min), ("max", max)],
+            ),
+            Self::RandomTokenLength(length) => bn_catalog::fill(
+                "crypto",
+                "random.token.length.message",
+                &[("length", length)],
+            ),
+            Self::PasswordLength(length) => bn_catalog::fill(
+                "crypto",
+                "random.password.length.message",
+                &[("length", length)],
+            ),
+            Self::PasswordNoClasses => {
+                bn_catalog::text("crypto", "random.password.classes.message").into()
             }
         }
     }
@@ -160,6 +193,19 @@ impl CryptoFailure {
                 "random.length.cause",
                 &[("limit", &crate::crypto::MAX_RANDOM_BYTES)],
             ),
+            Self::InvalidArgument(_) => "the supplied argument is invalid".into(),
+            Self::RandomIntRange { .. } => {
+                bn_catalog::text("crypto", "random.int.range.cause").into()
+            }
+            Self::RandomTokenLength(_) => {
+                bn_catalog::text("crypto", "random.token.length.cause").into()
+            }
+            Self::PasswordLength(_) => {
+                bn_catalog::text("crypto", "random.password.length.cause").into()
+            }
+            Self::PasswordNoClasses => {
+                bn_catalog::text("crypto", "random.password.classes.cause").into()
+            }
         }
     }
 }

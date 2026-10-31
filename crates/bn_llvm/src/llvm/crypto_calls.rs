@@ -175,6 +175,109 @@ pub(super) fn lower_bncrypto_call(
             );
             return;
         }
+        "RandomUuidV4" | "UuidV7" => {
+            let sym = if member == "RandomUuidV4" {
+                "bn_rt_crypto_random_uuid_v4"
+            } else {
+                "bn_rt_crypto_uuid_v7"
+            };
+            text.assign(format!("v{dest}"), I::call(T::Ptr, sym, Vec::new()));
+            return;
+        }
+        "RandomInt" => {
+            let mut args = Vec::new();
+            for (index, operand) in arguments.iter().enumerate() {
+                let ty = analysis
+                    .values
+                    .get(operand)
+                    .and_then(llvm_type)
+                    .unwrap_or(T::I64);
+                let op = if ty == T::I64 {
+                    v(*operand)
+                } else {
+                    let slot = format!("cryint{dest}_{index}");
+                    text.assign(&slot, I::cast(CastOp::SExt, ty, v(*operand), T::I64));
+                    O::reg(slot)
+                };
+                args.push((T::I64, op));
+            }
+            let slot = O::reg(format!("cryout{dest}"));
+            text.assign(format!("cryout{dest}"), I::alloca(T::I64));
+            args.push((T::Ptr, slot));
+            text.assign(
+                format!("cryrc{dest}"),
+                I::call(T::I32, "bn_rt_crypto_random_int", args),
+            );
+            text.assign(
+                format!("cryval{dest}"),
+                I::load(T::I64, O::reg(format!("cryout{dest}"))),
+            );
+            emit_status_result(
+                text,
+                destination,
+                &O::reg(format!("cryrc{dest}")),
+                None,
+                &O::null(),
+                &O::reg(format!("cryval{dest}")),
+            );
+            return;
+        }
+        "RandomToken" => {
+            let ty = analysis
+                .values
+                .get(&arguments[0])
+                .and_then(llvm_type)
+                .unwrap_or(T::I64);
+            let arg_op = if ty == T::I64 {
+                v(arguments[0])
+            } else {
+                let slot = format!("crybound{dest}");
+                text.assign(&slot, I::cast(CastOp::SExt, ty, v(arguments[0]), T::I64));
+                O::reg(slot)
+            };
+            let slot = O::reg(format!("cryout{dest}"));
+            text.assign(format!("cryout{dest}"), I::alloca(T::Ptr));
+            let args = vec![(T::I64, arg_op), (T::Ptr, slot)];
+            text.assign(
+                format!("cryrc{dest}"),
+                I::call(T::I32, "bn_rt_crypto_random_token", args),
+            );
+            text.assign(
+                format!("crystr{dest}"),
+                I::load(T::Ptr, O::reg(format!("cryout{dest}"))),
+            );
+            emit_status_result(
+                text,
+                destination,
+                &O::reg(format!("cryrc{dest}")),
+                None,
+                &O::reg(format!("crystr{dest}")),
+                &O::int(0),
+            );
+            return;
+        }
+        "RandomPassword" => {
+            let slot = O::reg(format!("cryout{dest}"));
+            text.assign(format!("cryout{dest}"), I::alloca(T::Ptr));
+            let args = vec![(T::Ptr, v(arguments[0])), (T::Ptr, slot)];
+            text.assign(
+                format!("cryrc{dest}"),
+                I::call(T::I32, "bn_rt_crypto_random_password", args),
+            );
+            text.assign(
+                format!("crystr{dest}"),
+                I::load(T::Ptr, O::reg(format!("cryout{dest}"))),
+            );
+            emit_status_result(
+                text,
+                destination,
+                &O::reg(format!("cryrc{dest}")),
+                None,
+                &O::reg(format!("crystr{dest}")),
+                &O::int(0),
+            );
+            return;
+        }
         _ => {}
     }
     let variant = i64::from(member.starts_with("Ecdsa") || member.ends_with("ChaCha20"));
