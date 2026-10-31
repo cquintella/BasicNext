@@ -638,11 +638,16 @@ bn_rt_crypto_key_zeroize
 bn_rt_crypto_open
 bn_rt_crypto_public_key
 bn_rt_crypto_random_bytes
+bn_rt_crypto_random_int
+bn_rt_crypto_random_password
+bn_rt_crypto_random_token
+bn_rt_crypto_random_uuid_v4
 bn_rt_crypto_seal
 bn_rt_crypto_sha256
 bn_rt_crypto_sha512
 bn_rt_crypto_sign
 bn_rt_crypto_slice
+bn_rt_crypto_uuid_v7
 bn_rt_crypto_verify
 bn_rt_error_field
 bn_rt_error_take
