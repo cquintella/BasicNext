@@ -1,0 +1,63 @@
+IMPORT BNCrypto AS Crypto
+
+FUNCTION Start() AS VOID
+    // 1. Strict UTF-8 text decoding
+    LET bText AS Crypto.Bytes = Crypto.FromText("Hello Encoding World!")
+    LET sText AS STRING OR Error = bText.ToText()
+    IF sText IS STRING THEN
+        PRINT sText
+    END IF
+
+    // 2. Base64 encode and decode
+    LET b64 AS STRING = Crypto.ToBase64(bText)
+    LET dec64 AS Crypto.Bytes OR Error = Crypto.FromBase64(b64)
+    IF dec64 IS Crypto.Bytes THEN
+        IF Crypto.ConstantTimeEquals(dec64, bText) = TRUE THEN
+            PRINT "base64-roundtrip-ok"
+        END IF
+    END IF
+
+    // 3. Base64Url encode and decode
+    LET b64url AS STRING = Crypto.ToBase64Url(bText)
+    LET dec64url AS Crypto.Bytes OR Error = Crypto.FromBase64Url(b64url)
+    IF dec64url IS Crypto.Bytes THEN
+        IF Crypto.ConstantTimeEquals(dec64url, bText) = TRUE THEN
+            PRINT "base64url-roundtrip-ok"
+        END IF
+    END IF
+
+    // 4. Concat
+    LET part1 AS Crypto.Bytes = Crypto.FromText("Foo")
+    LET part2 AS Crypto.Bytes = Crypto.FromText("Bar")
+    LET combined AS Crypto.Bytes = Crypto.Concat(part1, part2)
+    LET sCombined AS STRING OR Error = combined.ToText()
+    IF sCombined IS STRING THEN
+        IF sCombined = "FooBar" THEN
+            PRINT "concat-ok"
+        END IF
+    END IF
+
+    // 5. PEM formatting and parsing
+    LET pem AS STRING = Crypto.ToPem("CERTIFICATE", bText)
+    LET decPem AS Crypto.Bytes OR Error = Crypto.FromPem(pem)
+    IF decPem IS Crypto.Bytes THEN
+        IF Crypto.ConstantTimeEquals(decPem, bText) = TRUE THEN
+            PRINT "pem-roundtrip-ok"
+        END IF
+    END IF
+
+    // 6. Non-cryptographic checksums
+    LET sample AS Crypto.Bytes = Crypto.FromText("123456789")
+    IF Crypto.Checksum.Crc32(sample) = 3421780262 THEN
+        PRINT "crc32-ok"
+    END IF
+    IF Crypto.Checksum.Crc32c(sample) = 3808858755 THEN
+        PRINT "crc32c-ok"
+    END IF
+    IF Crypto.Checksum.Adler32(sample) = 152961502 THEN
+        PRINT "adler32-ok"
+    END IF
+    IF Crypto.Checksum.XxHash64(sample) = 2982633092287239580 THEN
+        PRINT "xxhash64-ok"
+    END IF
+END FUNCTION

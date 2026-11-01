@@ -1432,6 +1432,24 @@ fn bncrypto_pwd_kdf_interprets() {
     );
 }
 
+/// The `BNCrypto` encoding and checksum slice: Base64, Base64Url, Concat, PEM, CRC32, CRC32c, Adler32, and XxHash64.
+#[test]
+fn bncrypto_encoding_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-encoding/main.bn"])
+        .output()
+        .expect("run the BNCrypto encoding fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "Hello Encoding World!\nbase64-roundtrip-ok\nbase64url-roundtrip-ok\nconcat-ok\npem-roundtrip-ok\ncrc32-ok\ncrc32c-ok\nadler32-ok\nxxhash64-ok\n"
+    );
+}
+
 /// The `BNJson` DOM slice: build an object, write and read a member, and reject
 /// a missing key instead of yielding an empty STRING. The compiled twin is in
 /// the `bnc` suite; the two must print the same.
