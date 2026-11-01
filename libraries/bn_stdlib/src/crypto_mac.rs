@@ -322,6 +322,75 @@ pub extern "C" fn bn_rt_crypto_mac_verify_handle(
     ))
 }
 
+const MAC_OPTS_ALG_OFFSET: usize = 16;
+
+/// C ABI: `MacWith(key, data, opts)`.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_mac_with(
+    key_handle: u64,
+    data_handle: u64,
+    opts_ptr: *const u8,
+    out_handle: *mut i64,
+) -> i32 {
+    if out_handle.is_null() {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    }
+    let Some(key_bytes) = get_any_key(key_handle) else {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    };
+    let Some(data_bytes) = crate::crypto_abi::with_buffers(|bufs| bufs.get(&data_handle).cloned())
+    else {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    };
+    let alg = if opts_ptr.is_null() {
+        MAC_HMAC_SHA256
+    } else {
+        let mut alg_bytes = [0u8; 4];
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                opts_ptr.add(MAC_OPTS_ALG_OFFSET),
+                alg_bytes.as_mut_ptr(),
+                4,
+            );
+        }
+        i32::from_le_bytes(alg_bytes)
+    };
+    match bn_mac(&key_bytes, &data_bytes, alg) {
+        Ok(tag) => {
+            let handle = store(tag);
+            let handle_i64 = i64::try_from(handle).unwrap_or(i64::MAX);
+            unsafe { *out_handle = handle_i64 };
+            BN_CRYPTO_OK
+        }
+        Err(err) => failed(&err),
+    }
+}
+
+/// C ABI: `MacStream.NewWith(key, opts)`.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_mac_stream_new_with(
+    key_handle: u64,
+    opts_ptr: *const u8,
+    out_handle: *mut i64,
+) -> i32 {
+    let alg = if opts_ptr.is_null() {
+        MAC_HMAC_SHA256
+    } else {
+        let mut alg_bytes = [0u8; 4];
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                opts_ptr.add(MAC_OPTS_ALG_OFFSET),
+                alg_bytes.as_mut_ptr(),
+                4,
+            );
+        }
+        i32::from_le_bytes(alg_bytes)
+    };
+    bn_rt_crypto_mac_stream_new(key_handle, alg, out_handle)
+}
+
 /// C ABI: `MacStream.New(key, alg)`.
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
