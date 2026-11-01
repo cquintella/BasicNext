@@ -201,6 +201,18 @@ END FUNCTION
 EXPORT FUNCTION UnwrapKeyWith(kek AS SecretKey, wrapped AS Bytes, opts AS KeyOptions) AS SecretKey
 END FUNCTION
 
+EXPORT FUNCTION Encrypt(key AS SecretKey, plaintext AS Bytes) AS Bytes
+END FUNCTION
+
+EXPORT FUNCTION Decrypt(key AS SecretKey, sealed AS Bytes) AS Bytes
+END FUNCTION
+
+EXPORT FUNCTION EncryptText(key AS SecretKey, text AS STRING) AS STRING
+END FUNCTION
+
+EXPORT FUNCTION DecryptText(key AS SecretKey, sealedText AS STRING) AS STRING
+END FUNCTION
+
 EXPORT FUNCTION ConstantTimeEquals(a AS Bytes, b AS Bytes) AS BOOLEAN
 END FUNCTION
 

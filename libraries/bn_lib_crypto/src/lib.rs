@@ -1043,6 +1043,151 @@ impl CryptoProvider {
                     Ok(self.insert(entry.material.to_vec()))
                 }
             }
+            "Encrypt" => {
+                require_arity(member, arguments, 2, span)?;
+                let Value::CryptoSecretKey(key_handle) = &arguments[0] else {
+                    return Err(type_mismatch(
+                        "Crypto.SecretKey",
+                        "non-SecretKey value",
+                        member,
+                        span,
+                    ));
+                };
+                let Value::CryptoBytes(plain_handle) = &arguments[1] else {
+                    return Err(type_mismatch(
+                        "Crypto.Bytes",
+                        "non-Bytes value",
+                        member,
+                        span,
+                    ));
+                };
+                let entry = self.secret_keys.get(key_handle).ok_or_else(|| {
+                    runtime_error(
+                        bn_diag::DiagId::USE_AFTER_RELEASE,
+                        "BNCrypto.SecretKey is invalid",
+                        span,
+                    )
+                })?;
+                if entry.zeroized {
+                    return failure(&bn_stdlib::crypto_error::CryptoFailure::ZeroizedKey);
+                }
+                let plain_bytes = self.buffers.get(plain_handle).ok_or_else(|| {
+                    runtime_error(
+                        bn_diag::DiagId::USE_AFTER_RELEASE,
+                        "BNCrypto.Bytes is invalid",
+                        span,
+                    )
+                })?;
+                match bn_stdlib::crypto::bn_encrypt_envelope(&entry.material, plain_bytes) {
+                    Ok(sealed) => Ok(self.insert(sealed)),
+                    Err(f) => failure(&f),
+                }
+            }
+            "Decrypt" => {
+                require_arity(member, arguments, 2, span)?;
+                let Value::CryptoSecretKey(key_handle) = &arguments[0] else {
+                    return Err(type_mismatch(
+                        "Crypto.SecretKey",
+                        "non-SecretKey value",
+                        member,
+                        span,
+                    ));
+                };
+                let Value::CryptoBytes(sealed_handle) = &arguments[1] else {
+                    return Err(type_mismatch(
+                        "Crypto.Bytes",
+                        "non-Bytes value",
+                        member,
+                        span,
+                    ));
+                };
+                let entry = self.secret_keys.get(key_handle).ok_or_else(|| {
+                    runtime_error(
+                        bn_diag::DiagId::USE_AFTER_RELEASE,
+                        "BNCrypto.SecretKey is invalid",
+                        span,
+                    )
+                })?;
+                if entry.zeroized {
+                    return failure(&bn_stdlib::crypto_error::CryptoFailure::ZeroizedKey);
+                }
+                let sealed_bytes = self.buffers.get(sealed_handle).ok_or_else(|| {
+                    runtime_error(
+                        bn_diag::DiagId::USE_AFTER_RELEASE,
+                        "BNCrypto.Bytes is invalid",
+                        span,
+                    )
+                })?;
+                match bn_stdlib::crypto::bn_decrypt_envelope(&entry.material, sealed_bytes) {
+                    Ok(plain) => Ok(self.insert(plain)),
+                    Err(f) => failure(&f),
+                }
+            }
+            "EncryptText" => {
+                require_arity(member, arguments, 2, span)?;
+                let Value::CryptoSecretKey(key_handle) = &arguments[0] else {
+                    return Err(type_mismatch(
+                        "Crypto.SecretKey",
+                        "non-SecretKey value",
+                        member,
+                        span,
+                    ));
+                };
+                let Value::String(text) = &arguments[1] else {
+                    return Err(type_mismatch("STRING", "non-STRING value", member, span));
+                };
+                let entry = self.secret_keys.get(key_handle).ok_or_else(|| {
+                    runtime_error(
+                        bn_diag::DiagId::USE_AFTER_RELEASE,
+                        "BNCrypto.SecretKey is invalid",
+                        span,
+                    )
+                })?;
+                if entry.zeroized {
+                    return failure(&bn_stdlib::crypto_error::CryptoFailure::ZeroizedKey);
+                }
+                match bn_stdlib::crypto::bn_encrypt_envelope(&entry.material, text.as_bytes()) {
+                    Ok(sealed) => {
+                        let token = bn_stdlib::crypto::encode_base64url_unpadded(&sealed);
+                        Ok(Value::String(shared_string(token.as_str())))
+                    }
+                    Err(f) => failure(&f),
+                }
+            }
+            "DecryptText" => {
+                require_arity(member, arguments, 2, span)?;
+                let Value::CryptoSecretKey(key_handle) = &arguments[0] else {
+                    return Err(type_mismatch(
+                        "Crypto.SecretKey",
+                        "non-SecretKey value",
+                        member,
+                        span,
+                    ));
+                };
+                let Value::String(token) = &arguments[1] else {
+                    return Err(type_mismatch("STRING", "non-STRING value", member, span));
+                };
+                let entry = self.secret_keys.get(key_handle).ok_or_else(|| {
+                    runtime_error(
+                        bn_diag::DiagId::USE_AFTER_RELEASE,
+                        "BNCrypto.SecretKey is invalid",
+                        span,
+                    )
+                })?;
+                if entry.zeroized {
+                    return failure(&bn_stdlib::crypto_error::CryptoFailure::ZeroizedKey);
+                }
+                let Some(sealed_bytes) = bn_stdlib::crypto::decode_base64url(token) else {
+                    return failure(&bn_stdlib::crypto_error::CryptoFailure::EnvelopeFormat);
+                };
+                match bn_stdlib::crypto::bn_decrypt_envelope(&entry.material, &sealed_bytes) {
+                    Ok(plain) => match String::from_utf8(plain) {
+                        Ok(recovered) => Ok(Value::String(shared_string(recovered.as_str()))),
+                        Err(_) => failure(&bn_stdlib::crypto_error::CryptoFailure::EnvelopeFormat),
+                    },
+                    Err(f) => failure(&f),
+                }
+            }
             _ => Err(name_not_found(method, "BNCrypto SecretKey method", span)),
         }
     }
@@ -1080,7 +1225,8 @@ impl Provider for CryptoProvider {
                 csprng_dispatch(method, member, &arguments, span)
             }
             "NewSecretKey" | "NewSecretKeyWith" | "SecretKeyFromBytes" | "WrapKey"
-            | "UnwrapKey" | "UnwrapKeyWith" | "Id" | "Bits" | "Purpose" | "ExportSecret" => {
+            | "UnwrapKey" | "UnwrapKeyWith" | "Id" | "Bits" | "Purpose" | "ExportSecret"
+            | "Encrypt" | "Decrypt" | "EncryptText" | "DecryptText" => {
                 self.secret_key_op(method, member, &arguments, span)
             }
             "CONSTRUCTOR" => Ok(Value::Null),

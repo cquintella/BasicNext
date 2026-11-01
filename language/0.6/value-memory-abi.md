@@ -621,9 +621,13 @@ bn_rt_crypto_bytes_release
 bn_rt_crypto_bytes_retain
 bn_rt_crypto_bytes_to_hex
 bn_rt_crypto_bytes_zeroize
+bn_rt_crypto_decrypt
+bn_rt_crypto_decrypt_text
 bn_rt_crypto_dsa_keypair
 bn_rt_crypto_dsa_sign
 bn_rt_crypto_dsa_verify
+bn_rt_crypto_encrypt
+bn_rt_crypto_encrypt_text
 bn_rt_crypto_generate_key
 bn_rt_crypto_generate_nonce
 bn_rt_crypto_hmac

@@ -378,6 +378,42 @@ pub(crate) fn call_instruction_supported(
                             .get(&arguments[0])
                             .is_some_and(|ty| carries_bncrypto_secret_key(module, ty))
                 }
+                "Encrypt" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_secret_key(module, ty))
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "Decrypt" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_secret_key(module, ty))
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "EncryptText" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_secret_key(module, ty))
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| *ty == Type::String)
+                }
+                "DecryptText" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_secret_key(module, ty))
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| *ty == Type::String)
+                }
                 "RandomInt" => {
                     arguments.len() == 2
                         && arguments.iter().all(|argument| {

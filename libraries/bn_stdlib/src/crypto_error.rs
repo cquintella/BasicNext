@@ -60,6 +60,12 @@ pub enum CryptoFailure {
     KeyWrapLength,
     /// `UnwrapKey` authentication/integrity verification failure.
     KeyUnwrapAuth,
+    /// Invalid or unsupported envelope format.
+    EnvelopeFormat,
+    /// Envelope authentication failure.
+    EnvelopeAuth,
+    /// Envelope key length mismatch.
+    EnvelopeKeyLength,
 }
 
 impl CryptoFailure {
@@ -67,7 +73,7 @@ impl CryptoFailure {
     #[must_use]
     pub const fn code(&self) -> i32 {
         match self {
-            Self::Open(_) | Self::Decapsulate | Self::KeyUnwrapAuth => {
+            Self::Open(_) | Self::Decapsulate | Self::KeyUnwrapAuth | Self::EnvelopeAuth => {
                 crypto::AUTHENTICATION_FAILED
             }
             Self::Random(_) => crypto::UNAVAILABLE,
@@ -98,6 +104,8 @@ impl CryptoFailure {
             Self::PasswordLength(_) | Self::PasswordNoClasses => "BNCrypto.RandomPassword",
             Self::KeyWrapLength => "BNCrypto.WrapKey",
             Self::KeyUnwrapAuth => "BNCrypto.UnwrapKey",
+            Self::EnvelopeFormat | Self::EnvelopeAuth => "BNCrypto.Decrypt",
+            Self::EnvelopeKeyLength => "BNCrypto.Encrypt",
         }
     }
 
@@ -154,6 +162,11 @@ impl CryptoFailure {
                 "key data length must be at least 16 bytes and a multiple of 8".into()
             }
             Self::KeyUnwrapAuth => "RFC 3394 key unwrap integrity check failed".into(),
+            Self::EnvelopeFormat => "invalid authenticated encryption envelope format".into(),
+            Self::EnvelopeAuth => "cannot open authenticated encryption envelope".into(),
+            Self::EnvelopeKeyLength => {
+                "key material length must be 32 bytes for authenticated encryption".into()
+            }
         }
     }
 
@@ -165,7 +178,9 @@ impl CryptoFailure {
                 "the text must hold an even number of hexadecimal digits (0-9, a-f, A-F)".into()
             }
             Self::Seal(_) => "the key must be 32 bytes and the nonce 12 bytes".into(),
-            Self::Open(_) => bn_catalog::text("crypto", "open.tag.cause").into(),
+            Self::Open(_) | Self::EnvelopeAuth => {
+                bn_catalog::text("crypto", "open.tag.cause").into()
+            }
             Self::Argon2id => {
                 "the memory, iteration, or parallelism cost is outside Argon2id's bounds".into()
             }
@@ -218,6 +233,13 @@ impl CryptoFailure {
             }
             Self::KeyUnwrapAuth => {
                 "unwrapped key failed integrity check; key or KEK mismatch".into()
+            }
+            Self::EnvelopeFormat => {
+                "the envelope must start with BNC1 and have a valid header, nonce and ciphertext"
+                    .into()
+            }
+            Self::EnvelopeKeyLength => {
+                "authenticated encryption envelopes require a 256-bit (32-byte) key".into()
             }
         }
     }

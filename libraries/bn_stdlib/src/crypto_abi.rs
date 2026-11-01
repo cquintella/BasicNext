@@ -618,6 +618,120 @@ pub extern "C" fn bn_rt_crypto_secret_key_release(handle: u64) -> i32 {
     BN_CRYPTO_OK
 }
 
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_encrypt(key_handle: u64, plaintext_handle: u64) -> u64 {
+    let key_mat = with_secret_keys(|keys| {
+        let entry = keys.get(&key_handle)?;
+        if entry.zeroized {
+            return None;
+        }
+        Some(entry.material.clone())
+    });
+    let Some(key) = key_mat else {
+        return 0;
+    };
+    let pt = with_buffers(|b| b.get(&plaintext_handle).cloned());
+    let Some(plaintext) = pt else {
+        return 0;
+    };
+    match crate::crypto::bn_encrypt_envelope(&key, &plaintext) {
+        Ok(sealed) => store(sealed),
+        Err(err) => {
+            failed(&err);
+            0
+        }
+    }
+}
+
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_decrypt(key_handle: u64, sealed_handle: u64) -> u64 {
+    let key_mat = with_secret_keys(|keys| {
+        let entry = keys.get(&key_handle)?;
+        if entry.zeroized {
+            return None;
+        }
+        Some(entry.material.clone())
+    });
+    let Some(key) = key_mat else {
+        return 0;
+    };
+    let ct = with_buffers(|b| b.get(&sealed_handle).cloned());
+    let Some(sealed) = ct else {
+        return 0;
+    };
+    match crate::crypto::bn_decrypt_envelope(&key, &sealed) {
+        Ok(plain) => store(plain),
+        Err(err) => {
+            failed(&err);
+            0
+        }
+    }
+}
+
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_encrypt_text(key_handle: u64, text: *const c_char) -> *mut c_char {
+    let key_mat = with_secret_keys(|keys| {
+        let entry = keys.get(&key_handle)?;
+        if entry.zeroized {
+            return None;
+        }
+        Some(entry.material.clone())
+    });
+    let Some(key) = key_mat else {
+        return std::ptr::null_mut();
+    };
+    let Some(input_str) = c_str(text) else {
+        return std::ptr::null_mut();
+    };
+    match crate::crypto::bn_encrypt_envelope(&key, input_str.as_bytes()) {
+        Ok(sealed) => {
+            let token = crate::crypto::encode_base64url_unpadded(&sealed);
+            c_string(&token)
+        }
+        Err(err) => {
+            failed(&err);
+            std::ptr::null_mut()
+        }
+    }
+}
+
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_decrypt_text(
+    key_handle: u64,
+    sealed_text: *const c_char,
+) -> *mut c_char {
+    let key_mat = with_secret_keys(|keys| {
+        let entry = keys.get(&key_handle)?;
+        if entry.zeroized {
+            return None;
+        }
+        Some(entry.material.clone())
+    });
+    let Some(key) = key_mat else {
+        return std::ptr::null_mut();
+    };
+    let Some(token_str) = c_str(sealed_text) else {
+        return std::ptr::null_mut();
+    };
+    let Some(sealed_bytes) = crate::crypto::decode_base64url(token_str) else {
+        return std::ptr::null_mut();
+    };
+    match crate::crypto::bn_decrypt_envelope(&key, &sealed_bytes) {
+        Ok(plain) => match String::from_utf8(plain) {
+            Ok(utf8_str) => c_string(&utf8_str),
+            Err(_) => std::ptr::null_mut(),
+        },
+        Err(err) => {
+            failed(&err);
+            std::ptr::null_mut()
+        }
+    }
+}
+
 /// Algorithm selector shared with the backends: `0` is AES-256-GCM, `1` is
 /// ChaCha20-Poly1305. Anything else is rejected.
 /// Records `failure` for the emitted code's `Error` and returns the status.

@@ -317,6 +317,60 @@ pub(super) fn lower_bncrypto_call(
             );
             return;
         }
+        "Encrypt" => {
+            emit_handle_index(text, analysis, &format!("crya{dest}"), arguments[0]);
+            emit_handle_index(text, analysis, &format!("cryb{dest}"), arguments[1]);
+            let args = vec![
+                (T::I64, O::reg(format!("crya{dest}"))),
+                (T::I64, O::reg(format!("cryb{dest}"))),
+            ];
+            let call = I::call(T::I64, "bn_rt_crypto_encrypt", args);
+            text.assign(format!("cryenc{dest}"), call);
+            text.assign(
+                format!("v{dest}"),
+                I::cast(
+                    CastOp::IntToPtr,
+                    T::I64,
+                    O::reg(format!("cryenc{dest}")),
+                    T::Ptr,
+                ),
+            );
+            return;
+        }
+        "Decrypt" => {
+            emit_handle_index(text, analysis, &format!("crya{dest}"), arguments[0]);
+            emit_handle_index(text, analysis, &format!("cryb{dest}"), arguments[1]);
+            let args = vec![
+                (T::I64, O::reg(format!("crya{dest}"))),
+                (T::I64, O::reg(format!("cryb{dest}"))),
+            ];
+            let call = I::call(T::I64, "bn_rt_crypto_decrypt", args);
+            text.assign(format!("crydec{dest}"), call);
+            text.assign(
+                format!("v{dest}"),
+                I::cast(
+                    CastOp::IntToPtr,
+                    T::I64,
+                    O::reg(format!("crydec{dest}")),
+                    T::Ptr,
+                ),
+            );
+            return;
+        }
+        "EncryptText" => {
+            emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
+            let args = vec![(T::I64, cryh()), (T::Ptr, v(arguments[1]))];
+            let call = I::call(T::Ptr, "bn_rt_crypto_encrypt_text", args);
+            text.assign(format!("v{dest}"), call);
+            return;
+        }
+        "DecryptText" => {
+            emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
+            let args = vec![(T::I64, cryh()), (T::Ptr, v(arguments[1]))];
+            let call = I::call(T::Ptr, "bn_rt_crypto_decrypt_text", args);
+            text.assign(format!("v{dest}"), call);
+            return;
+        }
         "RandomBytes" => {
             let ty = analysis
                 .values

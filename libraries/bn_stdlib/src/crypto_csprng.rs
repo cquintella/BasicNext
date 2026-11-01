@@ -96,6 +96,34 @@ pub fn encode_base64url_unpadded(bytes: &[u8]) -> String {
     out
 }
 
+/// Decodes a URL-safe base64 string (RFC 4648 §5), ignoring trailing padding `=`.
+#[must_use]
+#[allow(clippy::cast_possible_truncation)]
+pub fn decode_base64url(input: &str) -> Option<Vec<u8>> {
+    let s = input.trim_end_matches('=');
+    let mut out = Vec::with_capacity((s.len() * 3) / 4);
+    let mut buf = 0u32;
+    let mut bits = 0;
+    for &b in s.as_bytes() {
+        let val = match b {
+            b'A'..=b'Z' => b - b'A',
+            b'a'..=b'z' => b - b'a' + 26,
+            b'0'..=b'9' => b - b'0' + 52,
+            b'-' | b'+' => 62,
+            b'_' | b'/' => 63,
+            b' ' | b'\r' | b'\n' | b'\t' => continue,
+            _ => return None,
+        };
+        buf = (buf << 6) | u32::from(val);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buf >> bits) as u8);
+        }
+    }
+    Some(out)
+}
+
 /// Generates a URL-safe base64 string from `n_bytes` random bytes without padding.
 ///
 /// # Errors

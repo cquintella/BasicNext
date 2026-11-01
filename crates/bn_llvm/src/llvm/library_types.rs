@@ -241,6 +241,10 @@ pub(crate) fn bncrypto_method<'a>(module: &Module, name: &'a str) -> Option<&'a 
                 | "Bits"
                 | "Purpose"
                 | "ExportSecret"
+                | "Encrypt"
+                | "Decrypt"
+                | "EncryptText"
+                | "DecryptText"
         ))
     .then_some(method)
 }
