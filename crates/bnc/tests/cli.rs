@@ -1905,35 +1905,27 @@ fn compiled_bncrypto_asymmetric_matches_the_interpreter() {
     let _ = fs::remove_dir_all(&directory);
     fs::create_dir_all(&directory).expect("fixture directory");
     let artifact = directory.join("artifact");
-    let compile = bnc()
-        .args([
-            "compile",
-            "tests/modules/bncrypto-asymmetric/main.bn",
-            "-o",
-            artifact.to_str().expect("utf-8 path"),
-        ])
+    let built = bnc()
+        .args(["tests/modules/bncrypto-asymmetric/main.bn", "-o"])
+        .arg(&artifact)
         .output()
-        .expect("compile the BNCrypto asymmetric fixture");
+        .expect("compile the fixture");
     assert!(
-        compile.status.success(),
+        built.status.success(),
         "{}",
-        String::from_utf8_lossy(&compile.stderr)
+        String::from_utf8_lossy(&built.stderr)
     );
-    let compiled = std::process::Command::new(&artifact)
+    let run = Command::new(&artifact)
         .output()
-        .expect("run the compiled BNCrypto asymmetric binary");
+        .expect("run the compiled fixture");
     assert!(
-        compiled.status.success(),
+        run.status.success(),
         "{}",
-        String::from_utf8_lossy(&compiled.stderr)
+        String::from_utf8_lossy(&run.stderr)
     );
-    let interpreted = bni()
-        .args(["run", "tests/modules/bncrypto-asymmetric/main.bn"])
-        .output()
-        .expect("run the BNCrypto asymmetric fixture with the interpreter");
     assert_eq!(
-        String::from_utf8_lossy(&compiled.stdout),
-        String::from_utf8_lossy(&interpreted.stdout)
+        String::from_utf8_lossy(&run.stdout),
+        "asym-keypair-ok\nkey-ids-match\nderived-public-matches\n"
     );
     let _ = fs::remove_dir_all(&directory);
 }

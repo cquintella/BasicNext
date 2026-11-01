@@ -1,6 +1,6 @@
 IMPORT BNCrypto AS Crypto
 
-FUNCTION Main()
+FUNCTION Start() AS VOID
     LET kp AS Crypto.KeyPair OR Error = Crypto.NewKeyPair()
     IF kp IS Error THEN
         PRINT "keypair-gen-failed"
@@ -12,7 +12,7 @@ FUNCTION Main()
             IF kp.PrivateKey.Algorithm() = Crypto.Alg.ED25519 THEN
                 LET pubId AS STRING = kp.PublicKey.Id()
                 LET privId AS STRING = kp.PrivateKey.Id()
-                IF pubId.Length() = 64 THEN
+                IF LEN(pubId) = 64 THEN
                     IF pubId = privId THEN
                         LET derivedPub AS Crypto.PublicKey = kp.PrivateKey.PublicKey()
                         IF derivedPub.Id() = pubId THEN
