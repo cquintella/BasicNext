@@ -1,0 +1,21 @@
+IMPORT BNCrypto AS Crypto
+
+FUNCTION Start() AS VOID
+    LET pw AS STRING = "hunter2-secret-password"
+    LET phc AS STRING = Crypto.HashPassword(pw)
+
+    IF Crypto.VerifyPassword(pw, phc) = TRUE THEN
+        PRINT "pwd-verify-ok"
+    END IF
+
+    IF Crypto.VerifyPassword("wrong-password", phc) = FALSE THEN
+        PRINT "pwd-wrong-rejected"
+    END IF
+
+    LET ikm AS Crypto.SecretKey = Crypto.NewSecretKey()
+    LET salt AS Crypto.Bytes = Crypto.FromText("test-salt-bytes")
+    LET derived AS Crypto.SecretKey OR Error = Crypto.Hkdf(ikm, salt, "info-context", 32)
+    IF derived IS Crypto.SecretKey THEN
+        PRINT "hkdf-ok"
+    END IF
+END FUNCTION

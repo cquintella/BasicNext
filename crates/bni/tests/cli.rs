@@ -1414,6 +1414,24 @@ fn bncrypto_mac_interprets() {
     );
 }
 
+/// The `BNCrypto` password and KDF slice: verifies `HashPassword`, `VerifyPassword`, and `Hkdf`.
+#[test]
+fn bncrypto_pwd_kdf_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-pwd-kdf/main.bn"])
+        .output()
+        .expect("run the BNCrypto password and KDF fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "pwd-verify-ok\npwd-wrong-rejected\nhkdf-ok\n"
+    );
+}
+
 /// The `BNJson` DOM slice: build an object, write and read a member, and reject
 /// a missing key instead of yielding an empty STRING. The compiled twin is in
 /// the `bnc` suite; the two must print the same.
