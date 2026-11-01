@@ -73,7 +73,7 @@ FUNCTION Start() AS VOID
     LET path AS STRING = "test_hash_input.tmp"
     LET created AS FS.File OR Error = FS.OpenNew(path)
     IF created IS FS.File THEN
-        created.Write(plain)
+        created.Write("Hello Basic Next Hash!")
         created.Close()
         LET fileHash AS Crypto.Bytes OR Error = Crypto.HashFile(path)
         IF fileHash IS Crypto.Bytes THEN

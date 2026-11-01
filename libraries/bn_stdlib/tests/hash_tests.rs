@@ -31,7 +31,7 @@ impl BnString {
 
 impl Drop for BnString {
     fn drop(&mut self) {
-        unsafe { bn_rt_str_release(self.0) };
+        bn_rt_str_release(self.0);
     }
 }
 
@@ -122,22 +122,28 @@ fn test_hash_file_streaming() {
 
 #[test]
 fn test_c_abi_hasher() {
-    unsafe {
-        let mut handle = 0i64;
-        let rc = bn_rt_crypto_hasher_new(HASH_SHA256, &mut handle);
-        assert_eq!(rc, 0);
-        assert_ne!(handle, 0);
+    let mut handle = 0i64;
+    let rc = bn_rt_crypto_hasher_new(HASH_SHA256, &mut handle);
+    assert_eq!(rc, 0);
+    assert_ne!(handle, 0);
 
-        let data = b"c abi hash streaming test";
-        let rc_up = bn_rt_crypto_hasher_update(handle, data.as_ptr(), data.len());
-        assert_eq!(rc_up, 0);
+    let data = b"c abi hash streaming test";
+    let rc_up = bn_rt_crypto_hasher_update(handle, data.as_ptr(), data.len());
+    assert_eq!(rc_up, 0);
 
-        let mut out_handle = 0i64;
-        let rc_fin = bn_rt_crypto_hasher_finish(handle, &mut out_handle);
-        assert_eq!(rc_fin, 0);
-        assert_ne!(out_handle, 0);
+    let mut out_handle = 0i64;
+    let rc_fin = bn_rt_crypto_hasher_finish(handle, &mut out_handle);
+    assert_eq!(rc_fin, 0);
+    assert_ne!(out_handle, 0);
 
-        // Hasher handle is automatically freed by finish or can be released
-        let _ = bn_rt_crypto_hasher_release(handle);
-    }
+    let _ = bn_rt_crypto_hasher_release(handle);
+
+    let mut out_h = 0i64;
+    let rc_hash = bn_rt_crypto_hash(data.as_ptr(), data.len(), HASH_SHA256, &mut out_h);
+    assert_eq!(rc_hash, 0);
+    assert_ne!(out_h, 0);
+
+    let bn_str = BnString::new(b"test_hash_input.tmp");
+    let mut out_fh = 0i64;
+    let _ = bn_rt_crypto_hash_file(bn_str.as_ptr(), HASH_SHA256, &mut out_fh);
 }
