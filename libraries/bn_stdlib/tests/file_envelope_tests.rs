@@ -58,7 +58,7 @@ fn test_file_encryption_roundtrip_sizes() {
 
         let mut data = vec![0u8; size];
         for (i, byte) in data.iter_mut().enumerate() {
-            *byte = (i % 251) as u8;
+            *byte = u8::try_from(i % 251).expect("within u8 range");
         }
         fs::write(&in_path, &data).expect("write plain input file");
 
@@ -115,7 +115,7 @@ fn test_file_decryption_deletes_partial_output_on_tamper() {
     // Multi-chunk file: 140 KiB
     let mut data = vec![0u8; 140 * 1024];
     for (i, byte) in data.iter_mut().enumerate() {
-        *byte = (i % 255) as u8;
+        *byte = u8::try_from(i % 255).expect("within u8 range");
     }
     fs::write(&in_path, &data).unwrap();
 

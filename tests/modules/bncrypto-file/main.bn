@@ -4,6 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 IMPORT BNCrypto AS Crypto
+IMPORT HOST.FileSystem AS FS
 
 FUNCTION Start() AS VOID
     LET key AS Crypto.SecretKey = Crypto.NewSecretKey()
