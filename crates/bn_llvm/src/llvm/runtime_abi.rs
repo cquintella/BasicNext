@@ -141,6 +141,7 @@ signatures! {
     CRYPTO_KEY_RELEASE = "bn_rt_crypto_key_release"(I64) -> I32;
     CRYPTO_KEY_RETAIN = "bn_rt_crypto_key_retain"(I64) -> I32;
     CRYPTO_KEY_ZEROIZE = "bn_rt_crypto_key_zeroize"(I64) -> I32;
+    CRYPTO_KEYPAIR_GENERATE = "bn_rt_crypto_keypair_generate"(I32, Ptr, Ptr) -> I32;
     CRYPTO_MAC = "bn_rt_crypto_mac_handle"(I64, I64) -> I64;
     CRYPTO_MAC_WITH = "bn_rt_crypto_mac_with"(I64, I64, Ptr, Ptr) -> I32;
     CRYPTO_VERIFY_MAC = "bn_rt_crypto_mac_verify_handle"(I64, I64, I64) -> I32;
@@ -150,7 +151,17 @@ signatures! {
     CRYPTO_MAC_STREAM_FINISH = "bn_rt_crypto_mac_stream_finish"(I64, Ptr) -> I32;
     CRYPTO_MAC_STREAM_VERIFY = "bn_rt_crypto_mac_stream_verify"(I64, I64) -> I32;
     CRYPTO_OPEN = "bn_rt_crypto_open"(I32, I64, I64, I64, I64, Ptr) -> I32;
+    CRYPTO_PRIVATE_KEY_ALGORITHM = "bn_rt_crypto_private_key_algorithm"(I64) -> I32;
+    CRYPTO_PRIVATE_KEY_ID = "bn_rt_crypto_private_key_id"(I64) -> Ptr;
+    CRYPTO_PRIVATE_KEY_PUBLIC_KEY = "bn_rt_crypto_private_key_public_key"(I64) -> I64;
+    CRYPTO_PRIVATE_KEY_RELEASE = "bn_rt_crypto_private_key_release"(I64) -> I32;
+    CRYPTO_PRIVATE_KEY_RETAIN = "bn_rt_crypto_private_key_retain"(I64) -> I32;
+    CRYPTO_PRIVATE_KEY_ZEROIZE = "bn_rt_crypto_private_key_zeroize"(I64) -> I32;
     CRYPTO_PUBLIC_KEY = "bn_rt_crypto_public_key"(I32, I64, Ptr) -> I32;
+    CRYPTO_PUBLIC_KEY_ALGORITHM = "bn_rt_crypto_public_key_algorithm"(I64) -> I32;
+    CRYPTO_PUBLIC_KEY_ID = "bn_rt_crypto_public_key_id"(I64) -> Ptr;
+    CRYPTO_PUBLIC_KEY_RELEASE = "bn_rt_crypto_public_key_release"(I64) -> I32;
+    CRYPTO_PUBLIC_KEY_RETAIN = "bn_rt_crypto_public_key_retain"(I64) -> I32;
     CRYPTO_RANDOM_BYTES = "bn_rt_crypto_random_bytes"(I64, Ptr) -> I32;
     CRYPTO_RANDOM_INT = "bn_rt_crypto_random_int"(I64, I64, Ptr) -> I32;
     CRYPTO_RANDOM_PASSWORD = "bn_rt_crypto_random_password"(Ptr, Ptr) -> I32;
@@ -566,6 +577,7 @@ declarations! {
     CRYPTO_KEY_LENGTH CRYPTO_KEY_RELEASE CRYPTO_KEY_RETAIN CRYPTO_KEY_ZEROIZE CRYPTO_RANDOM_BYTES
     CRYPTO_RANDOM_INT CRYPTO_RANDOM_PASSWORD CRYPTO_RANDOM_TOKEN CRYPTO_RANDOM_UUID_V4 CRYPTO_UUID_V7
     CRYPTO_TO_PEM CRYPTO_FROM_PEM CRYPTO_CRC32 CRYPTO_CRC32C CRYPTO_ADLER32 CRYPTO_XXHASH64 CRYPTO_VERIFY_FILE_CHECKSUM
+    CRYPTO_KEYPAIR_GENERATE CRYPTO_PRIVATE_KEY_ALGORITHM CRYPTO_PRIVATE_KEY_ID CRYPTO_PRIVATE_KEY_PUBLIC_KEY CRYPTO_PRIVATE_KEY_RELEASE CRYPTO_PRIVATE_KEY_RETAIN CRYPTO_PRIVATE_KEY_ZEROIZE CRYPTO_PUBLIC_KEY_ALGORITHM CRYPTO_PUBLIC_KEY_ID CRYPTO_PUBLIC_KEY_RELEASE CRYPTO_PUBLIC_KEY_RETAIN
     COMPRESS_DEFLATE COMPRESS_INFLATE COMPRESS_GZIP COMPRESS_GUNZIP COMPRESS_DEFLATE_TEXT
     COMPRESS_INFLATE_TEXT COMPRESS_GZIP_TEXT COMPRESS_GUNZIP_TEXT COMPRESS_BYTES_FROM_HEX
     COMPRESS_BYTES_FROM_TEXT COMPRESS_BYTES_LENGTH COMPRESS_BYTES_RELEASE COMPRESS_BYTES_RETAIN

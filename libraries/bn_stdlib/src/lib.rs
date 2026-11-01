@@ -20,6 +20,7 @@ pub use bn_rt::*;
 pub mod compress_abi;
 pub mod crypto;
 pub mod crypto_abi;
+pub mod crypto_asymmetric;
 pub mod crypto_csprng;
 pub mod crypto_encoding;
 pub mod crypto_envelope;

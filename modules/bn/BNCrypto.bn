@@ -198,6 +198,49 @@ EXPORT CLASS SecretKey
     END FUNCTION
 END CLASS
 
+EXPORT CLASS PublicKey
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Id() AS STRING
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION Algorithm() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION Fingerprint(hashAlg AS INTEGER) AS STRING
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION ExportPem() AS STRING
+        RETURN ""
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS PrivateKey
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Id() AS STRING
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION Algorithm() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION PublicKey() AS PublicKey
+    END FUNCTION
+    PUBLIC FUNCTION ExportPem(format AS STRING, password AS STRING) AS STRING
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION ExportPemUnencrypted(format AS STRING) AS STRING
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION Zeroize() AS VOID
+    END FUNCTION
+END CLASS
+
+EXPORT STRUCT KeyPair
+    PublicKey AS PublicKey = NEW PublicKey()
+    PrivateKey AS PrivateKey = NEW PrivateKey()
+END STRUCT
+
 EXPORT STRUCT PasswordGenOptions
     length AS INTEGER = 20
     includeUppercase AS BOOLEAN = TRUE
@@ -400,6 +443,9 @@ EXPORT FUNCTION VerifyPassword(password AS STRING, phc AS STRING) AS BOOLEAN
 END FUNCTION
 
 EXPORT FUNCTION Hkdf(ikm AS SecretKey, salt AS Bytes, info AS Bytes, len AS INTEGER) AS SecretKey OR Error
+END FUNCTION
+
+EXPORT FUNCTION NewKeyPair() AS KeyPair OR Error
 END FUNCTION
 
 EXPORT FUNCTION Ed25519PublicKey(key AS Key) AS Bytes OR Error

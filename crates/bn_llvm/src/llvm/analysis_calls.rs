@@ -299,6 +299,8 @@ pub(crate) fn call_instruction_supported(
                         && values.get(&arguments[0]).is_some_and(|ty| {
                             carries_bncrypto_key(module, ty)
                                 || carries_bncrypto_secret_key(module, ty)
+                                || carries_bncrypto_public_key(module, ty)
+                                || carries_bncrypto_private_key(module, ty)
                         })
                 }
                 "Zeroize" => {
@@ -308,6 +310,7 @@ pub(crate) fn call_instruction_supported(
                                 || carries_bncrypto_bytes(module, ty)
                                 || carries_bncrypto_secret(module, ty)
                                 || carries_bncrypto_secret_key(module, ty)
+                                || carries_bncrypto_private_key(module, ty)
                         })
                 }
                 "ConstantTimeEquals" => {
@@ -330,6 +333,13 @@ pub(crate) fn call_instruction_supported(
                         && values
                             .get(&arguments[0])
                             .is_some_and(|ty| carries_bncrypto_secret(module, ty))
+                }
+                "NewKeyPair" => arguments.is_empty(),
+                "PublicKey" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_private_key(module, ty))
                 }
                 "NewSecretKey" => arguments.is_empty(),
                 "NewSecretKeyWith" => arguments.len() == 1,
@@ -366,7 +376,15 @@ pub(crate) fn call_instruction_supported(
                             .get(&arguments[1])
                             .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
                 }
-                "Id" | "Bits" | "Purpose" => {
+                "Id" => {
+                    arguments.len() == 1
+                        && values.get(&arguments[0]).is_some_and(|ty| {
+                            carries_bncrypto_secret_key(module, ty)
+                                || carries_bncrypto_public_key(module, ty)
+                                || carries_bncrypto_private_key(module, ty)
+                        })
+                }
+                "Bits" | "Purpose" => {
                     arguments.len() == 1
                         && values
                             .get(&arguments[0])

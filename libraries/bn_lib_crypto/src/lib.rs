@@ -27,7 +27,8 @@ use bn_interp::{
 pub const NAME: &str = "BNCrypto";
 
 use bn_stdlib::crypto::KeyEntry;
-use bn_stdlib::crypto_abi::SecretKeyEntry;
+use bn_stdlib::crypto_abi::{PrivateKeyEntry, PublicKeyEntry, SecretKeyEntry};
+use bn_value::RecordValue;
 
 /// Interpreter-side owner of `BNCrypto.Bytes` and `BNCrypto.Key` handles. Compiled programs use
 /// the parallel tables in `bn_stdlib::crypto_abi`; neither observes the other, and both
@@ -42,6 +43,10 @@ pub struct CryptoProvider {
     secret_holders: HashMap<u64, usize>,
     secret_keys: HashMap<u64, SecretKeyEntry>,
     secret_key_holders: HashMap<u64, usize>,
+    public_keys: HashMap<u64, PublicKeyEntry>,
+    public_key_holders: HashMap<u64, usize>,
+    private_keys: HashMap<u64, PrivateKeyEntry>,
+    private_key_holders: HashMap<u64, usize>,
     hashers: HashMap<Handle, i64>,
     mac_streams: HashMap<Handle, i64>,
     next: u64,
@@ -70,6 +75,22 @@ impl CryptoProvider {
         self.secret_keys.insert(handle, entry);
         self.secret_key_holders.insert(handle, 1);
         Value::CryptoSecretKey(handle)
+    }
+
+    fn insert_public_key(&mut self, entry: PublicKeyEntry) -> Value {
+        self.next += 1;
+        let handle = self.next;
+        self.public_keys.insert(handle, entry);
+        self.public_key_holders.insert(handle, 1);
+        Value::CryptoKey(handle)
+    }
+
+    fn insert_private_key(&mut self, entry: PrivateKeyEntry) -> Value {
+        self.next += 1;
+        let handle = self.next;
+        self.private_keys.insert(handle, entry);
+        self.private_key_holders.insert(handle, 1);
+        Value::CryptoKey(handle)
     }
 
     fn insert_key(&mut self, algorithm: i32, material: zeroize::Zeroizing<Vec<u8>>) -> Value {
@@ -1759,6 +1780,204 @@ impl CryptoProvider {
             _ => Err(name_not_found(method, "BNCrypto function", span)),
         }
     }
+
+    fn op_new_keypair(
+        &mut self,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        require_arity(member, arguments, 0, span)?;
+        match bn_stdlib::crypto::bn_keypair_generate_internal(30) {
+            Ok((pub_h, priv_h)) => {
+                let pub_entry =
+                    bn_stdlib::crypto::with_public_keys(|keys| keys.get(&pub_h).cloned());
+                let priv_entry = bn_stdlib::crypto::with_private_keys(|keys| {
+                    keys.get(&priv_h).map(|e| PrivateKeyEntry {
+                        seed: e.seed.clone(),
+                        spki: e.spki.clone(),
+                        raw_public: e.raw_public.clone(),
+                        algorithm: e.algorithm,
+                        key_id: e.key_id.clone(),
+                        zeroized: e.zeroized,
+                    })
+                });
+                if let (Some(pub_e), Some(priv_e)) = (pub_entry, priv_entry) {
+                    let pub_val = self.insert_public_key(pub_e);
+                    let priv_val = self.insert_private_key(priv_e);
+                    bn_stdlib::crypto_abi::bn_rt_crypto_public_key_release(pub_h);
+                    bn_stdlib::crypto_abi::bn_rt_crypto_private_key_release(priv_h);
+                    Ok(Value::Record {
+                        record: RecordValue::new("KeyPair", vec![pub_val, priv_val]),
+                    })
+                } else {
+                    failure(&CryptoFailure::Random("NewKeyPair"))
+                }
+            }
+            Err(f) => failure(&f),
+        }
+    }
+
+    fn op_public_key(
+        &mut self,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        require_arity(member, arguments, 1, span)?;
+        let Some(Value::CryptoKey(handle)) = arguments.first() else {
+            return Err(type_mismatch(
+                "BNCrypto.PrivateKey",
+                "non-PrivateKey value",
+                member,
+                span,
+            ));
+        };
+        let entry = self.private_keys.get(handle).ok_or_else(|| {
+            runtime_error(
+                bn_diag::DiagId::USE_AFTER_RELEASE,
+                "BNCrypto.PrivateKey was already released",
+                span,
+            )
+        })?;
+        if entry.zeroized {
+            return failure(&CryptoFailure::ZeroizedKey);
+        }
+        let pub_entry = entry.to_public_entry();
+        Ok(self.insert_public_key(pub_entry))
+    }
+
+    fn op_key_id(
+        &self,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        require_arity(member, arguments, 1, span)?;
+        let Some(Value::CryptoKey(handle)) = arguments.first() else {
+            return Err(type_mismatch("BNCrypto.Key", "non-Key value", member, span));
+        };
+        if let Some(entry) = self.public_keys.get(handle) {
+            return Ok(Value::String(shared_string(entry.key_id.as_str())));
+        }
+        if let Some(entry) = self.private_keys.get(handle) {
+            if entry.zeroized {
+                return Ok(Value::String(shared_string("")));
+            }
+            return Ok(Value::String(shared_string(entry.key_id.as_str())));
+        }
+        Err(runtime_error(
+            bn_diag::DiagId::USE_AFTER_RELEASE,
+            "Key was already released",
+            span,
+        ))
+    }
+
+    fn op_key_algorithm(
+        &self,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        require_arity(member, arguments, 1, span)?;
+        let Some(Value::CryptoKey(handle)) = arguments.first() else {
+            return Err(type_mismatch("BNCrypto.Key", "non-Key value", member, span));
+        };
+        if let Some(entry) = self.public_keys.get(handle) {
+            return Ok(Value::Integer(
+                i128::from(entry.algorithm),
+                IntegerType::Int32,
+            ));
+        }
+        if let Some(entry) = self.private_keys.get(handle) {
+            if entry.zeroized {
+                return Ok(Value::Integer(0, IntegerType::Int32));
+            }
+            return Ok(Value::Integer(
+                i128::from(entry.algorithm),
+                IntegerType::Int32,
+            ));
+        }
+        Err(runtime_error(
+            bn_diag::DiagId::USE_AFTER_RELEASE,
+            "Key was already released",
+            span,
+        ))
+    }
+
+    fn op_key_zeroize(
+        &mut self,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        require_arity(member, arguments, 1, span)?;
+        let Some(Value::CryptoKey(handle)) = arguments.first() else {
+            return Err(type_mismatch("BNCrypto.Key", "non-Key value", member, span));
+        };
+        if let Some(entry) = self.private_keys.get_mut(handle) {
+            entry.seed.as_mut_slice().zeroize();
+            entry.zeroized = true;
+            return Ok(Value::Null);
+        }
+        Err(runtime_error(
+            bn_diag::DiagId::USE_AFTER_RELEASE,
+            "Key was already released",
+            span,
+        ))
+    }
+
+    fn asymmetric_op(
+        &mut self,
+        method: &str,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        match method {
+            "NewKeyPair" => self.op_new_keypair(member, arguments, span),
+            "PublicKey" => self.op_public_key(member, arguments, span),
+            "Id" => self.op_key_id(member, arguments, span),
+            "Algorithm" => self.op_key_algorithm(member, arguments, span),
+            "Zeroize" => self.op_key_zeroize(member, arguments, span),
+            _ => Err(name_not_found(method, "BNCrypto function", span)),
+        }
+    }
+
+    fn release_crypto_key(&mut self, handle: u64, span: Span) -> Result<(), Diagnostic> {
+        if let Some(holders) = self.key_holders.get_mut(&handle) {
+            *holders -= 1;
+            if *holders == 0 {
+                self.key_holders.remove(&handle);
+                if let Some(mut entry) = self.keys.remove(&handle) {
+                    entry.material.zeroize();
+                }
+            }
+            Ok(())
+        } else if let Some(holders) = self.public_key_holders.get_mut(&handle) {
+            *holders -= 1;
+            if *holders == 0 {
+                self.public_key_holders.remove(&handle);
+                self.public_keys.remove(&handle);
+            }
+            Ok(())
+        } else if let Some(holders) = self.private_key_holders.get_mut(&handle) {
+            *holders -= 1;
+            if *holders == 0 {
+                self.private_key_holders.remove(&handle);
+                if let Some(mut entry) = self.private_keys.remove(&handle) {
+                    entry.seed.as_mut_slice().zeroize();
+                }
+            }
+            Ok(())
+        } else {
+            Err(runtime_error(
+                bn_diag::DiagId::USE_AFTER_RELEASE,
+                bn_catalog::text("crypto", "msg.bncrypto_key_was_already_released"),
+                span,
+            ))
+        }
+    }
 }
 
 impl Provider for CryptoProvider {
@@ -1787,15 +2006,42 @@ impl Provider for CryptoProvider {
             }
             "MlKemKeypair" | "MlKemEncapsulate" | "MlKemDecapsulate" | "MlDsaKeypair"
             | "MlDsaSign" | "MlDsaVerify" => self.post_quantum(method, member, &arguments, span),
-            "RandomBytes" | "GenerateNonce" | "GenerateKey" | "ImportKey" | "Algorithm"
-            | "Zeroize" => self.key_or_entropy(method, member, &arguments, span),
+            "NewKeyPair" | "PublicKey" => self.asymmetric_op(method, member, &arguments, span),
+            "Id" => {
+                if matches!(arguments.first(), Some(Value::CryptoKey(h)) if self.public_keys.contains_key(h) || self.private_keys.contains_key(h))
+                {
+                    self.asymmetric_op(method, member, &arguments, span)
+                } else {
+                    self.secret_key_op(method, member, &arguments, span)
+                }
+            }
+            "Algorithm" => {
+                if matches!(arguments.first(), Some(Value::CryptoKey(h)) if self.public_keys.contains_key(h) || self.private_keys.contains_key(h))
+                {
+                    self.asymmetric_op(method, member, &arguments, span)
+                } else {
+                    self.key_or_entropy(method, member, &arguments, span)
+                }
+            }
+            "Zeroize" => {
+                if matches!(arguments.first(), Some(Value::CryptoKey(h)) if self.private_keys.contains_key(h))
+                {
+                    self.asymmetric_op(method, member, &arguments, span)
+                } else {
+                    self.key_or_entropy(method, member, &arguments, span)
+                }
+            }
+            "RandomBytes" | "GenerateNonce" | "GenerateKey" | "ImportKey" => {
+                self.key_or_entropy(method, member, &arguments, span)
+            }
             "RandomInt" | "RandomToken" | "RandomUuidV4" | "UuidV7" | "RandomPassword" => {
                 csprng_dispatch(method, member, &arguments, span)
             }
             "NewSecretKey" | "NewSecretKeyWith" | "SecretKeyFromBytes" | "WrapKey"
-            | "UnwrapKey" | "UnwrapKeyWith" | "Id" | "Bits" | "Purpose" | "ExportSecret"
-            | "Encrypt" | "Decrypt" | "EncryptText" | "DecryptText" | "EncryptFile"
-            | "DecryptFile" => self.secret_key_op(method, member, &arguments, span),
+            | "UnwrapKey" | "UnwrapKeyWith" | "Bits" | "Purpose" | "ExportSecret" | "Encrypt"
+            | "Decrypt" | "EncryptText" | "DecryptText" | "EncryptFile" | "DecryptFile" => {
+                self.secret_key_op(method, member, &arguments, span)
+            }
             "Hash" | "HashText" | "HashFile" | "HashWith" | "Update" | "Finish" | "Verify" => {
                 self.hash_op(core, method, member, &arguments, span)
             }
@@ -1835,6 +2081,22 @@ impl Provider for CryptoProvider {
                 alg: String::new(),
                 zeroized: false,
             })))
+        } else if base == Some("PublicKey") {
+            Some(Ok(self.insert_public_key(PublicKeyEntry {
+                spki: Vec::new(),
+                raw: Vec::new(),
+                algorithm: 0,
+                key_id: String::new(),
+            })))
+        } else if base == Some("PrivateKey") {
+            Some(Ok(self.insert_private_key(PrivateKeyEntry {
+                seed: zeroize::Zeroizing::new(Vec::new()),
+                spki: Vec::new(),
+                raw_public: Vec::new(),
+                algorithm: 0,
+                key_id: String::new(),
+                zeroized: false,
+            })))
         } else {
             None
         }
@@ -1853,17 +2115,24 @@ impl Provider for CryptoProvider {
                     span,
                 )),
             }),
-            Value::CryptoKey(handle) => Some(match self.key_holders.get_mut(handle) {
-                Some(holders) => {
+            Value::CryptoKey(handle) => {
+                Some(if let Some(holders) = self.key_holders.get_mut(handle) {
                     *holders += 1;
                     Ok(())
-                }
-                None => Err(runtime_error(
-                    bn_diag::DiagId::USE_AFTER_RELEASE,
-                    bn_catalog::text("crypto", "msg.bncrypto_key_was_already_released"),
-                    span,
-                )),
-            }),
+                } else if let Some(holders) = self.public_key_holders.get_mut(handle) {
+                    *holders += 1;
+                    Ok(())
+                } else if let Some(holders) = self.private_key_holders.get_mut(handle) {
+                    *holders += 1;
+                    Ok(())
+                } else {
+                    Err(runtime_error(
+                        bn_diag::DiagId::USE_AFTER_RELEASE,
+                        bn_catalog::text("crypto", "msg.bncrypto_key_was_already_released"),
+                        span,
+                    ))
+                })
+            }
             Value::CryptoSecret(handle) => Some(match self.secret_holders.get_mut(handle) {
                 Some(holders) => {
                     *holders += 1;
@@ -1910,24 +2179,7 @@ impl Provider for CryptoProvider {
                     ))
                 })
             }
-            Value::CryptoKey(handle) => {
-                Some(if let Some(holders) = self.key_holders.get_mut(handle) {
-                    *holders -= 1;
-                    if *holders == 0 {
-                        self.key_holders.remove(handle);
-                        if let Some(mut entry) = self.keys.remove(handle) {
-                            entry.material.zeroize();
-                        }
-                    }
-                    Ok(())
-                } else {
-                    Err(runtime_error(
-                        bn_diag::DiagId::USE_AFTER_RELEASE,
-                        bn_catalog::text("crypto", "msg.bncrypto_key_was_already_released"),
-                        span,
-                    ))
-                })
-            }
+            Value::CryptoKey(handle) => Some(self.release_crypto_key(*handle, span)),
             Value::CryptoSecret(handle) => {
                 Some(if let Some(holders) = self.secret_holders.get_mut(handle) {
                     *holders -= 1;

@@ -39,6 +39,7 @@ pub const fn required_key_length(algorithm: i32) -> Option<usize> {
     }
 }
 
+pub use crate::crypto_asymmetric::*;
 pub use crate::crypto_csprng::*;
 
 /// Generates a CSPRNG nonce of appropriate length for the cipher specified by `algorithm`.

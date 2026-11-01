@@ -147,8 +147,22 @@ pub(super) fn lower_bncrypto_call(
                     .values
                     .get(&arguments[0])
                     .is_some_and(|ty| carries_type(ty, "SecretKey"));
+                let is_pub = analysis
+                    .values
+                    .get(&arguments[0])
+                    .is_some_and(|ty| carries_type(ty, "PublicKey"));
+                let is_priv = analysis
+                    .values
+                    .get(&arguments[0])
+                    .is_some_and(|ty| carries_type(ty, "PrivateKey"));
                 if is_secret_key {
                     let call = I::call(T::Ptr, "bn_rt_crypto_secret_key_algorithm", args);
+                    text.assign(format!("v{dest}"), call);
+                } else if is_pub {
+                    let call = I::call(T::I32, "bn_rt_crypto_public_key_algorithm", args);
+                    text.assign(format!("v{dest}"), call);
+                } else if is_priv {
+                    let call = I::call(T::I32, "bn_rt_crypto_private_key_algorithm", args);
                     text.assign(format!("v{dest}"), call);
                 } else {
                     let call = I::call(T::I32, "bn_rt_crypto_key_algorithm", args);
@@ -159,6 +173,10 @@ pub(super) fn lower_bncrypto_call(
                     .values
                     .get(&arguments[0])
                     .is_some_and(|ty| carries_type(ty, "SecretKey"));
+                let is_priv = analysis
+                    .values
+                    .get(&arguments[0])
+                    .is_some_and(|ty| carries_type(ty, "PrivateKey"));
                 let is_key = analysis
                     .values
                     .get(&arguments[0])
@@ -167,7 +185,9 @@ pub(super) fn lower_bncrypto_call(
                     .values
                     .get(&arguments[0])
                     .is_some_and(|ty| carries_type(ty, "Secret"));
-                let symbol = if is_secret_key {
+                let symbol = if is_priv {
+                    "bn_rt_crypto_private_key_zeroize"
+                } else if is_secret_key {
                     "bn_rt_crypto_secret_key_zeroize"
                 } else if is_key {
                     "bn_rt_crypto_key_zeroize"
@@ -208,6 +228,67 @@ pub(super) fn lower_bncrypto_call(
                     I::cast(CastOp::Trunc, T::I64, length, T::I32),
                 );
             }
+            return;
+        }
+        "NewKeyPair" => {
+            text.assign(
+                format!("kpptr{dest}"),
+                I::call(
+                    T::Ptr,
+                    "calloc",
+                    vec![(T::I64, O::int(1)), (T::I64, O::int(32))],
+                ),
+            );
+            let kpptr = O::reg(format!("kpptr{dest}"));
+            text.assign(
+                format!("kppub_{dest}"),
+                I::gep(T::I8, kpptr.clone(), vec![(T::I32, O::int(16))]),
+            );
+            let pub_slot = O::reg(format!("kppub_{dest}"));
+            text.assign(
+                format!("kppriv_{dest}"),
+                I::gep(T::I8, kpptr.clone(), vec![(T::I32, O::int(24))]),
+            );
+            let priv_slot = O::reg(format!("kppriv_{dest}"));
+            let args = vec![
+                (T::I32, O::int(30)),
+                (T::Ptr, pub_slot),
+                (T::Ptr, priv_slot),
+            ];
+            text.assign(
+                format!("kprc{dest}"),
+                I::call(T::I32, "bn_rt_crypto_keypair_generate", args),
+            );
+            let rc = O::reg(format!("kprc{dest}"));
+            text.assign(
+                format!("kppayload{dest}"),
+                I::cast(CastOp::PtrToInt, T::Ptr, kpptr.clone(), T::I64),
+            );
+            let kppayload = O::reg(format!("kppayload{dest}"));
+            super::host_results::emit_status_result(
+                text,
+                destination,
+                &rc,
+                None,
+                &kpptr,
+                &kppayload,
+            );
+            return;
+        }
+        "PublicKey" => {
+            emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
+            let args = vec![(T::I64, cryh())];
+            let call = I::call(T::I64, "bn_rt_crypto_private_key_public_key", args);
+            text.assign(format!("crypub{dest}"), call);
+            text.assign(
+                format!("v{dest}"),
+                I::cast(
+                    CastOp::IntToPtr,
+                    T::I64,
+                    O::reg(format!("crypub{dest}")),
+                    T::Ptr,
+                ),
+            );
             return;
         }
         "NewSecretKey" | "NewSecretKeyWith" => {
@@ -290,7 +371,19 @@ pub(super) fn lower_bncrypto_call(
         "Id" | "Purpose" => {
             emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
             let args = vec![(T::I64, cryh())];
-            let sym = if member == "Id" {
+            let is_pub = analysis
+                .values
+                .get(&arguments[0])
+                .is_some_and(|ty| carries_type(ty, "PublicKey"));
+            let is_priv = analysis
+                .values
+                .get(&arguments[0])
+                .is_some_and(|ty| carries_type(ty, "PrivateKey"));
+            let sym = if is_pub {
+                "bn_rt_crypto_public_key_id"
+            } else if is_priv {
+                "bn_rt_crypto_private_key_id"
+            } else if member == "Id" {
                 "bn_rt_crypto_secret_key_id"
             } else {
                 "bn_rt_crypto_secret_key_purpose"
