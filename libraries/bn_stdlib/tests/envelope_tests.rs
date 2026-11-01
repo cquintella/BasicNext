@@ -97,14 +97,12 @@ fn test_envelope_c_abi() {
     let recovered_ptr = bn_rt_crypto_decrypt_text(key_handle, token_ptr);
     assert!(!recovered_ptr.is_null());
     let recovered_bytes = slice_from_raw(recovered_ptr).expect("slice from raw STRING");
-    let recovered_str = std::str::from_utf8(recovered_bytes).unwrap();
-    assert_eq!(recovered_str, "Sensitive payload data");
+    let unwrapped_text = std::str::from_utf8(recovered_bytes).unwrap();
+    assert_eq!(unwrapped_text, "Sensitive payload data");
 
     // Clean up
-    unsafe {
-        bn_rt_str_release(token_ptr);
-        bn_rt_str_release(recovered_ptr);
-    }
+    bn_rt_str_release(token_ptr);
+    bn_rt_str_release(recovered_ptr);
     bn_rt_crypto_bytes_release(text_handle);
     bn_rt_crypto_bytes_release(sealed_handle);
     bn_rt_crypto_bytes_release(decrypted_handle);

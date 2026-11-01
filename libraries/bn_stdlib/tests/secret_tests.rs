@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-#![allow(unsafe_code)]
+#![allow(unsafe_code, clippy::similar_names)]
 
 use bn_stdlib::crypto::constant_time_equals;
 use bn_stdlib::crypto_abi::{

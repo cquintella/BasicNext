@@ -1630,7 +1630,7 @@ fn compiled_bncrypto_secret_matches_the_interpreter() {
     );
 }
 
-/// SecretKey opaque type and key wrapping compile: 256-bit generation, masked print,
+/// `SecretKey` opaque type and key wrapping compile: 256-bit generation, masked print,
 /// secret bytes export and import, RFC 3394 key wrap and unwrap, and zeroization.
 #[test]
 fn compiled_bncrypto_secretkey_matches_the_interpreter() {

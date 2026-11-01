@@ -3,7 +3,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-#![allow(unsafe_code)]
+#![allow(
+    unsafe_code,
+    unused_unsafe,
+    clippy::similar_names,
+    clippy::borrow_as_ptr
+)]
 
 use bn_stdlib::crypto_abi::{
     bn_rt_crypto_bytes_from_hex, bn_rt_crypto_bytes_length, bn_rt_crypto_bytes_release,

@@ -1300,7 +1300,7 @@ fn bncrypto_secret_interprets() {
     );
 }
 
-/// The `BNCrypto` secret key slice: generates 256-bit SecretKey, verifies Id/Length/Bits,
+/// The `BNCrypto` secret key slice: generates 256-bit `SecretKey`, verifies `Id`/`Length`/`Bits`,
 /// masks PRINT as `***`, exports secret bytes, imports from bytes, performs RFC 3394
 /// key wrap and unwrap, and zeroizes memory.
 #[test]
@@ -1320,8 +1320,8 @@ fn bncrypto_secretkey_interprets() {
     );
 }
 
-/// The `BNCrypto` authenticated envelope slice: verifies Encrypt produces versioned
-/// BNC1 envelope, Decrypt authenticates and round-trips, and EncryptText/DecryptText work.
+/// The `BNCrypto` authenticated envelope slice: verifies `Encrypt` produces versioned
+/// `BNC1` envelope, `Decrypt` authenticates and round-trips, and `EncryptText`/`DecryptText` work.
 #[test]
 fn bncrypto_envelope_interprets() {
     let output = bni()
