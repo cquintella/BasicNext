@@ -81,6 +81,6 @@ FUNCTION Start() AS VOID
                 PRINT "hash-file-matches-hash-ok"
             END IF
         END IF
-        FS.Remove(path)
+        LET d AS VOID OR Error = FS.DeleteFile(path)
     END IF
 END FUNCTION
