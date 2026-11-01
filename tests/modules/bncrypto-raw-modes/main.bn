@@ -1,0 +1,49 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT BNCrypto AS Crypto
+
+FUNCTION Start() AS VOID
+    LET rawKey AS Crypto.Bytes = Crypto.FromText("0123456789abcdef0123456789abcdef")
+    LET nonce AS Crypto.Bytes = Crypto.FromText("0123456789ab")
+    LET plain AS Crypto.Bytes = Crypto.FromText("hello raw modes")
+    LET aad AS Crypto.Bytes = Crypto.FromText("auth")
+
+    // 1. Attempting to import forbidden/unrecognized algorithm IDs fails closed
+    LET forbiddenKey AS Crypto.Key OR Error = Crypto.ImportKey(rawKey, 99)
+    IF forbiddenKey IS Error THEN
+        PRINT "forbidden-mode-import-rejected"
+    END IF
+
+    // 2. Generating key with forbidden/unrecognized algorithm IDs fails closed
+    LET forbiddenGen AS Crypto.Key OR Error = Crypto.GenerateKey(99)
+    IF forbiddenGen IS Error THEN
+        PRINT "forbidden-mode-generate-rejected"
+    END IF
+
+    // 3. Raw AEAD with valid key works
+    LET keyAes AS Crypto.Key OR Error = Crypto.ImportKey(rawKey, Crypto.ALG_AES_GCM_256)
+    IF keyAes IS Crypto.Key THEN
+        LET sealed AS Crypto.Bytes OR Error = Crypto.SealAesGcm(keyAes, nonce, plain, aad)
+        IF sealed IS Crypto.Bytes THEN
+            PRINT "raw-aes-gcm-seal-ok"
+            LET opened AS Crypto.Bytes OR Error = Crypto.OpenAesGcm(keyAes, nonce, sealed, aad)
+            IF opened IS Crypto.Bytes THEN
+                IF Crypto.ConstantTimeEquals(opened, plain) = TRUE THEN
+                    PRINT "raw-aes-gcm-open-ok"
+                END IF
+            END IF
+        END IF
+    END IF
+
+    // 4. Bad nonce length fails closed
+    IF keyAes IS Crypto.Key THEN
+        LET badNonce AS Crypto.Bytes = Crypto.FromText("short")
+        LET badSeal AS Crypto.Bytes OR Error = Crypto.SealAesGcm(keyAes, badNonce, plain, aad)
+        IF badSeal IS Error THEN
+            PRINT "bad-nonce-rejected"
+        END IF
+    END IF
+END FUNCTION

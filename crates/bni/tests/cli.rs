@@ -1358,6 +1358,25 @@ fn bncrypto_file_interprets() {
     );
 }
 
+/// The `BNCrypto` raw AEAD modes slice: verifies that unauthenticated/unsupported modes
+/// fail closed, and raw AEAD requires exact lengths.
+#[test]
+fn bncrypto_raw_modes_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-raw-modes/main.bn"])
+        .output()
+        .expect("run the BNCrypto raw modes fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "forbidden-mode-import-rejected\nforbidden-mode-generate-rejected\nraw-aes-gcm-seal-ok\nraw-aes-gcm-open-ok\nbad-nonce-rejected\n"
+    );
+}
+
 /// The `BNJson` DOM slice: build an object, write and read a member, and reject
 /// a missing key instead of yielding an empty STRING. The compiled twin is in
 /// the `bnc` suite; the two must print the same.
