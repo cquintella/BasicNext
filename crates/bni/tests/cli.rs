@@ -1396,6 +1396,24 @@ fn bncrypto_hash_interprets() {
     );
 }
 
+/// The `BNCrypto` MAC and streaming slice: verifies `Mac`, `VerifyMac`, and `MacStream`.
+#[test]
+fn bncrypto_mac_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-mac/main.bn"])
+        .output()
+        .expect("run the BNCrypto mac fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "mac-verify-ok\nmac-corrupt-rejected\nmac-stream-matches-oneshot-ok\nmac-stream-verify-ok\n"
+    );
+}
+
 /// The `BNJson` DOM slice: build an object, write and read a member, and reject
 /// a missing key instead of yielding an empty STRING. The compiled twin is in
 /// the `bnc` suite; the two must print the same.

@@ -1,0 +1,35 @@
+IMPORT BNCrypto AS Crypto
+
+FUNCTION Start() AS VOID
+    LET key AS Crypto.SecretKey OR Error = Crypto.NewSecretKey()
+    IF key IS Crypto.SecretKey THEN
+        LET data AS Crypto.Bytes = Crypto.FromText("Hello Basic Next MAC!")
+        LET tag AS Crypto.Bytes = Crypto.Mac(key, data)
+        IF Crypto.VerifyMac(key, data, tag) = TRUE THEN
+            PRINT "mac-verify-ok"
+        END IF
+
+        LET badTag AS Crypto.Bytes = Crypto.FromText("wrong-mac-tag-bytes-32-long!!!!!!")
+        IF Crypto.VerifyMac(key, data, badTag) = FALSE THEN
+            PRINT "mac-corrupt-rejected"
+        END IF
+
+        LET s AS Crypto.MacStream OR Error = Crypto.MacStream.New(key)
+        IF s IS Crypto.MacStream THEN
+            s.Update(Crypto.FromText("Hello "))
+            s.Update(Crypto.FromText("Basic Next MAC!"))
+            LET tag2 AS Crypto.Bytes = s.Finish()
+            IF Crypto.ConstantTimeEquals(tag, tag2) = TRUE THEN
+                PRINT "mac-stream-matches-oneshot-ok"
+            END IF
+        END IF
+
+        LET s2 AS Crypto.MacStream OR Error = Crypto.MacStream.New(key)
+        IF s2 IS Crypto.MacStream THEN
+            s2.Update(data)
+            IF s2.Verify(tag) = TRUE THEN
+                PRINT "mac-stream-verify-ok"
+            END IF
+        END IF
+    END IF
+END FUNCTION
