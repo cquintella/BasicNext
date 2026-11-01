@@ -470,6 +470,54 @@ pub(super) fn lower_bncrypto_call(
             );
             return;
         }
+        "HashPassword" => {
+            let args = vec![(T::Ptr, v(arguments[0]))];
+            let call = I::call(T::Ptr, "bn_rt_crypto_hash_password", args);
+            text.assign(format!("v{dest}"), call);
+            return;
+        }
+        "VerifyPassword" => {
+            let args = vec![(T::Ptr, v(arguments[0])), (T::Ptr, v(arguments[1]))];
+            let call = I::call(T::I32, "bn_rt_crypto_verify_password", args);
+            text.assign(format!("cryrc{dest}"), call);
+            text.assign(
+                format!("v{dest}"),
+                I::icmp(
+                    ICmpCond::Eq,
+                    T::I32,
+                    O::reg(format!("cryrc{dest}")),
+                    O::int(1),
+                ),
+            );
+            return;
+        }
+        "Hkdf" => {
+            emit_handle_index(text, analysis, &format!("cryikm{dest}"), arguments[0]);
+            emit_handle_index(text, analysis, &format!("crysalt{dest}"), arguments[1]);
+            let len_ty = analysis
+                .values
+                .get(&arguments[3])
+                .and_then(llvm_type)
+                .unwrap_or(T::I64);
+            let len_op = if len_ty == T::I64 {
+                v(arguments[3])
+            } else {
+                let slot = format!("crylen{dest}");
+                text.assign(
+                    &slot,
+                    I::cast(CastOp::SExt, len_ty, v(arguments[3]), T::I64),
+                );
+                O::reg(slot)
+            };
+            let args = vec![
+                (T::I64, O::reg(format!("cryikm{dest}"))),
+                (T::I64, O::reg(format!("crysalt{dest}"))),
+                (T::Ptr, v(arguments[2])),
+                (T::I64, len_op),
+            ];
+            lower_status_call(text, destination, "bn_rt_crypto_hkdf", args, Out::Handle);
+            return;
+        }
         "New" | "NewWith" => {
             let is_key = analysis
                 .values

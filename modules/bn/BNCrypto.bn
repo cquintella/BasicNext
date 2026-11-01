@@ -342,6 +342,15 @@ END FUNCTION
 EXPORT FUNCTION Argon2id(password AS Bytes, salt AS Bytes, memoryKiB AS INTEGER, iterations AS INTEGER, parallelism AS INTEGER) AS Bytes OR Error
 END FUNCTION
 
+EXPORT FUNCTION HashPassword(password AS STRING) AS STRING
+END FUNCTION
+
+EXPORT FUNCTION VerifyPassword(password AS STRING, phc AS STRING) AS BOOLEAN
+END FUNCTION
+
+EXPORT FUNCTION Hkdf(ikm AS SecretKey, salt AS Bytes, info AS STRING, len AS INTEGER) AS SecretKey OR Error
+END FUNCTION
+
 EXPORT FUNCTION Ed25519PublicKey(key AS Key) AS Bytes OR Error
 END FUNCTION
 

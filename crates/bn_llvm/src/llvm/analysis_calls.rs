@@ -453,6 +453,9 @@ pub(crate) fn call_instruction_supported(
                 "Mac" => arguments.len() == 2,
                 "VerifyMac" => arguments.len() == 3,
                 "MacWith" => arguments.len() == 3,
+                "HashPassword" => arguments.len() == 1,
+                "VerifyPassword" => arguments.len() == 2,
+                "Hkdf" => arguments.len() == 4,
                 "New" => arguments.len() == 1 || arguments.len() == 2,
                 "Update" => {
                     arguments.len() == 2

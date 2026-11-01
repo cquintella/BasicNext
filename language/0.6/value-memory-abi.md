@@ -636,6 +636,7 @@ bn_rt_crypto_hash
 bn_rt_crypto_hash_file
 bn_rt_crypto_hash_handle
 bn_rt_crypto_hash_handle_status
+bn_rt_crypto_hash_password
 bn_rt_crypto_hash_text
 bn_rt_crypto_hash_with
 bn_rt_crypto_hasher_finish
@@ -643,6 +644,7 @@ bn_rt_crypto_hasher_new
 bn_rt_crypto_hasher_release
 bn_rt_crypto_hasher_update
 bn_rt_crypto_hasher_update_handle
+bn_rt_crypto_hkdf
 bn_rt_crypto_hmac
 bn_rt_crypto_hmac_verify
 bn_rt_crypto_import_key
@@ -698,6 +700,7 @@ bn_rt_crypto_sign
 bn_rt_crypto_slice
 bn_rt_crypto_uuid_v7
 bn_rt_crypto_verify
+bn_rt_crypto_verify_password
 bn_rt_error_field
 bn_rt_error_take
 bn_rt_error_wrap

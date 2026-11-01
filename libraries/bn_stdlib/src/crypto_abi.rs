@@ -258,6 +258,7 @@ pub use crate::crypto_envelope::*;
 pub use crate::crypto_file::*;
 pub use crate::crypto_hash::*;
 pub use crate::crypto_mac::*;
+pub use crate::crypto_password::*;
 pub use crate::crypto_secret_abi::*;
 
 /// Algorithm selector shared with the backends: `0` is AES-256-GCM, `1` is

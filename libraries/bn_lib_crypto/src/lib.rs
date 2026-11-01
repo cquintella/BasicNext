@@ -1538,6 +1538,63 @@ impl CryptoProvider {
         }
     }
 
+    fn password_op(
+        &mut self,
+        method: &str,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        match method {
+            "HashPassword" => {
+                require_arity(member, arguments, 1, span)?;
+                let Value::String(pw) = &arguments[0] else {
+                    return Err(type_mismatch("STRING", "non-STRING value", member, span));
+                };
+                match bn_stdlib::crypto::bn_hash_password(pw.as_ref()) {
+                    Ok(phc) => Ok(Value::String(shared_string(phc.as_str()))),
+                    Err(err) => failure(&err),
+                }
+            }
+            "VerifyPassword" => {
+                require_arity(member, arguments, 2, span)?;
+                let Value::String(pw) = &arguments[0] else {
+                    return Err(type_mismatch("STRING", "non-STRING value", member, span));
+                };
+                let Value::String(phc) = &arguments[1] else {
+                    return Err(type_mismatch("STRING", "non-STRING value", member, span));
+                };
+                let ok = bn_stdlib::crypto::bn_verify_password(pw.as_ref(), phc.as_ref());
+                Ok(Value::Boolean(ok))
+            }
+            "Hkdf" => {
+                require_arity(member, arguments, 4, span)?;
+                let ikm = self.key_bytes_at(arguments, 0, member, span)?;
+                let salt = self.bytes_at(arguments, 1, member, span)?;
+                let Value::String(info) = &arguments[2] else {
+                    return Err(type_mismatch("STRING", "non-STRING value", member, span));
+                };
+                let Value::Integer(len_val, _) = &arguments[3] else {
+                    return Err(type_mismatch("INTEGER", "non-INTEGER value", member, span));
+                };
+                let Ok(len) = usize::try_from(*len_val) else {
+                    return failure(&CryptoFailure::Key("invalid HKDF length"));
+                };
+                match bn_stdlib::crypto::bn_hkdf_sha256(&ikm, &salt, info.as_bytes(), len) {
+                    Ok(derived) => Ok(self.insert_secret_key(SecretKeyEntry {
+                        material: zeroize::Zeroizing::new(derived),
+                        bits: len * 8,
+                        purpose: "DERIVED".into(),
+                        alg: "HKDF".into(),
+                        zeroized: false,
+                    })),
+                    Err(err) => failure(&err),
+                }
+            }
+            _ => Err(name_not_found(method, "BNCrypto password/KDF method", span)),
+        }
+    }
+
     fn mac_stream_new(
         &mut self,
         core: &mut dyn CoreContext,
@@ -1616,6 +1673,9 @@ impl Provider for CryptoProvider {
                 self.hash_op(core, method, member, &arguments, span)
             }
             "Mac" | "VerifyMac" | "MacWith" => self.mac_op(method, member, &arguments, span),
+            "HashPassword" | "VerifyPassword" | "Hkdf" => {
+                self.password_op(method, member, &arguments, span)
+            }
             "New" if member.contains("Hasher") => {
                 self.hash_op(core, method, member, &arguments, span)
             }
