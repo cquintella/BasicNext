@@ -1339,6 +1339,25 @@ fn bncrypto_envelope_interprets() {
     );
 }
 
+/// The `BNCrypto` streaming file encryption slice: verifies `EncryptFile` and `DecryptFile`
+/// stream in 64 KiB authenticated chunks, create owner-only target files, and roundtrip.
+#[test]
+fn bncrypto_file_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-file/main.bn"])
+        .output()
+        .expect("run the BNCrypto file fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "encrypt-file-ok\ndecrypt-file-ok\ncleanup-ok\n"
+    );
+}
+
 /// The `BNJson` DOM slice: build an object, write and read a member, and reject
 /// a missing key instead of yielding an empty STRING. The compiled twin is in
 /// the `bnc` suite; the two must print the same.
