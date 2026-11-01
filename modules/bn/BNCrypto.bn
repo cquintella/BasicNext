@@ -348,7 +348,7 @@ END FUNCTION
 EXPORT FUNCTION VerifyPassword(password AS STRING, phc AS STRING) AS BOOLEAN
 END FUNCTION
 
-EXPORT FUNCTION Hkdf(ikm AS SecretKey, salt AS Bytes, info AS STRING, len AS INTEGER) AS SecretKey OR Error
+EXPORT FUNCTION Hkdf(ikm AS SecretKey, salt AS Bytes, info AS Bytes, len AS INTEGER) AS SecretKey OR Error
 END FUNCTION
 
 EXPORT FUNCTION Ed25519PublicKey(key AS Key) AS Bytes OR Error

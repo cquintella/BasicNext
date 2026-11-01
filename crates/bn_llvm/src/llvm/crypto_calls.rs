@@ -452,6 +452,23 @@ pub(super) fn lower_bncrypto_call(
             );
             return;
         }
+        "MacWith" => {
+            emit_handle_index(text, analysis, &format!("cryk{dest}"), arguments[0]);
+            emit_handle_index(text, analysis, &format!("cryd{dest}"), arguments[1]);
+            let args = vec![
+                (T::I64, O::reg(format!("cryk{dest}"))),
+                (T::I64, O::reg(format!("cryd{dest}"))),
+                (T::Ptr, v(arguments[2])),
+            ];
+            lower_status_call(
+                text,
+                destination,
+                "bn_rt_crypto_mac_with",
+                args,
+                Out::Handle,
+            );
+            return;
+        }
         "VerifyMac" => {
             emit_handle_index(text, analysis, &format!("cryk{dest}"), arguments[0]);
             emit_handle_index(text, analysis, &format!("cryd{dest}"), arguments[1]);
@@ -494,6 +511,7 @@ pub(super) fn lower_bncrypto_call(
         "Hkdf" => {
             emit_handle_index(text, analysis, &format!("cryikm{dest}"), arguments[0]);
             emit_handle_index(text, analysis, &format!("crysalt{dest}"), arguments[1]);
+            emit_handle_index(text, analysis, &format!("cryinfo{dest}"), arguments[2]);
             let len_ty = analysis
                 .values
                 .get(&arguments[3])
@@ -512,7 +530,7 @@ pub(super) fn lower_bncrypto_call(
             let args = vec![
                 (T::I64, O::reg(format!("cryikm{dest}"))),
                 (T::I64, O::reg(format!("crysalt{dest}"))),
-                (T::Ptr, v(arguments[2])),
+                (T::I64, O::reg(format!("cryinfo{dest}"))),
                 (T::I64, len_op),
             ];
             lower_status_call(text, destination, "bn_rt_crypto_hkdf", args, Out::Handle);
@@ -525,8 +543,33 @@ pub(super) fn lower_bncrypto_call(
                 .is_some_and(|t| carries_type(t, "SecretKey") || carries_type(t, "Key"));
             if is_key {
                 emit_handle_index(text, analysis, &format!("cryk{dest}"), arguments[0]);
+                if member == "NewWith" {
+                    let args = vec![
+                        (T::I64, O::reg(format!("cryk{dest}"))),
+                        (T::Ptr, v(arguments[1])),
+                    ];
+                    lower_status_call(
+                        text,
+                        destination,
+                        "bn_rt_crypto_mac_stream_new_with",
+                        args,
+                        Out::Handle,
+                    );
+                    return;
+                }
                 let alg_op = if arguments.len() > 1 {
-                    v(arguments[1])
+                    let ty = analysis
+                        .values
+                        .get(&arguments[1])
+                        .and_then(llvm_type)
+                        .unwrap_or(T::I32);
+                    if ty == T::I32 {
+                        v(arguments[1])
+                    } else {
+                        let slot = format!("cryalg{dest}");
+                        text.assign(&slot, I::cast(CastOp::Trunc, ty, v(arguments[1]), T::I32));
+                        O::reg(slot)
+                    }
                 } else {
                     O::int(11) // default MAC_HMAC_SHA256
                 };

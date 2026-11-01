@@ -258,6 +258,7 @@ pub(crate) fn bncrypto_method<'a>(module: &Module, name: &'a str) -> Option<&'a 
                 | "VerifyPassword"
                 | "Hkdf"
                 | "New"
+                | "NewWith"
                 | "Update"
                 | "Finish"
                 | "Verify"

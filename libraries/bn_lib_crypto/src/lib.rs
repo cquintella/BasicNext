@@ -1571,16 +1571,14 @@ impl CryptoProvider {
                 require_arity(member, arguments, 4, span)?;
                 let ikm = self.key_bytes_at(arguments, 0, member, span)?;
                 let salt = self.bytes_at(arguments, 1, member, span)?;
-                let Value::String(info) = &arguments[2] else {
-                    return Err(type_mismatch("STRING", "non-STRING value", member, span));
-                };
+                let info = self.bytes_at(arguments, 2, member, span)?;
                 let Value::Integer(len_val, _) = &arguments[3] else {
                     return Err(type_mismatch("INTEGER", "non-INTEGER value", member, span));
                 };
                 let Ok(len) = usize::try_from(*len_val) else {
                     return failure(&CryptoFailure::Key("invalid HKDF length"));
                 };
-                match bn_stdlib::crypto::bn_hkdf_sha256(&ikm, &salt, info.as_bytes(), len) {
+                match bn_stdlib::crypto::bn_hkdf_sha256(&ikm, &salt, &info, len) {
                     Ok(derived) => Ok(self.insert_secret_key(SecretKeyEntry {
                         material: zeroize::Zeroizing::new(derived),
                         bits: len * 8,
@@ -1832,6 +1830,17 @@ impl Provider for CryptoProvider {
                     ))
                 },
             ),
+            Value::Object { handle, .. } => {
+                if let Some(stream_id) = self.hashers.remove(handle) {
+                    let _ = bn_stdlib::crypto::release_hasher(stream_id);
+                    return Some(Ok(()));
+                }
+                if let Some(stream_id) = self.mac_streams.remove(handle) {
+                    let _ = bn_stdlib::crypto::release_mac_stream(stream_id);
+                    return Some(Ok(()));
+                }
+                None
+            }
             _ => None,
         }
     }

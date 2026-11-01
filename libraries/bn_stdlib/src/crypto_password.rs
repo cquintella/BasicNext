@@ -178,7 +178,7 @@ pub extern "C" fn bn_rt_crypto_verify_password(
 pub extern "C" fn bn_rt_crypto_hkdf(
     ikm_handle: u64,
     salt_handle: u64,
-    info_ptr: *const c_char,
+    info_handle: u64,
     len: i64,
     out_handle: *mut i64,
 ) -> i32 {
@@ -194,12 +194,17 @@ pub extern "C" fn bn_rt_crypto_hkdf(
         crate::crypto_abi::with_buffers(|bufs| bufs.get(&salt_handle).map(|b| b.to_vec()))
             .unwrap_or_default()
     };
-    let info = str_from_ptr(info_ptr).unwrap_or("").as_bytes();
+    let info_bytes = if info_handle == 0 {
+        Vec::new()
+    } else {
+        crate::crypto_abi::with_buffers(|bufs| bufs.get(&info_handle).map(|b| b.to_vec()))
+            .unwrap_or_default()
+    };
     let Ok(key_len) = usize::try_from(len) else {
         return BN_CRYPTO_INVALID_ARGUMENT;
     };
 
-    match bn_hkdf_sha256(&ikm_bytes, &salt_bytes, info, key_len) {
+    match bn_hkdf_sha256(&ikm_bytes, &salt_bytes, &info_bytes, key_len) {
         Ok(okm) => {
             let handle = store_secret_key(SecretKeyEntry {
                 material: zeroize::Zeroizing::new(okm),
