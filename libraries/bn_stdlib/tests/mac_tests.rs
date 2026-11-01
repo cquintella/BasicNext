@@ -99,7 +99,7 @@ fn test_c_abi_mac_stream() {
     assert_eq!(rc_fin, 0);
     assert_ne!(tag_handle, 0);
 
-    assert_eq!(bn_rt_crypto_bytes_length(tag_handle as u64), 32);
+    assert_eq!(bn_rt_crypto_bytes_length(tag_handle.cast_unsigned()), 32);
 
     // One-shot MAC C ABI
     let mut oneshot_handle = 0i64;
@@ -123,8 +123,15 @@ fn test_c_abi_mac_stream() {
     );
     assert_eq!(match_rc, 1);
 
+    // Stream verify C ABI
+    let mut stream_v = 0i64;
+    let _ = bn_rt_crypto_mac_stream_new(key_handle, MAC_HMAC_SHA256, &raw mut stream_v);
+    let _ = bn_rt_crypto_mac_stream_update(stream_v, data.as_ptr(), data.len());
+    let v_match = bn_rt_crypto_mac_stream_verify(stream_v, tag_handle);
+    assert_eq!(v_match, 1);
+
     let _ = bn_rt_crypto_mac_stream_release(stream_handle);
     let _ = bn_rt_crypto_bytes_release(key_handle);
-    let _ = bn_rt_crypto_bytes_release(tag_handle as u64);
-    let _ = bn_rt_crypto_bytes_release(oneshot_handle as u64);
+    let _ = bn_rt_crypto_bytes_release(tag_handle.cast_unsigned());
+    let _ = bn_rt_crypto_bytes_release(oneshot_handle.cast_unsigned());
 }
