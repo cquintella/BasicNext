@@ -57,7 +57,7 @@ fn store_key(algorithm: i32, material: zeroize::Zeroizing<Vec<u8>>) -> u64 {
 /// The material of the `Key` `handle`: `Err(BN_CRYPTO_INVALID_HANDLE)` for an
 /// unknown or released handle, and the `INVALID_ARGUMENT` `Error` of
 /// `bncrypto.md` for a key erased with `Zeroize()`.
-fn get_key_material(handle: u64) -> Result<zeroize::Zeroizing<Vec<u8>>, i32> {
+pub(crate) fn get_key_material(handle: u64) -> Result<zeroize::Zeroizing<Vec<u8>>, i32> {
     let material = with_keys(|keys| {
         keys.get(&handle)
             .map(|entry| (!entry.zeroized).then(|| entry.material.clone()))
@@ -117,6 +117,18 @@ pub extern "C" fn bn_rt_crypto_bytes_from_text(text: *const c_char) -> u64 {
             .map(|text| text.as_bytes().to_vec())
             .unwrap_or_default(),
     )
+}
+
+/// Stores raw bytes into a new buffer.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_bytes_from_raw(data: *const u8, len: usize) -> u64 {
+    if data.is_null() || len == 0 {
+        return store(Vec::new());
+    }
+    // SAFETY: caller guarantees pointer is non-null and valid for len bytes.
+    let slice = unsafe { std::slice::from_raw_parts(data, len) };
+    store(slice.to_vec())
 }
 
 /// Decodes `text` as hex into a new buffer. Writes the handle through `out` and
@@ -245,6 +257,7 @@ pub use crate::crypto_csprng::*;
 pub use crate::crypto_envelope::*;
 pub use crate::crypto_file::*;
 pub use crate::crypto_hash::*;
+pub use crate::crypto_mac::*;
 pub use crate::crypto_secret_abi::*;
 
 /// Algorithm selector shared with the backends: `0` is AES-256-GCM, `1` is

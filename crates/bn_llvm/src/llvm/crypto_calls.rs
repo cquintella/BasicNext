@@ -432,7 +432,66 @@ pub(super) fn lower_bncrypto_call(
             );
             return;
         }
-        "New" => {
+        "Mac" => {
+            emit_handle_index(text, analysis, &format!("cryk{dest}"), arguments[0]);
+            emit_handle_index(text, analysis, &format!("cryd{dest}"), arguments[1]);
+            let args = vec![
+                (T::I64, O::reg(format!("cryk{dest}"))),
+                (T::I64, O::reg(format!("cryd{dest}"))),
+            ];
+            let call = I::call(T::I64, "bn_rt_crypto_mac_handle", args);
+            text.assign(format!("crym{dest}"), call);
+            text.assign(
+                format!("v{dest}"),
+                I::cast(
+                    CastOp::IntToPtr,
+                    T::I64,
+                    O::reg(format!("crym{dest}")),
+                    T::Ptr,
+                ),
+            );
+            return;
+        }
+        "VerifyMac" => {
+            emit_handle_index(text, analysis, &format!("cryk{dest}"), arguments[0]);
+            emit_handle_index(text, analysis, &format!("cryd{dest}"), arguments[1]);
+            emit_handle_index(text, analysis, &format!("cryt{dest}"), arguments[2]);
+            let args = vec![
+                (T::I64, O::reg(format!("cryk{dest}"))),
+                (T::I64, O::reg(format!("cryd{dest}"))),
+                (T::I64, O::reg(format!("cryt{dest}"))),
+            ];
+            lower_status_call(
+                text,
+                destination,
+                "bn_rt_crypto_mac_verify_handle",
+                args,
+                Out::Verify,
+            );
+            return;
+        }
+        "New" | "NewWith" => {
+            let is_key = analysis
+                .values
+                .get(&arguments[0])
+                .is_some_and(|t| carries_type(t, "SecretKey") || carries_type(t, "Key"));
+            if is_key {
+                emit_handle_index(text, analysis, &format!("cryk{dest}"), arguments[0]);
+                let alg_op = if arguments.len() > 1 {
+                    v(arguments[1])
+                } else {
+                    O::int(11) // default MAC_HMAC_SHA256
+                };
+                let args = vec![(T::I64, O::reg(format!("cryk{dest}"))), (T::I32, alg_op)];
+                lower_status_call(
+                    text,
+                    destination,
+                    "bn_rt_crypto_mac_stream_new",
+                    args,
+                    Out::Handle,
+                );
+                return;
+            }
             let ty = analysis
                 .values
                 .get(&arguments[0])
@@ -458,22 +517,47 @@ pub(super) fn lower_bncrypto_call(
         "Update" => {
             emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
             emit_handle_index(text, analysis, &format!("cryd{dest}"), arguments[1]);
+            let is_mac = analysis
+                .values
+                .get(&arguments[0])
+                .is_some_and(|t| carries_type(t, "MacStream"));
+            let sym = if is_mac {
+                "bn_rt_crypto_mac_stream_update_handle"
+            } else {
+                "bn_rt_crypto_hasher_update_handle"
+            };
             let args = vec![(T::I64, cryh()), (T::I64, O::reg(format!("cryd{dest}")))];
-            text.assign(
-                format!("cryrc{dest}"),
-                I::call(T::I32, "bn_rt_crypto_hasher_update_handle", args),
-            );
+            text.assign(format!("cryrc{dest}"), I::call(T::I32, sym, args));
             return;
         }
         "Finish" => {
             emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
+            let is_mac = analysis
+                .values
+                .get(&arguments[0])
+                .is_some_and(|t| carries_type(t, "MacStream"));
+            let sym = if is_mac {
+                "bn_rt_crypto_mac_stream_finish"
+            } else {
+                "bn_rt_crypto_hasher_finish"
+            };
             let args = vec![(T::I64, cryh())];
+            lower_status_call(text, destination, sym, args, Out::Bytes);
+            return;
+        }
+        "Verify" => {
+            emit_handle_index(text, analysis, &format!("crys{dest}"), arguments[0]);
+            emit_handle_index(text, analysis, &format!("cryt{dest}"), arguments[1]);
+            let args = vec![
+                (T::I64, O::reg(format!("crys{dest}"))),
+                (T::I64, O::reg(format!("cryt{dest}"))),
+            ];
             lower_status_call(
                 text,
                 destination,
-                "bn_rt_crypto_hasher_finish",
+                "bn_rt_crypto_mac_stream_verify",
                 args,
-                Out::Bytes,
+                Out::Verify,
             );
             return;
         }

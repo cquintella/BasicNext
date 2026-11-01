@@ -45,6 +45,10 @@ impl Alg {
     pub const BLAKE3: i32 = HASH_BLAKE3;
     pub const MD5: i32 = HASH_MD5;
     pub const SHA1: i32 = HASH_SHA1;
+    pub const HMAC_SHA256: i32 = crate::crypto_mac::MAC_HMAC_SHA256;
+    pub const HMAC_SHA384: i32 = crate::crypto_mac::MAC_HMAC_SHA384;
+    pub const HMAC_SHA512: i32 = crate::crypto_mac::MAC_HMAC_SHA512;
+    pub const BLAKE3_KEYED: i32 = crate::crypto_mac::MAC_BLAKE3_KEYED;
 }
 
 enum State {

@@ -251,9 +251,13 @@ pub(crate) fn bncrypto_method<'a>(module: &Module, name: &'a str) -> Option<&'a 
                 | "HashText"
                 | "HashFile"
                 | "HashWith"
+                | "Mac"
+                | "VerifyMac"
+                | "MacWith"
                 | "New"
                 | "Update"
                 | "Finish"
+                | "Verify"
         ))
     .then_some(method)
 }

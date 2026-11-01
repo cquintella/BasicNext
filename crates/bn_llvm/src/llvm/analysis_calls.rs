@@ -450,7 +450,10 @@ pub(crate) fn call_instruction_supported(
                             .get(&arguments[0])
                             .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
                 }
-                "New" => arguments.len() == 1,
+                "Mac" => arguments.len() == 2,
+                "VerifyMac" => arguments.len() == 3,
+                "MacWith" => arguments.len() == 3,
+                "New" => arguments.len() == 1 || arguments.len() == 2,
                 "Update" => {
                     arguments.len() == 2
                         && values
@@ -458,6 +461,7 @@ pub(crate) fn call_instruction_supported(
                             .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
                 }
                 "Finish" => arguments.len() == 1,
+                "Verify" => arguments.len() == 2,
                 "RandomInt" => {
                     arguments.len() == 2
                         && arguments.iter().all(|argument| {

@@ -43,6 +43,7 @@ pub struct CryptoProvider {
     secret_keys: HashMap<u64, SecretKeyEntry>,
     secret_key_holders: HashMap<u64, usize>,
     hashers: HashMap<Handle, i64>,
+    mac_streams: HashMap<Handle, i64>,
     next: u64,
 }
 
@@ -1352,16 +1353,23 @@ impl CryptoProvider {
                 require_arity(member, arguments, 2, span)?;
                 let Value::Object { handle, .. } = &arguments[0] else {
                     return Err(type_mismatch(
-                        "BNCrypto.Hasher",
+                        "BNCrypto.Hasher or BNCrypto.MacStream",
                         "non-object receiver",
                         member,
                         span,
                     ));
                 };
+                if let Some(&stream_id) = self.mac_streams.get(handle) {
+                    let data = self.bytes_at(arguments, 1, member, span)?;
+                    return match bn_stdlib::crypto::update_mac_stream(stream_id, &data) {
+                        Ok(()) => Ok(Value::Null),
+                        Err(err) => failure(&err),
+                    };
+                }
                 let Some(&hasher_id) = self.hashers.get(handle) else {
                     return Err(runtime_error(
                         bn_diag::DiagId::USE_AFTER_RELEASE,
-                        "BNCrypto.Hasher is invalid",
+                        "streaming receiver is invalid",
                         span,
                     ));
                 };
@@ -1375,16 +1383,22 @@ impl CryptoProvider {
                 require_arity(member, arguments, 1, span)?;
                 let Value::Object { handle, .. } = &arguments[0] else {
                     return Err(type_mismatch(
-                        "BNCrypto.Hasher",
+                        "BNCrypto.Hasher or BNCrypto.MacStream",
                         "non-object receiver",
                         member,
                         span,
                     ));
                 };
+                if let Some(stream_id) = self.mac_streams.remove(handle) {
+                    return match bn_stdlib::crypto::finish_mac_stream(stream_id) {
+                        Ok(tag) => Ok(self.insert(tag)),
+                        Err(err) => failure(&err),
+                    };
+                }
                 let Some(hasher_id) = self.hashers.remove(handle) else {
                     return Err(runtime_error(
                         bn_diag::DiagId::USE_AFTER_RELEASE,
-                        "BNCrypto.Hasher is invalid",
+                        "streaming receiver is invalid",
                         span,
                     ));
                 };
@@ -1393,7 +1407,172 @@ impl CryptoProvider {
                     Err(err) => failure(&err),
                 }
             }
+            "Verify" => {
+                require_arity(member, arguments, 2, span)?;
+                let Value::Object { handle, .. } = &arguments[0] else {
+                    return Err(type_mismatch(
+                        "BNCrypto.MacStream",
+                        "non-object receiver",
+                        member,
+                        span,
+                    ));
+                };
+                let Some(stream_id) = self.mac_streams.remove(handle) else {
+                    return Err(runtime_error(
+                        bn_diag::DiagId::USE_AFTER_RELEASE,
+                        "BNCrypto.MacStream is invalid",
+                        span,
+                    ));
+                };
+                let tag = self.bytes_at(arguments, 1, member, span)?;
+                let matches = bn_stdlib::crypto::verify_mac_stream(stream_id, &tag);
+                Ok(Value::Boolean(matches))
+            }
             _ => Err(name_not_found(method, "BNCrypto hash method", span)),
+        }
+    }
+
+    fn key_bytes_at(
+        &self,
+        arguments: &[Value],
+        index: usize,
+        member: &str,
+        span: Span,
+    ) -> Result<zeroize::Zeroizing<Vec<u8>>, Diagnostic> {
+        match arguments.get(index) {
+            Some(Value::CryptoSecretKey(handle)) => {
+                let entry = self.secret_keys.get(handle).ok_or_else(|| {
+                    runtime_error(
+                        bn_diag::DiagId::USE_AFTER_RELEASE,
+                        "BNCrypto.SecretKey is invalid",
+                        span,
+                    )
+                })?;
+                if entry.zeroized {
+                    return Err(runtime_error(
+                        bn_diag::DiagId::USE_AFTER_RELEASE,
+                        "BNCrypto.SecretKey has been zeroized",
+                        span,
+                    ));
+                }
+                Ok(entry.material.clone())
+            }
+            Some(Value::CryptoKey(handle)) => {
+                let entry = self.keys.get(handle).ok_or_else(|| {
+                    runtime_error(
+                        bn_diag::DiagId::USE_AFTER_RELEASE,
+                        "BNCrypto.Key is invalid",
+                        span,
+                    )
+                })?;
+                if entry.zeroized {
+                    return Err(runtime_error(
+                        bn_diag::DiagId::USE_AFTER_RELEASE,
+                        "BNCrypto.Key has been zeroized",
+                        span,
+                    ));
+                }
+                Ok(entry.material.clone())
+            }
+            _ => Err(type_mismatch(
+                "BNCrypto.SecretKey",
+                "non-SecretKey value",
+                member,
+                span,
+            )),
+        }
+    }
+
+    fn mac_op(
+        &mut self,
+        method: &str,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        match method {
+            "Mac" => {
+                require_arity(member, arguments, 2, span)?;
+                let key = self.key_bytes_at(arguments, 0, member, span)?;
+                let data = self.bytes_at(arguments, 1, member, span)?;
+                match bn_stdlib::crypto::bn_mac(&key, &data, bn_stdlib::crypto::MAC_HMAC_SHA256) {
+                    Ok(tag) => Ok(self.insert(tag)),
+                    Err(err) => failure(&err),
+                }
+            }
+            "VerifyMac" => {
+                require_arity(member, arguments, 3, span)?;
+                let key = self.key_bytes_at(arguments, 0, member, span)?;
+                let data = self.bytes_at(arguments, 1, member, span)?;
+                let tag = self.bytes_at(arguments, 2, member, span)?;
+                let matches = bn_stdlib::crypto::bn_mac_verify(
+                    &key,
+                    &data,
+                    &tag,
+                    bn_stdlib::crypto::MAC_HMAC_SHA256,
+                );
+                Ok(Value::Boolean(matches))
+            }
+            "MacWith" => {
+                require_arity(member, arguments, 3, span)?;
+                let key = self.key_bytes_at(arguments, 0, member, span)?;
+                let data = self.bytes_at(arguments, 1, member, span)?;
+                let alg = match arguments.get(2) {
+                    Some(Value::Record { record }) => match record.get(0) {
+                        Some(&Value::Integer(i, _)) => {
+                            i32::try_from(i).unwrap_or(bn_stdlib::crypto::MAC_HMAC_SHA256)
+                        }
+                        _ => bn_stdlib::crypto::MAC_HMAC_SHA256,
+                    },
+                    Some(&Value::Integer(i, _)) => {
+                        i32::try_from(i).unwrap_or(bn_stdlib::crypto::MAC_HMAC_SHA256)
+                    }
+                    _ => bn_stdlib::crypto::MAC_HMAC_SHA256,
+                };
+                match bn_stdlib::crypto::bn_mac(&key, &data, alg) {
+                    Ok(tag) => Ok(self.insert(tag)),
+                    Err(err) => failure(&err),
+                }
+            }
+            _ => Err(name_not_found(method, "BNCrypto MAC method", span)),
+        }
+    }
+
+    fn mac_stream_new(
+        &mut self,
+        core: &mut dyn CoreContext,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        let key = self.key_bytes_at(arguments, 0, member, span)?;
+        let alg = if arguments.len() > 1 {
+            match arguments.get(1) {
+                Some(Value::Record { record }) => match record.get(0) {
+                    Some(&Value::Integer(i, _)) => {
+                        i32::try_from(i).unwrap_or(bn_stdlib::crypto::MAC_HMAC_SHA256)
+                    }
+                    _ => bn_stdlib::crypto::MAC_HMAC_SHA256,
+                },
+                Some(&Value::Integer(i, _)) => {
+                    i32::try_from(i).unwrap_or(bn_stdlib::crypto::MAC_HMAC_SHA256)
+                }
+                _ => bn_stdlib::crypto::MAC_HMAC_SHA256,
+            }
+        } else {
+            bn_stdlib::crypto::MAC_HMAC_SHA256
+        };
+        match bn_stdlib::crypto::MacStream::new(&key, alg) {
+            Ok(stream) => {
+                let stream_id = bn_stdlib::crypto::insert_mac_stream(stream);
+                let object = core.allocate_object("BNCrypto.MacStream", span)?;
+                let Value::Object { handle, .. } = object else {
+                    unreachable!("allocate_object returns object");
+                };
+                self.mac_streams.insert(handle, stream_id);
+                Ok(object)
+            }
+            Err(err) => failure(&err),
         }
     }
 }
@@ -1433,11 +1612,15 @@ impl Provider for CryptoProvider {
             | "UnwrapKey" | "UnwrapKeyWith" | "Id" | "Bits" | "Purpose" | "ExportSecret"
             | "Encrypt" | "Decrypt" | "EncryptText" | "DecryptText" | "EncryptFile"
             | "DecryptFile" => self.secret_key_op(method, member, &arguments, span),
-            "Hash" | "HashText" | "HashFile" | "HashWith" | "Update" | "Finish" => {
+            "Hash" | "HashText" | "HashFile" | "HashWith" | "Update" | "Finish" | "Verify" => {
                 self.hash_op(core, method, member, &arguments, span)
             }
+            "Mac" | "VerifyMac" | "MacWith" => self.mac_op(method, member, &arguments, span),
             "New" if member.contains("Hasher") => {
                 self.hash_op(core, method, member, &arguments, span)
+            }
+            "New" | "NewWith" if member.contains("MacStream") => {
+                self.mac_stream_new(core, member, &arguments, span)
             }
             "CONSTRUCTOR" => Ok(Value::Null),
             _ => Err(name_not_found(method, "BNCrypto function", span)),
