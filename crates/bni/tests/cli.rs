@@ -1377,7 +1377,7 @@ fn bncrypto_raw_modes_interprets() {
     );
 }
 
-/// The `BNCrypto` hash and streaming slice: verifies `Hash`, `HashText`, `HashWith` (SHA-3, BLAKE2b, BLAKE3),
+/// The `BNCrypto` hash and streaming slice: verifies `Hash`, `HashText`, `HashWith` (SHA-3, `BLAKE2b`, BLAKE3),
 /// legacy rejection, `Hasher` streaming, and `HashFile`.
 #[test]
 fn bncrypto_hash_interprets() {

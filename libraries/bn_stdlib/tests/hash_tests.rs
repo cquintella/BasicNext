@@ -40,6 +40,7 @@ fn test_hash_algorithms_vectors() {
     let input = b"Hello Basic Next Hash!";
 
     // SHA-256
+    assert_eq!(Alg::SHA256, HASH_SHA256);
     let sha256 = bn_hash(input, HASH_SHA256).expect("sha256");
     assert_eq!(sha256.len(), 32);
 
@@ -123,7 +124,7 @@ fn test_hash_file_streaming() {
 #[test]
 fn test_c_abi_hasher() {
     let mut handle = 0i64;
-    let rc = bn_rt_crypto_hasher_new(HASH_SHA256, &mut handle);
+    let rc = bn_rt_crypto_hasher_new(HASH_SHA256, &raw mut handle);
     assert_eq!(rc, 0);
     assert_ne!(handle, 0);
 
@@ -132,18 +133,23 @@ fn test_c_abi_hasher() {
     assert_eq!(rc_up, 0);
 
     let mut out_handle = 0i64;
-    let rc_fin = bn_rt_crypto_hasher_finish(handle, &mut out_handle);
+    let rc_fin = bn_rt_crypto_hasher_finish(handle, &raw mut out_handle);
     assert_eq!(rc_fin, 0);
     assert_ne!(out_handle, 0);
 
     let _ = bn_rt_crypto_hasher_release(handle);
 
-    let mut out_h = 0i64;
-    let rc_hash = bn_rt_crypto_hash(data.as_ptr(), data.len(), HASH_SHA256, &mut out_h);
+    let mut digest_handle = 0i64;
+    let rc_hash = bn_rt_crypto_hash(
+        data.as_ptr(),
+        data.len(),
+        HASH_SHA256,
+        &raw mut digest_handle,
+    );
     assert_eq!(rc_hash, 0);
-    assert_ne!(out_h, 0);
+    assert_ne!(digest_handle, 0);
 
     let bn_str = BnString::new(b"test_hash_input.tmp");
-    let mut out_fh = 0i64;
-    let _ = bn_rt_crypto_hash_file(bn_str.as_ptr(), HASH_SHA256, &mut out_fh);
+    let mut file_digest_handle = 0i64;
+    let _ = bn_rt_crypto_hash_file(bn_str.as_ptr(), HASH_SHA256, &raw mut file_digest_handle);
 }
