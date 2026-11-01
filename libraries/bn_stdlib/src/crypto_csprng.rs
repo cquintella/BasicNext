@@ -7,6 +7,10 @@
 //! unbiased random integers via rejection sampling, URL-safe base64 tokens,
 //! RFC 4122 `UUIDv4`, RFC 9562 `UUIDv7`, and structured password generation.
 
+use std::ffi::c_char;
+
+use crate::c_string;
+use crate::crypto_abi::{BN_CRYPTO_INVALID_ARGUMENT, BN_CRYPTO_OK, failed, store};
 use crate::crypto_error::CryptoFailure;
 
 /// The most bytes one `RandomBytes` call returns (`bncrypto.md`): keys,
@@ -306,4 +310,128 @@ pub fn random_password(opts: PasswordGenOptions) -> Result<String, CryptoFailure
     }
 
     String::from_utf8(result).map_err(|_| CryptoFailure::Random("BNCrypto.RandomPassword"))
+}
+
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_random_bytes(length: i64, out: *mut u64) -> i32 {
+    if out.is_null() {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    }
+    let bytes = match random_bytes(i128::from(length)) {
+        Ok(b) => b,
+        Err(err) => return failed(&err),
+    };
+    let handle = store(bytes);
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
+    unsafe { *out = handle };
+    BN_CRYPTO_OK
+}
+
+/// Struct layout offsets for `PasswordGenOptions` (16-byte header + fields).
+const PASSWORD_OPTS_HEADER_BYTES: usize = 16;
+const PASSWORD_OPTS_LENGTH_OFFSET: usize = PASSWORD_OPTS_HEADER_BYTES;
+const PASSWORD_OPTS_UPPER_OFFSET: usize = PASSWORD_OPTS_HEADER_BYTES + 4;
+const PASSWORD_OPTS_LOWER_OFFSET: usize = PASSWORD_OPTS_HEADER_BYTES + 5;
+const PASSWORD_OPTS_DIGITS_OFFSET: usize = PASSWORD_OPTS_HEADER_BYTES + 6;
+const PASSWORD_OPTS_SYMBOLS_OFFSET: usize = PASSWORD_OPTS_HEADER_BYTES + 7;
+
+/// Generates an unbiased random integer in `[min, max]`.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_random_int(min: i64, max: i64, out: *mut i64) -> i32 {
+    if out.is_null() {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    }
+    // SAFETY: out was checked non-null and points at an allocated i64 slot.
+    unsafe { *out = 0 };
+    match random_int(min, max) {
+        Ok(val) => {
+            // SAFETY: out is valid and writable.
+            unsafe { *out = val };
+            BN_CRYPTO_OK
+        }
+        Err(err) => failed(&err),
+    }
+}
+
+/// Generates a URL-safe base64 string from `n_bytes` random bytes without padding.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_random_token(n_bytes: i64, out: *mut *mut c_char) -> i32 {
+    if out.is_null() {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    }
+    // SAFETY: out was checked non-null and points at an allocated pointer slot.
+    unsafe { *out = std::ptr::null_mut() };
+    match random_token(n_bytes) {
+        Ok(tok) => {
+            // SAFETY: out is valid and writable.
+            unsafe { *out = c_string(&tok) };
+            BN_CRYPTO_OK
+        }
+        Err(err) => failed(&err),
+    }
+}
+
+/// Generates a canonical RFC 4122 UUID version 4 string.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_random_uuid_v4() -> *mut c_char {
+    let u = random_uuid_v4();
+    c_string(&u)
+}
+
+/// Generates a time-ordered RFC 9562 UUID version 7 string.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_uuid_v7() -> *mut c_char {
+    let u = uuid_v7();
+    c_string(&u)
+}
+
+/// Generates a secure random password with requested length and character classes.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_random_password(opts_ptr: *const u8, out: *mut *mut c_char) -> i32 {
+    if out.is_null() {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    }
+    // SAFETY: out was checked non-null and points at an allocated pointer slot.
+    unsafe { *out = std::ptr::null_mut() };
+    if opts_ptr.is_null() {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    }
+    // SAFETY: opts_ptr points to a Basic Next PasswordGenOptions struct whose ABI
+    // layout has a 16-byte object header followed by 4-byte length and 4 single-byte booleans.
+    // Reading length via copy_nonoverlapping prevents unaligned pointer dereference.
+    let (length, upper, lower, digits, symbols) = unsafe {
+        let mut len_bytes = [0u8; 4];
+        std::ptr::copy_nonoverlapping(
+            opts_ptr.add(PASSWORD_OPTS_LENGTH_OFFSET),
+            len_bytes.as_mut_ptr(),
+            4,
+        );
+        let length = i32::from_ne_bytes(len_bytes);
+        let upper = *opts_ptr.add(PASSWORD_OPTS_UPPER_OFFSET) != 0;
+        let lower = *opts_ptr.add(PASSWORD_OPTS_LOWER_OFFSET) != 0;
+        let digits = *opts_ptr.add(PASSWORD_OPTS_DIGITS_OFFSET) != 0;
+        let symbols = *opts_ptr.add(PASSWORD_OPTS_SYMBOLS_OFFSET) != 0;
+        (length, upper, lower, digits, symbols)
+    };
+    let opts = PasswordGenOptions {
+        length: usize::try_from(length).unwrap_or(0),
+        include_uppercase: upper,
+        include_lowercase: lower,
+        include_digits: digits,
+        include_symbols: symbols,
+    };
+    match random_password(opts) {
+        Ok(pwd) => {
+            // SAFETY: out was checked non-null and points at a writable pointer slot.
+            unsafe { *out = c_string(&pwd) };
+            BN_CRYPTO_OK
+        }
+        Err(err) => failed(&err),
+    }
 }
