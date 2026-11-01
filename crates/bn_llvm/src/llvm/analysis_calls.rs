@@ -489,6 +489,57 @@ pub(crate) fn call_instruction_supported(
                             .and_then(llvm_type)
                             .is_some_and(|ty| ty == LlvmType::Ptr)
                 }
+                "ToText" | "ToBase64" | "ToBase64Url" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "FromBase64" | "FromBase64Url" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| *ty == Type::String)
+                }
+                "Concat" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "ToPem" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| *ty == Type::String)
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "FromPem" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| *ty == Type::String)
+                }
+                "Crc32" | "Crc32c" | "Adler32" | "XxHash64" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "VerifyFileChecksum" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| *ty == Type::String)
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| *ty == Type::String)
+                }
                 method => {
                     arguments.len() == 1
                         && values.get(&arguments[0]).is_some_and(|ty| match method {
@@ -498,7 +549,9 @@ pub(crate) fn call_instruction_supported(
                                     || carries_bncrypto_secret(module, ty)
                                     || carries_bncrypto_secret_key(module, ty)
                             }
-                            "ToHex" => carries_bncrypto_bytes(module, ty),
+                            "ToHex" | "ToText" | "ToBase64" | "ToBase64Url" => {
+                                carries_bncrypto_bytes(module, ty)
+                            }
                             _ => *ty == Type::String,
                         })
                 }

@@ -6,13 +6,18 @@
 // Calls to `BNCrypto` members. `Bytes` and keys travel as `bn_rt` table
 // indices (`i64`), as BNLog resources do.
 #![allow(clippy::wildcard_imports)]
+#[path = "crypto_csprng_calls.rs"]
+mod crypto_csprng_calls;
+#[path = "crypto_encoding_calls.rs"]
+mod crypto_encoding_calls;
+
 use super::json_calls::emit_handle_index;
 use super::*;
 use crate::ir::{CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
 
 /// How a member's `bn_rt` status becomes its result.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Out {
+pub(super) enum Out {
     /// `Bytes OR Error`: the status and the handle written through `ptr`.
     Handle,
     /// `BOOLEAN`: the status is 1 when the check holds.
@@ -40,6 +45,18 @@ pub(super) fn lower_bncrypto_call(
     member: &str,
     arguments: &[ValueId],
 ) {
+    if crypto_encoding_calls::try_lower_encoding_call(
+        text,
+        analysis,
+        destination,
+        member,
+        arguments,
+    ) {
+        return;
+    }
+    if crypto_csprng_calls::try_lower_csprng_call(text, analysis, destination, member, arguments) {
+        return;
+    }
     let dest = destination.0;
     let v = |id: ValueId| O::reg(format!("v{}", id.0));
     let cryh = || O::reg(format!("cryh{dest}"));
@@ -122,13 +139,10 @@ pub(super) fn lower_bncrypto_call(
             );
             return;
         }
-        "Length" | "ToHex" | "Algorithm" | "Zeroize" => {
+        "Length" | "Algorithm" | "Zeroize" => {
             emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
             let args = vec![(T::I64, cryh())];
-            if member == "ToHex" {
-                let call = I::call(T::Ptr, "bn_rt_crypto_bytes_to_hex", args);
-                text.assign(format!("v{dest}"), call);
-            } else if member == "Algorithm" {
+            if member == "Algorithm" {
                 let is_secret_key = analysis
                     .values
                     .get(&arguments[0])
@@ -652,29 +666,6 @@ pub(super) fn lower_bncrypto_call(
             );
             return;
         }
-        "RandomBytes" => {
-            let ty = analysis
-                .values
-                .get(&arguments[0])
-                .and_then(llvm_type)
-                .unwrap_or(T::I64);
-            let arg_op = if ty == T::I64 {
-                v(arguments[0])
-            } else {
-                let slot = format!("crybound{dest}");
-                text.assign(&slot, I::cast(CastOp::SExt, ty, v(arguments[0]), T::I64));
-                O::reg(slot)
-            };
-            let args = vec![(T::I64, arg_op)];
-            lower_status_call(
-                text,
-                destination,
-                "bn_rt_crypto_random_bytes",
-                args,
-                Out::Handle,
-            );
-            return;
-        }
         "GenerateNonce" | "GenerateKey" => {
             let ty = analysis
                 .values
@@ -718,123 +709,6 @@ pub(super) fn lower_bncrypto_call(
                 "bn_rt_crypto_import_key",
                 args,
                 Out::Handle,
-            );
-            return;
-        }
-        "FromHex" => {
-            let args = vec![(T::Ptr, v(arguments[0]))];
-            lower_status_call(
-                text,
-                destination,
-                "bn_rt_crypto_bytes_from_hex",
-                args,
-                Out::Handle,
-            );
-            return;
-        }
-        "RandomUuidV4" | "UuidV7" => {
-            let sym = if member == "RandomUuidV4" {
-                "bn_rt_crypto_random_uuid_v4"
-            } else {
-                "bn_rt_crypto_uuid_v7"
-            };
-            text.assign(format!("v{dest}"), I::call(T::Ptr, sym, Vec::new()));
-            return;
-        }
-        "RandomInt" => {
-            let mut args = Vec::new();
-            for (index, operand) in arguments.iter().enumerate() {
-                let ty = analysis
-                    .values
-                    .get(operand)
-                    .and_then(llvm_type)
-                    .unwrap_or(T::I64);
-                let op = if ty == T::I64 {
-                    v(*operand)
-                } else {
-                    let slot = format!("cryint{dest}_{index}");
-                    text.assign(&slot, I::cast(CastOp::SExt, ty, v(*operand), T::I64));
-                    O::reg(slot)
-                };
-                args.push((T::I64, op));
-            }
-            let slot = O::reg(format!("cryout{dest}"));
-            text.assign(format!("cryout{dest}"), I::alloca(T::I64));
-            text.emit(I::store(T::I64, O::int(0), slot.clone()));
-            args.push((T::Ptr, slot));
-            text.assign(
-                format!("cryrc{dest}"),
-                I::call(T::I32, "bn_rt_crypto_random_int", args),
-            );
-            text.assign(
-                format!("cryval{dest}"),
-                I::load(T::I64, O::reg(format!("cryout{dest}"))),
-            );
-            emit_status_result(
-                text,
-                destination,
-                &O::reg(format!("cryrc{dest}")),
-                None,
-                &O::null(),
-                &O::reg(format!("cryval{dest}")),
-            );
-            return;
-        }
-        "RandomToken" => {
-            let ty = analysis
-                .values
-                .get(&arguments[0])
-                .and_then(llvm_type)
-                .unwrap_or(T::I64);
-            let arg_op = if ty == T::I64 {
-                v(arguments[0])
-            } else {
-                let slot = format!("crybound{dest}");
-                text.assign(&slot, I::cast(CastOp::SExt, ty, v(arguments[0]), T::I64));
-                O::reg(slot)
-            };
-            let slot = O::reg(format!("cryout{dest}"));
-            text.assign(format!("cryout{dest}"), I::alloca(T::Ptr));
-            text.emit(I::store(T::Ptr, O::null(), slot.clone()));
-            let args = vec![(T::I64, arg_op), (T::Ptr, slot)];
-            text.assign(
-                format!("cryrc{dest}"),
-                I::call(T::I32, "bn_rt_crypto_random_token", args),
-            );
-            text.assign(
-                format!("crystr{dest}"),
-                I::load(T::Ptr, O::reg(format!("cryout{dest}"))),
-            );
-            emit_status_result(
-                text,
-                destination,
-                &O::reg(format!("cryrc{dest}")),
-                None,
-                &O::reg(format!("crystr{dest}")),
-                &O::int(0),
-            );
-            return;
-        }
-        "RandomPassword" => {
-            let slot = O::reg(format!("cryout{dest}"));
-            text.assign(format!("cryout{dest}"), I::alloca(T::Ptr));
-            text.emit(I::store(T::Ptr, O::null(), slot.clone()));
-            let args = vec![(T::Ptr, v(arguments[0])), (T::Ptr, slot)];
-            text.assign(
-                format!("cryrc{dest}"),
-                I::call(T::I32, "bn_rt_crypto_random_password", args),
-            );
-            text.assign(
-                format!("crystr{dest}"),
-                I::load(T::Ptr, O::reg(format!("cryout{dest}"))),
-            );
-            emit_status_result(
-                text,
-                destination,
-                &O::reg(format!("cryrc{dest}")),
-                None,
-                &O::reg(format!("crystr{dest}")),
-                &O::int(0),
             );
             return;
         }
@@ -902,7 +776,7 @@ pub(super) fn lower_bncrypto_call(
     );
 }
 
-fn lower_status_call(
+pub(super) fn lower_status_call(
     text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     symbol: &str,

@@ -68,6 +68,14 @@ pub enum CryptoFailure {
     EnvelopeKeyLength,
     /// File I/O error during file encryption or decryption.
     FileIo(String),
+    /// Cannot decode input as Base64.
+    Base64(String),
+    /// Cannot decode input as `Base64Url`.
+    Base64Url(String),
+    /// Malformed PEM input.
+    Pem(String),
+    /// Strict UTF-8 validation failed.
+    Utf8,
 }
 
 impl CryptoFailure {
@@ -109,6 +117,10 @@ impl CryptoFailure {
             Self::EnvelopeFormat | Self::EnvelopeAuth => "BNCrypto.Decrypt",
             Self::EnvelopeKeyLength => "BNCrypto.Encrypt",
             Self::FileIo(_) => "BNCrypto.File",
+            Self::Base64(_) => "BNCrypto.FromBase64",
+            Self::Base64Url(_) => "BNCrypto.FromBase64Url",
+            Self::Pem(_) => "BNCrypto.FromPem",
+            Self::Utf8 => "BNCrypto.Bytes.ToText",
         }
     }
 
@@ -171,6 +183,10 @@ impl CryptoFailure {
                 "key material length must be 32 bytes for authenticated encryption".into()
             }
             Self::FileIo(err) => format!("file I/O error: {err}"),
+            Self::Base64(s) => format!("cannot decode \"{s}\" as base64"),
+            Self::Base64Url(s) => format!("cannot decode \"{s}\" as base64url"),
+            Self::Pem(err) => format!("cannot decode PEM: {err}"),
+            Self::Utf8 => "cannot decode bytes as valid UTF-8 text".into(),
         }
     }
 
@@ -246,6 +262,10 @@ impl CryptoFailure {
                 "authenticated encryption envelopes require a 256-bit (32-byte) key".into()
             }
             Self::FileIo(_) => "filesystem read or write failed".into(),
+            Self::Base64(_) => "the text must be valid base64 (RFC 4648 §4)".into(),
+            Self::Base64Url(_) => "the text must be valid URL-safe base64 (RFC 4648 §5)".into(),
+            Self::Pem(_) => "the text must start with -----BEGIN and end with -----END with valid base64 payload".into(),
+            Self::Utf8 => "the byte sequence is not valid UTF-8".into(),
         }
     }
 }

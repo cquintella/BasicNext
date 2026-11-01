@@ -21,6 +21,7 @@ pub mod compress_abi;
 pub mod crypto;
 pub mod crypto_abi;
 pub mod crypto_csprng;
+pub mod crypto_encoding;
 pub mod crypto_envelope;
 pub mod crypto_error;
 pub mod crypto_file;

@@ -221,6 +221,35 @@ Streaming hash updates are provided via `Hasher.New(alg)`. Legacy digests (MD5, 
 
 ---
 
+## Encoding Codecs and Utilities
+
+| Function | Signature | Description |
+| --- | --- | --- |
+| `ToText` | `ToText(data AS Bytes) AS STRING OR Error` | Validates strict UTF-8 and returns `STRING`. Fails with `INVALID_ARGUMENT` if malformed. Also available as `.ToText()` method on `Bytes`. |
+| `ToBase64` | `ToBase64(data AS Bytes) AS STRING` | RFC 4648 §4 standard Base64 encoding. Also available as `.ToBase64()` on `Bytes`. |
+| `FromBase64` | `FromBase64(text AS STRING) AS Bytes OR Error` | Decodes standard Base64. |
+| `ToBase64Url` | `ToBase64Url(data AS Bytes) AS STRING` | RFC 4648 §5 URL- and filename-safe Base64 without padding. Also available as `.ToBase64Url()` on `Bytes`. |
+| `FromBase64Url` | `FromBase64Url(text AS STRING) AS Bytes OR Error` | Decodes URL-safe Base64. |
+| `Concat` | `Concat(a AS Bytes, b AS Bytes) AS Bytes` | Concatenates two byte buffers into an owned byte buffer. |
+| `ToPem` | `ToPem(label AS STRING, der AS Bytes) AS STRING` | Encodes binary DER payload into PEM with `-----BEGIN <LABEL>-----` and `-----END <LABEL>-----` boundaries. |
+| `FromPem` | `FromPem(pem AS STRING) AS Bytes OR Error` | Parses PEM and extracts the binary DER bytes. |
+
+---
+
+## Checksums
+
+Non-cryptographic integrity checks are grouped under the `Checksum` class:
+
+| Function | Signature | Description |
+| --- | --- | --- |
+| `Crc32` | `Checksum.Crc32(data AS Bytes) AS INT64` | Computes 32-bit CRC (IEEE 802.3 standard polynomial `0xEDB88320`). |
+| `Crc32c` | `Checksum.Crc32c(data AS Bytes) AS INT64` | Computes 32-bit CRC-32C (Castagnoli polynomial `0x82F63B78`). |
+| `Adler32` | `Checksum.Adler32(data AS Bytes) AS INT64` | Computes 32-bit Adler checksum (RFC 1950). |
+| `XxHash64` | `Checksum.XxHash64(data AS Bytes) AS INT64` | Computes fast 64-bit non-cryptographic xxHash with default seed 0. |
+| `VerifyFileChecksum` | `Checksum.VerifyFileChecksum(path AS STRING, expected AS STRING) AS BOOLEAN` | Streams file content and verifies against an algorithm-tagged specifier (e.g. `"sha256:<hex>"`, `"crc32:<hex>"`). |
+
+---
+
 ## Asymmetric Key Pairs and Signatures
 
 ### Key Generation

@@ -1630,6 +1630,135 @@ impl CryptoProvider {
             Err(err) => failure(&err),
         }
     }
+
+    fn encoding_op(
+        &mut self,
+        method: &str,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        match method {
+            "ToText" => {
+                require_arity(member, arguments, 1, span)?;
+                let bytes = self.bytes_at(arguments, 0, member, span)?;
+                match bn_stdlib::crypto::bn_bytes_to_text(&bytes) {
+                    Ok(s) => Ok(Value::String(shared_string(s.as_str()))),
+                    Err(err) => failure(&err),
+                }
+            }
+            "ToBase64" => {
+                require_arity(member, arguments, 1, span)?;
+                let bytes = self.bytes_at(arguments, 0, member, span)?;
+                let s = bn_stdlib::crypto::bn_base64_encode(&bytes);
+                Ok(Value::String(shared_string(s.as_str())))
+            }
+            "FromBase64" => {
+                require_arity(member, arguments, 1, span)?;
+                let Value::String(text) = &arguments[0] else {
+                    return Err(type_mismatch("STRING", "non-STRING value", member, span));
+                };
+                match bn_stdlib::crypto::bn_base64_decode(text.as_ref()) {
+                    Ok(bytes) => Ok(self.insert(bytes)),
+                    Err(err) => failure(&err),
+                }
+            }
+            "ToBase64Url" => {
+                require_arity(member, arguments, 1, span)?;
+                let bytes = self.bytes_at(arguments, 0, member, span)?;
+                let s = bn_stdlib::crypto::bn_base64url_encode(&bytes);
+                Ok(Value::String(shared_string(s.as_str())))
+            }
+            "FromBase64Url" => {
+                require_arity(member, arguments, 1, span)?;
+                let Value::String(text) = &arguments[0] else {
+                    return Err(type_mismatch("STRING", "non-STRING value", member, span));
+                };
+                match bn_stdlib::crypto::bn_base64url_decode(text.as_ref()) {
+                    Ok(bytes) => Ok(self.insert(bytes)),
+                    Err(err) => failure(&err),
+                }
+            }
+            "Concat" => {
+                require_arity(member, arguments, 2, span)?;
+                let a = self.bytes_at(arguments, 0, member, span)?;
+                let b = self.bytes_at(arguments, 1, member, span)?;
+                let combined = bn_stdlib::crypto::bn_bytes_concat(&a, &b);
+                Ok(self.insert(combined))
+            }
+            "ToPem" => {
+                require_arity(member, arguments, 2, span)?;
+                let Value::String(label) = &arguments[0] else {
+                    return Err(type_mismatch("STRING", "non-STRING value", member, span));
+                };
+                let der = self.bytes_at(arguments, 1, member, span)?;
+                let s = bn_stdlib::crypto::bn_pem_encode(label.as_ref(), &der);
+                Ok(Value::String(shared_string(s.as_str())))
+            }
+            "FromPem" => {
+                require_arity(member, arguments, 1, span)?;
+                let Value::String(pem) = &arguments[0] else {
+                    return Err(type_mismatch("STRING", "non-STRING value", member, span));
+                };
+                match bn_stdlib::crypto::bn_pem_decode(pem.as_ref()) {
+                    Ok(bytes) => Ok(self.insert(bytes)),
+                    Err(err) => failure(&err),
+                }
+            }
+            _ => Err(name_not_found(method, "BNCrypto function", span)),
+        }
+    }
+
+    fn checksum_op(
+        &self,
+        method: &str,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        match method {
+            "Crc32" => {
+                require_arity(member, arguments, 1, span)?;
+                let bytes = self.bytes_at(arguments, 0, member, span)?;
+                let val = bn_stdlib::crypto::bn_crc32(&bytes);
+                Ok(Value::Integer(i128::from(val), IntegerType::Int64))
+            }
+            "Crc32c" => {
+                require_arity(member, arguments, 1, span)?;
+                let bytes = self.bytes_at(arguments, 0, member, span)?;
+                let val = bn_stdlib::crypto::bn_crc32c(&bytes);
+                Ok(Value::Integer(i128::from(val), IntegerType::Int64))
+            }
+            "Adler32" => {
+                require_arity(member, arguments, 1, span)?;
+                let bytes = self.bytes_at(arguments, 0, member, span)?;
+                let val = bn_stdlib::crypto::bn_adler32(&bytes);
+                Ok(Value::Integer(i128::from(val), IntegerType::Int64))
+            }
+            "XxHash64" => {
+                require_arity(member, arguments, 1, span)?;
+                let bytes = self.bytes_at(arguments, 0, member, span)?;
+                let val = bn_stdlib::crypto::bn_xxhash64(&bytes);
+                Ok(Value::Integer(
+                    i128::from(val.cast_signed()),
+                    IntegerType::Int64,
+                ))
+            }
+            "VerifyFileChecksum" => {
+                require_arity(member, arguments, 2, span)?;
+                let Value::String(path) = &arguments[0] else {
+                    return Err(type_mismatch("STRING", "non-STRING value", member, span));
+                };
+                let Value::String(expected) = &arguments[1] else {
+                    return Err(type_mismatch("STRING", "non-STRING value", member, span));
+                };
+                let ok =
+                    bn_stdlib::crypto::bn_verify_file_checksum(path.as_ref(), expected.as_ref());
+                Ok(Value::Boolean(ok))
+            }
+            _ => Err(name_not_found(method, "BNCrypto function", span)),
+        }
+    }
 }
 
 impl Provider for CryptoProvider {
@@ -1673,6 +1802,11 @@ impl Provider for CryptoProvider {
             "Mac" | "VerifyMac" | "MacWith" => self.mac_op(method, member, &arguments, span),
             "HashPassword" | "VerifyPassword" | "Hkdf" => {
                 self.password_op(method, member, &arguments, span)
+            }
+            "ToText" | "ToBase64" | "FromBase64" | "ToBase64Url" | "FromBase64Url" | "Concat"
+            | "ToPem" | "FromPem" => self.encoding_op(method, member, &arguments, span),
+            "Crc32" | "Crc32c" | "Adler32" | "XxHash64" | "VerifyFileChecksum" => {
+                self.checksum_op(method, member, &arguments, span)
             }
             "New" if member.contains("Hasher") => {
                 self.hash_op(core, method, member, &arguments, span)

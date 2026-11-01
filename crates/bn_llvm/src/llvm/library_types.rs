@@ -262,6 +262,19 @@ pub(crate) fn bncrypto_method<'a>(module: &Module, name: &'a str) -> Option<&'a 
                 | "Update"
                 | "Finish"
                 | "Verify"
+                | "ToText"
+                | "ToBase64"
+                | "FromBase64"
+                | "ToBase64Url"
+                | "FromBase64Url"
+                | "Concat"
+                | "ToPem"
+                | "FromPem"
+                | "Crc32"
+                | "Crc32c"
+                | "Adler32"
+                | "XxHash64"
+                | "VerifyFileChecksum"
         ))
     .then_some(method)
 }
