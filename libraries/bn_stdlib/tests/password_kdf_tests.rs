@@ -77,13 +77,14 @@ fn test_c_abi_password_and_hkdf() {
     let ikm_handle = bn_rt_crypto_bytes_from_raw(ikm_bytes.as_ptr(), ikm_bytes.len());
     let salt_bytes = b"salt-bytes";
     let salt_handle = bn_rt_crypto_bytes_from_raw(salt_bytes.as_ptr(), salt_bytes.len());
-    let info_str = CString::new("info-label").unwrap();
+    let info_bytes = b"info-label";
+    let info_handle = bn_rt_crypto_bytes_from_raw(info_bytes.as_ptr(), info_bytes.len());
 
     let mut out_key_handle = 0i64;
     let rc_hkdf = bn_rt_crypto_hkdf(
         ikm_handle,
         salt_handle,
-        info_str.as_ptr(),
+        info_handle,
         32,
         &raw mut out_key_handle,
     );
@@ -95,5 +96,6 @@ fn test_c_abi_password_and_hkdf() {
 
     let _ = bn_rt_crypto_bytes_release(ikm_handle);
     let _ = bn_rt_crypto_bytes_release(salt_handle);
+    let _ = bn_rt_crypto_bytes_release(info_handle);
     let _ = bn_rt_crypto_secret_key_release(out_key_handle.cast_unsigned());
 }

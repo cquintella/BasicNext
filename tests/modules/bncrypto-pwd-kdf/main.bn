@@ -14,7 +14,8 @@ FUNCTION Start() AS VOID
 
     LET ikm AS Crypto.SecretKey = Crypto.NewSecretKey()
     LET salt AS Crypto.Bytes = Crypto.FromText("test-salt-bytes")
-    LET derived AS Crypto.SecretKey OR Error = Crypto.Hkdf(ikm, salt, "info-context", 32)
+    LET info AS Crypto.Bytes = Crypto.FromText("info-context")
+    LET derived AS Crypto.SecretKey OR Error = Crypto.Hkdf(ikm, salt, info, 32)
     IF derived IS Crypto.SecretKey THEN
         PRINT "hkdf-ok"
     END IF
