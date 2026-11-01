@@ -168,7 +168,12 @@ File encryption streams in 64 KiB authenticated chunks. New target files use ato
 
 ### Raw AEAD (Legacy / Expert)
 
-`SealAesGcm`, `OpenAesGcm`, `SealChaCha20`, and `OpenChaCha20` accept explicit caller nonces. They are preserved for wire compatibility but documented as hazardous due to nonce collision risks. Forbidden modes: ECB, unauthenticated CBC, unauthenticated CTR, RC4, DES/3DES.
+`SealAesGcm`, `OpenAesGcm`, `SealChaCha20`, and `OpenChaCha20` operate over `Key` and accept explicit caller-supplied nonces (12 bytes). They are preserved for wire compatibility and interop, but are documented as hazardous:
+
+* **Nonce reuse catastrophe:** Reusing a nonce with the same key destroys both confidentiality and authenticity under AES-GCM and ChaCha20-Poly1305.
+* **Key rotation warning:** When generating random 96-bit (12-byte) nonces with AES-GCM, the birthday paradox mandates rotating the key well before 2^32 encryptions (NIST SP 800-38D recommends rotation at or before 2^32 invocations).
+* **Safe alternative:** Prefer the higher-level Two-Layer API (`Encrypt`/`Decrypt` or `EncryptFile`/`DecryptFile`), which derives safe internal nonces (e.g. 24-byte nonces for XChaCha20-Poly1305 or per-segment nonces) automatically.
+* **Forbidden unauthenticated modes:** Electronic Codebook (ECB), unauthenticated Cipher Block Chaining (CBC), unauthenticated Counter (CTR), RC4, and DES/3DES are strictly rejected. Unauthenticated modes fail closed with `INVALID_ARGUMENT`. Legacy CBC+HMAC decryption is restricted to explicit legacy policy (see Part 5).
 
 ---
 

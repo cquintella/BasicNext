@@ -228,15 +228,28 @@ END FUNCTION
 EXPORT FUNCTION Slice(data AS Bytes, start AS INTEGER, length AS INTEGER) AS Bytes OR Error
 END FUNCTION
 
+// DANGEROUS / EXPERT API: SealAesGcm uses an explicit caller nonce (12 bytes).
+// Nonce reuse catastrophically compromises confidentiality and authenticity.
+// With random 96-bit nonces, rotate the key before 2^32 encryptions.
+// Prefer high-level Encrypt / EncryptWith which manage safe internal nonces.
+// Unauthenticated modes (ECB, unauthenticated CBC/CTR, RC4, DES/3DES) are rejected.
 EXPORT FUNCTION SealAesGcm(key AS Key, nonce AS Bytes, plaintext AS Bytes, aad AS Bytes) AS Bytes OR Error
 END FUNCTION
 
+// DANGEROUS / EXPERT API: OpenAesGcm verifies and decrypts with an explicit nonce.
+// Fails closed with AUTHENTICATION_FAILED if ciphertext or AAD has been tampered with.
 EXPORT FUNCTION OpenAesGcm(key AS Key, nonce AS Bytes, ciphertext AS Bytes, aad AS Bytes) AS Bytes OR Error
 END FUNCTION
 
+// DANGEROUS / EXPERT API: SealChaCha20 uses an explicit caller nonce (12 bytes).
+// Nonce reuse catastrophically compromises confidentiality and authenticity.
+// Prefer high-level Encrypt / EncryptWith which manage safe internal nonces.
+// Unauthenticated modes (ECB, unauthenticated CBC/CTR, RC4, DES/3DES) are rejected.
 EXPORT FUNCTION SealChaCha20(key AS Key, nonce AS Bytes, plaintext AS Bytes, aad AS Bytes) AS Bytes OR Error
 END FUNCTION
 
+// DANGEROUS / EXPERT API: OpenChaCha20 verifies and decrypts with an explicit nonce.
+// Fails closed with AUTHENTICATION_FAILED if ciphertext or AAD has been tampered with.
 EXPORT FUNCTION OpenChaCha20(key AS Key, nonce AS Bytes, ciphertext AS Bytes, aad AS Bytes) AS Bytes OR Error
 END FUNCTION
 
