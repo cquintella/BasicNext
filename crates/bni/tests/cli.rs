@@ -1377,6 +1377,25 @@ fn bncrypto_raw_modes_interprets() {
     );
 }
 
+/// The `BNCrypto` hash and streaming slice: verifies `Hash`, `HashText`, `HashWith` (SHA-3, BLAKE2b, BLAKE3),
+/// legacy rejection, `Hasher` streaming, and `HashFile`.
+#[test]
+fn bncrypto_hash_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-hash/main.bn"])
+        .output()
+        .expect("run the BNCrypto hash fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "hash-sha256-len-32-ok\nhash-text-matches-hex-ok\nhash-sha3-256-ok\nhash-blake2b-ok\nhash-blake3-ok\nlegacy-md5-rejected\nhasher-stream-sha256-ok\nhash-file-matches-hash-ok\n"
+    );
+}
+
 /// The `BNJson` DOM slice: build an object, write and read a member, and reject
 /// a missing key instead of yielding an empty STRING. The compiled twin is in
 /// the `bnc` suite; the two must print the same.

@@ -1,0 +1,86 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT BNCrypto AS Crypto
+IMPORT HOST.FileSystem AS FS
+
+FUNCTION Start() AS VOID
+    // 1. One-shot Hash(Bytes) with default SHA-256
+    LET plain AS Crypto.Bytes = Crypto.FromText("Hello Basic Next Hash!")
+    LET h AS Crypto.Bytes = Crypto.Hash(plain)
+    IF h.Length() = 32 THEN
+        PRINT "hash-sha256-len-32-ok"
+    END IF
+
+    // 2. HashText(STRING)
+    LET hex AS STRING = Crypto.HashText("Hello Basic Next Hash!")
+    IF hex = h.ToHex() THEN
+        PRINT "hash-text-matches-hex-ok"
+    END IF
+
+    // 3. HashWith(Bytes, opts) for extended algorithms
+    LET optSha3 AS Crypto.HashOptions
+    optSha3.alg = Crypto.Alg.SHA3_256
+    LET hSha3 AS Crypto.Bytes OR Error = Crypto.HashWith(plain, optSha3)
+    IF hSha3 IS Crypto.Bytes THEN
+        IF hSha3.Length() = 32 THEN
+            PRINT "hash-sha3-256-ok"
+        END IF
+    END IF
+
+    LET optBlake2 AS Crypto.HashOptions
+    optBlake2.alg = Crypto.Alg.BLAKE2B
+    LET hBlake2 AS Crypto.Bytes OR Error = Crypto.HashWith(plain, optBlake2)
+    IF hBlake2 IS Crypto.Bytes THEN
+        IF hBlake2.Length() = 64 THEN
+            PRINT "hash-blake2b-ok"
+        END IF
+    END IF
+
+    LET optBlake3 AS Crypto.HashOptions
+    optBlake3.alg = Crypto.Alg.BLAKE3
+    LET hBlake3 AS Crypto.Bytes OR Error = Crypto.HashWith(plain, optBlake3)
+    IF hBlake3 IS Crypto.Bytes THEN
+        IF hBlake3.Length() = 32 THEN
+            PRINT "hash-blake3-ok"
+        END IF
+    END IF
+
+    // 4. Legacy rejection (MD5 / SHA1) without allowLegacy
+    LET optMd5 AS Crypto.HashOptions
+    optMd5.alg = Crypto.Alg.MD5
+    LET hMd5 AS Crypto.Bytes OR Error = Crypto.HashWith(plain, optMd5)
+    IF hMd5 IS Error THEN
+        PRINT "legacy-md5-rejected"
+    END IF
+
+    // 5. Streaming with Hasher
+    LET hasher AS Crypto.Hasher OR Error = Crypto.Hasher.New(Crypto.Alg.SHA256)
+    IF hasher IS Crypto.Hasher THEN
+        LET part1 AS Crypto.Bytes = Crypto.FromText("Hello ")
+        LET part2 AS Crypto.Bytes = Crypto.FromText("Basic Next Hash!")
+        hasher.Update(part1)
+        hasher.Update(part2)
+        LET streamed AS Crypto.Bytes = hasher.Finish()
+        IF Crypto.ConstantTimeEquals(streamed, h) = TRUE THEN
+            PRINT "hasher-stream-sha256-ok"
+        END IF
+    END IF
+
+    // 6. HashFile streaming from disk
+    LET path AS STRING = "test_hash_input.tmp"
+    LET created AS FS.File OR Error = FS.OpenNew(path)
+    IF created IS FS.File THEN
+        created.Write(plain)
+        created.Close()
+        LET fileHash AS Crypto.Bytes OR Error = Crypto.HashFile(path)
+        IF fileHash IS Crypto.Bytes THEN
+            IF Crypto.ConstantTimeEquals(fileHash, h) = TRUE THEN
+                PRINT "hash-file-matches-hash-ok"
+            END IF
+        END IF
+        FS.Remove(path)
+    END IF
+END FUNCTION

@@ -1764,6 +1764,39 @@ fn compiled_bncrypto_raw_modes_matches_the_interpreter() {
     );
 }
 
+#[test]
+fn compiled_bncrypto_hash_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_hash_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-hash/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "hash-sha256-len-32-ok\nhash-text-matches-hex-ok\nhash-sha3-256-ok\nhash-blake2b-ok\nhash-blake3-ok\nlegacy-md5-rejected\nhasher-stream-sha256-ok\nhash-file-matches-hash-ok\n"
+    );
+}
+
 /// `BNJson` survives compilation: the DOM slice links against the `bn_rt`
 /// document table and the native binary prints what the interpreter prints.
 /// Before 0.6.1 the backend had no `BNJson` support at all.
