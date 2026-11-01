@@ -426,6 +426,38 @@ pub(crate) fn call_instruction_supported(
                             .get(&arguments[2])
                             .is_some_and(|ty| *ty == Type::String)
                 }
+                "Hash" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "HashText" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| *ty == Type::String)
+                }
+                "HashFile" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| *ty == Type::String)
+                }
+                "HashWith" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "New" => arguments.len() == 1,
+                "Update" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "Finish" => arguments.len() == 1,
                 "RandomInt" => {
                     arguments.len() == 2
                         && arguments.iter().all(|argument| {

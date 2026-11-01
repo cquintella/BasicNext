@@ -247,6 +247,13 @@ pub(crate) fn bncrypto_method<'a>(module: &Module, name: &'a str) -> Option<&'a 
                 | "DecryptText"
                 | "EncryptFile"
                 | "DecryptFile"
+                | "Hash"
+                | "HashText"
+                | "HashFile"
+                | "HashWith"
+                | "New"
+                | "Update"
+                | "Finish"
         ))
     .then_some(method)
 }

@@ -387,6 +387,96 @@ pub(super) fn lower_bncrypto_call(
             emit_void_result(text, destination, &O::reg(format!("cryrc{dest}")));
             return;
         }
+        "Hash" => {
+            emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
+            let args = vec![(T::I64, cryh()), (T::I32, O::int(1))];
+            let call = I::call(T::I64, "bn_rt_crypto_hash_handle", args);
+            text.assign(format!("cryd{dest}"), call);
+            text.assign(
+                format!("v{dest}"),
+                I::cast(
+                    CastOp::IntToPtr,
+                    T::I64,
+                    O::reg(format!("cryd{dest}")),
+                    T::Ptr,
+                ),
+            );
+            return;
+        }
+        "HashText" => {
+            let args = vec![(T::Ptr, v(arguments[0]))];
+            let call = I::call(T::Ptr, "bn_rt_crypto_hash_text", args);
+            text.assign(format!("v{dest}"), call);
+            return;
+        }
+        "HashFile" => {
+            let args = vec![(T::Ptr, v(arguments[0])), (T::I32, O::int(1))];
+            lower_status_call(
+                text,
+                destination,
+                "bn_rt_crypto_hash_file",
+                args,
+                Out::Handle,
+            );
+            return;
+        }
+        "HashWith" => {
+            emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
+            let args = vec![(T::I64, cryh()), (T::Ptr, v(arguments[1]))];
+            lower_status_call(
+                text,
+                destination,
+                "bn_rt_crypto_hash_with",
+                args,
+                Out::Handle,
+            );
+            return;
+        }
+        "New" => {
+            let ty = analysis
+                .values
+                .get(&arguments[0])
+                .and_then(llvm_type)
+                .unwrap_or(T::I32);
+            let arg_op = if ty == T::I32 {
+                v(arguments[0])
+            } else {
+                let slot = format!("cryalg{dest}");
+                text.assign(&slot, I::cast(CastOp::Trunc, ty, v(arguments[0]), T::I32));
+                O::reg(slot)
+            };
+            let args = vec![(T::I32, arg_op)];
+            lower_status_call(
+                text,
+                destination,
+                "bn_rt_crypto_hasher_new",
+                args,
+                Out::Handle,
+            );
+            return;
+        }
+        "Update" => {
+            emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
+            emit_handle_index(text, analysis, &format!("cryd{dest}"), arguments[1]);
+            let args = vec![(T::I64, cryh()), (T::I64, O::reg(format!("cryd{dest}")))];
+            text.assign(
+                format!("cryrc{dest}"),
+                I::call(T::I32, "bn_rt_crypto_hasher_update_handle", args),
+            );
+            return;
+        }
+        "Finish" => {
+            emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
+            let args = vec![(T::I64, cryh())];
+            lower_status_call(
+                text,
+                destination,
+                "bn_rt_crypto_hasher_finish",
+                args,
+                Out::Bytes,
+            );
+            return;
+        }
         "RandomBytes" => {
             let ty = analysis
                 .values

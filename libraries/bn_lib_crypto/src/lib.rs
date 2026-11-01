@@ -16,7 +16,7 @@ use bn_diag::Diagnostic;
 use bn_source::Span;
 use bn_stdlib::crypto_error::CryptoFailure;
 use bn_types::IntegerType;
-use bn_value::{Value, shared_string};
+use bn_value::{Handle, Value, shared_string};
 
 use bn_interp::provider::{CoreContext, Provider};
 use bn_interp::{
@@ -42,6 +42,7 @@ pub struct CryptoProvider {
     secret_holders: HashMap<u64, usize>,
     secret_keys: HashMap<u64, SecretKeyEntry>,
     secret_key_holders: HashMap<u64, usize>,
+    hashers: HashMap<Handle, i64>,
     next: u64,
 }
 
@@ -1261,12 +1262,146 @@ impl CryptoProvider {
             _ => Err(name_not_found(method, "BNCrypto SecretKey method", span)),
         }
     }
+
+    #[allow(clippy::too_many_lines)]
+    fn hash_op(
+        &mut self,
+        core: &mut dyn CoreContext,
+        method: &str,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        match method {
+            "Hash" => {
+                require_arity(member, arguments, 1, span)?;
+                let data = self.bytes_at(arguments, 0, member, span)?;
+                match bn_stdlib::crypto::bn_hash(&data, bn_stdlib::crypto::HASH_SHA256) {
+                    Ok(digest) => Ok(self.insert(digest)),
+                    Err(err) => failure(&err),
+                }
+            }
+            "HashText" => {
+                require_arity(member, arguments, 1, span)?;
+                let Value::String(text) = &arguments[0] else {
+                    return Err(type_mismatch("STRING", "non-STRING value", member, span));
+                };
+                let hex = bn_stdlib::crypto::sha256_hex(text.as_bytes());
+                Ok(Value::String(shared_string(hex.as_str())))
+            }
+            "HashFile" => {
+                require_arity(member, arguments, 1, span)?;
+                let Value::String(path) = &arguments[0] else {
+                    return Err(type_mismatch("STRING", "non-STRING value", member, span));
+                };
+                match bn_stdlib::crypto::bn_hash_file(
+                    std::path::Path::new(path.as_ref()),
+                    bn_stdlib::crypto::HASH_SHA256,
+                ) {
+                    Ok(digest) => Ok(self.insert(digest)),
+                    Err(err) => failure(&err),
+                }
+            }
+            "HashWith" => {
+                require_arity(member, arguments, 2, span)?;
+                let data = self.bytes_at(arguments, 0, member, span)?;
+                let Value::Record { record } = &arguments[1] else {
+                    return Err(type_mismatch(
+                        "Crypto.HashOptions",
+                        "non-record value",
+                        member,
+                        span,
+                    ));
+                };
+                let alg = match record.get(0) {
+                    Some(Value::Integer(a, _)) => i32::try_from(*a).unwrap_or(1),
+                    _ => 1,
+                };
+                match bn_stdlib::crypto::bn_hash(&data, alg) {
+                    Ok(digest) => Ok(self.insert(digest)),
+                    Err(err) => failure(&err),
+                }
+            }
+            "New" if member.contains("Hasher") => {
+                require_arity(member, arguments, 1, span)?;
+                let Value::Integer(alg_val, _) = &arguments[0] else {
+                    return Err(type_mismatch("INTEGER", "non-INTEGER value", member, span));
+                };
+                let Ok(alg) = i32::try_from(*alg_val) else {
+                    return Err(type_mismatch(
+                        "an INTEGER algorithm code",
+                        "out-of-range value",
+                        member,
+                        span,
+                    ));
+                };
+                match bn_stdlib::crypto::Hasher::new(alg) {
+                    Ok(hasher) => {
+                        let hasher_id = bn_stdlib::crypto::insert_hasher(hasher);
+                        let object = core.allocate_object("BNCrypto.Hasher", span)?;
+                        let Value::Object { handle, .. } = object else {
+                            unreachable!("allocate_object returns object");
+                        };
+                        self.hashers.insert(handle, hasher_id);
+                        Ok(object)
+                    }
+                    Err(err) => failure(&err),
+                }
+            }
+            "Update" => {
+                require_arity(member, arguments, 2, span)?;
+                let Value::Object { handle, .. } = &arguments[0] else {
+                    return Err(type_mismatch(
+                        "BNCrypto.Hasher",
+                        "non-object receiver",
+                        member,
+                        span,
+                    ));
+                };
+                let Some(&hasher_id) = self.hashers.get(handle) else {
+                    return Err(runtime_error(
+                        bn_diag::DiagId::USE_AFTER_RELEASE,
+                        "BNCrypto.Hasher is invalid",
+                        span,
+                    ));
+                };
+                let data = self.bytes_at(arguments, 1, member, span)?;
+                match bn_stdlib::crypto::update_hasher(hasher_id, &data) {
+                    Ok(()) => Ok(Value::Null),
+                    Err(err) => failure(&err),
+                }
+            }
+            "Finish" => {
+                require_arity(member, arguments, 1, span)?;
+                let Value::Object { handle, .. } = &arguments[0] else {
+                    return Err(type_mismatch(
+                        "BNCrypto.Hasher",
+                        "non-object receiver",
+                        member,
+                        span,
+                    ));
+                };
+                let Some(hasher_id) = self.hashers.remove(handle) else {
+                    return Err(runtime_error(
+                        bn_diag::DiagId::USE_AFTER_RELEASE,
+                        "BNCrypto.Hasher is invalid",
+                        span,
+                    ));
+                };
+                match bn_stdlib::crypto::finish_hasher(hasher_id) {
+                    Ok(digest) => Ok(self.insert(digest)),
+                    Err(err) => failure(&err),
+                }
+            }
+            _ => Err(name_not_found(method, "BNCrypto hash method", span)),
+        }
+    }
 }
 
 impl Provider for CryptoProvider {
     fn call(
         &mut self,
-        _core: &mut dyn CoreContext,
+        core: &mut dyn CoreContext,
         member: &str,
         arguments: Vec<Value>,
         span: Span,
@@ -1298,6 +1433,12 @@ impl Provider for CryptoProvider {
             | "UnwrapKey" | "UnwrapKeyWith" | "Id" | "Bits" | "Purpose" | "ExportSecret"
             | "Encrypt" | "Decrypt" | "EncryptText" | "DecryptText" | "EncryptFile"
             | "DecryptFile" => self.secret_key_op(method, member, &arguments, span),
+            "Hash" | "HashText" | "HashFile" | "HashWith" | "Update" | "Finish" => {
+                self.hash_op(core, method, member, &arguments, span)
+            }
+            "New" if member.contains("Hasher") => {
+                self.hash_op(core, method, member, &arguments, span)
+            }
             "CONSTRUCTOR" => Ok(Value::Null),
             _ => Err(name_not_found(method, "BNCrypto function", span)),
         }
