@@ -57,7 +57,7 @@ FUNCTION Start() AS VOID
     IF Crypto.Checksum.Adler32(sample) = 152961502 THEN
         PRINT "adler32-ok"
     END IF
-    IF Crypto.Checksum.XxHash64(sample) = 2982633092287239580 THEN
+    IF Crypto.Checksum.XxHash64(sample) = -8306817102742376829 THEN
         PRINT "xxhash64-ok"
     END IF
 END FUNCTION

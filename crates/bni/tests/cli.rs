@@ -1432,7 +1432,7 @@ fn bncrypto_pwd_kdf_interprets() {
     );
 }
 
-/// The `BNCrypto` encoding and checksum slice: Base64, Base64Url, Concat, PEM, CRC32, CRC32c, Adler32, and XxHash64.
+/// The `BNCrypto` encoding and checksum slice: Base64, `Base64Url`, Concat, PEM, CRC32, `CRC32c`, Adler32, and `XxHash64`.
 #[test]
 fn bncrypto_encoding_interprets() {
     let output = bni()

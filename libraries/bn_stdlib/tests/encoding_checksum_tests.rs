@@ -116,8 +116,14 @@ fn test_non_cryptographic_checksums() {
     let adler = bn_adler32(input);
     assert_eq!(adler, 0x091e_01de);
 
+    let xx64_empty = bn_xxhash64(b"");
+    assert_eq!(xx64_empty, 0xef46_db37_51d8_e999);
+
+    let xx64_abc = bn_xxhash64(b"abc");
+    assert_eq!(xx64_abc, 0x44bc_2cf5_ad77_0999);
+
     let xx64 = bn_xxhash64(input);
-    assert_eq!(xx64, 0x2964_5260_19a1_559c);
+    assert_eq!(xx64, 0x8cb8_41db_40e6_ae83);
 }
 
 #[test]
@@ -163,7 +169,7 @@ fn test_c_abi_encoding_and_checksums() {
     assert_ne!(dec_handle, 0);
     assert_eq!(
         bn_rt_crypto_bytes_length(dec_handle.cast_unsigned()),
-        raw.len() as i64
+        i64::try_from(raw.len()).unwrap()
     );
 
     // ToBase64Url
@@ -197,7 +203,7 @@ fn test_c_abi_encoding_and_checksums() {
     assert_eq!(rc_concat, 0);
     assert_eq!(
         bn_rt_crypto_bytes_length(concat_handle.cast_unsigned()),
-        (raw.len() * 2) as i64
+        i64::try_from(raw.len() * 2).unwrap()
     );
 
     // ToPem and FromPem
@@ -209,7 +215,7 @@ fn test_c_abi_encoding_and_checksums() {
     assert_eq!(rc_from_pem, 0);
     assert_eq!(
         bn_rt_crypto_bytes_length(pem_dec_handle.cast_unsigned()),
-        raw.len() as i64
+        i64::try_from(raw.len()).unwrap()
     );
 
     // Checksums C ABI
