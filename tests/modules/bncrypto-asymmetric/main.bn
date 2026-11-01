@@ -1,0 +1,28 @@
+IMPORT BNCrypto AS Crypto
+
+FUNCTION Main()
+    LET kp AS Crypto.KeyPair OR Error = Crypto.NewKeyPair()
+    IF kp IS Error THEN
+        PRINT "keypair-gen-failed"
+        RETURN
+    END IF
+
+    IF kp IS Crypto.KeyPair THEN
+        IF kp.PublicKey.Algorithm() = Crypto.Alg.ED25519 THEN
+            IF kp.PrivateKey.Algorithm() = Crypto.Alg.ED25519 THEN
+                LET pubId AS STRING = kp.PublicKey.Id()
+                LET privId AS STRING = kp.PrivateKey.Id()
+                IF pubId.Length() = 64 THEN
+                    IF pubId = privId THEN
+                        LET derivedPub AS Crypto.PublicKey = kp.PrivateKey.PublicKey()
+                        IF derivedPub.Id() = pubId THEN
+                            PRINT "asym-keypair-ok"
+                            PRINT "key-ids-match"
+                            PRINT "derived-public-matches"
+                        END IF
+                    END IF
+                END IF
+            END IF
+        END IF
+    END IF
+END FUNCTION

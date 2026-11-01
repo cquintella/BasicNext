@@ -1896,6 +1896,48 @@ fn compiled_bncrypto_encoding_matches_the_interpreter() {
     );
 }
 
+#[test]
+fn compiled_bncrypto_asymmetric_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_asymmetric_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let compile = bnc()
+        .args([
+            "compile",
+            "tests/modules/bncrypto-asymmetric/main.bn",
+            "-o",
+            artifact.to_str().expect("utf-8 path"),
+        ])
+        .output()
+        .expect("compile the BNCrypto asymmetric fixture");
+    assert!(
+        compile.status.success(),
+        "{}",
+        String::from_utf8_lossy(&compile.stderr)
+    );
+    let compiled = std::process::Command::new(&artifact)
+        .output()
+        .expect("run the compiled BNCrypto asymmetric binary");
+    assert!(
+        compiled.status.success(),
+        "{}",
+        String::from_utf8_lossy(&compiled.stderr)
+    );
+    let interpreted = bni()
+        .args(["run", "tests/modules/bncrypto-asymmetric/main.bn"])
+        .output()
+        .expect("run the BNCrypto asymmetric fixture with the interpreter");
+    assert_eq!(
+        String::from_utf8_lossy(&compiled.stdout),
+        String::from_utf8_lossy(&interpreted.stdout)
+    );
+    let _ = fs::remove_dir_all(&directory);
+}
+
 /// `BNJson` survives compilation: the DOM slice links against the `bn_rt`
 /// document table and the native binary prints what the interpreter prints.
 /// Before 0.6.1 the backend had no `BNJson` support at all.

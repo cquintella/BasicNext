@@ -1450,6 +1450,24 @@ fn bncrypto_encoding_interprets() {
     );
 }
 
+/// The `BNCrypto` asymmetric key slice: `KeyPair`, `PublicKey`, `PrivateKey`.
+#[test]
+fn bncrypto_asymmetric_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-asymmetric/main.bn"])
+        .output()
+        .expect("run the BNCrypto asymmetric fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "asym-keypair-ok\nkey-ids-match\nderived-public-matches\n"
+    );
+}
+
 /// The `BNJson` DOM slice: build an object, write and read a member, and reject
 /// a missing key instead of yielding an empty STRING. The compiled twin is in
 /// the `bnc` suite; the two must print the same.
