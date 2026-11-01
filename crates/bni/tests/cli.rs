@@ -1410,7 +1410,7 @@ fn bncrypto_mac_interprets() {
     );
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "mac-verify-ok\nmac-corrupt-rejected\nmac-stream-matches-oneshot-ok\nmac-stream-verify-ok\n"
+        "mac-verify-ok\nmac-corrupt-rejected\nmac-stream-matches-oneshot-ok\nmac-stream-verify-ok\nmac-with-matches-default-ok\nmac-stream-new-with-ok\n"
     );
 }
 

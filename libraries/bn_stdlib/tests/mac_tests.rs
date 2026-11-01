@@ -16,8 +16,9 @@ use bn_stdlib::crypto::{
 use bn_stdlib::crypto_abi::{
     bn_rt_crypto_bytes_from_raw, bn_rt_crypto_bytes_length, bn_rt_crypto_bytes_release,
     bn_rt_crypto_mac, bn_rt_crypto_mac_stream_finish, bn_rt_crypto_mac_stream_new,
-    bn_rt_crypto_mac_stream_release, bn_rt_crypto_mac_stream_update,
-    bn_rt_crypto_mac_stream_verify, bn_rt_crypto_mac_verify,
+    bn_rt_crypto_mac_stream_new_with, bn_rt_crypto_mac_stream_release,
+    bn_rt_crypto_mac_stream_update, bn_rt_crypto_mac_stream_verify, bn_rt_crypto_mac_verify,
+    bn_rt_crypto_mac_with,
 };
 
 #[test]
@@ -129,6 +130,33 @@ fn test_c_abi_mac_stream() {
     let _ = bn_rt_crypto_mac_stream_update(stream_v, data.as_ptr(), data.len());
     let v_match = bn_rt_crypto_mac_stream_verify(stream_v, tag_handle);
     assert_eq!(v_match, 1);
+
+    // MacWith and MacStream.NewWith C ABI
+    let mut opts_buf = [0u8; 24];
+    opts_buf[16..20].copy_from_slice(&MAC_HMAC_SHA256.to_le_bytes());
+    let data_handle = bn_rt_crypto_bytes_from_raw(data.as_ptr(), data.len());
+    let mut mac_with_handle = 0i64;
+    let rc_with = bn_rt_crypto_mac_with(
+        key_handle,
+        data_handle,
+        opts_buf.as_ptr(),
+        &raw mut mac_with_handle,
+    );
+    assert_eq!(rc_with, 0);
+    assert_ne!(mac_with_handle, 0);
+
+    let mut stream_with_handle = 0i64;
+    let rc_stream_with = bn_rt_crypto_mac_stream_new_with(
+        key_handle,
+        opts_buf.as_ptr(),
+        &raw mut stream_with_handle,
+    );
+    assert_eq!(rc_stream_with, 0);
+    assert_ne!(stream_with_handle, 0);
+
+    let _ = bn_rt_crypto_mac_stream_release(stream_with_handle);
+    let _ = bn_rt_crypto_bytes_release(data_handle);
+    let _ = bn_rt_crypto_bytes_release(mac_with_handle.cast_unsigned());
 
     let _ = bn_rt_crypto_mac_stream_release(stream_handle);
     let _ = bn_rt_crypto_bytes_release(key_handle);

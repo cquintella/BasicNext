@@ -30,4 +30,22 @@ FUNCTION Start() AS VOID
             PRINT "mac-stream-verify-ok"
         END IF
     END IF
+
+    LET opts AS Crypto.MacOptions
+    opts.alg = Crypto.Alg.HMAC_SHA256
+    LET tagWith AS Crypto.Bytes OR Error = Crypto.MacWith(key, data, opts)
+    IF tagWith IS Crypto.Bytes THEN
+        IF Crypto.ConstantTimeEquals(tag, tagWith) = TRUE THEN
+            PRINT "mac-with-matches-default-ok"
+        END IF
+    END IF
+
+    LET sWith AS Crypto.MacStream OR Error = Crypto.MacStream.NewWith(key, opts)
+    IF sWith IS Crypto.MacStream THEN
+        sWith.Update(data)
+        LET tagWithStream AS Crypto.Bytes = sWith.Finish()
+        IF Crypto.ConstantTimeEquals(tag, tagWithStream) = TRUE THEN
+            PRINT "mac-stream-new-with-ok"
+        END IF
+    END IF
 END FUNCTION
