@@ -490,6 +490,7 @@ impl std::fmt::Debug for KeyEntry {
 }
 
 pub use crate::crypto_envelope::*;
+pub use crate::crypto_file::*;
 pub use crate::crypto_secret_abi::*;
 
 #[cfg(test)]

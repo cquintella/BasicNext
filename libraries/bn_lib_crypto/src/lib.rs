@@ -1188,6 +1188,76 @@ impl CryptoProvider {
                     Err(f) => failure(&f),
                 }
             }
+            "EncryptFile" => {
+                require_arity(member, arguments, 3, span)?;
+                let Value::CryptoSecretKey(key_handle) = &arguments[0] else {
+                    return Err(type_mismatch(
+                        "Crypto.SecretKey",
+                        "non-SecretKey value",
+                        member,
+                        span,
+                    ));
+                };
+                let Value::String(in_path) = &arguments[1] else {
+                    return Err(type_mismatch("STRING", "non-STRING value", member, span));
+                };
+                let Value::String(out_path) = &arguments[2] else {
+                    return Err(type_mismatch("STRING", "non-STRING value", member, span));
+                };
+                let entry = self.secret_keys.get(key_handle).ok_or_else(|| {
+                    runtime_error(
+                        bn_diag::DiagId::USE_AFTER_RELEASE,
+                        "BNCrypto.SecretKey is invalid",
+                        span,
+                    )
+                })?;
+                if entry.zeroized {
+                    return failure(&bn_stdlib::crypto_error::CryptoFailure::ZeroizedKey);
+                }
+                match bn_stdlib::crypto::bn_encrypt_file(
+                    &entry.material,
+                    std::path::Path::new(in_path.as_ref()),
+                    std::path::Path::new(out_path.as_ref()),
+                ) {
+                    Ok(()) => Ok(Value::Null),
+                    Err(f) => failure(&f),
+                }
+            }
+            "DecryptFile" => {
+                require_arity(member, arguments, 3, span)?;
+                let Value::CryptoSecretKey(key_handle) = &arguments[0] else {
+                    return Err(type_mismatch(
+                        "Crypto.SecretKey",
+                        "non-SecretKey value",
+                        member,
+                        span,
+                    ));
+                };
+                let Value::String(in_path) = &arguments[1] else {
+                    return Err(type_mismatch("STRING", "non-STRING value", member, span));
+                };
+                let Value::String(out_path) = &arguments[2] else {
+                    return Err(type_mismatch("STRING", "non-STRING value", member, span));
+                };
+                let entry = self.secret_keys.get(key_handle).ok_or_else(|| {
+                    runtime_error(
+                        bn_diag::DiagId::USE_AFTER_RELEASE,
+                        "BNCrypto.SecretKey is invalid",
+                        span,
+                    )
+                })?;
+                if entry.zeroized {
+                    return failure(&bn_stdlib::crypto_error::CryptoFailure::ZeroizedKey);
+                }
+                match bn_stdlib::crypto::bn_decrypt_file(
+                    &entry.material,
+                    std::path::Path::new(in_path.as_ref()),
+                    std::path::Path::new(out_path.as_ref()),
+                ) {
+                    Ok(()) => Ok(Value::Null),
+                    Err(f) => failure(&f),
+                }
+            }
             _ => Err(name_not_found(method, "BNCrypto SecretKey method", span)),
         }
     }
@@ -1226,9 +1296,8 @@ impl Provider for CryptoProvider {
             }
             "NewSecretKey" | "NewSecretKeyWith" | "SecretKeyFromBytes" | "WrapKey"
             | "UnwrapKey" | "UnwrapKeyWith" | "Id" | "Bits" | "Purpose" | "ExportSecret"
-            | "Encrypt" | "Decrypt" | "EncryptText" | "DecryptText" => {
-                self.secret_key_op(method, member, &arguments, span)
-            }
+            | "Encrypt" | "Decrypt" | "EncryptText" | "DecryptText" | "EncryptFile"
+            | "DecryptFile" => self.secret_key_op(method, member, &arguments, span),
             "CONSTRUCTOR" => Ok(Value::Null),
             _ => Err(name_not_found(method, "BNCrypto function", span)),
         }

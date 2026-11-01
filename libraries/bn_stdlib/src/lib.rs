@@ -23,6 +23,7 @@ pub mod crypto_abi;
 pub mod crypto_csprng;
 pub mod crypto_envelope;
 pub mod crypto_error;
+pub mod crypto_file;
 pub mod crypto_secret_abi;
 pub mod data_error;
 mod dataframe;

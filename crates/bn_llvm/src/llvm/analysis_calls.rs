@@ -414,6 +414,18 @@ pub(crate) fn call_instruction_supported(
                             .get(&arguments[1])
                             .is_some_and(|ty| *ty == Type::String)
                 }
+                "EncryptFile" | "DecryptFile" => {
+                    arguments.len() == 3
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_secret_key(module, ty))
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| *ty == Type::String)
+                        && values
+                            .get(&arguments[2])
+                            .is_some_and(|ty| *ty == Type::String)
+                }
                 "RandomInt" => {
                     arguments.len() == 2
                         && arguments.iter().all(|argument| {

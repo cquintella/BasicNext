@@ -371,6 +371,22 @@ pub(super) fn lower_bncrypto_call(
             text.assign(format!("v{dest}"), call);
             return;
         }
+        "EncryptFile" | "DecryptFile" => {
+            emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
+            let symbol = if member == "EncryptFile" {
+                "bn_rt_crypto_encrypt_file"
+            } else {
+                "bn_rt_crypto_decrypt_file"
+            };
+            let args = vec![
+                (T::I64, cryh()),
+                (T::Ptr, v(arguments[1])),
+                (T::Ptr, v(arguments[2])),
+            ];
+            text.assign(format!("cryrc{dest}"), I::call(T::I32, symbol, args));
+            emit_void_result(text, destination, &O::reg(format!("cryrc{dest}")));
+            return;
+        }
         "RandomBytes" => {
             let ty = analysis
                 .values

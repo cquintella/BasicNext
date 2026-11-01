@@ -243,6 +243,7 @@ pub extern "C" fn bn_rt_crypto_bytes_constant_time_equals(a: u64, b: u64) -> i32
 
 pub use crate::crypto_csprng::*;
 pub use crate::crypto_envelope::*;
+pub use crate::crypto_file::*;
 pub use crate::crypto_secret_abi::*;
 
 /// Algorithm selector shared with the backends: `0` is AES-256-GCM, `1` is

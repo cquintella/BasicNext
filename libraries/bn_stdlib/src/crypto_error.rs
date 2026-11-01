@@ -66,6 +66,8 @@ pub enum CryptoFailure {
     EnvelopeAuth,
     /// Envelope key length mismatch.
     EnvelopeKeyLength,
+    /// File I/O error during file encryption or decryption.
+    FileIo(String),
 }
 
 impl CryptoFailure {
@@ -106,6 +108,7 @@ impl CryptoFailure {
             Self::KeyUnwrapAuth => "BNCrypto.UnwrapKey",
             Self::EnvelopeFormat | Self::EnvelopeAuth => "BNCrypto.Decrypt",
             Self::EnvelopeKeyLength => "BNCrypto.Encrypt",
+            Self::FileIo(_) => "BNCrypto.File",
         }
     }
 
@@ -167,6 +170,7 @@ impl CryptoFailure {
             Self::EnvelopeKeyLength => {
                 "key material length must be 32 bytes for authenticated encryption".into()
             }
+            Self::FileIo(err) => format!("file I/O error: {err}"),
         }
     }
 
@@ -241,6 +245,7 @@ impl CryptoFailure {
             Self::EnvelopeKeyLength => {
                 "authenticated encryption envelopes require a 256-bit (32-byte) key".into()
             }
+            Self::FileIo(_) => "filesystem read or write failed".into(),
         }
     }
 }
