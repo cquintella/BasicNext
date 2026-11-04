@@ -130,24 +130,6 @@ fn require_pkcs8(format: i32, operation: &'static str) -> Result<(), CryptoFailu
     }
 }
 
-/// Accepts the `INT32` selector. `&str` remains only so the tests already on
-/// this branch keep compiling until they pass `PEM_FORMAT_PKCS8`.
-pub trait IntoPemFormat {
-    fn into_pem_format(self) -> i32;
-}
-
-impl IntoPemFormat for i32 {
-    fn into_pem_format(self) -> i32 {
-        self
-    }
-}
-
-impl IntoPemFormat for &str {
-    fn into_pem_format(self) -> i32 {
-        if self == "PKCS8" { PEM_FORMAT_PKCS8 } else { 0 }
-    }
-}
-
 fn rng() -> pkcs8::rand_core::OsRng {
     pkcs8::rand_core::OsRng
 }
@@ -185,10 +167,9 @@ fn encrypt_der(der: &[u8], password: &str) -> Result<String, CryptoFailure> {
 pub fn bn_export_private_pem(
     seed: &[u8],
     algorithm: i32,
-    format: impl IntoPemFormat,
+    format: i32,
     password: &str,
 ) -> Result<String, CryptoFailure> {
-    let format = format.into_pem_format();
     require_pkcs8(format, EXPORT)?;
     match algorithm {
         1 | 4 | 30 => {
@@ -216,9 +197,8 @@ pub fn bn_export_private_pem(
 pub fn bn_export_private_pem_unencrypted(
     seed: &[u8],
     algorithm: i32,
-    format: impl IntoPemFormat,
+    format: i32,
 ) -> Result<String, CryptoFailure> {
-    let format = format.into_pem_format();
     require_pkcs8(format, EXPORT_PLAIN)?;
     match algorithm {
         1 | 4 | 30 => {
