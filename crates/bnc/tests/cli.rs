@@ -1925,7 +1925,7 @@ fn compiled_bncrypto_asymmetric_matches_the_interpreter() {
     );
     assert_eq!(
         String::from_utf8_lossy(&run.stdout),
-        "asym-keypair-ok\nkey-ids-match\nderived-public-matches\n"
+        "asym-keypair-ok\nkey-ids-match\nderived-public-matches\ned25519-for-ok\nx25519-for-ok\np256-for-ok\ninvalid-alg-rejected\nwith-default-ok\nsign-verify-ok\nverify-rejects\npem-roundtrip\nwrong-password\nplain-roundtrip\nplain-password-rejected\npublic-from-private-rejected\npublic-pem-ok\np256-sign-ok\nx25519-sign-rejected\nx25519-verify-false\n"
     );
     let _ = fs::remove_dir_all(&directory);
 }

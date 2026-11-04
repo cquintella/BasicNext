@@ -25,4 +25,125 @@ FUNCTION Start() AS VOID
             END IF
         END IF
     END IF
+
+    LET kpEd AS Crypto.KeyPair OR Error = Crypto.NewKeyPairFor(Crypto.Alg.ED25519)
+    IF kpEd IS Crypto.KeyPair THEN
+        IF kpEd.PublicKey.Algorithm() = Crypto.Alg.ED25519 THEN
+            PRINT "ed25519-for-ok"
+        END IF
+    END IF
+
+    LET kpX AS Crypto.KeyPair OR Error = Crypto.NewKeyPairFor(Crypto.Alg.X25519)
+    IF kpX IS Crypto.KeyPair THEN
+        IF kpX.PublicKey.Algorithm() = Crypto.Alg.X25519 THEN
+            IF LEN(kpX.PublicKey.Id()) = 64 THEN
+                PRINT "x25519-for-ok"
+            END IF
+        END IF
+    END IF
+
+    LET kpP256 AS Crypto.KeyPair OR Error = Crypto.NewKeyPairFor(Crypto.Alg.ECDSA_P256)
+    IF kpP256 IS Crypto.KeyPair THEN
+        IF kpP256.PublicKey.Algorithm() = Crypto.Alg.ECDSA_P256 THEN
+            IF LEN(kpP256.PublicKey.Id()) = 64 THEN
+                PRINT "p256-for-ok"
+            END IF
+        END IF
+    END IF
+
+    LET kpBad AS Crypto.KeyPair OR Error = Crypto.NewKeyPairFor(999)
+    IF kpBad IS Error THEN
+        PRINT "invalid-alg-rejected"
+    END IF
+
+    LET opts AS Crypto.KeyPairOptions
+    LET kpWith AS Crypto.KeyPair OR Error = Crypto.NewKeyPairWith(opts)
+    IF kpWith IS Crypto.KeyPair THEN
+        IF kpWith.PublicKey.Algorithm() = Crypto.Alg.ED25519 THEN
+            PRINT "with-default-ok"
+        END IF
+    END IF
+
+    LET msg AS Crypto.Bytes = Crypto.FromText("sprint4")
+    IF kp IS Crypto.KeyPair THEN
+        LET sig AS Crypto.Bytes OR Error = Crypto.Sign(kp.PrivateKey, msg)
+        IF sig IS Crypto.Bytes THEN
+            IF Crypto.Verify(kp.PublicKey, msg, sig) THEN
+                PRINT "sign-verify-ok"
+            END IF
+            LET other AS Crypto.Bytes = Crypto.FromText("nope")
+            IF Crypto.Verify(kp.PublicKey, msg, other) = FALSE THEN
+                PRINT "verify-rejects"
+            END IF
+        END IF
+        LET pem AS STRING OR Error = kp.PrivateKey.ExportPem("PKCS8", "pw-sprint4")
+        IF pem IS STRING THEN
+            LET loaded AS Crypto.PrivateKey OR Error = Crypto.LoadPrivateKey(pem, "pw-sprint4")
+            IF loaded IS Crypto.PrivateKey THEN
+                IF loaded.Id() = kp.PrivateKey.Id() THEN
+                    PRINT "pem-roundtrip"
+                END IF
+            END IF
+            LET wrong AS Crypto.PrivateKey OR Error = Crypto.LoadPrivateKey(pem, "not-the-password")
+            IF wrong IS Error THEN
+                IF wrong.Code = Crypto.WRONG_PASSWORD THEN
+                    PRINT "wrong-password"
+                END IF
+            END IF
+        END IF
+        LET plain AS STRING OR Error = kp.PrivateKey.ExportPemUnencrypted("PKCS8")
+        IF plain IS STRING THEN
+            LET opened AS Crypto.PrivateKey OR Error = Crypto.LoadPrivateKey(plain, NULL)
+            IF opened IS Crypto.PrivateKey THEN
+                IF opened.Id() = kp.PrivateKey.Id() THEN
+                    PRINT "plain-roundtrip"
+                END IF
+            END IF
+            LET refused AS Crypto.PrivateKey OR Error = Crypto.LoadPrivateKey(plain, "pw-sprint4")
+            IF refused IS Error THEN
+                IF refused.Code = Crypto.PARSE_ERROR THEN
+                    PRINT "plain-password-rejected"
+                END IF
+            END IF
+            LET guessed AS Crypto.PublicKey OR Error = Crypto.LoadPublicKey(plain)
+            IF guessed IS Error THEN
+                PRINT "public-from-private-rejected"
+            END IF
+        END IF
+        LET pubPem AS STRING OR Error = kp.PublicKey.ExportPem()
+        IF pubPem IS STRING THEN
+            LET pub AS Crypto.PublicKey OR Error = Crypto.LoadPublicKey(pubPem)
+            IF pub IS Crypto.PublicKey THEN
+                IF pub.Id() = kp.PublicKey.Id() THEN
+                    PRINT "public-pem-ok"
+                END IF
+            END IF
+        END IF
+    END IF
+
+    IF kpP256 IS Crypto.KeyPair THEN
+        LET p256Sig AS Crypto.Bytes OR Error = Crypto.Sign(kpP256.PrivateKey, msg)
+        IF p256Sig IS Crypto.Bytes THEN
+            IF Crypto.Verify(kpP256.PublicKey, msg, p256Sig) THEN
+                PRINT "p256-sign-ok"
+            END IF
+        END IF
+    END IF
+
+    IF kpX IS Crypto.KeyPair THEN
+        LET xSig AS Crypto.Bytes OR Error = Crypto.Sign(kpX.PrivateKey, msg)
+        IF xSig IS Error THEN
+            IF xSig.Code = Crypto.WRONG_KEY_TYPE THEN
+                PRINT "x25519-sign-rejected"
+            END IF
+        END IF
+        IF kp IS Crypto.KeyPair THEN
+            LET edSig AS Crypto.Bytes OR Error = Crypto.Sign(kp.PrivateKey, msg)
+            IF edSig IS Crypto.Bytes THEN
+                IF Crypto.Verify(kpX.PublicKey, msg, edSig) = FALSE THEN
+                    PRINT "x25519-verify-false"
+                END IF
+            END IF
+        END IF
+    END IF
 END FUNCTION

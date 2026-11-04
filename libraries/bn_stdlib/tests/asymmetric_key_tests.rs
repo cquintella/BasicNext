@@ -10,9 +10,11 @@
 #![allow(unsafe_code)]
 
 use bn_stdlib::crypto::{
-    bn_ed25519_keypair_generate, bn_keypair_generate_internal, bn_private_key_algorithm,
-    bn_private_key_id, bn_private_key_public_key, bn_private_key_zeroize, bn_public_key_algorithm,
-    bn_public_key_id,
+    bn_ed25519_keypair_generate, bn_export_private_pem, bn_export_private_pem_unencrypted,
+    bn_export_public_pem, bn_keypair_generate_internal, bn_load_private_pem, bn_load_public_pem,
+    bn_private_key_algorithm, bn_private_key_id, bn_private_key_public_key, bn_private_key_zeroize,
+    bn_public_key_algorithm, bn_public_key_id, bn_sign, bn_sign_file, bn_verify, bn_verify_file,
+    ed25519_public_key, p256_public_key,
 };
 use bn_stdlib::crypto_abi::{
     bn_rt_crypto_keypair_generate, bn_rt_crypto_private_key_algorithm, bn_rt_crypto_private_key_id,
@@ -37,8 +39,8 @@ fn test_ed25519_keypair_and_key_ids() {
 
     let pub_alg = bn_public_key_algorithm(pub_handle).expect("public key alg");
     let priv_alg = bn_private_key_algorithm(priv_handle).expect("private key alg");
-    assert_eq!(pub_alg, 1); // Alg.ED25519 = 1
-    assert_eq!(priv_alg, 1);
+    assert_eq!(pub_alg, 30); // Alg.ED25519 = 30
+    assert_eq!(priv_alg, 30);
 
     let derived_pub =
         bn_private_key_public_key(priv_handle).expect("derive public key from private");
@@ -140,5 +142,116 @@ fn test_p256_keypair_generation() {
 
 #[test]
 fn test_unsupported_algorithm_keypair_generation() {
-    assert!(bn_keypair_generate_internal(999).is_err());
+    let err = bn_keypair_generate_internal(999).expect_err("unknown algorithm");
+    assert_eq!(err.code(), 4);
+}
+
+const PASSWORD: &str = "s3cret-phrase";
+
+fn assert_password_absent(err: &bn_stdlib::crypto_error::CryptoFailure) {
+    assert!(!err.message().contains(PASSWORD));
+    assert!(!err.cause().contains(PASSWORD));
+    assert!(!err.message().contains("not-the-password"));
+    assert!(!err.cause().contains("not-the-password"));
+}
+
+#[test]
+fn detached_signatures_follow_the_key_algorithm() {
+    let seed = [9_u8; 32];
+    let message = b"sprint4";
+    let ed_public = ed25519_public_key(&seed).expect("ed25519 public");
+    let ed_sig = bn_sign(&seed, 30, message).expect("ed25519 sign");
+    assert_eq!(bn_sign(&seed, 4, message).unwrap(), ed_sig);
+    assert!(bn_verify(&ed_public, 30, message, &ed_sig));
+    assert!(!bn_verify(&ed_public, 30, b"other", &ed_sig));
+    assert_eq!(bn_sign(&seed, 31, message).unwrap_err().code(), 7);
+    assert!(!bn_verify(&ed_public, 31, message, &ed_sig));
+
+    let p256_seed = [1_u8; 32];
+    let p256_public = p256_public_key(&p256_seed).expect("p256 public");
+    let p256_sig = bn_sign(&p256_seed, 32, message).expect("p256 sign");
+    assert_eq!(bn_sign(&p256_seed, 5, message).unwrap(), p256_sig);
+    assert!(bn_verify(&p256_public, 32, message, &p256_sig));
+    assert!(!bn_verify(&p256_public, 32, message, &ed_sig));
+}
+
+#[test]
+fn sign_file_verifies_and_a_missing_file_is_false() {
+    let path = "bn-sprint4-sign.tmp";
+    std::fs::write(path, b"file-body").expect("write");
+    let seed = [3_u8; 32];
+    let public = ed25519_public_key(&seed).expect("public");
+    let signature = bn_sign_file(&seed, 30, path).expect("sign file");
+    assert!(bn_verify_file(&public, 30, path, &signature));
+    assert!(!bn_verify_file(
+        &public,
+        30,
+        "bn-sprint4-missing.tmp",
+        &signature
+    ));
+    let _ = std::fs::remove_file(path);
+    assert_eq!(
+        bn_sign_file(&seed, 30, "bn-sprint4-missing.tmp")
+            .unwrap_err()
+            .code(),
+        8
+    );
+}
+
+#[test]
+fn pkcs8_export_roundtrips_and_fails_closed() {
+    for algorithm in [30, 31, 32] {
+        let seed = match algorithm {
+            32 => vec![1_u8; 32],
+            _ => vec![9_u8; 32],
+        };
+        let encrypted = bn_export_private_pem(&seed, algorithm, "PKCS8", PASSWORD)
+            .unwrap_or_else(|err| panic!("export {algorithm}: {err:?}"));
+        assert!(encrypted.contains("ENCRYPTED PRIVATE KEY"));
+        assert!(!encrypted.contains(PASSWORD));
+        let loaded = bn_load_private_pem(&encrypted, Some(PASSWORD)).expect("load");
+        assert_eq!(loaded.algorithm, algorithm);
+        assert_eq!(loaded.seed.as_slice(), seed.as_slice());
+
+        let wrong = bn_load_private_pem(&encrypted, Some("not-the-password")).unwrap_err();
+        assert_eq!(wrong.code(), 9);
+        assert_password_absent(&wrong);
+        let missing = bn_load_private_pem(&encrypted, None).unwrap_err();
+        assert_eq!(missing.code(), 9);
+
+        let plain = bn_export_private_pem_unencrypted(&seed, algorithm, "PKCS8").expect("plain");
+        assert!(plain.contains("BEGIN PRIVATE KEY"));
+        assert!(!plain.contains("ENCRYPTED"));
+        let opened = bn_load_private_pem(&plain, None).expect("plain load");
+        assert_eq!(opened.seed.as_slice(), seed.as_slice());
+        assert_eq!(bn_load_private_pem(&plain, Some("")).unwrap_err().code(), 6);
+        assert_eq!(
+            bn_load_private_pem(&plain, Some(PASSWORD))
+                .unwrap_err()
+                .code(),
+            6
+        );
+        assert_eq!(bn_load_public_pem(&plain).unwrap_err().code(), 6);
+
+        let ambiguous = format!("{encrypted}\n{plain}");
+        assert_eq!(
+            bn_load_private_pem(&ambiguous, Some(PASSWORD))
+                .unwrap_err()
+                .code(),
+            6
+        );
+
+        let public_pem = bn_export_public_pem(&loaded.spki);
+        let public = bn_load_public_pem(&public_pem).expect("public");
+        assert_eq!(public.key_id, loaded.key_id);
+        assert_eq!(public.algorithm, algorithm);
+    }
+    assert_eq!(
+        bn_export_private_pem(&[9_u8; 32], 30, "DER", PASSWORD)
+            .unwrap_err()
+            .code(),
+        1
+    );
+    let empty = bn_export_private_pem(&[9_u8; 32], 30, "PKCS8", "").expect("empty password");
+    assert!(empty.contains("ENCRYPTED PRIVATE KEY"));
 }
