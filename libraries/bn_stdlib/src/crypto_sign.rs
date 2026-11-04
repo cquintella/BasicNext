@@ -329,12 +329,12 @@ fn write_handle(out: *mut u64, handle: u64) -> i32 {
 }
 
 #[allow(unsafe_code)]
-fn write_string(out: *mut *mut c_char, text: String) -> i32 {
+fn write_string(out: *mut *mut c_char, text: &str) -> i32 {
     if out.is_null() {
         return -1;
     }
     // SAFETY: `out` was checked non-null and points at a caller-owned slot.
-    unsafe { *out = c_string(&text) };
+    unsafe { *out = c_string(text) };
     0
 }
 
@@ -412,7 +412,7 @@ pub extern "C" fn bn_rt_crypto_private_export_pem(
         Err(failure) => return failed(&failure),
     };
     match bn_export_private_pem(&material.seed, material.algorithm, format, password) {
-        Ok(pem) => write_string(out, pem),
+        Ok(pem) => write_string(out, &pem),
         Err(failure) => failed(&failure),
     }
 }
@@ -434,7 +434,7 @@ pub extern "C" fn bn_rt_crypto_private_export_pem_plain(
         Err(failure) => return failed(&failure),
     };
     match bn_export_private_pem_unencrypted(&material.seed, material.algorithm, format) {
-        Ok(pem) => write_string(out, pem),
+        Ok(pem) => write_string(out, &pem),
         Err(failure) => failed(&failure),
     }
 }
@@ -445,7 +445,7 @@ pub extern "C" fn bn_rt_crypto_public_export_pem(key: u64, out: *mut *mut c_char
     let Some(spki) = with_public_keys(|keys| keys.get(&key).map(|entry| entry.spki.clone())) else {
         return failed(&CryptoFailure::Key("BNCrypto.PublicKey.ExportPem"));
     };
-    write_string(out, bn_export_public_pem(&spki))
+    write_string(out, &bn_export_public_pem(&spki))
 }
 
 #[allow(unsafe_code)]

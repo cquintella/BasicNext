@@ -118,7 +118,15 @@ impl CryptoFailure {
             Self::Open(Aead::Aes256Gcm) => "BNCrypto.OpenAesGcm",
             Self::Open(Aead::ChaCha20Poly1305) => "BNCrypto.OpenChaCha20",
             Self::Argon2id => "BNCrypto.Argon2id",
-            Self::Key(operation) | Self::Seed(operation) | Self::Random(operation) => operation,
+            Self::Key(operation)
+            | Self::Seed(operation)
+            | Self::Random(operation)
+            | Self::UnsupportedAlgorithm { operation }
+            | Self::Parse { operation }
+            | Self::WrongKeyType { operation }
+            | Self::Io { operation }
+            | Self::WrongPassword { operation }
+            | Self::Format { operation } => operation,
             Self::Slice { .. } => "BNCrypto.Slice",
             Self::EncapsulationKey => "BNCrypto.MlKemEncapsulate",
             Self::Decapsulate => "BNCrypto.MlKemDecapsulate",
@@ -138,12 +146,6 @@ impl CryptoFailure {
             Self::Base64Url(_) => "BNCrypto.FromBase64Url",
             Self::Pem(_) => "BNCrypto.FromPem",
             Self::Utf8 => "BNCrypto.Bytes.ToText",
-            Self::UnsupportedAlgorithm { operation }
-            | Self::Parse { operation }
-            | Self::WrongKeyType { operation }
-            | Self::Io { operation }
-            | Self::WrongPassword { operation }
-            | Self::Format { operation } => operation,
         }
     }
 
