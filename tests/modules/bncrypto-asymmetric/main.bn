@@ -76,7 +76,7 @@ FUNCTION Start() AS VOID
                 PRINT "verify-rejects"
             END IF
         END IF
-        LET pem AS STRING OR Error = kp.PrivateKey.ExportPem("PKCS8", "pw-sprint4")
+        LET pem AS STRING OR Error = kp.PrivateKey.ExportPem(Crypto.PemFormat.PKCS8, "pw-sprint4")
         IF pem IS STRING THEN
             LET loaded AS Crypto.PrivateKey OR Error = Crypto.LoadPrivateKey(pem, "pw-sprint4")
             IF loaded IS Crypto.PrivateKey THEN
@@ -91,7 +91,7 @@ FUNCTION Start() AS VOID
                 END IF
             END IF
         END IF
-        LET plain AS STRING OR Error = kp.PrivateKey.ExportPemUnencrypted("PKCS8")
+        LET plain AS STRING OR Error = kp.PrivateKey.ExportPemUnencrypted(Crypto.PemFormat.PKCS8)
         IF plain IS STRING THEN
             LET opened AS Crypto.PrivateKey OR Error = Crypto.LoadPrivateKey(plain, NULL)
             IF opened IS Crypto.PrivateKey THEN

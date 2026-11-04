@@ -10,11 +10,11 @@
 #![allow(unsafe_code)]
 
 use bn_stdlib::crypto::{
-    bn_ed25519_keypair_generate, bn_export_private_pem, bn_export_private_pem_unencrypted,
-    bn_export_public_pem, bn_keypair_generate_internal, bn_load_private_pem, bn_load_public_pem,
-    bn_private_key_algorithm, bn_private_key_id, bn_private_key_public_key, bn_private_key_zeroize,
-    bn_public_key_algorithm, bn_public_key_id, bn_sign, bn_sign_file, bn_verify, bn_verify_file,
-    ed25519_public_key, p256_public_key,
+    PEM_FORMAT_PKCS8, bn_ed25519_keypair_generate, bn_export_private_pem,
+    bn_export_private_pem_unencrypted, bn_export_public_pem, bn_keypair_generate_internal,
+    bn_load_private_pem, bn_load_public_pem, bn_private_key_algorithm, bn_private_key_id,
+    bn_private_key_public_key, bn_private_key_zeroize, bn_public_key_algorithm, bn_public_key_id,
+    bn_sign, bn_sign_file, bn_verify, bn_verify_file, ed25519_public_key, p256_public_key,
 };
 use bn_stdlib::crypto_abi::{
     bn_rt_crypto_keypair_generate, bn_rt_crypto_private_key_algorithm, bn_rt_crypto_private_key_id,
@@ -199,13 +199,21 @@ fn sign_file_verifies_and_a_missing_file_is_false() {
 }
 
 #[test]
+fn pem_format_constant_matches_the_module() {
+    let module = include_str!("../../../modules/bn/BNCrypto.bn");
+    assert!(module.contains("PUBLIC STATIC PKCS8 AS INT32 = 1"));
+    assert!(module.contains("alg AS INT32 = 30"));
+    assert_eq!(PEM_FORMAT_PKCS8, 1);
+}
+
+#[test]
 fn pkcs8_export_roundtrips_and_fails_closed() {
     for algorithm in [30, 31, 32] {
         let seed = match algorithm {
             32 => vec![1_u8; 32],
             _ => vec![9_u8; 32],
         };
-        let encrypted = bn_export_private_pem(&seed, algorithm, "PKCS8", PASSWORD)
+        let encrypted = bn_export_private_pem(&seed, algorithm, PEM_FORMAT_PKCS8, PASSWORD)
             .unwrap_or_else(|err| panic!("export {algorithm}: {err:?}"));
         assert!(encrypted.contains("ENCRYPTED PRIVATE KEY"));
         assert!(!encrypted.contains(PASSWORD));
@@ -219,7 +227,8 @@ fn pkcs8_export_roundtrips_and_fails_closed() {
         let missing = bn_load_private_pem(&encrypted, None).unwrap_err();
         assert_eq!(missing.code(), 9);
 
-        let plain = bn_export_private_pem_unencrypted(&seed, algorithm, "PKCS8").expect("plain");
+        let plain =
+            bn_export_private_pem_unencrypted(&seed, algorithm, PEM_FORMAT_PKCS8).expect("plain");
         assert!(plain.contains("BEGIN PRIVATE KEY"));
         assert!(!plain.contains("ENCRYPTED"));
         let opened = bn_load_private_pem(&plain, None).expect("plain load");
@@ -247,11 +256,12 @@ fn pkcs8_export_roundtrips_and_fails_closed() {
         assert_eq!(public.algorithm, algorithm);
     }
     assert_eq!(
-        bn_export_private_pem(&[9_u8; 32], 30, "DER", PASSWORD)
+        bn_export_private_pem(&[9_u8; 32], 30, 2, PASSWORD)
             .unwrap_err()
             .code(),
         1
     );
-    let empty = bn_export_private_pem(&[9_u8; 32], 30, "PKCS8", "").expect("empty password");
+    let empty =
+        bn_export_private_pem(&[9_u8; 32], 30, PEM_FORMAT_PKCS8, "").expect("empty password");
     assert!(empty.contains("ENCRYPTED PRIVATE KEY"));
 }
