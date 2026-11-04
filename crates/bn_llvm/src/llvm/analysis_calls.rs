@@ -335,6 +335,50 @@ pub(crate) fn call_instruction_supported(
                             .is_some_and(|ty| carries_bncrypto_secret(module, ty))
                 }
                 "NewKeyPair" => arguments.is_empty(),
+                "NewKeyPairFor" => {
+                    arguments.len() == 1
+                        && values.get(&arguments[0]).is_some_and(|ty| {
+                            matches!(ty, Type::Integer(_) | Type::IntegerLiteral(_))
+                        })
+                }
+                "NewKeyPairWith" => arguments.len() == 1,
+                "Sign" | "SignFile" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_private_key(module, ty))
+                }
+                "VerifyFile" => {
+                    arguments.len() == 3
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_public_key(module, ty))
+                        && values
+                            .get(&arguments[2])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "ExportPem" => {
+                    (arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_public_key(module, ty)))
+                        || (arguments.len() == 3
+                            && values
+                                .get(&arguments[0])
+                                .is_some_and(|ty| carries_bncrypto_private_key(module, ty)))
+                }
+                "ExportPemUnencrypted" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_private_key(module, ty))
+                }
+                "LoadPrivateKey" => {
+                    arguments.len() == 2 && values.get(&arguments[0]) == Some(&Type::String)
+                }
+                "LoadPublicKey" => {
+                    arguments.len() == 1 && values.get(&arguments[0]) == Some(&Type::String)
+                }
                 "PublicKey" => {
                     arguments.len() == 1
                         && values
@@ -482,7 +526,19 @@ pub(crate) fn call_instruction_supported(
                             .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
                 }
                 "Finish" => arguments.len() == 1,
-                "Verify" => arguments.len() == 2,
+                "Verify" => {
+                    arguments.len() == 2
+                        || (arguments.len() == 3
+                            && values
+                                .get(&arguments[0])
+                                .is_some_and(|ty| carries_bncrypto_public_key(module, ty))
+                            && values
+                                .get(&arguments[1])
+                                .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                            && values
+                                .get(&arguments[2])
+                                .is_some_and(|ty| carries_bncrypto_bytes(module, ty)))
+                }
                 "RandomInt" => {
                     arguments.len() == 2
                         && arguments.iter().all(|argument| {

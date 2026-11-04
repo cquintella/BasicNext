@@ -6,6 +6,8 @@
 // Calls to `BNCrypto` members. `Bytes` and keys travel as `bn_rt` table
 // indices (`i64`), as BNLog resources do.
 #![allow(clippy::wildcard_imports)]
+#[path = "crypto_asymmetric_calls.rs"]
+mod crypto_asymmetric_calls;
 #[path = "crypto_csprng_calls.rs"]
 mod crypto_csprng_calls;
 #[path = "crypto_encoding_calls.rs"]
@@ -55,6 +57,15 @@ pub(super) fn lower_bncrypto_call(
         return;
     }
     if crypto_csprng_calls::try_lower_csprng_call(text, analysis, destination, member, arguments) {
+        return;
+    }
+    if crypto_asymmetric_calls::try_lower_asymmetric_call(
+        text,
+        analysis,
+        destination,
+        member,
+        arguments,
+    ) {
         return;
     }
     let dest = destination.0;
@@ -230,7 +241,7 @@ pub(super) fn lower_bncrypto_call(
             }
             return;
         }
-        "NewKeyPair" => {
+        "NewKeyPair" | "NewKeyPairFor" | "NewKeyPairWith" => {
             text.assign(
                 format!("kpptr{dest}"),
                 I::call(
@@ -250,11 +261,33 @@ pub(super) fn lower_bncrypto_call(
                 I::gep(T::I8, kpptr.clone(), vec![(T::I32, O::int(24))]),
             );
             let priv_slot = O::reg(format!("kppriv_{dest}"));
-            let args = vec![
-                (T::I32, O::int(30)),
-                (T::Ptr, pub_slot),
-                (T::Ptr, priv_slot),
-            ];
+            let alg_op = if member == "NewKeyPair" {
+                O::int(30)
+            } else if member == "NewKeyPairFor" {
+                let alg_val = arguments[0];
+                let alg_ty = analysis.values.get(&alg_val).expect("validated alg type");
+                let alg_llvm = llvm_type(alg_ty).expect("validated alg llvm type");
+                if alg_llvm == T::I32 {
+                    v(alg_val)
+                } else {
+                    text.assign(
+                        format!("cryalg{dest}"),
+                        I::cast(CastOp::Trunc, alg_llvm, v(alg_val), T::I32),
+                    );
+                    O::reg(format!("cryalg{dest}"))
+                }
+            } else {
+                text.assign(
+                    format!("cryalgp{dest}"),
+                    I::gep(T::I8, v(arguments[0]), vec![(T::I32, O::int(16))]),
+                );
+                text.assign(
+                    format!("cryalg{dest}"),
+                    I::load(T::I32, O::reg(format!("cryalgp{dest}"))),
+                );
+                O::reg(format!("cryalg{dest}"))
+            };
+            let args = vec![(T::I32, alg_op), (T::Ptr, pub_slot), (T::Ptr, priv_slot)];
             text.assign(
                 format!("kprc{dest}"),
                 I::call(T::I32, "bn_rt_crypto_keypair_generate", args),

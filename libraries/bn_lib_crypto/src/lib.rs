@@ -1781,14 +1781,8 @@ impl CryptoProvider {
         }
     }
 
-    fn op_new_keypair(
-        &mut self,
-        member: &str,
-        arguments: &[Value],
-        span: Span,
-    ) -> Result<Value, Diagnostic> {
-        require_arity(member, arguments, 0, span)?;
-        match bn_stdlib::crypto::bn_keypair_generate_internal(30) {
+    fn op_new_keypair_internal(&mut self, alg: i32) -> Result<Value, Diagnostic> {
+        match bn_stdlib::crypto::bn_keypair_generate_internal(alg) {
             Ok((pub_h, priv_h)) => {
                 let pub_entry =
                     bn_stdlib::crypto::with_public_keys(|keys| keys.get(&pub_h).cloned());
@@ -1816,6 +1810,30 @@ impl CryptoProvider {
             }
             Err(f) => failure(&f),
         }
+    }
+
+    fn op_new_keypair(
+        &mut self,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        require_arity(member, arguments, 0, span)?;
+        self.op_new_keypair_internal(30)
+    }
+
+    fn op_new_keypair_for(
+        &mut self,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        require_arity(member, arguments, 1, span)?;
+        let alg = match arguments.first() {
+            Some(Value::Integer(val, _)) => i32::try_from(*val).unwrap_or(0),
+            _ => return Err(type_mismatch("INTEGER", "non-integer value", member, span)),
+        };
+        self.op_new_keypair_internal(alg)
     }
 
     fn op_public_key(
@@ -1927,6 +1945,278 @@ impl CryptoProvider {
         ))
     }
 
+    fn private_material(
+        &self,
+        arguments: &[Value],
+        index: usize,
+        member: &str,
+        span: Span,
+    ) -> Result<Result<(Vec<u8>, i32), CryptoFailure>, Diagnostic> {
+        let Some(Value::CryptoKey(handle)) = arguments.get(index) else {
+            return Err(type_mismatch(
+                "BNCrypto.PrivateKey",
+                "non-PrivateKey value",
+                member,
+                span,
+            ));
+        };
+        let Some(entry) = self.private_keys.get(handle) else {
+            return Err(runtime_error(
+                bn_diag::DiagId::USE_AFTER_RELEASE,
+                bn_catalog::text("crypto", "msg.bncrypto_key_was_already_released"),
+                span,
+            ));
+        };
+        if entry.zeroized {
+            return Ok(Err(CryptoFailure::ZeroizedKey));
+        }
+        Ok(Ok((entry.seed.to_vec(), entry.algorithm)))
+    }
+
+    fn op_new_keypair_with(
+        &mut self,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        require_arity(member, arguments, 1, span)?;
+        let alg = match arguments.first() {
+            Some(Value::Record { record }) => match record.get(0) {
+                Some(Value::Integer(value, _)) => i32::try_from(*value).unwrap_or(0),
+                _ => 30,
+            },
+            _ => {
+                return Err(type_mismatch(
+                    "BNCrypto.KeyPairOptions",
+                    "non-record value",
+                    member,
+                    span,
+                ));
+            }
+        };
+        self.op_new_keypair_internal(alg)
+    }
+
+    fn op_sign(
+        &mut self,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        require_arity(member, arguments, 2, span)?;
+        let (seed, algorithm) = match self.private_material(arguments, 0, member, span)? {
+            Ok(material) => material,
+            Err(err) => return failure(&err),
+        };
+        let message = self.bytes_at(arguments, 1, member, span)?;
+        match bn_stdlib::crypto::bn_sign(&seed, algorithm, &message) {
+            Ok(signature) => Ok(self.insert(signature)),
+            Err(err) => failure(&err),
+        }
+    }
+
+    fn op_verify(
+        &self,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        require_arity(member, arguments, 3, span)?;
+        let Some(Value::CryptoKey(handle)) = arguments.first() else {
+            return Err(type_mismatch(
+                "BNCrypto.PublicKey",
+                "non-PublicKey value",
+                member,
+                span,
+            ));
+        };
+        let Some(entry) = self.public_keys.get(handle) else {
+            return Err(runtime_error(
+                bn_diag::DiagId::USE_AFTER_RELEASE,
+                bn_catalog::text("crypto", "msg.bncrypto_key_was_already_released"),
+                span,
+            ));
+        };
+        let message = self.bytes_at(arguments, 1, member, span)?;
+        let signature = self.bytes_at(arguments, 2, member, span)?;
+        Ok(Value::Boolean(bn_stdlib::crypto::bn_verify(
+            &entry.raw,
+            entry.algorithm,
+            &message,
+            &signature,
+        )))
+    }
+
+    fn op_sign_file(
+        &mut self,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        require_arity(member, arguments, 2, span)?;
+        let (seed, algorithm) = match self.private_material(arguments, 0, member, span)? {
+            Ok(material) => material,
+            Err(err) => return failure(&err),
+        };
+        let Value::String(path) = &arguments[1] else {
+            return Err(type_mismatch("STRING", "non-STRING value", member, span));
+        };
+        match bn_stdlib::crypto::bn_sign_file(&seed, algorithm, path.as_ref()) {
+            Ok(signature) => Ok(self.insert(signature)),
+            Err(err) => failure(&err),
+        }
+    }
+
+    fn op_verify_file(
+        &self,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        require_arity(member, arguments, 3, span)?;
+        let Some(Value::CryptoKey(handle)) = arguments.first() else {
+            return Err(type_mismatch(
+                "BNCrypto.PublicKey",
+                "non-PublicKey value",
+                member,
+                span,
+            ));
+        };
+        let Some(entry) = self.public_keys.get(handle) else {
+            return Err(runtime_error(
+                bn_diag::DiagId::USE_AFTER_RELEASE,
+                bn_catalog::text("crypto", "msg.bncrypto_key_was_already_released"),
+                span,
+            ));
+        };
+        let Value::String(path) = &arguments[1] else {
+            return Err(type_mismatch("STRING", "non-STRING value", member, span));
+        };
+        let signature = self.bytes_at(arguments, 2, member, span)?;
+        Ok(Value::Boolean(bn_stdlib::crypto::bn_verify_file(
+            &entry.raw,
+            entry.algorithm,
+            path.as_ref(),
+            &signature,
+        )))
+    }
+
+    fn op_export_pem(
+        &self,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        if arguments.len() == 1 {
+            let Some(Value::CryptoKey(handle)) = arguments.first() else {
+                return Err(type_mismatch(
+                    "BNCrypto.PublicKey",
+                    "non-PublicKey value",
+                    member,
+                    span,
+                ));
+            };
+            let Some(entry) = self.public_keys.get(handle) else {
+                return Err(runtime_error(
+                    bn_diag::DiagId::USE_AFTER_RELEASE,
+                    bn_catalog::text("crypto", "msg.bncrypto_key_was_already_released"),
+                    span,
+                ));
+            };
+            return Ok(Value::String(shared_string(
+                bn_stdlib::crypto::bn_export_public_pem(&entry.spki).as_str(),
+            )));
+        }
+        require_arity(member, arguments, 3, span)?;
+        let (seed, algorithm) = match self.private_material(arguments, 0, member, span)? {
+            Ok(material) => material,
+            Err(err) => return failure(&err),
+        };
+        let Value::String(format) = &arguments[1] else {
+            return Err(type_mismatch("STRING", "non-STRING value", member, span));
+        };
+        let Value::String(password) = &arguments[2] else {
+            return Err(type_mismatch("STRING", "non-STRING value", member, span));
+        };
+        match bn_stdlib::crypto::bn_export_private_pem(
+            &seed,
+            algorithm,
+            format.as_ref(),
+            password.as_ref(),
+        ) {
+            Ok(pem) => Ok(Value::String(shared_string(pem.as_str()))),
+            Err(err) => failure(&err),
+        }
+    }
+
+    fn op_export_pem_plain(
+        &self,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        require_arity(member, arguments, 2, span)?;
+        let (seed, algorithm) = match self.private_material(arguments, 0, member, span)? {
+            Ok(material) => material,
+            Err(err) => return failure(&err),
+        };
+        let Value::String(format) = &arguments[1] else {
+            return Err(type_mismatch("STRING", "non-STRING value", member, span));
+        };
+        match bn_stdlib::crypto::bn_export_private_pem_unencrypted(
+            &seed,
+            algorithm,
+            format.as_ref(),
+        ) {
+            Ok(pem) => Ok(Value::String(shared_string(pem.as_str()))),
+            Err(err) => failure(&err),
+        }
+    }
+
+    fn op_load_private(
+        &mut self,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        require_arity(member, arguments, 2, span)?;
+        let Value::String(pem) = &arguments[0] else {
+            return Err(type_mismatch("STRING", "non-STRING value", member, span));
+        };
+        let password = match &arguments[1] {
+            Value::Null => None,
+            Value::String(text) => Some(text.as_ref()),
+            _ => {
+                return Err(type_mismatch(
+                    "STRING OR NULL",
+                    "non-STRING value",
+                    member,
+                    span,
+                ));
+            }
+        };
+        match bn_stdlib::crypto::bn_load_private_pem(pem.as_ref(), password) {
+            Ok(entry) => Ok(self.insert_private_key(entry)),
+            Err(err) => failure(&err),
+        }
+    }
+
+    fn op_load_public(
+        &mut self,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        require_arity(member, arguments, 1, span)?;
+        let Value::String(pem) = &arguments[0] else {
+            return Err(type_mismatch("STRING", "non-STRING value", member, span));
+        };
+        match bn_stdlib::crypto::bn_load_public_pem(pem.as_ref()) {
+            Ok(entry) => Ok(self.insert_public_key(entry)),
+            Err(err) => failure(&err),
+        }
+    }
+
     fn asymmetric_op(
         &mut self,
         method: &str,
@@ -1936,7 +2226,17 @@ impl CryptoProvider {
     ) -> Result<Value, Diagnostic> {
         match method {
             "NewKeyPair" => self.op_new_keypair(member, arguments, span),
+            "NewKeyPairFor" => self.op_new_keypair_for(member, arguments, span),
+            "NewKeyPairWith" => self.op_new_keypair_with(member, arguments, span),
             "PublicKey" => self.op_public_key(member, arguments, span),
+            "Sign" => self.op_sign(member, arguments, span),
+            "SignFile" => self.op_sign_file(member, arguments, span),
+            "Verify" => self.op_verify(member, arguments, span),
+            "VerifyFile" => self.op_verify_file(member, arguments, span),
+            "ExportPem" => self.op_export_pem(member, arguments, span),
+            "ExportPemUnencrypted" => self.op_export_pem_plain(member, arguments, span),
+            "LoadPrivateKey" => self.op_load_private(member, arguments, span),
+            "LoadPublicKey" => self.op_load_public(member, arguments, span),
             "Id" => self.op_key_id(member, arguments, span),
             "Algorithm" => self.op_key_algorithm(member, arguments, span),
             "Zeroize" => self.op_key_zeroize(member, arguments, span),
@@ -2006,7 +2306,20 @@ impl Provider for CryptoProvider {
             }
             "MlKemKeypair" | "MlKemEncapsulate" | "MlKemDecapsulate" | "MlDsaKeypair"
             | "MlDsaSign" | "MlDsaVerify" => self.post_quantum(method, member, &arguments, span),
-            "NewKeyPair" | "PublicKey" => self.asymmetric_op(method, member, &arguments, span),
+            "NewKeyPair"
+            | "NewKeyPairFor"
+            | "NewKeyPairWith"
+            | "PublicKey"
+            | "Sign"
+            | "SignFile"
+            | "VerifyFile"
+            | "ExportPem"
+            | "ExportPemUnencrypted"
+            | "LoadPrivateKey"
+            | "LoadPublicKey" => self.asymmetric_op(method, member, &arguments, span),
+            "Verify" if arguments.len() == 3 => {
+                self.asymmetric_op(method, member, &arguments, span)
+            }
             "Id" => {
                 if matches!(arguments.first(), Some(Value::CryptoKey(h)) if self.public_keys.contains_key(h) || self.private_keys.contains_key(h))
                 {

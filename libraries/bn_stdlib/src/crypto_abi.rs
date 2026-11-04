@@ -262,6 +262,7 @@ pub use crate::crypto_hash::*;
 pub use crate::crypto_mac::*;
 pub use crate::crypto_password::*;
 pub use crate::crypto_secret_abi::*;
+pub use crate::crypto_sign::*;
 
 /// Algorithm selector shared with the backends: `0` is AES-256-GCM, `1` is
 /// ChaCha20-Poly1305. Anything else is rejected.

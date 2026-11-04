@@ -497,6 +497,7 @@ pub use crate::crypto_hash::*;
 pub use crate::crypto_mac::*;
 pub use crate::crypto_password::*;
 pub use crate::crypto_secret_abi::*;
+pub use crate::crypto_sign::*;
 
 #[cfg(test)]
 mod tests {

@@ -76,6 +76,18 @@ pub enum CryptoFailure {
     Pem(String),
     /// Strict UTF-8 validation failed.
     Utf8,
+    /// Requested algorithm id is not accepted by this operation (`UNSUPPORTED_ALGORITHM`).
+    UnsupportedAlgorithm { operation: &'static str },
+    /// Malformed or ambiguous PEM (`PARSE_ERROR`). The password is never stored.
+    Parse { operation: &'static str },
+    /// The key algorithm cannot perform the operation (`WRONG_KEY_TYPE`).
+    WrongKeyType { operation: &'static str },
+    /// A file could not be read (`IO_ERROR`).
+    Io { operation: &'static str },
+    /// PKCS#8 password authentication failed (`WRONG_PASSWORD`). The password is never stored.
+    WrongPassword { operation: &'static str },
+    /// Export format other than `PKCS8` (`INVALID_ARGUMENT`).
+    Format { operation: &'static str },
 }
 
 impl CryptoFailure {
@@ -87,6 +99,11 @@ impl CryptoFailure {
                 crypto::AUTHENTICATION_FAILED
             }
             Self::Random(_) => crypto::UNAVAILABLE,
+            Self::UnsupportedAlgorithm { .. } => crypto::UNSUPPORTED_ALGORITHM,
+            Self::Parse { .. } => crypto::PARSE_ERROR,
+            Self::WrongKeyType { .. } => crypto::WRONG_KEY_TYPE,
+            Self::Io { .. } => crypto::IO_ERROR,
+            Self::WrongPassword { .. } => crypto::WRONG_PASSWORD,
             _ => crypto::INVALID_ARGUMENT,
         }
     }
@@ -121,6 +138,12 @@ impl CryptoFailure {
             Self::Base64Url(_) => "BNCrypto.FromBase64Url",
             Self::Pem(_) => "BNCrypto.FromPem",
             Self::Utf8 => "BNCrypto.Bytes.ToText",
+            Self::UnsupportedAlgorithm { operation }
+            | Self::Parse { operation }
+            | Self::WrongKeyType { operation }
+            | Self::Io { operation }
+            | Self::WrongPassword { operation }
+            | Self::Format { operation } => operation,
         }
     }
 
@@ -187,6 +210,18 @@ impl CryptoFailure {
             Self::Base64Url(s) => format!("cannot decode \"{s}\" as base64url"),
             Self::Pem(err) => format!("cannot decode PEM: {err}"),
             Self::Utf8 => "cannot decode bytes as valid UTF-8 text".into(),
+            Self::UnsupportedAlgorithm { .. } => {
+                bn_catalog::text("crypto", "algorithm.unsupported.message").into()
+            }
+            Self::Parse { .. } => bn_catalog::text("crypto", "parse.pem.message").into(),
+            Self::WrongKeyType { .. } => {
+                bn_catalog::text("crypto", "key.wrong_type.message").into()
+            }
+            Self::Io { .. } => bn_catalog::text("crypto", "io.file.message").into(),
+            Self::WrongPassword { .. } => {
+                bn_catalog::text("crypto", "password.wrong.message").into()
+            }
+            Self::Format { .. } => bn_catalog::text("crypto", "format.rejected.message").into(),
         }
     }
 
@@ -266,6 +301,14 @@ impl CryptoFailure {
             Self::Base64Url(_) => "the text must be valid URL-safe base64 (RFC 4648 §5)".into(),
             Self::Pem(_) => "the text must start with -----BEGIN and end with -----END with valid base64 payload".into(),
             Self::Utf8 => "the byte sequence is not valid UTF-8".into(),
+            Self::UnsupportedAlgorithm { .. } => {
+                bn_catalog::text("crypto", "algorithm.unsupported.cause").into()
+            }
+            Self::Parse { .. } => bn_catalog::text("crypto", "parse.pem.cause").into(),
+            Self::WrongKeyType { .. } => bn_catalog::text("crypto", "key.wrong_type.cause").into(),
+            Self::Io { .. } => bn_catalog::text("crypto", "io.file.cause").into(),
+            Self::WrongPassword { .. } => bn_catalog::text("crypto", "password.wrong.cause").into(),
+            Self::Format { .. } => bn_catalog::text("crypto", "format.rejected.cause").into(),
         }
     }
 }
