@@ -8,7 +8,7 @@
 use super::crypto_calls::{Out, lower_status_call};
 use super::json_calls::emit_handle_index;
 use super::*;
-use crate::ir::{InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
+use crate::ir::{CastOp, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
 
 pub(super) fn try_lower_asymmetric_call(
     text: &mut crate::ir::LlvmModule,
@@ -94,13 +94,14 @@ pub(super) fn try_lower_asymmetric_call(
         }
         "ExportPem" => {
             emit_handle_index(text, analysis, &format!("cryk{dest}"), arguments[0]);
+            let format = i32_argument(text, analysis, &format!("cryfmt{dest}"), arguments[1]);
             emit_string_status(
                 text,
                 destination,
                 "bn_rt_crypto_private_export_pem",
                 vec![
                     (T::I64, O::reg(format!("cryk{dest}"))),
-                    (T::Ptr, v(arguments[1])),
+                    (T::I32, format),
                     (T::Ptr, v(arguments[2])),
                 ],
             );
@@ -108,14 +109,12 @@ pub(super) fn try_lower_asymmetric_call(
         }
         "ExportPemUnencrypted" => {
             emit_handle_index(text, analysis, &format!("cryk{dest}"), arguments[0]);
+            let format = i32_argument(text, analysis, &format!("cryfmt{dest}"), arguments[1]);
             emit_string_status(
                 text,
                 destination,
                 "bn_rt_crypto_private_export_pem_plain",
-                vec![
-                    (T::I64, O::reg(format!("cryk{dest}"))),
-                    (T::Ptr, v(arguments[1])),
-                ],
+                vec![(T::I64, O::reg(format!("cryk{dest}"))), (T::I32, format)],
             );
             true
         }
@@ -140,6 +139,26 @@ pub(super) fn try_lower_asymmetric_call(
             true
         }
         _ => false,
+    }
+}
+
+fn i32_argument(
+    text: &mut crate::ir::LlvmModule,
+    analysis: &LoweringAnalysis<'_>,
+    slot: &str,
+    value: ValueId,
+) -> O {
+    let ty = analysis
+        .values
+        .get(&value)
+        .and_then(llvm_type)
+        .unwrap_or(T::I64);
+    let raw = O::reg(format!("v{}", value.0));
+    if ty == T::I32 {
+        raw
+    } else {
+        text.assign(slot, I::cast(CastOp::Trunc, ty, raw, T::I32));
+        O::reg(slot)
     }
 }
 

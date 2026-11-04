@@ -146,8 +146,8 @@ signatures! {
     CRYPTO_PUBLIC_VERIFY = "bn_rt_crypto_public_verify"(I64, I64, I64) -> I32;
     CRYPTO_SIGN_FILE = "bn_rt_crypto_sign_file"(I64, Ptr, Ptr) -> I32;
     CRYPTO_VERIFY_FILE = "bn_rt_crypto_verify_file"(I64, Ptr, I64) -> I32;
-    CRYPTO_PRIVATE_EXPORT_PEM = "bn_rt_crypto_private_export_pem"(I64, Ptr, Ptr, Ptr) -> I32;
-    CRYPTO_PRIVATE_EXPORT_PEM_PLAIN = "bn_rt_crypto_private_export_pem_plain"(I64, Ptr, Ptr) -> I32;
+    CRYPTO_PRIVATE_EXPORT_PEM = "bn_rt_crypto_private_export_pem"(I64, I32, Ptr, Ptr) -> I32;
+    CRYPTO_PRIVATE_EXPORT_PEM_PLAIN = "bn_rt_crypto_private_export_pem_plain"(I64, I32, Ptr) -> I32;
     CRYPTO_PUBLIC_EXPORT_PEM = "bn_rt_crypto_public_export_pem"(I64, Ptr) -> I32;
     CRYPTO_LOAD_PRIVATE_KEY = "bn_rt_crypto_load_private_key"(Ptr, Ptr, Ptr) -> I32;
     CRYPTO_LOAD_PUBLIC_KEY = "bn_rt_crypto_load_public_key"(Ptr, Ptr) -> I32;

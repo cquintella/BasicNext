@@ -23,7 +23,9 @@ use crate::crypto_encoding::bn_pem_encode;
 use crate::crypto_error::CryptoFailure;
 use crate::{c_str, c_string};
 
-const PKCS8_FORMAT: &str = "PKCS8";
+/// `PemFormat.PKCS8` in `modules/bn/BNCrypto.bn`. Any other value is rejected.
+pub const PEM_FORMAT_PKCS8: i32 = 1;
+
 const LABEL_PRIVATE: &str = "PRIVATE KEY";
 const LABEL_ENCRYPTED: &str = "ENCRYPTED PRIVATE KEY";
 const LABEL_PUBLIC: &str = "PUBLIC KEY";
@@ -120,11 +122,29 @@ pub fn bn_verify_file(raw_public: &[u8], algorithm: i32, path: &str, signature: 
     bn_verify(raw_public, algorithm, &message, signature)
 }
 
-fn require_pkcs8(format: &str, operation: &'static str) -> Result<(), CryptoFailure> {
-    if format == PKCS8_FORMAT {
+fn require_pkcs8(format: i32, operation: &'static str) -> Result<(), CryptoFailure> {
+    if format == PEM_FORMAT_PKCS8 {
         Ok(())
     } else {
         Err(CryptoFailure::Format { operation })
+    }
+}
+
+/// Accepts the `INT32` selector. `&str` remains only so the tests already on
+/// this branch keep compiling until they pass `PEM_FORMAT_PKCS8`.
+pub trait IntoPemFormat {
+    fn into_pem_format(self) -> i32;
+}
+
+impl IntoPemFormat for i32 {
+    fn into_pem_format(self) -> i32 {
+        self
+    }
+}
+
+impl IntoPemFormat for &str {
+    fn into_pem_format(self) -> i32 {
+        if self == "PKCS8" { PEM_FORMAT_PKCS8 } else { 0 }
     }
 }
 
@@ -165,9 +185,10 @@ fn encrypt_der(der: &[u8], password: &str) -> Result<String, CryptoFailure> {
 pub fn bn_export_private_pem(
     seed: &[u8],
     algorithm: i32,
-    format: &str,
+    format: impl IntoPemFormat,
     password: &str,
 ) -> Result<String, CryptoFailure> {
+    let format = format.into_pem_format();
     require_pkcs8(format, EXPORT)?;
     match algorithm {
         1 | 4 | 30 => {
@@ -195,8 +216,9 @@ pub fn bn_export_private_pem(
 pub fn bn_export_private_pem_unencrypted(
     seed: &[u8],
     algorithm: i32,
-    format: &str,
+    format: impl IntoPemFormat,
 ) -> Result<String, CryptoFailure> {
+    let format = format.into_pem_format();
     require_pkcs8(format, EXPORT_PLAIN)?;
     match algorithm {
         1 | 4 | 30 => {
@@ -400,11 +422,11 @@ pub extern "C" fn bn_rt_crypto_verify_file(key: u64, path: *const c_char, signat
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_private_export_pem(
     key: u64,
-    format: *const c_char,
+    format: i32,
     password: *const c_char,
     out: *mut *mut c_char,
 ) -> i32 {
-    let (Some(format), Some(password)) = (c_str(format), c_str(password)) else {
+    let Some(password) = c_str(password) else {
         return failed(&CryptoFailure::Format { operation: EXPORT });
     };
     let material = match private_material(key, EXPORT) {
@@ -421,14 +443,9 @@ pub extern "C" fn bn_rt_crypto_private_export_pem(
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_private_export_pem_plain(
     key: u64,
-    format: *const c_char,
+    format: i32,
     out: *mut *mut c_char,
 ) -> i32 {
-    let Some(format) = c_str(format) else {
-        return failed(&CryptoFailure::Format {
-            operation: EXPORT_PLAIN,
-        });
-    };
     let material = match private_material(key, EXPORT_PLAIN) {
         Ok(material) => material,
         Err(failure) => return failed(&failure),

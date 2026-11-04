@@ -365,13 +365,20 @@ pub(crate) fn call_instruction_supported(
                         || (arguments.len() == 3
                             && values
                                 .get(&arguments[0])
-                                .is_some_and(|ty| carries_bncrypto_private_key(module, ty)))
+                                .is_some_and(|ty| carries_bncrypto_private_key(module, ty))
+                            && values.get(&arguments[1]).is_some_and(|ty| {
+                                matches!(ty, Type::Integer(_) | Type::IntegerLiteral(_))
+                            })
+                            && values.get(&arguments[2]) == Some(&Type::String))
                 }
                 "ExportPemUnencrypted" => {
                     arguments.len() == 2
                         && values
                             .get(&arguments[0])
                             .is_some_and(|ty| carries_bncrypto_private_key(module, ty))
+                        && values.get(&arguments[1]).is_some_and(|ty| {
+                            matches!(ty, Type::Integer(_) | Type::IntegerLiteral(_))
+                        })
                 }
                 "LoadPrivateKey" => {
                     arguments.len() == 2 && values.get(&arguments[0]) == Some(&Type::String)

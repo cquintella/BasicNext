@@ -2132,18 +2132,19 @@ impl CryptoProvider {
             Ok(material) => material,
             Err(err) => return failure(&err),
         };
-        let Value::String(format) = &arguments[1] else {
-            return Err(type_mismatch("STRING", "non-STRING value", member, span));
+        let Value::Integer(format, _) = &arguments[1] else {
+            return Err(type_mismatch("INT32", "non-INT32 value", member, span));
+        };
+        let Ok(format) = i32::try_from(*format) else {
+            return failure(&bn_stdlib::crypto_error::CryptoFailure::Format {
+                operation: "BNCrypto.ExportPem",
+            });
         };
         let Value::String(password) = &arguments[2] else {
             return Err(type_mismatch("STRING", "non-STRING value", member, span));
         };
-        match bn_stdlib::crypto::bn_export_private_pem(
-            &seed,
-            algorithm,
-            format.as_ref(),
-            password.as_ref(),
-        ) {
+        match bn_stdlib::crypto::bn_export_private_pem(&seed, algorithm, format, password.as_ref())
+        {
             Ok(pem) => Ok(Value::String(shared_string(pem.as_str()))),
             Err(err) => failure(&err),
         }
@@ -2160,14 +2161,15 @@ impl CryptoProvider {
             Ok(material) => material,
             Err(err) => return failure(&err),
         };
-        let Value::String(format) = &arguments[1] else {
-            return Err(type_mismatch("STRING", "non-STRING value", member, span));
+        let Value::Integer(format, _) = &arguments[1] else {
+            return Err(type_mismatch("INT32", "non-INT32 value", member, span));
         };
-        match bn_stdlib::crypto::bn_export_private_pem_unencrypted(
-            &seed,
-            algorithm,
-            format.as_ref(),
-        ) {
+        let Ok(format) = i32::try_from(*format) else {
+            return failure(&bn_stdlib::crypto_error::CryptoFailure::Format {
+                operation: "BNCrypto.ExportPemUnencrypted",
+            });
+        };
+        match bn_stdlib::crypto::bn_export_private_pem_unencrypted(&seed, algorithm, format) {
             Ok(pem) => Ok(Value::String(shared_string(pem.as_str()))),
             Err(err) => failure(&err),
         }

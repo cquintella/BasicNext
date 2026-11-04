@@ -73,14 +73,20 @@ EXPORT CLASS Alg
     PUBLIC STATIC CHACHA20_POLY1305 AS INTEGER = 21
     PUBLIC STATIC XCHACHA20_POLY1305 AS INTEGER = 22
 
-    // Asymmetric & Post-Quantum
-    PUBLIC STATIC ED25519 AS INTEGER = 30
-    PUBLIC STATIC X25519 AS INTEGER = 31
-    PUBLIC STATIC ECDSA_P256 AS INTEGER = 32
+    // Asymmetric & Post-Quantum (BDFL decision, 2026-11-04)
+    PUBLIC STATIC ED25519 AS INT32 = 30
+    PUBLIC STATIC X25519 AS INT32 = 31
+    PUBLIC STATIC ECDSA_P256 AS INT32 = 32
     PUBLIC STATIC ML_KEM_768 AS INTEGER = 40
     PUBLIC STATIC ML_DSA_65 AS INTEGER = 41
 END CLASS
+
+EXPORT CLASS PemFormat
+    PUBLIC STATIC PKCS8 AS INT32 = 1
+END CLASS
 ```
+
+`INTEGER` is `INT32`. Key-generation selectors and the PEM format spell `INT32` so the width is part of the signature (BDFL decision, 2026-11-04).
 
 ---
 
@@ -256,9 +262,15 @@ Non-cryptographic integrity checks are grouped under the `Checksum` class:
 
 | Function | Signature | Description |
 | --- | --- | --- |
-| `NewKeyPair` | `NewKeyPair() AS KeyPair OR Error` | Generates an Ed25519 key pair using system CSPRNG. |
-| `NewKeyPairFor` | `NewKeyPairFor(alg AS INTEGER) AS KeyPair OR Error` | Supports `Alg.ED25519`, `Alg.X25519`, `Alg.ECDSA_P256`. |
-| `NewKeyPairWith` | `NewKeyPairWith(opts AS KeyPairOptions) AS KeyPair OR Error` | Configured generation without accepting deterministic seeds. |
+| `NewKeyPair` | `NewKeyPair() AS KeyPair OR Error` | Generates an Ed25519 key pair using system CSPRNG. The key's algorithm is `Alg.ED25519` (30). |
+| `NewKeyPairFor` | `NewKeyPairFor(alg AS INT32) AS KeyPair OR Error` | Supports `Alg.ED25519` (30), `Alg.X25519` (31), `Alg.ECDSA_P256` (32). |
+| `NewKeyPairWith` | `NewKeyPairWith(opts AS KeyPairOptions) AS KeyPair OR Error` | Configured generation. `KeyPairOptions` is below. No seed. |
+
+`KeyPairOptions` has one field (BDFL decision, 2026-11-04):
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `alg` | `INT32` | `Alg.ED25519` (30) | Algorithm to generate. A seed and a label are not fields of this version. |
 
 ### Signatures
 
@@ -273,9 +285,9 @@ Deterministic signatures (RFC 8032 for Ed25519, RFC 6979 for ECDSA P-256). `Veri
 
 ### Key Import and Export
 
-* `ExportPem(key AS PrivateKey, format AS INTEGER, password AS STRING) AS STRING OR Error`: Encrypts private keys using PKCS#8 with PBES2 (Argon2id/scrypt).
-* `ExportPemUnencrypted(key AS PrivateKey, format AS INTEGER) AS STRING OR Error`: Explicit unencrypted PKCS#8 export.
-* `ExportPem(key AS PublicKey) AS STRING OR Error`: Exports SPKI PEM.
+* `ExportPem(key AS PrivateKey, format AS INT32, password AS STRING) AS STRING OR Error`: Encrypts private keys using PKCS#8 with PBES2 (Argon2id/scrypt). `format` is `PemFormat.PKCS8` (1). Any other `INT32` is `INVALID_ARGUMENT` (BDFL decision, 2026-11-04).
+* `ExportPemUnencrypted(key AS PrivateKey, format AS INT32) AS STRING OR Error`: Explicit unencrypted PKCS#8 export. The same `format` values.
+* `ExportPem(key AS PublicKey) AS STRING OR Error`: Exports SPKI PEM. No format parameter.
 * `LoadPrivateKey(pem AS STRING, password AS STRING OR NULL) AS PrivateKey OR Error`: Unambiguous header detection; fails closed (`PARSE_ERROR`) on ambiguous inputs.
 * `LoadPublicKey(pem AS STRING) AS PublicKey OR Error`: Parses SPKI PEM.
 
