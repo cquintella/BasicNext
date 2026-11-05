@@ -66,7 +66,8 @@ pub enum CryptoFailure {
     EnvelopeAuth,
     /// Envelope key length mismatch.
     EnvelopeKeyLength,
-    /// File I/O error during file encryption or decryption.
+    /// File I/O error while streaming a file (`IO_ERROR`): `HashFile`,
+    /// `EncryptFile`, `DecryptFile`. Carries the operating-system detail.
     FileIo(String),
     /// Cannot decode input as Base64. The input is not kept: it may be a secret.
     Base64,
@@ -105,7 +106,7 @@ impl CryptoFailure {
             Self::LegacyDisabled { .. } => crypto::LEGACY_DISABLED,
             Self::Parse { .. } | Self::Pem => crypto::PARSE_ERROR,
             Self::WrongKeyType { .. } => crypto::WRONG_KEY_TYPE,
-            Self::Io { .. } => crypto::IO_ERROR,
+            Self::Io { .. } | Self::FileIo(_) => crypto::IO_ERROR,
             Self::WrongPassword { .. } => crypto::WRONG_PASSWORD,
             _ => crypto::INVALID_ARGUMENT,
         }
@@ -211,7 +212,9 @@ impl CryptoFailure {
             Self::EnvelopeKeyLength => {
                 "key material length must be 32 bytes for authenticated encryption".into()
             }
-            Self::FileIo(err) => format!("file I/O error: {err}"),
+            Self::FileIo(detail) => {
+                bn_catalog::fill("crypto", "file.io.message", &[("detail", detail)])
+            }
             Self::Base64 => bn_catalog::text("crypto", "decode.base64.message").into(),
             Self::Base64Url => bn_catalog::text("crypto", "decode.base64url.message").into(),
             Self::Pem => bn_catalog::text("crypto", "decode.pem.message").into(),
@@ -305,7 +308,7 @@ impl CryptoFailure {
             Self::EnvelopeKeyLength => {
                 "authenticated encryption envelopes require a 256-bit (32-byte) key".into()
             }
-            Self::FileIo(_) => "filesystem read or write failed".into(),
+            Self::FileIo(_) => bn_catalog::text("crypto", "file.io.cause").into(),
             Self::Base64 => bn_catalog::text("crypto", "decode.base64.cause").into(),
             Self::Base64Url => bn_catalog::text("crypto", "decode.base64url.cause").into(),
             Self::Pem => bn_catalog::text("crypto", "decode.pem.cause").into(),

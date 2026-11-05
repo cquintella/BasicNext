@@ -145,7 +145,8 @@ pub fn bn_hash(data: &[u8], alg: i32) -> Result<Vec<u8>, CryptoFailure> {
 /// Streams and hashes the contents of `path` in 64 KiB segments.
 ///
 /// # Errors
-/// Returns `CryptoFailure::FileIo` on file access error, or `CryptoFailure::Algorithm`.
+/// Returns `CryptoFailure::FileIo` (`IO_ERROR`) on file access error, or the
+/// algorithm failure of [`Hasher::new`].
 pub fn bn_hash_file(fs: &crate::FsPolicy, path: &Path, alg: i32) -> Result<Vec<u8>, CryptoFailure> {
     let mut hasher = Hasher::new(alg)?;
     let mut file = fs

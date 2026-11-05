@@ -65,6 +65,7 @@
     "bn_rt::rlib/bn_rt::file::entries::tests::system_kinds_map_to_the_entry_failures",
     "bn_rt::rlib/bn_rt::file_abi::tests::directory_exports_check_their_pointers",
     "bn::test/programs::crypto_limits::crypto_limits_return_errors_on_both_backends",
+    "bn::test/programs::crypto_tour::bncrypto_tour_passes_on_both_backends",
     "fixture::tests/grammar/invalid/parameter-vector-element-assignment.bn",
     "fixture::tests/grammar/invalid/parameter-open-vector-element-assignment.bn",
     "fixture::tests/grammar/invalid/parameter-struct-field-assignment.bn",

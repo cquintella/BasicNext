@@ -643,24 +643,24 @@ FUNCTION PostQuantum() AS VOID
                     IF ct IS Crypto.Bytes AND sent IS Crypto.Bytes THEN
                         LET received AS Crypto.Bytes OR Error = Crypto.MlKemDecapsulate(decapKey, ct)
                         IF received IS Crypto.Bytes THEN
-                            Check("ML-KEM-768 both sides agree", Crypto.ConstantTimeEquals(sent, received))
+                            Check("ML-KEM (768) both sides agree", Crypto.ConstantTimeEquals(sent, received))
                         ELSE
-                            Check("ML-KEM-768 both sides agree", FALSE)
+                            Check("ML-KEM (768) both sides agree", FALSE)
                         END IF
                     ELSE
-                        Check("ML-KEM-768 both sides agree", FALSE)
+                        Check("ML-KEM (768) both sides agree", FALSE)
                     END IF
                 ELSE
-                    Check("ML-KEM-768 both sides agree", FALSE)
+                    Check("ML-KEM (768) both sides agree", FALSE)
                 END IF
             ELSE
-                Check("ML-KEM-768 both sides agree", FALSE)
+                Check("ML-KEM (768) both sides agree", FALSE)
             END IF
         ELSE
-            Check("ML-KEM-768 both sides agree", FALSE)
+            Check("ML-KEM (768) both sides agree", FALSE)
         END IF
     ELSE
-        Check("ML-KEM-768 both sides agree", FALSE)
+        Check("ML-KEM (768) both sides agree", FALSE)
     END IF
 
     LET dsaSeed AS Crypto.Key OR Error = Crypto.GenerateKey(Crypto.ALG_ML_DSA_65)
@@ -670,16 +670,16 @@ FUNCTION PostQuantum() AS VOID
             LET verifying AS Crypto.Bytes OR Error = Crypto.Slice(dsaPair, 0, 1952)
             LET dsaSig AS Crypto.Bytes OR Error = Crypto.MlDsaSign(dsaSeed, Crypto.FromText("abc"))
             IF verifying IS Crypto.Bytes AND dsaSig IS Crypto.Bytes THEN
-                Check("ML-DSA-65 Sign and Verify", Crypto.MlDsaVerify(verifying, Crypto.FromText("abc"), dsaSig))
-                Check("ML-DSA-65 Verify refuses another message", NOT Crypto.MlDsaVerify(verifying, Crypto.FromText("abd"), dsaSig))
+                Check("ML-DSA (65) Sign and Verify", Crypto.MlDsaVerify(verifying, Crypto.FromText("abc"), dsaSig))
+                Check("ML-DSA (65) Verify refuses another message", NOT Crypto.MlDsaVerify(verifying, Crypto.FromText("abd"), dsaSig))
             ELSE
-                Check("ML-DSA-65 Sign and Verify", FALSE)
+                Check("ML-DSA (65) Sign and Verify", FALSE)
             END IF
         ELSE
-            Check("ML-DSA-65 Sign and Verify", FALSE)
+            Check("ML-DSA (65) Sign and Verify", FALSE)
         END IF
     ELSE
-        Check("ML-DSA-65 Sign and Verify", FALSE)
+        Check("ML-DSA (65) Sign and Verify", FALSE)
     END IF
 END FUNCTION
 
@@ -729,6 +729,98 @@ FUNCTION Policies() AS VOID
     END IF
 END FUNCTION
 
+// --- 15. The error codes (Error.Code) -------------------------------------------
+// One call that returns each code. UNAVAILABLE (3) needs the operating system's
+// random source to fail, which a program cannot cause.
+FUNCTION ErrorCodes() AS VOID
+    Check("Error codes are 1 to 9", Crypto.INVALID_ARGUMENT = 1 AND Crypto.AUTHENTICATION_FAILED = 2 AND Crypto.UNAVAILABLE = 3 AND Crypto.UNSUPPORTED_ALGORITHM = 4 AND Crypto.LEGACY_DISABLED = 5 AND Crypto.PARSE_ERROR = 6 AND Crypto.WRONG_KEY_TYPE = 7 AND Crypto.IO_ERROR = 8 AND Crypto.WRONG_PASSWORD = 9)
+
+    LET negative AS Crypto.Bytes OR Error = Crypto.RandomBytes(-1)
+    IF negative IS Error THEN
+        Check("INVALID_ARGUMENT: RandomBytes(-1)", negative.Code = Crypto.INVALID_ARGUMENT)
+    ELSE
+        Check("INVALID_ARGUMENT: RandomBytes(-1)", FALSE)
+    END IF
+
+    LET key AS Crypto.Key OR Error = Crypto.GenerateKey(Crypto.ALG_CHACHA20_POLY1305)
+    LET nonce AS Crypto.Bytes OR Error = Crypto.GenerateNonce(Crypto.ALG_CHACHA20_POLY1305)
+    IF key IS Crypto.Key AND nonce IS Crypto.Bytes THEN
+        LET sealed AS Crypto.Bytes OR Error = Crypto.SealChaCha20(key, nonce, Crypto.FromText("x"), Crypto.FromText("a"))
+        IF sealed IS Crypto.Bytes THEN
+            LET forged AS Crypto.Bytes OR Error = Crypto.OpenChaCha20(key, nonce, sealed, Crypto.FromText("b"))
+            IF forged IS Error THEN
+                Check("AUTHENTICATION_FAILED: OpenChaCha20 with other AAD", forged.Code = Crypto.AUTHENTICATION_FAILED)
+            ELSE
+                Check("AUTHENTICATION_FAILED: OpenChaCha20 with other AAD", FALSE)
+            END IF
+        ELSE
+            Check("AUTHENTICATION_FAILED: OpenChaCha20 with other AAD", FALSE)
+        END IF
+    ELSE
+        Check("AUTHENTICATION_FAILED: OpenChaCha20 with other AAD", FALSE)
+    END IF
+
+    LET unknown AS Crypto.Hasher OR Error = Crypto.Hasher.New(999)
+    IF unknown IS Error THEN
+        Check("UNSUPPORTED_ALGORITHM: Hasher.New(999)", unknown.Code = Crypto.UNSUPPORTED_ALGORITHM)
+    ELSE
+        Check("UNSUPPORTED_ALGORITHM: Hasher.New(999)", FALSE)
+    END IF
+    LET sha1 AS Crypto.Hasher OR Error = Crypto.Hasher.New(Crypto.Alg.SHA1)
+    IF sha1 IS Error THEN
+        Check("LEGACY_DISABLED: Hasher.New(Alg.SHA1)", sha1.Code = Crypto.LEGACY_DISABLED)
+    ELSE
+        Check("LEGACY_DISABLED: Hasher.New(Alg.SHA1)", FALSE)
+    END IF
+    LET pem AS Crypto.Bytes OR Error = Crypto.FromPem("-----BEGIN X-----")
+    IF pem IS Error THEN
+        Check("PARSE_ERROR: FromPem of a truncated block", pem.Code = Crypto.PARSE_ERROR)
+    ELSE
+        Check("PARSE_ERROR: FromPem of a truncated block", FALSE)
+    END IF
+
+    LET x AS Crypto.KeyPair OR Error = Crypto.NewKeyPairFor(Crypto.Alg.X25519)
+    IF x IS Crypto.KeyPair THEN
+        LET sig AS Crypto.Bytes OR Error = Crypto.Sign(x.PrivateKey, Crypto.FromText("m"))
+        IF sig IS Error THEN
+            Check("WRONG_KEY_TYPE: Sign with an X25519 key", sig.Code = Crypto.WRONG_KEY_TYPE)
+        ELSE
+            Check("WRONG_KEY_TYPE: Sign with an X25519 key", FALSE)
+        END IF
+    ELSE
+        Check("WRONG_KEY_TYPE: Sign with an X25519 key", FALSE)
+    END IF
+
+    LET missingHash AS Crypto.Bytes OR Error = Crypto.HashFile("bncrypto-tour-no-such-file")
+    IF missingHash IS Error THEN
+        Check("IO_ERROR: HashFile of a missing file", missingHash.Code = Crypto.IO_ERROR)
+    ELSE
+        Check("IO_ERROR: HashFile of a missing file", FALSE)
+    END IF
+    LET ed AS Crypto.KeyPair OR Error = Crypto.NewKeyPair()
+    IF ed IS Crypto.KeyPair THEN
+        LET missingSign AS Crypto.Bytes OR Error = Crypto.SignFile(ed.PrivateKey, "bncrypto-tour-no-such-file")
+        IF missingSign IS Error THEN
+            Check("IO_ERROR: SignFile of a missing file", missingSign.Code = Crypto.IO_ERROR)
+        ELSE
+            Check("IO_ERROR: SignFile of a missing file", FALSE)
+        END IF
+        LET encrypted AS STRING OR Error = ed.PrivateKey.ExportPem(Crypto.PemFormat.PKCS8, "right")
+        IF encrypted IS STRING THEN
+            LET wrong AS Crypto.PrivateKey OR Error = Crypto.LoadPrivateKey(encrypted, "wrong")
+            IF wrong IS Error THEN
+                Check("WRONG_PASSWORD: LoadPrivateKey with another password", wrong.Code = Crypto.WRONG_PASSWORD)
+            ELSE
+                Check("WRONG_PASSWORD: LoadPrivateKey with another password", FALSE)
+            END IF
+        ELSE
+            Check("WRONG_PASSWORD: LoadPrivateKey with another password", FALSE)
+        END IF
+    ELSE
+        Check("IO_ERROR: SignFile of a missing file", FALSE)
+    END IF
+END FUNCTION
+
 FUNCTION Start() AS VOID
     BytesAndEncodings()
     Hashing()
@@ -744,5 +836,6 @@ FUNCTION Start() AS VOID
     RawSignatures()
     PostQuantum()
     Policies()
+    ErrorCodes()
     PRINT "BNCrypto tour done"
 END FUNCTION

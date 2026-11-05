@@ -41,3 +41,5 @@ decode.pem.message = cannot decode the PEM text
 decode.pem.cause = the text must be one block from -----BEGIN <label>----- to -----END <label>----- with a valid base64 payload
 decode.utf8.message = cannot decode the bytes as UTF-8 text
 decode.utf8.cause = the byte sequence is not valid UTF-8
+file.io.message = the file could not be read or written: {detail}
+file.io.cause = the path is missing, not a regular file, outside the filesystem policy, or the disk failed
