@@ -16,6 +16,24 @@ struct ExecResult {
     stderr: Vec<u8>,
 }
 
+/// The live `HOST.Exec.Result` values. An id is generation-checked
+/// (`crate::handle_table`): a closed result is never read or freed twice.
+/// No ceiling: a result lives only as long as the binding that holds it.
+static RESULTS: std::sync::Mutex<crate::handle_table::GenerationTable<ExecResult>> =
+    std::sync::Mutex::new(crate::handle_table::GenerationTable::new());
+
+/// Runs `f` on the live result `handle`. A closed or unknown handle is a
+/// `USE_AFTER_RELEASE` failure that ends the process, never another result.
+fn with_result<T>(handle: u64, f: impl FnOnce(&ExecResult) -> T) -> T {
+    let results = RESULTS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    i64::try_from(handle)
+        .ok()
+        .and_then(|id| results.get(id))
+        .map_or_else(|| crate::arc_abi::abort_use_after_release(), f)
+}
+
 fn input<'a>(ptr: *const c_char) -> Option<&'a str> {
     // A program or argument is a STRING. An interior NUL stays in the text so
     // `bn_host_exec` rejects it the same way `bni` does.
@@ -68,13 +86,19 @@ pub extern "C" fn bn_rt_exec_run(
     stdout.push(0);
     let mut stderr = output.stderr.into_bytes();
     stderr.push(0);
-    let result = Box::new(ExecResult {
+    let result = ExecResult {
         return_code: output.return_code,
         stdout,
         stderr,
-    });
-    // SAFETY: the handle is the address this module stored with Box::into_raw and has not been freed.
-    unsafe { *out_result = Box::into_raw(result) as u64 };
+    };
+    let id = RESULTS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .insert(result, usize::MAX)
+        .unwrap_or_else(|| crate::arc_abi::abort_use_after_release());
+    // SAFETY: `out_result` was checked non-null above and points to the
+    // caller's result slot.
+    unsafe { *out_result = id.cast_unsigned() };
     0
 }
 
@@ -84,8 +108,7 @@ pub extern "C" fn bn_rt_exec_result_return_code(handle: u64) -> i64 {
     if handle == 0 {
         return 0;
     }
-    // SAFETY: the handle is the address this module stored with Box::into_raw and has not been freed.
-    unsafe { (*(handle as *const ExecResult)).return_code }
+    with_result(handle, |result| result.return_code)
 }
 
 #[allow(unsafe_code)]
@@ -94,10 +117,10 @@ pub extern "C" fn bn_rt_exec_result_stdout(handle: u64) -> *const c_char {
     if handle == 0 {
         return std::ptr::null();
     }
-    // SAFETY: the handle is the address this module stored with Box::into_raw and has not been freed.
-    let res = unsafe { &*(handle as *const ExecResult) };
-    let bytes = res.stdout.strip_suffix(&[0]).unwrap_or(&res.stdout);
-    crate::string::c_string_from_bytes(bytes)
+    with_result(handle, |result| {
+        let bytes = result.stdout.strip_suffix(&[0]).unwrap_or(&result.stdout);
+        crate::string::c_string_from_bytes(bytes)
+    })
 }
 
 #[allow(unsafe_code)]
@@ -106,10 +129,10 @@ pub extern "C" fn bn_rt_exec_result_stderr(handle: u64) -> *const c_char {
     if handle == 0 {
         return std::ptr::null();
     }
-    // SAFETY: the handle is the address this module stored with Box::into_raw and has not been freed.
-    let res = unsafe { &*(handle as *const ExecResult) };
-    let bytes = res.stderr.strip_suffix(&[0]).unwrap_or(&res.stderr);
-    crate::string::c_string_from_bytes(bytes)
+    with_result(handle, |result| {
+        let bytes = result.stderr.strip_suffix(&[0]).unwrap_or(&result.stderr);
+        crate::string::c_string_from_bytes(bytes)
+    })
 }
 
 #[allow(unsafe_code)]
@@ -118,9 +141,41 @@ pub extern "C" fn bn_rt_exec_result_close(handle: u64) -> i32 {
     if handle == 0 {
         return 0;
     }
-    // SAFETY: the handle is the address this module stored with Box::into_raw and has not been freed.
-    unsafe {
-        drop(Box::from_raw(handle as *mut ExecResult));
+    // Idempotent: a second close of the same id finds nothing to free.
+    if let Ok(id) = i64::try_from(handle) {
+        drop(
+            RESULTS
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .remove(id),
+        );
     }
     0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ExecResult, RESULTS, bn_rt_exec_result_close};
+
+    /// A second close of the same result finds nothing to free (it was a
+    /// double free on a raw pointer before the generation table).
+    #[test]
+    fn closing_a_result_twice_frees_it_once() {
+        let id = RESULTS
+            .lock()
+            .expect("results")
+            .insert(
+                ExecResult {
+                    return_code: 0,
+                    stdout: vec![0],
+                    stderr: vec![0],
+                },
+                usize::MAX,
+            )
+            .expect("insert");
+        let handle = id.cast_unsigned();
+        assert_eq!(bn_rt_exec_result_close(handle), 0);
+        assert_eq!(bn_rt_exec_result_close(handle), 0);
+        assert!(RESULTS.lock().expect("results").get(id).is_none());
+    }
 }
