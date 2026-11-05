@@ -30,27 +30,72 @@ pub(crate) const BN_CRYPTO_INVALID_HANDLE: i32 = 2;
 
 use crate::crypto::KeyEntry;
 
-#[derive(Default)]
-struct Keys {
-    values: Mutex<HashMap<u64, KeyEntry>>,
-    holders: Mutex<HashMap<u64, usize>>,
+/// Values behind reference-counted handles, with each count kept beside its
+/// value under one lock: a retain, a release that reaches zero and a read
+/// are one critical section, so no read sees a value its release already
+/// ended (the protocol of `Arc`: the release that reaches zero owns the
+/// value alone).
+struct Counted<V> {
+    values: HashMap<u64, V>,
+    holders: HashMap<u64, usize>,
 }
+
+impl<V> Default for Counted<V> {
+    fn default() -> Self {
+        Self {
+            values: HashMap::new(),
+            holders: HashMap::new(),
+        }
+    }
+}
+
+impl<V> Counted<V> {
+    fn insert(&mut self, handle: u64, value: V) {
+        self.values.insert(handle, value);
+        self.holders.insert(handle, 1);
+    }
+
+    fn retain(&mut self, handle: u64) -> i32 {
+        match self.holders.get_mut(&handle) {
+            Some(count) => {
+                *count += 1;
+                BN_CRYPTO_OK
+            }
+            None => BN_CRYPTO_INVALID_HANDLE,
+        }
+    }
+
+    /// Drops one reference; at zero the value leaves the table and is
+    /// returned, in the same critical section.
+    fn release(&mut self, handle: u64) -> Result<Option<V>, i32> {
+        let count = self
+            .holders
+            .get_mut(&handle)
+            .ok_or(BN_CRYPTO_INVALID_HANDLE)?;
+        *count -= 1;
+        if *count > 0 {
+            return Ok(None);
+        }
+        self.holders.remove(&handle);
+        Ok(self.values.remove(&handle))
+    }
+}
+
+#[derive(Default)]
+struct Keys(Mutex<Counted<KeyEntry>>);
 
 fn with_keys<T>(operation: impl FnOnce(&mut HashMap<u64, KeyEntry>) -> T) -> T {
     let keys = bn_core_copy::table::<Keys>();
-    operation(&mut keys.values.lock().unwrap_or_else(PoisonError::into_inner))
+    operation(&mut keys.0.lock().unwrap_or_else(PoisonError::into_inner).values)
 }
 
 fn store_key(algorithm: i32, material: zeroize::Zeroizing<Vec<u8>>) -> u64 {
     let handle = next_handle();
-    with_keys(|keys| {
-        keys.insert(handle, KeyEntry::new(algorithm, material));
-    });
-    let keys = bn_core_copy::table::<Keys>();
-    keys.holders
+    bn_core_copy::table::<Keys>()
+        .0
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
-        .insert(handle, 1);
+        .insert(handle, KeyEntry::new(algorithm, material));
     handle
 }
 
@@ -72,10 +117,7 @@ pub(crate) fn get_key_material(handle: u64) -> Result<zeroize::Zeroizing<Vec<u8>
 /// The byte buffers of the module copy that runs on this thread
 /// (`bn_core_copy`): a task's are freed when the task ends.
 #[derive(Default)]
-struct Buffers {
-    values: Mutex<HashMap<u64, zeroize::Zeroizing<Vec<u8>>>>,
-    holders: Mutex<HashMap<u64, usize>>,
-}
+struct Buffers(Mutex<Counted<zeroize::Zeroizing<Vec<u8>>>>);
 
 pub(crate) fn next_handle() -> u64 {
     static NEXT: AtomicU64 = AtomicU64::new(1);
@@ -88,35 +130,38 @@ pub(crate) fn with_buffers<T>(
     let buffers = bn_core_copy::table::<Buffers>();
     operation(
         &mut buffers
-            .values
+            .0
             .lock()
-            .unwrap_or_else(PoisonError::into_inner),
+            .unwrap_or_else(PoisonError::into_inner)
+            .values,
     )
 }
 
 pub(crate) fn store(bytes: Vec<u8>) -> u64 {
     let handle = next_handle();
-    with_buffers(|buffers| buffers.insert(handle, zeroize::Zeroizing::new(bytes)));
-    let buffers = bn_core_copy::table::<Buffers>();
-    buffers
-        .holders
+    bn_core_copy::table::<Buffers>()
+        .0
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
-        .insert(handle, 1);
+        .insert(handle, zeroize::Zeroizing::new(bytes));
     handle
 }
 
-/// Stores the UTF-8 bytes of `text` and returns the handle. A null or
-/// non-UTF-8 argument yields an empty buffer rather than a null handle, so the
-/// caller never has to branch on a sentinel.
+/// Stores the UTF-8 bytes of `text` and returns the handle. A null pointer or
+/// an argument that is not a BN STRING is `INVALID_ARGUMENT` and returns no
+/// handle (0), so a later use of it is `USE_AFTER_RELEASE`.
 #[allow(unsafe_code)] // C ABI: STRING in, opaque handle out.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_bytes_from_text(text: *const c_char) -> u64 {
-    store(
-        c_str(text)
-            .map(|text| text.as_bytes().to_vec())
-            .unwrap_or_default(),
-    )
+    // Not a BN STRING: refused, no handle. An empty buffer here would become
+    // an empty key or MAC key downstream.
+    match c_str(text) {
+        Some(text) => store(text.as_bytes().to_vec()),
+        None => {
+            failed(&crate::crypto_error::CryptoFailure::Utf8);
+            0
+        }
+    }
 }
 
 /// Decodes `text` as hex into a new buffer. Writes the handle through `out` and
@@ -128,7 +173,9 @@ pub extern "C" fn bn_rt_crypto_bytes_from_hex(text: *const c_char, out: *mut u64
     if out.is_null() {
         return BN_CRYPTO_INVALID_ARGUMENT;
     }
-    let text = c_str(text).unwrap_or_default();
+    let Some(text) = c_str(text) else {
+        return failed(&crate::crypto_error::CryptoFailure::Utf8);
+    };
     let Some(bytes) = decode_hex(text) else {
         return failed(&crate::crypto_error::CryptoFailure::Hex(text.to_owned()));
     };
@@ -167,17 +214,11 @@ pub extern "C" fn bn_rt_crypto_bytes_retain(handle: u64) -> i32 {
     if handle == 0 {
         return BN_CRYPTO_OK;
     }
-    let buffers = bn_core_copy::table::<Buffers>();
-    let mut holders = buffers
-        .holders
+    bn_core_copy::table::<Buffers>()
+        .0
         .lock()
-        .unwrap_or_else(PoisonError::into_inner);
-    if let Some(count) = holders.get_mut(&handle) {
-        *count += 1;
-        BN_CRYPTO_OK
-    } else {
-        BN_CRYPTO_INVALID_HANDLE
-    }
+        .unwrap_or_else(PoisonError::into_inner)
+        .retain(handle)
 }
 
 /// Drops one reference to `handle`. When the count reaches zero, the buffer
@@ -189,25 +230,20 @@ pub extern "C" fn bn_rt_crypto_bytes_release(handle: u64) -> i32 {
     if handle == 0 {
         return BN_CRYPTO_OK;
     }
-    let buffers = bn_core_copy::table::<Buffers>();
-    let mut holders = buffers
-        .holders
+    let released = bn_core_copy::table::<Buffers>()
+        .0
         .lock()
-        .unwrap_or_else(PoisonError::into_inner);
-    let Some(count) = holders.get_mut(&handle) else {
-        return BN_CRYPTO_INVALID_HANDLE;
-    };
-    *count -= 1;
-    if *count == 0 {
-        holders.remove(&handle);
-        drop(holders);
-        with_buffers(|buffers| {
-            if let Some(mut buf) = buffers.remove(&handle) {
+        .unwrap_or_else(PoisonError::into_inner)
+        .release(handle);
+    match released {
+        Ok(last) => {
+            if let Some(mut buf) = last {
                 buf.zeroize();
             }
-        });
+            BN_CRYPTO_OK
+        }
+        Err(status) => status,
     }
-    BN_CRYPTO_OK
 }
 
 /// Explicitly zeroizes the buffer memory in `handle`.
@@ -215,11 +251,8 @@ pub extern "C" fn bn_rt_crypto_bytes_release(handle: u64) -> i32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_bytes_zeroize(handle: u64) -> i32 {
     let buffers = bn_core_copy::table::<Buffers>();
-    let mut values = buffers
-        .values
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner);
-    if let Some(buf) = values.get_mut(&handle) {
+    let mut tables = buffers.0.lock().unwrap_or_else(PoisonError::into_inner);
+    if let Some(buf) = tables.values.get_mut(&handle) {
         buf.as_mut_slice().zeroize();
         BN_CRYPTO_OK
     } else {
@@ -836,14 +869,11 @@ pub extern "C" fn bn_rt_crypto_key_retain(key_handle: u64) -> i32 {
     if key_handle == 0 {
         return BN_CRYPTO_OK;
     }
-    let keys = bn_core_copy::table::<Keys>();
-    let mut holders = keys.holders.lock().unwrap_or_else(PoisonError::into_inner);
-    if let Some(count) = holders.get_mut(&key_handle) {
-        *count += 1;
-        BN_CRYPTO_OK
-    } else {
-        BN_CRYPTO_INVALID_HANDLE
-    }
+    bn_core_copy::table::<Keys>()
+        .0
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .retain(key_handle)
 }
 
 /// Releases a reference to `key_handle`. When refcount drops to 0, zeroizes and frees the key.
@@ -853,22 +883,20 @@ pub extern "C" fn bn_rt_crypto_key_release(key_handle: u64) -> i32 {
     if key_handle == 0 {
         return BN_CRYPTO_OK;
     }
-    let keys = bn_core_copy::table::<Keys>();
-    let mut holders = keys.holders.lock().unwrap_or_else(PoisonError::into_inner);
-    let Some(count) = holders.get_mut(&key_handle) else {
-        return BN_CRYPTO_INVALID_HANDLE;
-    };
-    *count -= 1;
-    if *count == 0 {
-        holders.remove(&key_handle);
-        drop(holders);
-        with_keys(|keys| {
-            if let Some(mut entry) = keys.remove(&key_handle) {
+    let released = bn_core_copy::table::<Keys>()
+        .0
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .release(key_handle);
+    match released {
+        Ok(last) => {
+            if let Some(mut entry) = last {
                 entry.material.zeroize();
             }
-        });
+            BN_CRYPTO_OK
+        }
+        Err(status) => status,
     }
-    BN_CRYPTO_OK
 }
 
 #[cfg(test)]
@@ -900,8 +928,9 @@ mod tests {
             BN_CRYPTO_INVALID_ARGUMENT
         );
         let bad_utf8 = [0xFFu8, 0x00u8];
+        // Not a BN STRING: no handle, never an empty buffer.
         let empty_h = bn_rt_crypto_bytes_from_text(bad_utf8.as_ptr().cast());
-        assert_eq!(bn_rt_crypto_bytes_length(empty_h), 0);
+        assert_eq!(empty_h, 0);
 
         let buf = store(vec![10, 20, 30, 40]);
         for (start, len) in [(-1i64, 2i64), (0, -1), (2, i64::MAX), (i64::MAX, 1), (0, 5)] {
@@ -918,5 +947,31 @@ mod tests {
 
         assert_eq!(bn_rt_crypto_bytes_release(empty_h), BN_CRYPTO_OK);
         assert_eq!(bn_rt_crypto_bytes_release(buf), BN_CRYPTO_OK);
+    }
+
+    /// The count and the material change together: the key is readable while
+    /// a holder remains, gone in the release that reaches zero, and a further
+    /// release is an invalid handle.
+    #[test]
+    fn the_last_key_release_removes_the_material_in_the_same_step() {
+        let handle = super::store_key(
+            crate::crypto::ALG_AES_GCM_256,
+            zeroize::Zeroizing::new(vec![7; 32]),
+        );
+        assert_eq!(super::bn_rt_crypto_key_retain(handle), BN_CRYPTO_OK);
+        assert_eq!(super::bn_rt_crypto_key_release(handle), BN_CRYPTO_OK);
+        assert!(
+            super::get_key_material(handle).is_ok(),
+            "one holder remains"
+        );
+        assert_eq!(super::bn_rt_crypto_key_release(handle), BN_CRYPTO_OK);
+        assert_eq!(
+            super::get_key_material(handle),
+            Err(BN_CRYPTO_INVALID_HANDLE)
+        );
+        assert_eq!(
+            super::bn_rt_crypto_key_release(handle),
+            BN_CRYPTO_INVALID_HANDLE
+        );
     }
 }

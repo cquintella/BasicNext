@@ -186,11 +186,14 @@ fn store_secret(bytes: Vec<u8>) -> u64 {
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_secret_from_text(text: *const c_char) -> u64 {
-    store_secret(
-        c_str(text)
-            .map(|text| text.as_bytes().to_vec())
-            .unwrap_or_default(),
-    )
+    // Not a BN STRING: refused, no handle (an empty secret is not a default).
+    match c_str(text) {
+        Some(text) => store_secret(text.as_bytes().to_vec()),
+        None => {
+            crate::crypto_abi::failed(&crate::crypto_error::CryptoFailure::Utf8);
+            0
+        }
+    }
 }
 
 #[allow(unsafe_code)]
