@@ -265,3 +265,32 @@ fn pkcs8_export_roundtrips_and_fails_closed() {
         bn_export_private_pem(&[9_u8; 32], 30, PEM_FORMAT_PKCS8, "").expect("empty password");
     assert!(empty.contains("ENCRYPTED PRIVATE KEY"));
 }
+
+/// The Ed25519 identity point: a small-order public key under which a
+/// signature with R = identity and S = 0 verifies any message unless the
+/// check is strict.
+fn ed25519_identity_point() -> [u8; 32] {
+    let mut point = [0_u8; 32];
+    point[0] = 1;
+    point
+}
+
+#[test]
+fn ed25519_verify_refuses_a_forgery_under_a_small_order_key() {
+    let key = ed25519_identity_point();
+    let mut forged = [0_u8; 64];
+    forged[..32].copy_from_slice(&key);
+    assert!(!bn_verify(&key, 30, b"one message", &forged));
+    assert!(!bn_verify(&key, 30, b"another message", &forged));
+}
+
+#[test]
+fn load_public_key_refuses_a_small_order_ed25519_key() {
+    let mut spki = bn_stdlib::crypto_asymmetric::ED25519_SPKI_HEADER.to_vec();
+    spki.extend_from_slice(&ed25519_identity_point());
+    let refused = bn_stdlib::crypto_asymmetric::public_entry_from_spki(&spki);
+    assert_eq!(
+        refused.map(|_| ()).map_err(|failure| failure.code()),
+        Err(bn_types::error_codes::crypto::PARSE_ERROR)
+    );
+}

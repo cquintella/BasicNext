@@ -336,12 +336,21 @@ pub fn ed25519_sign(seed: &[u8], message: &[u8]) -> Option<Vec<u8>> {
     )
 }
 
+/// Whether 32 bytes are an Ed25519 public key that is a valid point of large
+/// order. A small-order (weak) key lets a forged signature verify any message.
+#[must_use]
+pub fn ed25519_public_key_is_strong(public_key: &[u8]) -> bool {
+    <[u8; 32]>::try_from(public_key)
+        .ok()
+        .and_then(|bytes| ed25519_dalek::VerifyingKey::from_bytes(&bytes).ok())
+        .is_some_and(|key| !key.is_weak())
+}
+
 /// Verifies an Ed25519 signature. `false` for a malformed key or signature, a
 /// tampered message, or a signature from another key — never an error the
 /// caller might mistake for success.
 #[must_use]
 pub fn ed25519_verify(public_key: &[u8], message: &[u8], signature: &[u8]) -> bool {
-    use ed25519_dalek::Verifier as _;
     let (Ok(public_key), Ok(signature)) = (
         <[u8; 32]>::try_from(public_key),
         <[u8; 64]>::try_from(signature),
@@ -349,7 +358,7 @@ pub fn ed25519_verify(public_key: &[u8], message: &[u8], signature: &[u8]) -> bo
         return false;
     };
     ed25519_dalek::VerifyingKey::from_bytes(&public_key)
-        .map(|key| key.verify(message, &ed25519_dalek::Signature::from_bytes(&signature)))
+        .map(|key| key.verify_strict(message, &ed25519_dalek::Signature::from_bytes(&signature)))
         .is_ok_and(|verified| verified.is_ok())
 }
 

@@ -245,6 +245,11 @@ pub fn public_entry_from_spki(spki: &[u8]) -> Result<PublicKeyEntry, CryptoFailu
             operation: "BNCrypto.LoadPublicKey",
         });
     }
+    if algorithm == 30 && !crate::crypto::ed25519_public_key_is_strong(&spki[header_len..]) {
+        return Err(CryptoFailure::Parse {
+            operation: "BNCrypto.LoadPublicKey",
+        });
+    }
     Ok(PublicKeyEntry {
         raw: spki[header_len..].to_vec(),
         spki: spki.to_vec(),
