@@ -8,8 +8,8 @@ use bn_stdlib::crypto::{
     HASH_SHA384, HASH_SHA512, HASH_SHA512_256, Hasher, bn_hash, bn_hash_file,
 };
 use bn_stdlib::crypto_abi::{
-    bn_rt_crypto_hash, bn_rt_crypto_hash_file, bn_rt_crypto_hasher_finish, bn_rt_crypto_hasher_new,
-    bn_rt_crypto_hasher_release, bn_rt_crypto_hasher_update,
+    bn_rt_crypto_hash_file, bn_rt_crypto_hash_handle, bn_rt_crypto_hasher_finish,
+    bn_rt_crypto_hasher_new, bn_rt_crypto_hasher_release, bn_rt_crypto_hasher_update_handle,
 };
 use bn_stdlib::string::{bn_rt_str_release, c_string_from_bytes};
 use std::ffi::c_char;
@@ -33,6 +33,17 @@ impl Drop for BnString {
     fn drop(&mut self) {
         bn_rt_str_release(self.0);
     }
+}
+
+/// A live `Bytes` handle holding `bytes`, made through the reachable C ABI.
+fn buffer(bytes: &[u8]) -> u64 {
+    let hex =
+        bn_stdlib::string::c_string_from_bytes(bn_stdlib::crypto::encode_hex(bytes).as_bytes());
+    let mut handle = 0_u64;
+    let rc = bn_stdlib::crypto_abi::bn_rt_crypto_bytes_from_hex(hex, &raw mut handle);
+    bn_stdlib::string::bn_rt_str_release(hex);
+    assert_eq!(rc, 0);
+    handle
 }
 
 #[test]
@@ -144,7 +155,8 @@ fn test_c_abi_hasher() {
     assert_ne!(handle, 0);
 
     let data = b"c abi hash streaming test";
-    let rc_up = bn_rt_crypto_hasher_update(handle, data.as_ptr(), data.len());
+    let data_handle = i64::try_from(buffer(data)).expect("handle");
+    let rc_up = bn_rt_crypto_hasher_update_handle(handle, data_handle);
     assert_eq!(rc_up, 0);
 
     let mut out_handle = 0i64;
@@ -154,14 +166,7 @@ fn test_c_abi_hasher() {
 
     let _ = bn_rt_crypto_hasher_release(handle);
 
-    let mut digest_handle = 0i64;
-    let rc_hash = bn_rt_crypto_hash(
-        data.as_ptr(),
-        data.len(),
-        HASH_SHA256,
-        &raw mut digest_handle,
-    );
-    assert_eq!(rc_hash, 0);
+    let digest_handle = bn_rt_crypto_hash_handle(data_handle, HASH_SHA256);
     assert_ne!(digest_handle, 0);
 
     let bn_str = BnString::new(b"test_hash_input.tmp");

@@ -10,12 +10,22 @@
 
 use bn_stdlib::crypto::{bn_hash_password, bn_hkdf_sha256, bn_verify_password};
 use bn_stdlib::crypto_abi::{
-    bn_rt_crypto_bytes_from_raw, bn_rt_crypto_bytes_release, bn_rt_crypto_hash_password,
-    bn_rt_crypto_hkdf, bn_rt_crypto_secret_key_bits, bn_rt_crypto_secret_key_release,
-    bn_rt_crypto_verify_password,
+    bn_rt_crypto_bytes_release, bn_rt_crypto_hash_password, bn_rt_crypto_hkdf,
+    bn_rt_crypto_secret_key_bits, bn_rt_crypto_secret_key_release, bn_rt_crypto_verify_password,
 };
 use bn_stdlib::string::bn_rt_str_release;
-use std::ffi::{CStr, CString};
+use std::ffi::CStr;
+
+/// A live `Bytes` handle holding `bytes`, made through the reachable C ABI.
+fn buffer(bytes: &[u8]) -> u64 {
+    let hex =
+        bn_stdlib::string::c_string_from_bytes(bn_stdlib::crypto::encode_hex(bytes).as_bytes());
+    let mut handle = 0_u64;
+    let rc = bn_stdlib::crypto_abi::bn_rt_crypto_bytes_from_hex(hex, &raw mut handle);
+    bn_stdlib::string::bn_rt_str_release(hex);
+    assert_eq!(rc, 0);
+    handle
+}
 
 #[test]
 fn test_password_hash_and_verification() {
@@ -53,8 +63,8 @@ fn test_hkdf_key_derivation() {
 
 #[test]
 fn test_c_abi_password_and_hkdf() {
-    let pw_str = CString::new("test-c-abi-password").unwrap();
-    let phc_ptr = bn_rt_crypto_hash_password(pw_str.as_ptr());
+    let pw_str = bn_stdlib::string::c_string_from_bytes(b"test-c-abi-password");
+    let phc_ptr = bn_rt_crypto_hash_password(pw_str);
     assert!(!phc_ptr.is_null());
 
     let phc_str = unsafe { CStr::from_ptr(phc_ptr) };
@@ -62,23 +72,25 @@ fn test_c_abi_password_and_hkdf() {
     assert!(phc_slice.starts_with("$argon2id$"));
 
     // Verify correct password
-    let match_rc = bn_rt_crypto_verify_password(pw_str.as_ptr(), phc_ptr);
+    let match_rc = bn_rt_crypto_verify_password(pw_str, phc_ptr);
     assert_eq!(match_rc, 1);
 
     // Verify wrong password
-    let wrong_str = CString::new("wrong-pw").unwrap();
-    let mismatch_rc = bn_rt_crypto_verify_password(wrong_str.as_ptr(), phc_ptr);
+    let wrong_str = bn_stdlib::string::c_string_from_bytes(b"wrong-pw");
+    let mismatch_rc = bn_rt_crypto_verify_password(wrong_str, phc_ptr);
     assert_eq!(mismatch_rc, 0);
 
     bn_rt_str_release(phc_ptr);
+    bn_rt_str_release(pw_str);
+    bn_rt_str_release(wrong_str);
 
     // Test C ABI HKDF
     let ikm_bytes = [0x33u8; 32];
-    let ikm_handle = bn_rt_crypto_bytes_from_raw(ikm_bytes.as_ptr(), ikm_bytes.len());
+    let ikm_handle = buffer(&ikm_bytes);
     let salt_bytes = b"salt-bytes";
-    let salt_handle = bn_rt_crypto_bytes_from_raw(salt_bytes.as_ptr(), salt_bytes.len());
+    let salt_handle = buffer(salt_bytes);
     let info_bytes = b"info-label";
-    let info_handle = bn_rt_crypto_bytes_from_raw(info_bytes.as_ptr(), info_bytes.len());
+    let info_handle = buffer(info_bytes);
 
     let mut out_key_handle = 0i64;
     let rc_hkdf = bn_rt_crypto_hkdf(

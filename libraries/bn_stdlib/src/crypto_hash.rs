@@ -227,35 +227,6 @@ use std::ffi::c_char;
 use crate::crypto_abi::{BN_CRYPTO_INVALID_ARGUMENT, BN_CRYPTO_OK, failed, store};
 use crate::{c_str, c_string};
 
-/// C ABI: `Hash(data, alg)`. Computes one-shot hash and writes `Bytes` handle to `*out_handle`.
-#[allow(unsafe_code)]
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_crypto_hash(
-    data_ptr: *const u8,
-    data_len: usize,
-    alg: i32,
-    out_handle: *mut i64,
-) -> i32 {
-    if out_handle.is_null() || (data_ptr.is_null() && data_len > 0) {
-        return BN_CRYPTO_INVALID_ARGUMENT;
-    }
-    let data = if data_len == 0 {
-        &[][..]
-    } else {
-        // SAFETY: pointer checked non-null and valid for data_len bytes.
-        unsafe { std::slice::from_raw_parts(data_ptr, data_len) }
-    };
-    match bn_hash(data, alg) {
-        Ok(digest) => {
-            let handle = store(digest);
-            let handle_i64 = i64::try_from(handle).unwrap_or(i64::MAX);
-            unsafe { *out_handle = handle_i64 };
-            BN_CRYPTO_OK
-        }
-        Err(err) => failed(&err),
-    }
-}
-
 /// C ABI: `Hash(data)` handle helper returning `Bytes` handle directly.
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
@@ -276,28 +247,22 @@ pub extern "C" fn bn_rt_crypto_hash_handle(data_handle: i64, alg: i32) -> i64 {
     }
 }
 
-/// C ABI: `HashWith(data, opts)` handle helper returning status and writing handle to `*out_handle`.
+/// `HashWith` after the options are read: hashes the live buffer `data_handle`
+/// and writes the digest handle. A released buffer is `USE_AFTER_RELEASE`.
 #[allow(unsafe_code)]
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_crypto_hash_handle_status(
-    data_handle: i64,
-    alg: i32,
-    out_handle: *mut i64,
-) -> i32 {
+fn hash_handle_status(data_handle: i64, alg: i32, out_handle: *mut i64) -> i32 {
     if out_handle.is_null() {
         return BN_CRYPTO_INVALID_ARGUMENT;
     }
-    let Ok(u_handle) = u64::try_from(data_handle) else {
-        return failed(&CryptoFailure::Algorithm(alg));
-    };
-    let data = crate::crypto_abi::with_buffers(|b| b.get(&u_handle).cloned());
-    let Some(bytes) = data else {
-        return failed(&CryptoFailure::Algorithm(alg));
-    };
+    let bytes = u64::try_from(data_handle)
+        .ok()
+        .and_then(|handle| crate::crypto_abi::with_buffers(|b| b.get(&handle).cloned()))
+        .unwrap_or_else(|| crate::arc_abi::abort_use_after_release());
     match bn_hash(&bytes, alg) {
         Ok(digest) => {
-            let handle = store(digest);
-            let handle_i64 = i64::try_from(handle).unwrap_or(i64::MAX);
+            let handle_i64 = i64::try_from(store(digest)).unwrap_or(i64::MAX);
+            // SAFETY: `out_handle` was checked non-null above and points to the
+            // caller's result slot.
             unsafe { *out_handle = handle_i64 };
             BN_CRYPTO_OK
         }
@@ -330,7 +295,7 @@ pub extern "C" fn bn_rt_crypto_hash_with(
         );
         i32::from_ne_bytes(alg_bytes)
     };
-    bn_rt_crypto_hash_handle_status(data_handle, alg, out_handle)
+    hash_handle_status(data_handle, alg, out_handle)
 }
 
 /// C ABI: `HashText(text)`. Computes default SHA-256 hex string and returns STRING.
@@ -382,29 +347,6 @@ pub extern "C" fn bn_rt_crypto_hasher_new(alg: i32, out_handle: *mut i64) -> i32
             unsafe { *out_handle = handle };
             BN_CRYPTO_OK
         }
-        Err(err) => failed(&err),
-    }
-}
-
-/// C ABI: `hasher.Update(data)`.
-#[allow(unsafe_code)]
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_crypto_hasher_update(
-    hasher_handle: i64,
-    data_ptr: *const u8,
-    data_len: usize,
-) -> i32 {
-    if data_ptr.is_null() && data_len > 0 {
-        return BN_CRYPTO_INVALID_ARGUMENT;
-    }
-    let data = if data_len == 0 {
-        &[][..]
-    } else {
-        // SAFETY: pointer checked non-null and valid for data_len bytes.
-        unsafe { std::slice::from_raw_parts(data_ptr, data_len) }
-    };
-    match update_hasher(hasher_handle, data) {
-        Ok(()) => BN_CRYPTO_OK,
         Err(err) => failed(&err),
     }
 }

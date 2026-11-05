@@ -1500,6 +1500,24 @@ fn sandboxed_bncrypto_file_operations_obey_the_read_root() {
     let _ = fs::remove_dir_all(&base);
 }
 
+/// RELEASE of each `BNCrypto` handle type; the compiled twin is in the `bnc` suite.
+#[test]
+fn bncrypto_release_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-release/main.bn"])
+        .output()
+        .expect("run the BNCrypto release fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "hasher-released\nmac-stream-released\n30\npublic-key-released\nprivate-key-released\nalternatives-released\n"
+    );
+}
+
 /// A program whose only heap use is the `KeyPair` record; the compiled twin is
 /// in the `bnc` suite.
 #[test]

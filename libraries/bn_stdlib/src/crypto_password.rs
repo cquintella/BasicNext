@@ -133,14 +133,10 @@ fn store_secret_key(entry: SecretKeyEntry) -> u64 {
 }
 
 fn str_from_ptr<'a>(ptr: *const c_char) -> Option<&'a str> {
-    if ptr.is_null() {
-        return None;
-    }
-    if let Some(s) = c_str(ptr) {
-        return Some(s);
-    }
-    #[allow(unsafe_code)]
-    unsafe { std::ffi::CStr::from_ptr(ptr) }.to_str().ok()
+    // The ABI takes a BN STRING (header before the payload). There is no
+    // fallback to a NUL-terminated C string: reading a header before a
+    // pointer that has none is undefined, and its length would be garbage.
+    c_str(ptr)
 }
 
 /// C ABI: `HashPassword(password)` -> STRING.

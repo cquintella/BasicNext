@@ -119,18 +119,6 @@ pub extern "C" fn bn_rt_crypto_bytes_from_text(text: *const c_char) -> u64 {
     )
 }
 
-/// Stores raw bytes into a new buffer.
-#[allow(unsafe_code)]
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_crypto_bytes_from_raw(data: *const u8, len: usize) -> u64 {
-    if data.is_null() || len == 0 {
-        return store(Vec::new());
-    }
-    // SAFETY: caller guarantees pointer is non-null and valid for len bytes.
-    let slice = unsafe { std::slice::from_raw_parts(data, len) };
-    store(slice.to_vec())
-}
-
 /// Decodes `text` as hex into a new buffer. Writes the handle through `out` and
 /// returns [`BN_CRYPTO_OK`], or leaves `out` untouched and returns
 /// [`BN_CRYPTO_INVALID_ARGUMENT`] when the string is not even-length hex.

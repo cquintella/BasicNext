@@ -203,6 +203,90 @@ pub(crate) fn carries_bncrypto_public_key(module: &Module, ty: &Type) -> bool {
     }
 }
 
+/// The `BNCrypto` handle types whose `RELEASE` ends their runtime table entry:
+/// type name, register slot prefix, release symbol. A `KeyPair` is a STRUCT
+/// and is not here: releasing it leaves the keys it holds alive (as `bni`).
+const BNCRYPTO_HANDLE_RELEASES: [(&str, &str, &str); 4] = [
+    ("Hasher", "cryhs", "bn_rt_crypto_hasher_release"),
+    ("MacStream", "crymac", "bn_rt_crypto_mac_stream_release"),
+    ("PublicKey", "crypub", "bn_rt_crypto_public_key_release"),
+    ("PrivateKey", "crypriv", "bn_rt_crypto_private_key_release"),
+];
+
+/// The slot prefix and release symbol of a `BNCrypto` handle type from a
+/// module this program imports, or `None`.
+pub(crate) fn bncrypto_handle_release(
+    module: &Module,
+    ty: &Type,
+) -> Option<(&'static str, &'static str)> {
+    let Type::ImportedNamed {
+        module: module_id,
+        name,
+    } = ty
+    else {
+        return None;
+    };
+    if !module
+        .bncrypto_providers
+        .contains(&bn_ir::ModuleId::from(*module_id))
+    {
+        return None;
+    }
+    BNCRYPTO_HANDLE_RELEASES
+        .iter()
+        .find(|(type_name, _, _)| *type_name == name.as_str())
+        .map(|(_, slot, symbol)| (*slot, *symbol))
+}
+
+/// The release symbol of a `BNCrypto` handle value given its exact type:
+/// `Bytes`, `Key`, `Secret`, `SecretKey` and the handle table above.
+fn bncrypto_value_release(module: &Module, ty: &Type) -> Option<(&'static str, &'static str)> {
+    if is_bncrypto_bytes_type(module, ty) {
+        Some(("cry", "bn_rt_crypto_bytes_release"))
+    } else if is_bncrypto_key_type(module, ty) {
+        Some(("cryk", "bn_rt_crypto_key_release"))
+    } else if is_bncrypto_secret_type(module, ty) {
+        Some(("crys", "bn_rt_crypto_secret_release"))
+    } else if is_bncrypto_secret_key_type(module, ty) {
+        Some(("crysk", "bn_rt_crypto_secret_key_release"))
+    } else {
+        bncrypto_handle_release(module, ty)
+    }
+}
+
+/// What `RELEASE` does with a `BNCrypto` value inside an `OR Error`
+/// alternative (the `{ i1, ptr, i64 }` status result, handle in slot 2 when
+/// the tag says it is not an error).
+pub(crate) enum CryptoAlternativeRelease {
+    /// Release the handle in slot 2 with this slot prefix and symbol.
+    Handle(&'static str, &'static str),
+    /// A `KeyPair` record: no runtime work (the keys in it stay alive, as in
+    /// `bni`; the record itself is the K63 class of unreleased storage).
+    Record,
+}
+
+/// The `RELEASE` treatment of an alternative that carries a `BNCrypto` value,
+/// or `None` when it carries none.
+pub(crate) fn bncrypto_alternative_release(
+    module: &Module,
+    ty: &Type,
+) -> Option<CryptoAlternativeRelease> {
+    let Type::Alternative(alternatives) = ty else {
+        return None;
+    };
+    alternatives.iter().find_map(|alternative| {
+        if let Some((slot, symbol)) = bncrypto_value_release(module, alternative) {
+            return Some(CryptoAlternativeRelease::Handle(slot, symbol));
+        }
+        matches!(
+            alternative,
+            Type::ImportedNamed { module: module_id, name } if name == "KeyPair"
+                && module.bncrypto_providers.contains(&bn_ir::ModuleId::from(*module_id))
+        )
+        .then_some(CryptoAlternativeRelease::Record)
+    })
+}
+
 /// True when `ty` is `BNCrypto.PrivateKey` from a module this program imports.
 pub(crate) fn is_bncrypto_private_key_type(module: &Module, ty: &Type) -> bool {
     matches!(

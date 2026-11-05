@@ -1004,7 +1004,8 @@ mod helpers;
 mod platform_stdio;
 use arc::{REGION_HEADER_BYTES, held_object, is_class_type, is_region_type, object_class};
 use helpers::{
-    bncompress_method, bncrypto_method, carries_bncompress_bytes, carries_bncompress_zip,
+    CryptoAlternativeRelease, bncompress_method, bncrypto_alternative_release,
+    bncrypto_handle_release, bncrypto_method, carries_bncompress_bytes, carries_bncompress_zip,
     carries_bncrypto_bytes, carries_bncrypto_key, carries_bncrypto_private_key,
     carries_bncrypto_public_key, carries_bncrypto_secret, carries_bncrypto_secret_key,
     class_init_flag, coerce_return_operand, coerce_to_type, emit_input_runtime, extend_to_i64,

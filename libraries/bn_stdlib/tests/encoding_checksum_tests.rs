@@ -11,10 +11,10 @@ use bn_stdlib::crypto::{
 };
 use bn_stdlib::crypto_abi::{
     bn_rt_crypto_adler32, bn_rt_crypto_bytes_concat, bn_rt_crypto_bytes_from_base64,
-    bn_rt_crypto_bytes_from_base64url, bn_rt_crypto_bytes_from_raw, bn_rt_crypto_bytes_length,
-    bn_rt_crypto_bytes_release, bn_rt_crypto_bytes_to_base64, bn_rt_crypto_bytes_to_base64url,
-    bn_rt_crypto_bytes_to_text, bn_rt_crypto_crc32, bn_rt_crypto_crc32c, bn_rt_crypto_from_pem,
-    bn_rt_crypto_to_pem, bn_rt_crypto_verify_file_checksum, bn_rt_crypto_xxhash64,
+    bn_rt_crypto_bytes_from_base64url, bn_rt_crypto_bytes_length, bn_rt_crypto_bytes_release,
+    bn_rt_crypto_bytes_to_base64, bn_rt_crypto_bytes_to_base64url, bn_rt_crypto_bytes_to_text,
+    bn_rt_crypto_crc32, bn_rt_crypto_crc32c, bn_rt_crypto_from_pem, bn_rt_crypto_to_pem,
+    bn_rt_crypto_verify_file_checksum, bn_rt_crypto_xxhash64,
 };
 use bn_stdlib::string::{bn_rt_str_release, c_string_from_bytes};
 use std::ffi::{CStr, c_char};
@@ -38,6 +38,17 @@ impl Drop for BnString {
     fn drop(&mut self) {
         bn_rt_str_release(self.0);
     }
+}
+
+/// A live `Bytes` handle holding `bytes`, made through the reachable C ABI.
+fn buffer(bytes: &[u8]) -> u64 {
+    let hex =
+        bn_stdlib::string::c_string_from_bytes(bn_stdlib::crypto::encode_hex(bytes).as_bytes());
+    let mut handle = 0_u64;
+    let rc = bn_stdlib::crypto_abi::bn_rt_crypto_bytes_from_hex(hex, &raw mut handle);
+    bn_stdlib::string::bn_rt_str_release(hex);
+    assert_eq!(rc, 0);
+    handle
 }
 
 #[test]
@@ -167,7 +178,7 @@ fn test_verify_file_checksum() {
 #[test]
 fn test_c_abi_encoding_and_checksums() {
     let raw = b"Hello ABI Encoding!";
-    let handle = bn_rt_crypto_bytes_from_raw(raw.as_ptr(), raw.len());
+    let handle = buffer(raw);
     assert_ne!(handle, 0);
 
     // ToBase64

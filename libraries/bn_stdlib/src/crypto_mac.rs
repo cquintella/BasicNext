@@ -212,39 +212,6 @@ fn get_any_key(handle: u64) -> Option<zeroize::Zeroizing<Vec<u8>>> {
     crate::crypto_abi::with_buffers(|bufs| bufs.get(&handle).cloned())
 }
 
-/// C ABI: `Mac(key, data, alg)`.
-#[allow(unsafe_code)]
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_crypto_mac(
-    key_handle: u64,
-    data_ptr: *const u8,
-    data_len: usize,
-    alg: i32,
-    out_handle: *mut i64,
-) -> i32 {
-    if out_handle.is_null() || (data_ptr.is_null() && data_len > 0) {
-        return BN_CRYPTO_INVALID_ARGUMENT;
-    }
-    let Some(key_bytes) = get_any_key(key_handle) else {
-        return BN_CRYPTO_INVALID_ARGUMENT;
-    };
-    let data = if data_len == 0 {
-        &[][..]
-    } else {
-        // SAFETY: checked non-null and valid for data_len bytes.
-        unsafe { std::slice::from_raw_parts(data_ptr, data_len) }
-    };
-    match bn_mac(&key_bytes, data, alg) {
-        Ok(tag) => {
-            let handle = store(tag);
-            let handle_i64 = i64::try_from(handle).unwrap_or(i64::MAX);
-            unsafe { *out_handle = handle_i64 };
-            BN_CRYPTO_OK
-        }
-        Err(err) => failed(&err),
-    }
-}
-
 /// C ABI: `Mac(key, data)` handle helper.
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
@@ -263,36 +230,6 @@ pub extern "C" fn bn_rt_crypto_mac_handle(key_handle: u64, data_handle: u64) -> 
         }
         Err(_) => 0,
     }
-}
-
-/// C ABI: `VerifyMac(key, data, tag, alg)`. Returns 1 for match, 0 for mismatch/error.
-#[allow(unsafe_code)]
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_crypto_mac_verify(
-    key_handle: u64,
-    data_ptr: *const u8,
-    data_len: usize,
-    tag_handle: i64,
-    alg: i32,
-) -> i32 {
-    let Ok(u_tag) = u64::try_from(tag_handle) else {
-        return 0;
-    };
-    let Some(key_bytes) = get_any_key(key_handle) else {
-        return 0;
-    };
-    let Some(tag_bytes) = crate::crypto_abi::with_buffers(|bufs| bufs.get(&u_tag).cloned()) else {
-        return 0;
-    };
-    let data = if data_len == 0 {
-        &[][..]
-    } else if data_ptr.is_null() {
-        return 0;
-    } else {
-        // SAFETY: checked non-null and valid for data_len bytes.
-        unsafe { std::slice::from_raw_parts(data_ptr, data_len) }
-    };
-    i32::from(bn_mac_verify(&key_bytes, data, &tag_bytes, alg))
 }
 
 /// C ABI: `VerifyMac(key, data, tag)` handle helper.
@@ -411,29 +348,6 @@ pub extern "C" fn bn_rt_crypto_mac_stream_new(
             unsafe { *out_handle = handle };
             BN_CRYPTO_OK
         }
-        Err(err) => failed(&err),
-    }
-}
-
-/// C ABI: `MacStream.Update(data_ptr, data_len)`.
-#[allow(unsafe_code)]
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_crypto_mac_stream_update(
-    stream_handle: i64,
-    data_ptr: *const u8,
-    data_len: usize,
-) -> i32 {
-    if data_ptr.is_null() && data_len > 0 {
-        return BN_CRYPTO_INVALID_ARGUMENT;
-    }
-    let data = if data_len == 0 {
-        &[][..]
-    } else {
-        // SAFETY: pointer non-null and valid for data_len bytes.
-        unsafe { std::slice::from_raw_parts(data_ptr, data_len) }
-    };
-    match update_mac_stream(stream_handle, data) {
-        Ok(()) => BN_CRYPTO_OK,
         Err(err) => failed(&err),
     }
 }
