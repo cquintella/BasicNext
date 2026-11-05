@@ -281,15 +281,15 @@ Non-cryptographic integrity checks are grouped under the `Checksum` class:
 | `SignFile` | `SignFile(key AS PrivateKey, path AS STRING) AS Bytes OR Error` |
 | `VerifyFile` | `VerifyFile(key AS PublicKey, path AS STRING, signature AS Bytes) AS BOOLEAN` |
 
-Deterministic signatures (RFC 8032 for Ed25519, RFC 6979 for ECDSA P-256). `Verify` returns `FALSE` for invalid signatures or mismatched keys.
+Deterministic signatures (RFC 8032 for Ed25519, RFC 6979 for ECDSA P-256). `Verify` returns `FALSE` for invalid signatures or mismatched keys. Ed25519 verification is strict: a signature whose public key or `R` component has small order is `FALSE`.
 
 ### Key Import and Export
 
 * `ExportPem(key AS PrivateKey, format AS INT32, password AS STRING) AS STRING OR Error`: Encrypts private keys using PKCS#8 with PBES2 (Argon2id/scrypt). `format` is `PemFormat.PKCS8` (1). Any other `INT32` is `INVALID_ARGUMENT` (BDFL decision, 2026-11-04).
 * `ExportPemUnencrypted(key AS PrivateKey, format AS INT32) AS STRING OR Error`: Explicit unencrypted PKCS#8 export. The same `format` values.
 * `ExportPem(key AS PublicKey) AS STRING OR Error`: Exports SPKI PEM. No format parameter.
-* `LoadPrivateKey(pem AS STRING, password AS STRING OR NULL) AS PrivateKey OR Error`: Unambiguous header detection; fails closed (`PARSE_ERROR`) on ambiguous inputs.
-* `LoadPublicKey(pem AS STRING) AS PublicKey OR Error`: Parses SPKI PEM.
+* `LoadPrivateKey(pem AS STRING, password AS STRING OR NULL) AS PrivateKey OR Error`: Unambiguous header detection; fails closed (`PARSE_ERROR`) on ambiguous inputs. The key-derivation cost of an encrypted key is checked before any derivation runs: scrypt with N above 2^17, r above 8 or p above 1, PBKDF2 above 2,000,000 iterations, or another KDF is `PARSE_ERROR`.
+* `LoadPublicKey(pem AS STRING) AS PublicKey OR Error`: Parses SPKI PEM. An Ed25519 key that is not a point of large order (a weak key) is `PARSE_ERROR`.
 
 ---
 

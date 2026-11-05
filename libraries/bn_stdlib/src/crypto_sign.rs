@@ -271,6 +271,35 @@ fn material_from_pkcs8(der: &[u8]) -> Result<(Vec<u8>, i32), CryptoFailure> {
     })
 }
 
+/// Ceilings on the key-derivation cost of an encrypted PEM, checked before
+/// any derivation: the parameters come from the file, so without them a hostile
+/// key aborts the process (scrypt memory is 128 · r · N bytes) or hangs it
+/// (PBKDF2 iterations). The scrypt ceilings are the parameters `ExportPem`
+/// writes (N = 2^17, r = 8, p = 1, 128 MiB); the PBKDF2 ceiling is far above
+/// the OpenSSL default (2048) and the OWASP recommendation for HMAC-SHA-256.
+const SCRYPT_MAX_COST: u64 = 1 << 17;
+const SCRYPT_MAX_BLOCK_SIZE: u16 = 8;
+const SCRYPT_MAX_PARALLELIZATION: u16 = 1;
+const PBKDF2_MAX_ITERATIONS: u32 = 2_000_000;
+
+/// Whether the PBES2 key derivation of an encrypted PEM is within the ceilings.
+/// PBES1 and unknown schemes are refused by `decrypt` itself.
+fn kdf_cost_is_bounded(scheme: &pkcs8::pkcs5::EncryptionScheme<'_>) -> bool {
+    use pkcs8::pkcs5::pbes2::Kdf;
+    let Some(parameters) = scheme.pbes2() else {
+        return true;
+    };
+    match &parameters.kdf {
+        Kdf::Scrypt(scrypt) => {
+            scrypt.cost_parameter <= SCRYPT_MAX_COST
+                && scrypt.block_size <= SCRYPT_MAX_BLOCK_SIZE
+                && scrypt.parallelization <= SCRYPT_MAX_PARALLELIZATION
+        }
+        Kdf::Pbkdf2(pbkdf2) => pbkdf2.iteration_count <= PBKDF2_MAX_ITERATIONS,
+        _ => false,
+    }
+}
+
 /// Loads one private key. `password == None` is NULL: plaintext PKCS#8 only.
 /// A password on an unencrypted key, or more than one PEM block, is `PARSE_ERROR`.
 /// A wrong password is `WRONG_PASSWORD` and the password is not copied into the error.
@@ -287,6 +316,9 @@ pub fn bn_load_private_pem(
         };
         let info = pkcs8::EncryptedPrivateKeyInfo::from_der(der.as_slice())
             .map_err(|_| parse(LOAD_PRIVATE))?;
+        if !kdf_cost_is_bounded(&info.encryption_algorithm) {
+            return Err(parse(LOAD_PRIVATE));
+        }
         let secret =
             info.decrypt(password.as_bytes())
                 .map_err(|_| CryptoFailure::WrongPassword {
