@@ -200,9 +200,17 @@ fn sign_file_verifies_and_a_missing_file_is_false() {
     std::fs::write(path, b"file-body").expect("write");
     let seed = [3_u8; 32];
     let public = ed25519_public_key(&seed).expect("public");
-    let signature = bn_sign_file(&seed, 30, path).expect("sign file");
-    assert!(bn_verify_file(&public, 30, path, &signature));
+    let signature =
+        bn_sign_file(&bn_stdlib::FsPolicy::unrestricted(), &seed, 30, path).expect("sign file");
+    assert!(bn_verify_file(
+        &bn_stdlib::FsPolicy::unrestricted(),
+        &public,
+        30,
+        path,
+        &signature
+    ));
     assert!(!bn_verify_file(
+        &bn_stdlib::FsPolicy::unrestricted(),
         &public,
         30,
         "bn-asymmetric-missing.tmp",
@@ -210,9 +218,14 @@ fn sign_file_verifies_and_a_missing_file_is_false() {
     ));
     let _ = std::fs::remove_file(path);
     assert_eq!(
-        bn_sign_file(&seed, 30, "bn-asymmetric-missing.tmp")
-            .unwrap_err()
-            .code(),
+        bn_sign_file(
+            &bn_stdlib::FsPolicy::unrestricted(),
+            &seed,
+            30,
+            "bn-asymmetric-missing.tmp"
+        )
+        .unwrap_err()
+        .code(),
         8
     );
 }

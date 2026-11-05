@@ -1450,6 +1450,50 @@ fn bncrypto_encoding_interprets() {
     );
 }
 
+/// `BNCrypto` file operations read through the execution policy: under
+/// `--sandbox --read-root`, a file outside the root is neither verified nor
+/// hashed. The compiled twin is in the `bnc` suite.
+#[test]
+fn sandboxed_bncrypto_file_operations_obey_the_read_root() {
+    let base = std::env::temp_dir().join(format!("bn-bni-sandbox-checksum-{}", std::process::id()));
+    let read_root = base.join("read");
+    let outside_root = base.join("outside");
+    fs::create_dir_all(&read_root).expect("create read root");
+    fs::create_dir_all(&outside_root).expect("create outside root");
+    // CRC-32 of "abc" is 0x352441c2.
+    let inside = read_root.join("inside.txt");
+    let outside = outside_root.join("outside.txt");
+    fs::write(&inside, "abc").expect("write inside input");
+    fs::write(&outside, "abc").expect("write outside input");
+    let fixture = base.join("checksum.bn");
+    fs::write(
+        &fixture,
+        format!(
+            "IMPORT BNCrypto AS Crypto\n\nFUNCTION Start() AS VOID\n    PRINT Crypto.Checksum.VerifyFileChecksum(\"{}\", \"crc32:352441c2\")\n    PRINT Crypto.Checksum.VerifyFileChecksum(\"{}\", \"crc32:352441c2\")\n    LET digest AS Crypto.Bytes OR Error = Crypto.HashFile(\"{}\")\n    IF digest IS Error THEN\n        PRINT \"hashfile-denied\"\n    END IF\nEND FUNCTION\n",
+            inside.display(),
+            outside.display(),
+            outside.display()
+        ),
+    )
+    .expect("write checksum fixture");
+    let output = bni()
+        .args(["run", "--sandbox", "--read-root"])
+        .arg(&read_root)
+        .arg(&fixture)
+        .output()
+        .expect("run the sandboxed fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "TRUE\nFALSE\nhashfile-denied\n"
+    );
+    let _ = fs::remove_dir_all(&base);
+}
+
 /// A program whose only heap use is the `KeyPair` record; the compiled twin is
 /// in the `bnc` suite.
 #[test]

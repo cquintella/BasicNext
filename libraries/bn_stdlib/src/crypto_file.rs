@@ -173,7 +173,12 @@ fn decrypt_stream(
 /// Returns [`CryptoFailure::EnvelopeKeyLength`] if key is not 32 bytes,
 /// [`CryptoFailure::Random`] if system entropy fails, or [`CryptoFailure::FileIo`]
 /// on filesystem read/write errors.
-pub fn bn_encrypt_file(key: &[u8], in_path: &Path, out_path: &Path) -> Result<(), CryptoFailure> {
+pub fn bn_encrypt_file(
+    fs: &crate::FsPolicy,
+    key: &[u8],
+    in_path: &Path,
+    out_path: &Path,
+) -> Result<(), CryptoFailure> {
     if key.len() != 32 {
         return Err(CryptoFailure::EnvelopeKeyLength);
     }
@@ -188,10 +193,12 @@ pub fn bn_encrypt_file(key: &[u8], in_path: &Path, out_path: &Path) -> Result<()
     header[6] = 1; // flags = STREAM
     header[7..31].copy_from_slice(&base_nonce);
 
-    let mut input = crate::policy::open_path(in_path, crate::secure_fs::OpenMode::Read)
+    let mut input = fs
+        .open(in_path, crate::secure_fs::OpenMode::Read)
         .map_err(|e| CryptoFailure::FileIo(e.to_string()))?;
 
-    let mut output = crate::policy::with_fs(|policy| policy.create_private_file(out_path))
+    let mut output = fs
+        .create_private_file(out_path)
         .map_err(|e| CryptoFailure::FileIo(e.to_string()))?;
 
     output
@@ -220,11 +227,17 @@ pub fn bn_encrypt_file(key: &[u8], in_path: &Path, out_path: &Path) -> Result<()
 /// Returns [`CryptoFailure::EnvelopeKeyLength`] if key is not 32 bytes,
 /// [`CryptoFailure::EnvelopeFormat`] on invalid header or truncated streams,
 /// or [`CryptoFailure::EnvelopeAuth`] on authentication tag mismatch.
-pub fn bn_decrypt_file(key: &[u8], in_path: &Path, out_path: &Path) -> Result<(), CryptoFailure> {
+pub fn bn_decrypt_file(
+    fs: &crate::FsPolicy,
+    key: &[u8],
+    in_path: &Path,
+    out_path: &Path,
+) -> Result<(), CryptoFailure> {
     if key.len() != 32 {
         return Err(CryptoFailure::EnvelopeKeyLength);
     }
-    let mut input = crate::policy::open_path(in_path, crate::secure_fs::OpenMode::Read)
+    let mut input = fs
+        .open(in_path, crate::secure_fs::OpenMode::Read)
         .map_err(|e| CryptoFailure::FileIo(e.to_string()))?;
 
     let mut header = [0u8; ENVELOPE_HEADER_LEN];
@@ -241,11 +254,12 @@ pub fn bn_decrypt_file(key: &[u8], in_path: &Path, out_path: &Path) -> Result<()
     let mut base_nonce = [0u8; 24];
     base_nonce.copy_from_slice(&header[7..31]);
 
-    let mut output = crate::policy::with_fs(|policy| policy.create_private_file(out_path))
+    let mut output = fs
+        .create_private_file(out_path)
         .map_err(|e| CryptoFailure::FileIo(e.to_string()))?;
 
     let cleanup = || {
-        let _ = crate::policy::with_fs(|policy| policy.remove_file(out_path));
+        let _ = fs.remove_file(out_path);
     };
 
     let Ok(cipher) = XChaCha20Poly1305::new_from_slice(key) else {
@@ -299,7 +313,9 @@ pub extern "C" fn bn_rt_crypto_encrypt_file(
         return failed(&CryptoFailure::Key("BNCrypto.EncryptFile"));
     };
 
-    match bn_encrypt_file(&key_bytes, Path::new(in_str), Path::new(out_str)) {
+    match crate::policy::with_fs(|fs| {
+        bn_encrypt_file(fs, &key_bytes, Path::new(in_str), Path::new(out_str))
+    }) {
         Ok(()) => 0,
         Err(err) => failed(&err),
     }
@@ -331,7 +347,9 @@ pub extern "C" fn bn_rt_crypto_decrypt_file(
         return failed(&CryptoFailure::Key("BNCrypto.DecryptFile"));
     };
 
-    match bn_decrypt_file(&key_bytes, Path::new(in_str), Path::new(out_str)) {
+    match crate::policy::with_fs(|fs| {
+        bn_decrypt_file(fs, &key_bytes, Path::new(in_str), Path::new(out_str))
+    }) {
         Ok(()) => 0,
         Err(err) => failed(&err),
     }

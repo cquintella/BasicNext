@@ -89,10 +89,14 @@ pub fn bn_verify(raw_public: &[u8], algorithm: i32, message: &[u8], signature: &
     }
 }
 
-fn read_file(path: &str, operation: &'static str) -> Result<Vec<u8>, CryptoFailure> {
-    let mut file =
-        crate::policy::open_path(std::path::Path::new(path), crate::secure_fs::OpenMode::Read)
-            .map_err(|_| CryptoFailure::Io { operation })?;
+fn read_file(
+    fs: &crate::FsPolicy,
+    path: &str,
+    operation: &'static str,
+) -> Result<Vec<u8>, CryptoFailure> {
+    let mut file = fs
+        .open(std::path::Path::new(path), crate::secure_fs::OpenMode::Read)
+        .map_err(|_| CryptoFailure::Io { operation })?;
     let mut bytes = Vec::new();
     file.read_to_end(&mut bytes)
         .map_err(|_| CryptoFailure::Io { operation })?;
@@ -100,8 +104,13 @@ fn read_file(path: &str, operation: &'static str) -> Result<Vec<u8>, CryptoFailu
 }
 
 /// Signs the whole file. The signature is over the bytes, not a prehash.
-pub fn bn_sign_file(seed: &[u8], algorithm: i32, path: &str) -> Result<Vec<u8>, CryptoFailure> {
-    let message = read_file(path, SIGN_FILE)?;
+pub fn bn_sign_file(
+    fs: &crate::FsPolicy,
+    seed: &[u8],
+    algorithm: i32,
+    path: &str,
+) -> Result<Vec<u8>, CryptoFailure> {
+    let message = read_file(fs, path, SIGN_FILE)?;
     bn_sign(seed, algorithm, &message).map_err(|failure| match failure {
         CryptoFailure::WrongKeyType { .. } => CryptoFailure::WrongKeyType {
             operation: SIGN_FILE,
@@ -116,8 +125,14 @@ pub fn bn_sign_file(seed: &[u8], algorithm: i32, path: &str) -> Result<Vec<u8>, 
 
 /// `FALSE` when the file cannot be read or the signature does not verify.
 #[must_use]
-pub fn bn_verify_file(raw_public: &[u8], algorithm: i32, path: &str, signature: &[u8]) -> bool {
-    let Ok(message) = read_file(path, "BNCrypto.VerifyFile") else {
+pub fn bn_verify_file(
+    fs: &crate::FsPolicy,
+    raw_public: &[u8],
+    algorithm: i32,
+    path: &str,
+    signature: &[u8],
+) -> bool {
+    let Ok(message) = read_file(fs, path, "BNCrypto.VerifyFile") else {
         return false;
     };
     bn_verify(raw_public, algorithm, &message, signature)
@@ -414,7 +429,7 @@ pub extern "C" fn bn_rt_crypto_sign_file(key: u64, path: *const c_char, out: *mu
         Ok(material) => material,
         Err(failure) => return failed(&failure),
     };
-    match bn_sign_file(&material.seed, material.algorithm, path) {
+    match crate::policy::with_fs(|fs| bn_sign_file(fs, &material.seed, material.algorithm, path)) {
         Ok(signature) => write_handle(out, store(signature)),
         Err(failure) => failed(&failure),
     }
@@ -428,7 +443,9 @@ pub extern "C" fn bn_rt_crypto_verify_file(key: u64, path: *const c_char, signat
     else {
         return 0;
     };
-    i32::from(bn_verify_file(&raw, algorithm, path, &signature))
+    i32::from(crate::policy::with_fs(|fs| {
+        bn_verify_file(fs, &raw, algorithm, path, &signature)
+    }))
 }
 
 #[allow(unsafe_code)]

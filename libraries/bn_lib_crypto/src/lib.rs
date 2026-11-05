@@ -887,6 +887,7 @@ impl CryptoProvider {
     #[allow(clippy::too_many_lines)]
     fn secret_key_op(
         &mut self,
+        fs: &bn_stdlib::FsPolicy,
         method: &str,
         member: &str,
         arguments: &[Value],
@@ -1238,6 +1239,7 @@ impl CryptoProvider {
                     return failure(&bn_stdlib::crypto_error::CryptoFailure::ZeroizedKey);
                 }
                 match bn_stdlib::crypto::bn_encrypt_file(
+                    fs,
                     &entry.material,
                     std::path::Path::new(in_path.as_ref()),
                     std::path::Path::new(out_path.as_ref()),
@@ -1273,6 +1275,7 @@ impl CryptoProvider {
                     return failure(&bn_stdlib::crypto_error::CryptoFailure::ZeroizedKey);
                 }
                 match bn_stdlib::crypto::bn_decrypt_file(
+                    fs,
                     &entry.material,
                     std::path::Path::new(in_path.as_ref()),
                     std::path::Path::new(out_path.as_ref()),
@@ -1317,6 +1320,7 @@ impl CryptoProvider {
                     return Err(type_mismatch("STRING", "non-STRING value", member, span));
                 };
                 match bn_stdlib::crypto::bn_hash_file(
+                    core.host().filesystem(),
                     std::path::Path::new(path.as_ref()),
                     bn_stdlib::crypto::HASH_SHA256,
                 ) {
@@ -1732,6 +1736,7 @@ impl CryptoProvider {
 
     fn checksum_op(
         &self,
+        fs: &bn_stdlib::FsPolicy,
         method: &str,
         member: &str,
         arguments: &[Value],
@@ -1773,8 +1778,11 @@ impl CryptoProvider {
                 let Value::String(expected) = &arguments[1] else {
                     return Err(type_mismatch("STRING", "non-STRING value", member, span));
                 };
-                let ok =
-                    bn_stdlib::crypto::bn_verify_file_checksum(path.as_ref(), expected.as_ref());
+                let ok = bn_stdlib::crypto::bn_verify_file_checksum(
+                    fs,
+                    path.as_ref(),
+                    expected.as_ref(),
+                );
                 Ok(Value::Boolean(ok))
             }
             _ => Err(name_not_found(method, "BNCrypto function", span)),
@@ -2042,6 +2050,7 @@ impl CryptoProvider {
 
     fn op_sign_file(
         &mut self,
+        fs: &bn_stdlib::FsPolicy,
         member: &str,
         arguments: &[Value],
         span: Span,
@@ -2054,7 +2063,7 @@ impl CryptoProvider {
         let Value::String(path) = &arguments[1] else {
             return Err(type_mismatch("STRING", "non-STRING value", member, span));
         };
-        match bn_stdlib::crypto::bn_sign_file(&seed, algorithm, path.as_ref()) {
+        match bn_stdlib::crypto::bn_sign_file(fs, &seed, algorithm, path.as_ref()) {
             Ok(signature) => Ok(self.insert(signature)),
             Err(err) => failure(&err),
         }
@@ -2062,6 +2071,7 @@ impl CryptoProvider {
 
     fn op_verify_file(
         &self,
+        fs: &bn_stdlib::FsPolicy,
         member: &str,
         arguments: &[Value],
         span: Span,
@@ -2087,6 +2097,7 @@ impl CryptoProvider {
         };
         let signature = self.bytes_at(arguments, 2, member, span)?;
         Ok(Value::Boolean(bn_stdlib::crypto::bn_verify_file(
+            fs,
             &entry.raw,
             entry.algorithm,
             path.as_ref(),
@@ -2214,6 +2225,7 @@ impl CryptoProvider {
 
     fn asymmetric_op(
         &mut self,
+        fs: &bn_stdlib::FsPolicy,
         method: &str,
         member: &str,
         arguments: &[Value],
@@ -2225,9 +2237,9 @@ impl CryptoProvider {
             "NewKeyPairWith" => self.op_new_keypair_with(member, arguments, span),
             "PublicKey" => self.op_public_key(member, arguments, span),
             "Sign" => self.op_sign(member, arguments, span),
-            "SignFile" => self.op_sign_file(member, arguments, span),
+            "SignFile" => self.op_sign_file(fs, member, arguments, span),
             "Verify" => self.op_verify(member, arguments, span),
-            "VerifyFile" => self.op_verify_file(member, arguments, span),
+            "VerifyFile" => self.op_verify_file(fs, member, arguments, span),
             "ExportPem" => self.op_export_pem(member, arguments, span),
             "ExportPemUnencrypted" => self.op_export_pem_plain(member, arguments, span),
             "LoadPrivateKey" => self.op_load_private(member, arguments, span),
@@ -2311,22 +2323,24 @@ impl Provider for CryptoProvider {
             | "ExportPem"
             | "ExportPemUnencrypted"
             | "LoadPrivateKey"
-            | "LoadPublicKey" => self.asymmetric_op(method, member, &arguments, span),
+            | "LoadPublicKey" => {
+                self.asymmetric_op(core.host().filesystem(), method, member, &arguments, span)
+            }
             "Verify" if arguments.len() == 3 => {
-                self.asymmetric_op(method, member, &arguments, span)
+                self.asymmetric_op(core.host().filesystem(), method, member, &arguments, span)
             }
             "Id" => {
                 if matches!(arguments.first(), Some(Value::CryptoKey(h)) if self.public_keys.contains_key(h) || self.private_keys.contains_key(h))
                 {
-                    self.asymmetric_op(method, member, &arguments, span)
+                    self.asymmetric_op(core.host().filesystem(), method, member, &arguments, span)
                 } else {
-                    self.secret_key_op(method, member, &arguments, span)
+                    self.secret_key_op(core.host().filesystem(), method, member, &arguments, span)
                 }
             }
             "Algorithm" => {
                 if matches!(arguments.first(), Some(Value::CryptoKey(h)) if self.public_keys.contains_key(h) || self.private_keys.contains_key(h))
                 {
-                    self.asymmetric_op(method, member, &arguments, span)
+                    self.asymmetric_op(core.host().filesystem(), method, member, &arguments, span)
                 } else {
                     self.key_or_entropy(method, member, &arguments, span)
                 }
@@ -2334,7 +2348,7 @@ impl Provider for CryptoProvider {
             "Zeroize" => {
                 if matches!(arguments.first(), Some(Value::CryptoKey(h)) if self.private_keys.contains_key(h))
                 {
-                    self.asymmetric_op(method, member, &arguments, span)
+                    self.asymmetric_op(core.host().filesystem(), method, member, &arguments, span)
                 } else {
                     self.key_or_entropy(method, member, &arguments, span)
                 }
@@ -2348,7 +2362,7 @@ impl Provider for CryptoProvider {
             "NewSecretKey" | "NewSecretKeyWith" | "SecretKeyFromBytes" | "WrapKey"
             | "UnwrapKey" | "UnwrapKeyWith" | "Bits" | "Purpose" | "ExportSecret" | "Encrypt"
             | "Decrypt" | "EncryptText" | "DecryptText" | "EncryptFile" | "DecryptFile" => {
-                self.secret_key_op(method, member, &arguments, span)
+                self.secret_key_op(core.host().filesystem(), method, member, &arguments, span)
             }
             "Hash" | "HashText" | "HashFile" | "HashWith" | "Update" | "Finish" | "Verify" => {
                 self.hash_op(core, method, member, &arguments, span)
@@ -2360,7 +2374,7 @@ impl Provider for CryptoProvider {
             "ToText" | "ToBase64" | "FromBase64" | "ToBase64Url" | "FromBase64Url" | "Concat"
             | "ToPem" | "FromPem" => self.encoding_op(method, member, &arguments, span),
             "Crc32" | "Crc32c" | "Adler32" | "XxHash64" | "VerifyFileChecksum" => {
-                self.checksum_op(method, member, &arguments, span)
+                self.checksum_op(core.host().filesystem(), method, member, &arguments, span)
             }
             "New" if member.contains("Hasher") => {
                 self.hash_op(core, method, member, &arguments, span)

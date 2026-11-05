@@ -133,17 +133,33 @@ fn test_verify_file_checksum() {
 
     // SHA-256 of "123456789" is 15e2b0d3c33891ebb0f1ef609ec419420c20e320ce94c65fbc8c3312448eb225
     let sha256_spec = "sha256:15e2b0d3c33891ebb0f1ef609ec419420c20e320ce94c65fbc8c3312448eb225";
-    assert!(bn_verify_file_checksum(path, sha256_spec));
+    assert!(bn_verify_file_checksum(
+        &bn_stdlib::FsPolicy::unrestricted(),
+        path,
+        sha256_spec
+    ));
 
     // CRC-32 of "123456789" is cbf43926
     let crc32_spec = "crc32:cbf43926";
-    assert!(bn_verify_file_checksum(path, crc32_spec));
+    assert!(bn_verify_file_checksum(
+        &bn_stdlib::FsPolicy::unrestricted(),
+        path,
+        crc32_spec
+    ));
 
     // Mismatched checksum
-    assert!(!bn_verify_file_checksum(path, "crc32:00000000"));
+    assert!(!bn_verify_file_checksum(
+        &bn_stdlib::FsPolicy::unrestricted(),
+        path,
+        "crc32:00000000"
+    ));
 
     // Unknown scheme
-    assert!(!bn_verify_file_checksum(path, "unknown:cbf43926"));
+    assert!(!bn_verify_file_checksum(
+        &bn_stdlib::FsPolicy::unrestricted(),
+        path,
+        "unknown:cbf43926"
+    ));
 
     let _ = fs::remove_file(path);
 }

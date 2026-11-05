@@ -83,6 +83,58 @@ fn native_exec_program(label: &str, body: &str, env: &[(&str, &str)]) -> String 
     stdout
 }
 
+/// `Checksum.VerifyFileChecksum` reads through the execution policy: a file
+/// outside the read root is FALSE even when its checksum matches.
+#[test]
+fn compiled_verify_file_checksum_obeys_the_read_root() {
+    let base = std::env::temp_dir().join(format!("bn-sandbox-checksum-{}", std::process::id()));
+    let read_root = base.join("read");
+    let outside_root = base.join("outside");
+    fs::create_dir_all(&read_root).expect("create read root");
+    fs::create_dir_all(&outside_root).expect("create outside root");
+    // CRC-32 of "abc" is 0x352441c2.
+    let inside = read_root.join("inside.txt");
+    let outside = outside_root.join("outside.txt");
+    fs::write(&inside, "abc").expect("write inside input");
+    fs::write(&outside, "abc").expect("write outside input");
+    let fixture = base.join("checksum.bn");
+    fs::write(
+        &fixture,
+        format!(
+            "IMPORT BNCrypto AS Crypto\n\nFUNCTION Start() AS VOID\n    PRINT Crypto.Checksum.VerifyFileChecksum(\"{}\", \"crc32:352441c2\")\n    PRINT Crypto.Checksum.VerifyFileChecksum(\"{}\", \"crc32:352441c2\")\n    LET digest AS Crypto.Bytes OR Error = Crypto.HashFile(\"{}\")\n    IF digest IS Error THEN\n        PRINT \"hashfile-denied\"\n    END IF\nEND FUNCTION\n",
+            inside.display(),
+            outside.display(),
+            outside.display()
+        ),
+    )
+    .expect("write checksum fixture");
+    let artifact = base.join("checksum");
+    let built = bnc()
+        .args([
+            "--sandbox",
+            "--read-root",
+            read_root.to_str().expect("read root path"),
+            fixture.to_str().expect("fixture path"),
+            "-o",
+            artifact.to_str().expect("artifact path"),
+        ])
+        .output()
+        .expect("build checksum fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run checksum artifact");
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "TRUE\nFALSE\nhashfile-denied\n"
+    );
+    let _ = fs::remove_dir_all(&base);
+}
+
 #[test]
 #[allow(clippy::too_many_lines)] // One end-to-end sandbox fixture exercises one compiled policy artifact.
 fn compiled_sandbox_enforces_read_write_roots_and_symlink_escape() {

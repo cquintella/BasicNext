@@ -166,12 +166,20 @@ const CRC32_TABLE: [u32; 256] = {
 /// Computes IEEE 802.3 CRC-32 (polynomial `0xEDB88320`).
 #[must_use]
 pub fn bn_crc32(data: &[u8]) -> u32 {
-    let mut crc = 0xFFFF_FFFFu32;
+    !crc_step(&CRC32_TABLE, CRC_INIT, data)
+}
+
+/// Initial register of both CRC-32 variants (all ones).
+const CRC_INIT: u32 = 0xFFFF_FFFF;
+
+/// Feeds `data` into a reflected table-driven CRC-32 register; the final
+/// checksum is the complement of the register.
+fn crc_step(table: &[u32; 256], mut crc: u32, data: &[u8]) -> u32 {
     for &b in data {
         let idx = ((crc ^ u32::from(b)) & 0xFF) as usize;
-        crc = (crc >> 8) ^ CRC32_TABLE[idx];
+        crc = (crc >> 8) ^ table[idx];
     }
-    !crc
+    crc
 }
 
 #[allow(clippy::cast_possible_truncation)]
@@ -198,25 +206,27 @@ const CRC32C_TABLE: [u32; 256] = {
 /// Computes Castagnoli CRC-32C (polynomial `0x82F63B78`).
 #[must_use]
 pub fn bn_crc32c(data: &[u8]) -> u32 {
-    let mut crc = 0xFFFF_FFFFu32;
-    for &b in data {
-        let idx = ((crc ^ u32::from(b)) & 0xFF) as usize;
-        crc = (crc >> 8) ^ CRC32C_TABLE[idx];
-    }
-    !crc
+    !crc_step(&CRC32C_TABLE, CRC_INIT, data)
 }
 
 /// Computes Adler-32 checksum.
 #[must_use]
 pub fn bn_adler32(data: &[u8]) -> u32 {
+    let (a, b) = adler_step(ADLER_INIT, data);
+    (b << 16) | a
+}
+
+/// Initial `(a, b)` sums of Adler-32.
+const ADLER_INIT: (u32, u32) = (1, 0);
+
+/// Feeds `data` into the Adler-32 sums `(a, b)`.
+fn adler_step((mut a, mut b): (u32, u32), data: &[u8]) -> (u32, u32) {
     const MOD_ADLER: u32 = 65521;
-    let mut a: u32 = 1;
-    let mut b: u32 = 0;
     for &byte in data {
         a = (a + u32::from(byte)) % MOD_ADLER;
         b = (b + a) % MOD_ADLER;
     }
-    (b << 16) | a
+    (a, b)
 }
 
 const PRIME64_1: u64 = 0x9E37_79B1_85EB_CA87;
@@ -321,38 +331,83 @@ pub fn bn_xxhash64(data: &[u8]) -> u64 {
     h64
 }
 
-/// Verifies a file against an expected checksum specifier like `"sha256:<hex>"` or `"crc32:<hex>"`.
+/// Bytes read from the file per step of `bn_verify_file_checksum`.
+const CHECKSUM_CHUNK: usize = 64 * 1024;
+
+/// A running checksum of the file a specifier names.
+enum FileChecksum {
+    Sha256(Box<crate::crypto_hash::Hasher>),
+    Crc32(u32),
+    Crc32c(u32),
+    Adler32((u32, u32)),
+}
+
+impl FileChecksum {
+    /// The checksum for a specifier scheme (`sha256`, `crc32`, `crc32c`,
+    /// `adler32`, any case); `None` for any other scheme.
+    fn for_scheme(scheme: &str) -> Option<Self> {
+        match scheme.to_ascii_lowercase().as_str() {
+            "sha256" => crate::crypto_hash::Hasher::new(crate::crypto_hash::HASH_SHA256)
+                .ok()
+                .map(|hasher| Self::Sha256(Box::new(hasher))),
+            "crc32" => Some(Self::Crc32(CRC_INIT)),
+            "crc32c" => Some(Self::Crc32c(CRC_INIT)),
+            "adler32" => Some(Self::Adler32(ADLER_INIT)),
+            _ => None,
+        }
+    }
+
+    fn update(&mut self, data: &[u8]) {
+        match self {
+            Self::Sha256(hasher) => hasher.update(data),
+            Self::Crc32(crc) => *crc = crc_step(&CRC32_TABLE, *crc, data),
+            Self::Crc32c(crc) => *crc = crc_step(&CRC32C_TABLE, *crc, data),
+            Self::Adler32(sums) => *sums = adler_step(*sums, data),
+        }
+    }
+
+    /// Whether the finished checksum equals `expected` (hex, any case). The
+    /// SHA-256 comparison is constant-time.
+    fn matches(self, expected: &str) -> bool {
+        let expected = expected.to_ascii_lowercase();
+        match self {
+            Self::Sha256(hasher) => subtle::ConstantTimeEq::ct_eq(
+                crate::crypto::encode_hex(&hasher.finish()).as_bytes(),
+                expected.as_bytes(),
+            )
+            .into(),
+            Self::Crc32(crc) | Self::Crc32c(crc) => format!("{:08x}", !crc) == expected,
+            Self::Adler32((a, b)) => format!("{:08x}", (b << 16) | a) == expected,
+        }
+    }
+}
+
+/// Verifies a file against an algorithm-tagged specifier (`"sha256:<hex>"`,
+/// `"crc32:<hex>"`, `"crc32c:<hex>"`, `"adler32:<hex>"`). The file is opened
+/// through `fs`, the execution policy, and read in chunks. `FALSE` for an
+/// unknown scheme, a path the policy refuses, a read error or a mismatch.
 #[must_use]
-pub fn bn_verify_file_checksum(path: &str, expected: &str) -> bool {
+pub fn bn_verify_file_checksum(fs: &crate::FsPolicy, path: &str, expected: &str) -> bool {
+    use std::io::Read as _;
     let Some((scheme, expected_val)) = expected.split_once(':') else {
         return false;
     };
-    let Ok(data) = std::fs::read(path) else {
+    let Some(mut checksum) = FileChecksum::for_scheme(scheme) else {
         return false;
     };
-    match scheme.to_ascii_lowercase().as_str() {
-        "sha256" => {
-            let actual = crate::crypto::sha256_hex(&data);
-            subtle::ConstantTimeEq::ct_eq(
-                actual.as_bytes(),
-                expected_val.to_ascii_lowercase().as_bytes(),
-            )
-            .into()
+    let Ok(mut file) = fs.open(std::path::Path::new(path), crate::secure_fs::OpenMode::Read) else {
+        return false;
+    };
+    let mut buffer = vec![0_u8; CHECKSUM_CHUNK];
+    loop {
+        match file.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(read) => checksum.update(&buffer[..read]),
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(_) => return false,
         }
-        "crc32" => {
-            let actual = format!("{:08x}", bn_crc32(&data));
-            actual.eq_ignore_ascii_case(expected_val)
-        }
-        "crc32c" => {
-            let actual = format!("{:08x}", bn_crc32c(&data));
-            actual.eq_ignore_ascii_case(expected_val)
-        }
-        "adler32" => {
-            let actual = format!("{:08x}", bn_adler32(&data));
-            actual.eq_ignore_ascii_case(expected_val)
-        }
-        _ => false,
     }
+    checksum.matches(expected_val)
 }
 
 // ---------------------------------------------------------------------------
@@ -537,5 +592,7 @@ pub extern "C" fn bn_rt_crypto_verify_file_checksum(
     let Some(expected_str) = c_str(expected) else {
         return 0;
     };
-    i32::from(bn_verify_file_checksum(path_str, expected_str))
+    i32::from(crate::policy::with_fs(|fs| {
+        bn_verify_file_checksum(fs, path_str, expected_str)
+    }))
 }

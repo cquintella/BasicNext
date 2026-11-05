@@ -63,7 +63,13 @@ fn test_file_encryption_roundtrip_sizes() {
         fs::write(&in_path, &data).expect("write plain input file");
 
         // 1. Encrypt file
-        bn_encrypt_file(&key, &in_path, &enc_path).expect("encrypt file");
+        bn_encrypt_file(
+            &bn_stdlib::FsPolicy::unrestricted(),
+            &key,
+            &in_path,
+            &enc_path,
+        )
+        .expect("encrypt file");
         assert!(enc_path.exists(), "encrypted file must exist");
 
         let enc_bytes = fs::read(&enc_path).expect("read encrypted file");
@@ -73,7 +79,13 @@ fn test_file_encryption_roundtrip_sizes() {
         );
 
         // 2. Decrypt file
-        bn_decrypt_file(&key, &enc_path, &out_path).expect("decrypt file");
+        bn_decrypt_file(
+            &bn_stdlib::FsPolicy::unrestricted(),
+            &key,
+            &enc_path,
+            &out_path,
+        )
+        .expect("decrypt file");
         assert!(out_path.exists(), "decrypted file must exist");
 
         let decrypted = fs::read(&out_path).expect("read decrypted file");
@@ -98,7 +110,12 @@ fn test_file_encryption_fails_if_output_exists() {
     fs::write(&enc_path, b"already exists").unwrap();
 
     // Encrypting to an existing file must fail (FS.OpenNew semantics)
-    let res = bn_encrypt_file(&key, &in_path, &enc_path);
+    let res = bn_encrypt_file(
+        &bn_stdlib::FsPolicy::unrestricted(),
+        &key,
+        &in_path,
+        &enc_path,
+    );
     assert!(res.is_err(), "must fail when destination already exists");
 
     let _ = fs::remove_file(&in_path);
@@ -119,7 +136,13 @@ fn test_file_decryption_deletes_partial_output_on_tamper() {
     }
     fs::write(&in_path, &data).unwrap();
 
-    bn_encrypt_file(&key, &in_path, &enc_path).expect("encrypt file");
+    bn_encrypt_file(
+        &bn_stdlib::FsPolicy::unrestricted(),
+        &key,
+        &in_path,
+        &enc_path,
+    )
+    .expect("encrypt file");
 
     // Tamper byte in 2nd chunk
     let mut enc_bytes = fs::read(&enc_path).unwrap();
@@ -128,7 +151,12 @@ fn test_file_decryption_deletes_partial_output_on_tamper() {
     fs::write(&enc_path, &enc_bytes).unwrap();
 
     // Decrypt must fail
-    let res = bn_decrypt_file(&key, &enc_path, &out_path);
+    let res = bn_decrypt_file(
+        &bn_stdlib::FsPolicy::unrestricted(),
+        &key,
+        &enc_path,
+        &out_path,
+    );
     assert!(res.is_err(), "decryption of tampered file must fail");
 
     // Partial output file MUST be deleted!

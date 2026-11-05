@@ -140,9 +140,10 @@ pub fn bn_hash(data: &[u8], alg: i32) -> Result<Vec<u8>, CryptoFailure> {
 ///
 /// # Errors
 /// Returns `CryptoFailure::FileIo` on file access error, or `CryptoFailure::Algorithm`.
-pub fn bn_hash_file(path: &Path, alg: i32) -> Result<Vec<u8>, CryptoFailure> {
+pub fn bn_hash_file(fs: &crate::FsPolicy, path: &Path, alg: i32) -> Result<Vec<u8>, CryptoFailure> {
     let mut hasher = Hasher::new(alg)?;
-    let mut file = crate::policy::open_path(path, crate::secure_fs::OpenMode::Read)
+    let mut file = fs
+        .open(path, crate::secure_fs::OpenMode::Read)
         .map_err(|e| CryptoFailure::FileIo(e.to_string()))?;
     let mut buffer = vec![0u8; 64 * 1024];
     loop {
@@ -351,7 +352,7 @@ pub extern "C" fn bn_rt_crypto_hash_file(
     let Some(path_str) = c_str(path_ptr) else {
         return BN_CRYPTO_INVALID_ARGUMENT;
     };
-    match bn_hash_file(Path::new(path_str), alg) {
+    match crate::policy::with_fs(|fs| bn_hash_file(fs, Path::new(path_str), alg)) {
         Ok(digest) => {
             let handle = store(digest);
             let handle_i64 = i64::try_from(handle).unwrap_or(i64::MAX);

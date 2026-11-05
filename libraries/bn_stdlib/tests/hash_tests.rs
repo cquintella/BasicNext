@@ -114,7 +114,12 @@ fn test_hash_file_streaming() {
     fs::write(&file_path, &payload).expect("write file");
 
     let expected = bn_hash(&payload, HASH_SHA256).expect("hash payload");
-    let file_hashed = bn_hash_file(&file_path, HASH_SHA256).expect("hash file");
+    let file_hashed = bn_hash_file(
+        &bn_stdlib::FsPolicy::unrestricted(),
+        &file_path,
+        HASH_SHA256,
+    )
+    .expect("hash file");
 
     assert_eq!(file_hashed, expected);
 
