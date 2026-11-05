@@ -1946,13 +1946,14 @@ impl CryptoProvider {
         ))
     }
 
+    /// A private key's seed (wiped when dropped) and its algorithm.
     fn private_material(
         &self,
         arguments: &[Value],
         index: usize,
         member: &str,
         span: Span,
-    ) -> Result<Result<(Vec<u8>, i32), CryptoFailure>, Diagnostic> {
+    ) -> Result<Result<PrivateMaterial, CryptoFailure>, Diagnostic> {
         let Some(Value::CryptoKey(handle)) = arguments.get(index) else {
             return Err(type_mismatch(
                 "BNCrypto.PrivateKey",
@@ -1971,7 +1972,10 @@ impl CryptoProvider {
         if entry.zeroized {
             return Ok(Err(CryptoFailure::ZeroizedKey));
         }
-        Ok(Ok((entry.seed.to_vec(), entry.algorithm)))
+        Ok(Ok((
+            zeroize::Zeroizing::new(entry.seed.to_vec()),
+            entry.algorithm,
+        )))
     }
 
     fn op_new_keypair_with(
@@ -1982,9 +1986,14 @@ impl CryptoProvider {
     ) -> Result<Value, Diagnostic> {
         require_arity(member, arguments, 1, span)?;
         let alg = match arguments.first() {
+            // `alg AS INT32` is the only field; its default (`Alg.ED25519`) is the
+            // record's, never chosen here.
             Some(Value::Record { record }) => match record.get(0) {
-                Some(Value::Integer(value, _)) => i32::try_from(*value).unwrap_or(0),
-                _ => 30,
+                Some(Value::Integer(value, _)) => i32::try_from(*value)
+                    .map_err(|_| type_mismatch("INT32", "out-of-range alg value", member, span))?,
+                _ => {
+                    return Err(type_mismatch("INT32", "non-INT32 alg field", member, span));
+                }
             },
             _ => {
                 return Err(type_mismatch(
@@ -2659,6 +2668,9 @@ fn csprng_dispatch(
         _ => Err(name_not_found(method, "BNCrypto CSPRNG function", span)),
     }
 }
+
+/// A private key's seed (wiped when dropped) and its `Alg` selector.
+type PrivateMaterial = (zeroize::Zeroizing<Vec<u8>>, i32);
 
 #[cfg(test)]
 mod tests {

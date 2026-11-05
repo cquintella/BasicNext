@@ -50,29 +50,55 @@ pub fn bn_base64_encode(bytes: &[u8]) -> String {
     out
 }
 
-/// Decodes a standard Base64 string (RFC 4648 §4), ignoring whitespace and padding.
+/// Base64 sextets per quantum, and the most padding characters a quantum ends with.
+const BASE64_QUANTUM: usize = 4;
+const BASE64_MAX_PADDING: usize = 2;
+
+/// The value of one standard Base64 digit, or `None`.
+const fn base64_digit(b: u8) -> Option<u8> {
+    match b {
+        b'A'..=b'Z' => Some(b - b'A'),
+        b'a'..=b'z' => Some(b - b'a' + 26),
+        b'0'..=b'9' => Some(b - b'0' + 52),
+        b'+' => Some(62),
+        b'/' => Some(63),
+        _ => None,
+    }
+}
+
+/// Decodes a standard Base64 string (RFC 4648 §4). Line breaks and spaces are
+/// skipped (PEM bodies); padding is optional, but when present it completes
+/// the last quantum and is at most two `=`. A length that cannot hold a whole
+/// byte and non-zero trailing bits (a non-canonical encoding) are refused.
 #[allow(clippy::cast_possible_truncation)]
 pub fn bn_base64_decode(input: &str) -> Result<Vec<u8>, CryptoFailure> {
-    let s = input.trim_end_matches('=');
-    let mut out = Vec::with_capacity((s.len() * 3) / 4);
+    let text: Vec<u8> = input
+        .bytes()
+        .filter(|b| !matches!(b, b' ' | b'\r' | b'\n' | b'\t'))
+        .collect();
+    let digits = text
+        .iter()
+        .rposition(|&b| b != b'=')
+        .map_or(0, |last| last + 1);
+    let padding = text.len() - digits;
+    let padded_length_is_whole = padding == 0 || text.len().is_multiple_of(BASE64_QUANTUM);
+    if padding > BASE64_MAX_PADDING || !padded_length_is_whole || digits % BASE64_QUANTUM == 1 {
+        return Err(CryptoFailure::Base64);
+    }
+    let mut out = Vec::with_capacity(digits * 3 / BASE64_QUANTUM);
     let mut buf = 0u32;
     let mut bits = 0;
-    for &b in s.as_bytes() {
-        let val = match b {
-            b'A'..=b'Z' => b - b'A',
-            b'a'..=b'z' => b - b'a' + 26,
-            b'0'..=b'9' => b - b'0' + 52,
-            b'+' => 62,
-            b'/' => 63,
-            b' ' | b'\r' | b'\n' | b'\t' => continue,
-            _ => return Err(CryptoFailure::Base64),
-        };
-        buf = (buf << 6) | u32::from(val);
+    for &b in &text[..digits] {
+        let value = base64_digit(b).ok_or(CryptoFailure::Base64)?;
+        buf = (buf << 6) | u32::from(value);
         bits += 6;
         if bits >= 8 {
             bits -= 8;
             out.push((buf >> bits) as u8);
         }
+    }
+    if buf & ((1 << bits) - 1) != 0 {
+        return Err(CryptoFailure::Base64);
     }
     Ok(out)
 }
@@ -413,12 +439,19 @@ pub fn bn_verify_file_checksum(fs: &crate::FsPolicy, path: &str, expected: &str)
 // C ABI Functions
 // ---------------------------------------------------------------------------
 
+/// Runs `f` on the live buffer `handle`. A released or unknown handle is a
+/// `USE_AFTER_RELEASE` failure that ends the process, as `bni` reports it;
+/// never a made-up result.
+fn on_live_buffer<T>(handle: u64, f: impl FnOnce(&[u8]) -> T) -> T {
+    with_buffers(|bufs| bufs.get(&handle).map(|bytes| f(bytes)))
+        .unwrap_or_else(|| crate::arc_abi::abort_use_after_release())
+}
+
 /// C ABI: `ToBase64(handle) -> STRING`.
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_bytes_to_base64(handle: u64) -> *mut c_char {
-    let b64 = with_buffers(|bufs| bufs.get(&handle).map(|b| bn_base64_encode(b)));
-    c_string(&b64.unwrap_or_default())
+    c_string(&on_live_buffer(handle, bn_base64_encode))
 }
 
 /// C ABI: `FromBase64(text) -> Bytes OR Error`.
@@ -435,6 +468,8 @@ pub extern "C" fn bn_rt_crypto_bytes_from_base64(text: *const c_char, out_handle
         Ok(bytes) => {
             let h = store(bytes);
             let handle_i64 = i64::try_from(h).unwrap_or(i64::MAX);
+            // SAFETY: `out_handle` was checked non-null above and points to the
+            // caller's result slot.
             unsafe { *out_handle = handle_i64 };
             BN_CRYPTO_OK
         }
@@ -446,8 +481,7 @@ pub extern "C" fn bn_rt_crypto_bytes_from_base64(text: *const c_char, out_handle
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_bytes_to_base64url(handle: u64) -> *mut c_char {
-    let b64 = with_buffers(|bufs| bufs.get(&handle).map(|b| bn_base64url_encode(b)));
-    c_string(&b64.unwrap_or_default())
+    c_string(&on_live_buffer(handle, bn_base64url_encode))
 }
 
 /// C ABI: `FromBase64Url(text) -> Bytes OR Error`.
@@ -467,6 +501,8 @@ pub extern "C" fn bn_rt_crypto_bytes_from_base64url(
         Ok(bytes) => {
             let h = store(bytes);
             let handle_i64 = i64::try_from(h).unwrap_or(i64::MAX);
+            // SAFETY: `out_handle` was checked non-null above and points to the
+            // caller's result slot.
             unsafe { *out_handle = handle_i64 };
             BN_CRYPTO_OK
         }
@@ -486,6 +522,8 @@ pub extern "C" fn bn_rt_crypto_bytes_to_text(handle: u64, out_str: *mut *mut c_c
     };
     match bn_bytes_to_text(&bytes) {
         Ok(s) => {
+            // SAFETY: `out_str` was checked non-null above and points to the
+            // caller's result slot.
             unsafe { *out_str = c_string(&s) };
             BN_CRYPTO_OK
         }
@@ -513,6 +551,8 @@ pub extern "C" fn bn_rt_crypto_bytes_concat(
     let combined = bn_bytes_concat(&a, &b);
     let h = store(combined);
     let handle_i64 = i64::try_from(h).unwrap_or(i64::MAX);
+    // SAFETY: `out_handle` was checked non-null above and points to the
+    // caller's result slot.
     unsafe { *out_handle = handle_i64 };
     BN_CRYPTO_OK
 }
@@ -524,8 +564,9 @@ pub extern "C" fn bn_rt_crypto_to_pem(label: *const c_char, handle: u64) -> *mut
     let Some(label_str) = c_str(label) else {
         return c_string("");
     };
-    let pem = with_buffers(|bufs| bufs.get(&handle).map(|b| bn_pem_encode(label_str, b)));
-    c_string(&pem.unwrap_or_default())
+    c_string(&on_live_buffer(handle, |bytes| {
+        bn_pem_encode(label_str, bytes)
+    }))
 }
 
 /// C ABI: `FromPem(pem) -> Bytes OR Error`.
@@ -542,6 +583,8 @@ pub extern "C" fn bn_rt_crypto_from_pem(pem: *const c_char, out_handle: *mut i64
         Ok(bytes) => {
             let h = store(bytes);
             let handle_i64 = i64::try_from(h).unwrap_or(i64::MAX);
+            // SAFETY: `out_handle` was checked non-null above and points to the
+            // caller's result slot.
             unsafe { *out_handle = handle_i64 };
             BN_CRYPTO_OK
         }
@@ -553,21 +596,21 @@ pub extern "C" fn bn_rt_crypto_from_pem(pem: *const c_char, out_handle: *mut i64
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_crc32(handle: u64) -> i64 {
-    with_buffers(|bufs| bufs.get(&handle).map(|b| i64::from(bn_crc32(b)))).unwrap_or(0)
+    on_live_buffer(handle, |bytes| i64::from(bn_crc32(bytes)))
 }
 
 /// C ABI: `Checksum.Crc32c(handle) -> INTEGER`.
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_crc32c(handle: u64) -> i64 {
-    with_buffers(|bufs| bufs.get(&handle).map(|b| i64::from(bn_crc32c(b)))).unwrap_or(0)
+    on_live_buffer(handle, |bytes| i64::from(bn_crc32c(bytes)))
 }
 
 /// C ABI: `Checksum.Adler32(handle) -> INTEGER`.
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_adler32(handle: u64) -> i64 {
-    with_buffers(|bufs| bufs.get(&handle).map(|b| i64::from(bn_adler32(b)))).unwrap_or(0)
+    on_live_buffer(handle, |bytes| i64::from(bn_adler32(bytes)))
 }
 
 /// C ABI: `Checksum.XxHash64(handle) -> INTEGER`.
@@ -575,7 +618,7 @@ pub extern "C" fn bn_rt_crypto_adler32(handle: u64) -> i64 {
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_xxhash64(handle: u64) -> i64 {
     #[allow(clippy::cast_possible_wrap)]
-    with_buffers(|bufs| bufs.get(&handle).map(|b| bn_xxhash64(b) as i64)).unwrap_or(0)
+    on_live_buffer(handle, |bytes| bn_xxhash64(bytes) as i64)
 }
 
 /// C ABI: `Checksum.VerifyFileChecksum(path, expected) -> 1 | 0`.

@@ -326,3 +326,15 @@ fn load_public_key_refuses_a_small_order_ed25519_key() {
         Err(bn_types::error_codes::crypto::PARSE_ERROR)
     );
 }
+
+/// A private key entry never prints its seed, even through `Debug`.
+#[test]
+fn private_key_entry_debug_redacts_the_seed() {
+    let seed = vec![0xAB_u8; 32];
+    let entry =
+        bn_stdlib::crypto_asymmetric::private_entry_from_seed(zeroize::Zeroizing::new(seed), 30)
+            .expect("entry");
+    let shown = format!("{entry:?}");
+    assert!(!shown.contains("171"), "{shown}");
+    assert!(!shown.to_lowercase().contains("abab"), "{shown}");
+}

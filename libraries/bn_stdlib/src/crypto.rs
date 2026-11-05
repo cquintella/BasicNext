@@ -312,7 +312,7 @@ pub fn argon2id(password: &[u8], salt: &[u8], params: Argon2Params<'_>) -> Optio
 /// not exactly 32 bytes.
 #[must_use]
 pub fn ed25519_public_key(seed: &[u8]) -> Option<Vec<u8>> {
-    let seed: [u8; 32] = seed.try_into().ok()?;
+    let seed = zeroize::Zeroizing::new(<[u8; 32]>::try_from(seed).ok()?);
     Some(
         ed25519_dalek::SigningKey::from_bytes(&seed)
             .verifying_key()

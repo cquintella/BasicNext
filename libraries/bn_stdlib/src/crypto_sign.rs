@@ -38,7 +38,7 @@ const LOAD_PRIVATE: &str = "BNCrypto.LoadPrivateKey";
 const LOAD_PUBLIC: &str = "BNCrypto.LoadPublicKey";
 
 struct KeyMaterial {
-    seed: Vec<u8>,
+    seed: zeroize::Zeroizing<Vec<u8>>,
     algorithm: i32,
 }
 
@@ -55,7 +55,7 @@ fn private_material(handle: u64, operation: &'static str) -> Result<KeyMaterial,
             return Err(CryptoFailure::ZeroizedKey);
         }
         Ok(KeyMaterial {
-            seed: entry.seed.to_vec(),
+            seed: zeroize::Zeroizing::new(entry.seed.to_vec()),
             algorithm: entry.algorithm,
         })
     })
@@ -154,18 +154,20 @@ fn pem_string(pem: impl AsRef<str>) -> String {
     pem.as_ref().to_owned()
 }
 
-fn x25519_private_der(seed: &[u8]) -> Result<Vec<u8>, CryptoFailure> {
-    let seed: [u8; 32] = seed.try_into().map_err(|_| parse(EXPORT))?;
-    let mut wrapped = [0_u8; 34];
+fn x25519_private_der(seed: &[u8]) -> Result<zeroize::Zeroizing<Vec<u8>>, CryptoFailure> {
+    let seed = zeroize::Zeroizing::new(<[u8; 32]>::try_from(seed).map_err(|_| parse(EXPORT))?);
+    let mut wrapped = zeroize::Zeroizing::new([0_u8; 34]);
     wrapped[0] = 0x04;
     wrapped[1] = 0x20;
-    wrapped[2..].copy_from_slice(&seed);
+    wrapped[2..].copy_from_slice(seed.as_ref());
     let algorithm = pkcs8::AlgorithmIdentifierRef {
         oid: pkcs8::ObjectIdentifier::new_unwrap("1.3.101.110"),
         parameters: None,
     };
-    let info = pkcs8::PrivateKeyInfo::new(algorithm, &wrapped);
-    info.to_der().map_err(|_| parse(EXPORT))
+    let info = pkcs8::PrivateKeyInfo::new(algorithm, wrapped.as_ref());
+    info.to_der()
+        .map(zeroize::Zeroizing::new)
+        .map_err(|_| parse(EXPORT))
 }
 
 fn encrypt_der(der: &[u8], password: &str) -> Result<String, CryptoFailure> {
@@ -256,31 +258,39 @@ fn one_pem_block(pem: &str, operation: &'static str) -> Result<(String, Vec<u8>)
     Ok((label.to_owned(), document.as_bytes().to_vec()))
 }
 
-fn x25519_seed_from_private(private_key: &[u8]) -> Result<Vec<u8>, CryptoFailure> {
+fn x25519_seed_from_private(
+    private_key: &[u8],
+) -> Result<zeroize::Zeroizing<Vec<u8>>, CryptoFailure> {
     if private_key.len() == 34 && private_key[0] == 0x04 && private_key[1] == 0x20 {
-        return Ok(private_key[2..].to_vec());
+        return Ok(zeroize::Zeroizing::new(private_key[2..].to_vec()));
     }
     if private_key.len() == 32 {
-        return Ok(private_key.to_vec());
+        return Ok(zeroize::Zeroizing::new(private_key.to_vec()));
     }
     Err(parse(LOAD_PRIVATE))
 }
 
-fn material_from_pkcs8(der: &[u8]) -> Result<(Vec<u8>, i32), CryptoFailure> {
+fn material_from_pkcs8(der: &[u8]) -> Result<(zeroize::Zeroizing<Vec<u8>>, i32), CryptoFailure> {
     let info = pkcs8::PrivateKeyInfo::from_der(der).map_err(|_| parse(LOAD_PRIVATE))?;
     let ed25519 = pkcs8::ObjectIdentifier::new_unwrap("1.3.101.112");
     let x25519 = pkcs8::ObjectIdentifier::new_unwrap("1.3.101.110");
     let ec = pkcs8::ObjectIdentifier::new_unwrap("1.2.840.10045.2.1");
     if info.algorithm.oid == ed25519 {
         let key = ed25519_dalek::SigningKey::try_from(info).map_err(|_| parse(LOAD_PRIVATE))?;
-        return Ok((key.to_bytes().to_vec(), KEY_ALG_ED25519));
+        return Ok((
+            zeroize::Zeroizing::new(key.to_bytes().to_vec()),
+            KEY_ALG_ED25519,
+        ));
     }
     if info.algorithm.oid == x25519 {
         return Ok((x25519_seed_from_private(info.private_key)?, KEY_ALG_X25519));
     }
     if info.algorithm.oid == ec {
         let key = p256::SecretKey::from_pkcs8_der(der).map_err(|_| parse(LOAD_PRIVATE))?;
-        return Ok((key.to_bytes().to_vec(), KEY_ALG_ECDSA_P256));
+        return Ok((
+            zeroize::Zeroizing::new(key.to_bytes().to_vec()),
+            KEY_ALG_ECDSA_P256,
+        ));
     }
     Err(CryptoFailure::UnsupportedAlgorithm {
         operation: LOAD_PRIVATE,

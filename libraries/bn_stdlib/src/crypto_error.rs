@@ -78,6 +78,8 @@ pub enum CryptoFailure {
     Utf8,
     /// Requested algorithm id is not accepted by this operation (`UNSUPPORTED_ALGORITHM`).
     UnsupportedAlgorithm { operation: &'static str },
+    /// MD5 or SHA-1 requested: reserved in this version (`LEGACY_DISABLED`).
+    LegacyDisabled { operation: &'static str },
     /// Malformed or ambiguous PEM (`PARSE_ERROR`). The password is never stored.
     Parse { operation: &'static str },
     /// The key algorithm cannot perform the operation (`WRONG_KEY_TYPE`).
@@ -100,6 +102,7 @@ impl CryptoFailure {
             }
             Self::Random(_) => crypto::UNAVAILABLE,
             Self::UnsupportedAlgorithm { .. } => crypto::UNSUPPORTED_ALGORITHM,
+            Self::LegacyDisabled { .. } => crypto::LEGACY_DISABLED,
             Self::Parse { .. } | Self::Pem => crypto::PARSE_ERROR,
             Self::WrongKeyType { .. } => crypto::WRONG_KEY_TYPE,
             Self::Io { .. } => crypto::IO_ERROR,
@@ -122,6 +125,7 @@ impl CryptoFailure {
             | Self::Seed(operation)
             | Self::Random(operation)
             | Self::UnsupportedAlgorithm { operation }
+            | Self::LegacyDisabled { operation }
             | Self::Parse { operation }
             | Self::WrongKeyType { operation }
             | Self::Io { operation }
@@ -215,6 +219,9 @@ impl CryptoFailure {
             Self::UnsupportedAlgorithm { .. } => {
                 bn_catalog::text("crypto", "algorithm.unsupported.message").into()
             }
+            Self::LegacyDisabled { .. } => {
+                bn_catalog::text("crypto", "algorithm.legacy.message").into()
+            }
             Self::Parse { .. } => bn_catalog::text("crypto", "parse.pem.message").into(),
             Self::WrongKeyType { .. } => {
                 bn_catalog::text("crypto", "key.wrong_type.message").into()
@@ -305,6 +312,9 @@ impl CryptoFailure {
             Self::Utf8 => bn_catalog::text("crypto", "decode.utf8.cause").into(),
             Self::UnsupportedAlgorithm { .. } => {
                 bn_catalog::text("crypto", "algorithm.unsupported.cause").into()
+            }
+            Self::LegacyDisabled { .. } => {
+                bn_catalog::text("crypto", "algorithm.legacy.cause").into()
             }
             Self::Parse { .. } => bn_catalog::text("crypto", "parse.pem.cause").into(),
             Self::WrongKeyType { .. } => bn_catalog::text("crypto", "key.wrong_type.cause").into(),

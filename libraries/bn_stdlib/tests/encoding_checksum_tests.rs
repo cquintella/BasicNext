@@ -292,3 +292,19 @@ fn malformed_pem_is_a_parse_error() {
         );
     }
 }
+
+/// Standard Base64 is strict (RFC 4648 section 4): a length that cannot hold a
+/// byte, non-zero trailing bits, and more than two padding characters are
+/// refused. Unpadded text of a valid length and line breaks are accepted.
+#[test]
+fn base64_decoding_is_strict() {
+    for invalid in ["A", "QR==", "QQ===", "QQ=", "Q==="] {
+        assert!(bn_base64_decode(invalid).is_err(), "{invalid} was accepted");
+    }
+    assert_eq!(bn_base64_decode("QQ==").expect("padded"), b"A");
+    assert_eq!(bn_base64_decode("QQ").expect("unpadded"), b"A");
+    assert_eq!(
+        bn_base64_decode("QUJD\nREVG").expect("with a line break"),
+        b"ABCDEF"
+    );
+}

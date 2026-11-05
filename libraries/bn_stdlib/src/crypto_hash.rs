@@ -30,6 +30,9 @@ pub const HASH_BLAKE3: i32 = 8;
 pub const HASH_MD5: i32 = 9;
 pub const HASH_SHA1: i32 = 10;
 
+/// Operation named in a hash algorithm failure.
+const HASH: &str = "BNCrypto.Hash";
+
 /// Standard algorithm IDs catalogued for `BNCrypto.Alg`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Alg;
@@ -89,7 +92,10 @@ impl Hasher {
             HASH_SHA3_512 => State::Sha3_512(Sha3_512::new()),
             HASH_BLAKE2B => State::Blake2b(Blake2b512::new()),
             HASH_BLAKE3 => State::Blake3(Box::new(blake3::Hasher::new())),
-            _ => return Err(CryptoFailure::Algorithm(alg)),
+            HASH_MD5 | HASH_SHA1 => {
+                return Err(CryptoFailure::LegacyDisabled { operation: HASH });
+            }
+            _ => return Err(CryptoFailure::UnsupportedAlgorithm { operation: HASH }),
         };
         Ok(Self { state })
     }

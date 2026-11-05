@@ -73,8 +73,18 @@ fn test_hash_algorithms_vectors() {
     assert_eq!(blake3.len(), 32);
 
     // Legacy algorithms fail without allowLegacy
-    assert!(bn_hash(input, HASH_MD5).is_err());
-    assert!(bn_hash(input, HASH_SHA1).is_err());
+    // MD5 and SHA-1 are reserved: refused whatever the policy, with
+    // LEGACY_DISABLED; an id that names no algorithm is UNSUPPORTED_ALGORITHM.
+    for legacy in [HASH_MD5, HASH_SHA1] {
+        assert_eq!(
+            bn_hash(input, legacy).expect_err("legacy hash").code(),
+            bn_types::error_codes::crypto::LEGACY_DISABLED
+        );
+    }
+    assert_eq!(
+        bn_hash(input, 999).expect_err("unknown hash").code(),
+        bn_types::error_codes::crypto::UNSUPPORTED_ALGORITHM
+    );
 
     // Unknown algorithm code fails
     assert!(bn_hash(input, 999).is_err());

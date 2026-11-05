@@ -48,7 +48,6 @@ pub struct PublicKeyEntry {
     pub key_id: String,
 }
 
-#[derive(Debug)]
 pub struct PrivateKeyEntry {
     pub seed: zeroize::Zeroizing<Vec<u8>>,
     pub spki: Vec<u8>,
@@ -56,6 +55,17 @@ pub struct PrivateKeyEntry {
     pub algorithm: i32,
     pub key_id: String,
     pub zeroized: bool,
+}
+
+/// The seed is redacted: a formatted entry never shows secret bytes.
+impl std::fmt::Debug for PrivateKeyEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PrivateKeyEntry")
+            .field("algorithm", &self.algorithm)
+            .field("key_id", &self.key_id)
+            .field("zeroized", &self.zeroized)
+            .finish_non_exhaustive()
+    }
 }
 
 impl PrivateKeyEntry {
@@ -155,8 +165,8 @@ pub fn bn_ed25519_keypair_generate() -> Result<(u64, u64), CryptoFailure> {
 pub fn bn_keypair_generate_internal(algorithm: i32) -> Result<(u64, u64), CryptoFailure> {
     match algorithm {
         KEY_ALG_ED25519 => {
-            let mut seed = [0u8; 32];
-            getrandom::getrandom(&mut seed)
+            let mut seed = zeroize::Zeroizing::new([0u8; 32]);
+            getrandom::getrandom(seed.as_mut())
                 .map_err(|_| CryptoFailure::Random("BNCrypto.NewKeyPair"))?;
             let signing_key = ed25519_dalek::SigningKey::from_bytes(&seed);
             let verifying_key = signing_key.verifying_key();
@@ -171,10 +181,10 @@ pub fn bn_keypair_generate_internal(algorithm: i32) -> Result<(u64, u64), Crypto
             Ok((pub_h, priv_h))
         }
         KEY_ALG_X25519 => {
-            let mut seed = [0u8; 32];
-            getrandom::getrandom(&mut seed)
+            let mut seed = zeroize::Zeroizing::new([0u8; 32]);
+            getrandom::getrandom(seed.as_mut())
                 .map_err(|_| CryptoFailure::Random("BNCrypto.NewKeyPair"))?;
-            let raw_pub = curve25519_dalek::montgomery::MontgomeryPoint::mul_base_clamped(seed)
+            let raw_pub = curve25519_dalek::montgomery::MontgomeryPoint::mul_base_clamped(*seed)
                 .to_bytes()
                 .to_vec();
 
@@ -187,11 +197,11 @@ pub fn bn_keypair_generate_internal(algorithm: i32) -> Result<(u64, u64), Crypto
             Ok((pub_h, priv_h))
         }
         KEY_ALG_ECDSA_P256 => {
-            let mut seed = [0u8; 32];
+            let mut seed = zeroize::Zeroizing::new([0u8; 32]);
             let secret_key = loop {
-                getrandom::getrandom(&mut seed)
+                getrandom::getrandom(seed.as_mut())
                     .map_err(|_| CryptoFailure::Random("BNCrypto.NewKeyPair"))?;
-                if let Ok(sk) = p256::SecretKey::from_slice(&seed) {
+                if let Ok(sk) = p256::SecretKey::from_slice(seed.as_ref()) {
                     break sk;
                 }
             };
@@ -218,13 +228,13 @@ pub fn bn_keypair_generate_internal(algorithm: i32) -> Result<(u64, u64), Crypto
 
 /// Rebuilds a `PrivateKey` from a seed and the algorithm id stored with it.
 pub fn private_entry_from_seed(
-    seed: Vec<u8>,
+    seed: zeroize::Zeroizing<Vec<u8>>,
     algorithm: i32,
 ) -> Result<PrivateKeyEntry, CryptoFailure> {
     let (spki, raw_public) = spki_from_seed(&seed, algorithm)?;
     let key_id = compute_spki_key_id(&spki);
     Ok(PrivateKeyEntry {
-        seed: zeroize::Zeroizing::new(seed),
+        seed,
         spki,
         raw_public,
         algorithm,
@@ -357,6 +367,8 @@ pub extern "C" fn bn_rt_crypto_keypair_generate(
     }
     match bn_keypair_generate_internal(alg) {
         Ok((pub_h, priv_h)) => {
+            // SAFETY: both out pointers were checked non-null above; the caller
+            // (emitted code) passes slots of a live `KeyPair` record.
             unsafe {
                 *out_pub = pub_h;
                 *out_priv = priv_h;
