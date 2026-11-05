@@ -1,0 +1,10 @@
+// A program whose only heap use is the KeyPair record: the native backend
+// must declare what NewKeyPair needs without help from other calls.
+IMPORT BNCrypto AS Crypto
+
+FUNCTION Start() AS VOID
+    LET kp AS Crypto.KeyPair OR Error = Crypto.NewKeyPair()
+    IF kp IS Crypto.KeyPair THEN
+        PRINT kp.PublicKey.Algorithm()
+    END IF
+END FUNCTION

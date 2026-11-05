@@ -1450,6 +1450,22 @@ fn bncrypto_encoding_interprets() {
     );
 }
 
+/// A program whose only heap use is the `KeyPair` record; the compiled twin is
+/// in the `bnc` suite.
+#[test]
+fn bncrypto_keypair_alone_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-keypair-minimal/main.bn"])
+        .output()
+        .expect("run the BNCrypto keypair fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "30\n");
+}
+
 /// The `BNCrypto` asymmetric key slice: `KeyPair`, `PublicKey`, `PrivateKey`.
 #[test]
 fn bncrypto_asymmetric_interprets() {

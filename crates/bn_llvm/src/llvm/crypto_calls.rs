@@ -241,7 +241,7 @@ pub(super) fn lower_bncrypto_call(
             }
             return;
         }
-        "NewKeyPair" | "NewKeyPairFor" | "NewKeyPairWith" => {
+        member if crate::helpers::KEYPAIR_CONSTRUCTORS.contains(&member) => {
             text.assign(
                 format!("kpptr{dest}"),
                 I::call(

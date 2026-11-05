@@ -133,8 +133,9 @@ pub(crate) fn analyze_function<'a>(
                         {
                             uses_bn_rt_math = true;
                         }
-                        if bncrypto_method(module, name).is_some() {
+                        if let Some(member) = bncrypto_method(module, name) {
                             uses_bn_rt = true;
+                            uses_heap |= crate::helpers::KEYPAIR_CONSTRUCTORS.contains(&member);
                         }
                         if bncompress_method(module, name).is_some() {
                             uses_bn_rt = true;

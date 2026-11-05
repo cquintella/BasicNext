@@ -230,6 +230,12 @@ pub(crate) fn carries_bncrypto_private_key(module: &Module, ty: &Type) -> bool {
 
 /// The `BNCrypto` member `name` selects, if this module imports `BNCrypto` and
 /// the callee is part of the supported surface.
+/// The `BNCrypto` members that build a `KeyPair` record on the heap (`calloc`):
+/// the analysis marks a function that calls one as a heap user, so the preamble
+/// declares the allocator even when nothing else in the program needs it.
+pub(crate) const KEYPAIR_CONSTRUCTORS: [&str; 3] =
+    ["NewKeyPair", "NewKeyPairFor", "NewKeyPairWith"];
+
 pub(crate) fn bncrypto_method<'a>(module: &Module, name: &'a str) -> Option<&'a str> {
     if name.starts_with('#')
         && provider_name(module, name) != Some(bn_catalog::text("modules", "module.crypto"))

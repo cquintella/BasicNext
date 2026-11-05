@@ -1897,6 +1897,37 @@ fn compiled_bncrypto_encoding_matches_the_interpreter() {
 }
 
 #[test]
+fn compiled_bncrypto_keypair_alone_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_keypair_alone_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-keypair-minimal/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "30\n");
+    let _ = fs::remove_dir_all(&directory);
+}
+
+#[test]
 fn compiled_bncrypto_asymmetric_matches_the_interpreter() {
     let directory = std::env::temp_dir().join(format!(
         "bn-compiled_bncrypto_asymmetric_matches_the_interpreter-{}",
