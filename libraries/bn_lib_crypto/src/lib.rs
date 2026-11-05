@@ -2659,8 +2659,8 @@ mod tests {
     /// backends put in `Error.Code`.
     #[test]
     fn module_constants_match_the_runtime_codes() {
-        let module = include_str!("../../../modules/bn/BNCrypto.bn");
         use bn_types::error_codes::crypto;
+        let module = include_str!("../../../modules/bn/BNCrypto.bn");
         let codes = [
             ("INVALID_ARGUMENT", crypto::INVALID_ARGUMENT),
             ("AUTHENTICATION_FAILED", crypto::AUTHENTICATION_FAILED),
