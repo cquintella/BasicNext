@@ -261,7 +261,8 @@ pub(crate) enum CryptoAlternativeRelease {
     /// Release the handle in slot 2 with this slot prefix and symbol.
     Handle(&'static str, &'static str),
     /// A `KeyPair` record: no runtime work (the keys in it stay alive, as in
-    /// `bni`; the record itself is the K63 class of unreleased storage).
+    /// `bni`; the record itself is not freed: native code does not yet release
+    /// library storage at the end of a scope).
     Record,
 }
 
