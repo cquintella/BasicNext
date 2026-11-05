@@ -158,7 +158,7 @@ fn assert_password_absent(err: &bn_stdlib::crypto_error::CryptoFailure) {
 #[test]
 fn detached_signatures_follow_the_key_algorithm() {
     let seed = [9_u8; 32];
-    let message = b"sprint4";
+    let message = b"asymmetric";
     let ed_public = ed25519_public_key(&seed).expect("ed25519 public");
     let ed_sig = bn_sign(&seed, 30, message).expect("ed25519 sign");
     assert_eq!(bn_sign(&seed, 4, message).unwrap(), ed_sig);
@@ -177,7 +177,7 @@ fn detached_signatures_follow_the_key_algorithm() {
 
 #[test]
 fn sign_file_verifies_and_a_missing_file_is_false() {
-    let path = "bn-sprint4-sign.tmp";
+    let path = "bn-asymmetric-sign.tmp";
     std::fs::write(path, b"file-body").expect("write");
     let seed = [3_u8; 32];
     let public = ed25519_public_key(&seed).expect("public");
@@ -186,12 +186,12 @@ fn sign_file_verifies_and_a_missing_file_is_false() {
     assert!(!bn_verify_file(
         &public,
         30,
-        "bn-sprint4-missing.tmp",
+        "bn-asymmetric-missing.tmp",
         &signature
     ));
     let _ = std::fs::remove_file(path);
     assert_eq!(
-        bn_sign_file(&seed, 30, "bn-sprint4-missing.tmp")
+        bn_sign_file(&seed, 30, "bn-asymmetric-missing.tmp")
             .unwrap_err()
             .code(),
         8

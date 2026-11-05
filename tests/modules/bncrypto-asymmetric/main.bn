@@ -64,7 +64,7 @@ FUNCTION Start() AS VOID
         END IF
     END IF
 
-    LET msg AS Crypto.Bytes = Crypto.FromText("sprint4")
+    LET msg AS Crypto.Bytes = Crypto.FromText("asymmetric")
     IF kp IS Crypto.KeyPair THEN
         LET sig AS Crypto.Bytes OR Error = Crypto.Sign(kp.PrivateKey, msg)
         IF sig IS Crypto.Bytes THEN
@@ -76,9 +76,9 @@ FUNCTION Start() AS VOID
                 PRINT "verify-rejects"
             END IF
         END IF
-        LET pem AS STRING OR Error = kp.PrivateKey.ExportPem(Crypto.PemFormat.PKCS8, "pw-sprint4")
+        LET pem AS STRING OR Error = kp.PrivateKey.ExportPem(Crypto.PemFormat.PKCS8, "pw-asymmetric")
         IF pem IS STRING THEN
-            LET loaded AS Crypto.PrivateKey OR Error = Crypto.LoadPrivateKey(pem, "pw-sprint4")
+            LET loaded AS Crypto.PrivateKey OR Error = Crypto.LoadPrivateKey(pem, "pw-asymmetric")
             IF loaded IS Crypto.PrivateKey THEN
                 IF loaded.Id() = kp.PrivateKey.Id() THEN
                     PRINT "pem-roundtrip"
@@ -99,7 +99,7 @@ FUNCTION Start() AS VOID
                     PRINT "plain-roundtrip"
                 END IF
             END IF
-            LET refused AS Crypto.PrivateKey OR Error = Crypto.LoadPrivateKey(plain, "pw-sprint4")
+            LET refused AS Crypto.PrivateKey OR Error = Crypto.LoadPrivateKey(plain, "pw-asymmetric")
             IF refused IS Error THEN
                 IF refused.Code = Crypto.PARSE_ERROR THEN
                     PRINT "plain-password-rejected"

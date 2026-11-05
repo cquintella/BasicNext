@@ -130,19 +130,6 @@ pub mod crypto {
     pub const WRONG_KEY_TYPE: i32 = 7;
     pub const IO_ERROR: i32 = 8;
     pub const WRONG_PASSWORD: i32 = 9;
-
-    /// Name and value of each constant, as `modules/bn/BNCrypto.bn` exports them.
-    pub const ALL: &[(&str, i32)] = &[
-        ("INVALID_ARGUMENT", INVALID_ARGUMENT),
-        ("AUTHENTICATION_FAILED", AUTHENTICATION_FAILED),
-        ("UNAVAILABLE", UNAVAILABLE),
-        ("UNSUPPORTED_ALGORITHM", UNSUPPORTED_ALGORITHM),
-        ("LEGACY_DISABLED", LEGACY_DISABLED),
-        ("PARSE_ERROR", PARSE_ERROR),
-        ("WRONG_KEY_TYPE", WRONG_KEY_TYPE),
-        ("IO_ERROR", IO_ERROR),
-        ("WRONG_PASSWORD", WRONG_PASSWORD),
-    ];
 }
 
 /// `BNJson` `Error.Code` (`language/0.6/bnjson.md` "Errors").

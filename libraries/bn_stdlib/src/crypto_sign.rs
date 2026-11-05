@@ -31,8 +31,8 @@ const LABEL_ENCRYPTED: &str = "ENCRYPTED PRIVATE KEY";
 const LABEL_PUBLIC: &str = "PUBLIC KEY";
 const SIGN: &str = "BNCrypto.Sign";
 const SIGN_FILE: &str = "BNCrypto.SignFile";
-const EXPORT: &str = "BNCrypto.ExportPem";
-const EXPORT_PLAIN: &str = "BNCrypto.ExportPemUnencrypted";
+pub const EXPORT: &str = "BNCrypto.ExportPem";
+pub const EXPORT_PLAIN: &str = "BNCrypto.ExportPemUnencrypted";
 const LOAD_PRIVATE: &str = "BNCrypto.LoadPrivateKey";
 const LOAD_PUBLIC: &str = "BNCrypto.LoadPublicKey";
 

@@ -2172,7 +2172,6 @@ crates/bn_runtime_instrumentation/src/profiler.rs	prose	Self (ms)
 crates/bn_runtime_instrumentation/src/profiler.rs	prose	Total (ms)
 crates/bn_types/src/error_codes.rs	identifier	ACCESS_DENIED
 crates/bn_types/src/error_codes.rs	identifier	ADDRESS_IN_USE
-crates/bn_types/src/error_codes.rs	identifier	AUTHENTICATION_FAILED
 crates/bn_types/src/error_codes.rs	identifier	CAPABILITY_REQUIRED
 crates/bn_types/src/error_codes.rs	identifier	CAPTURE_FAILED
 crates/bn_types/src/error_codes.rs	identifier	CAPTURE_LIMIT
@@ -2183,7 +2182,6 @@ crates/bn_types/src/error_codes.rs	identifier	EGRESS_DENIED
 crates/bn_types/src/error_codes.rs	identifier	FILE_NOT_FOUND
 crates/bn_types/src/error_codes.rs	identifier	HTTP_FAILED
 crates/bn_types/src/error_codes.rs	identifier	INTERNAL_ERROR
-crates/bn_types/src/error_codes.rs	identifier	INVALID_ARGUMENT
 crates/bn_types/src/error_codes.rs	identifier	INVALID_ARGUMENT
 crates/bn_types/src/error_codes.rs	identifier	INVALID_ARGUMENT
 crates/bn_types/src/error_codes.rs	identifier	INVALID_ARGUMENT

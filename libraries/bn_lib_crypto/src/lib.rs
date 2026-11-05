@@ -2137,7 +2137,7 @@ impl CryptoProvider {
         };
         let Ok(format) = i32::try_from(*format) else {
             return failure(&bn_stdlib::crypto_error::CryptoFailure::Format {
-                operation: "BNCrypto.ExportPem",
+                operation: bn_stdlib::crypto_sign::EXPORT,
             });
         };
         let Value::String(password) = &arguments[2] else {
@@ -2166,7 +2166,7 @@ impl CryptoProvider {
         };
         let Ok(format) = i32::try_from(*format) else {
             return failure(&bn_stdlib::crypto_error::CryptoFailure::Format {
-                operation: "BNCrypto.ExportPemUnencrypted",
+                operation: bn_stdlib::crypto_sign::EXPORT_PLAIN,
             });
         };
         match bn_stdlib::crypto::bn_export_private_pem_unencrypted(&seed, algorithm, format) {
@@ -2660,7 +2660,19 @@ mod tests {
     #[test]
     fn module_constants_match_the_runtime_codes() {
         let module = include_str!("../../../modules/bn/BNCrypto.bn");
-        for (name, value) in bn_types::error_codes::crypto::ALL {
+        use bn_types::error_codes::crypto;
+        let codes = [
+            ("INVALID_ARGUMENT", crypto::INVALID_ARGUMENT),
+            ("AUTHENTICATION_FAILED", crypto::AUTHENTICATION_FAILED),
+            ("UNAVAILABLE", crypto::UNAVAILABLE),
+            ("UNSUPPORTED_ALGORITHM", crypto::UNSUPPORTED_ALGORITHM),
+            ("LEGACY_DISABLED", crypto::LEGACY_DISABLED),
+            ("PARSE_ERROR", crypto::PARSE_ERROR),
+            ("WRONG_KEY_TYPE", crypto::WRONG_KEY_TYPE),
+            ("IO_ERROR", crypto::IO_ERROR),
+            ("WRONG_PASSWORD", crypto::WRONG_PASSWORD),
+        ];
+        for (name, value) in codes {
             let line = format!("EXPORT CONST {name} AS INTEGER = {value}");
             assert!(module.contains(&line), "BNCrypto.bn lacks `{line}`");
         }
