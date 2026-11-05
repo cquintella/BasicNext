@@ -644,6 +644,18 @@ FUNCTION PostQuantum() AS VOID
                         LET received AS Crypto.Bytes OR Error = Crypto.MlKemDecapsulate(decapKey, ct)
                         IF received IS Crypto.Bytes THEN
                             Check("ML-KEM (768) both sides agree", Crypto.ConstantTimeEquals(sent, received))
+                            // Implicit rejection: a changed ciphertext still yields a secret
+                            // (FIPS 203), never an Error, and not the real one.
+                            LET rest AS Crypto.Bytes OR Error = Crypto.Slice(ct, 1, 1087)
+                            IF rest IS Crypto.Bytes THEN
+                                LET low AS Crypto.Bytes OR Error = Crypto.MlKemDecapsulate(decapKey, Crypto.Concat(Crypto.FromText("A"), rest))
+                                LET high AS Crypto.Bytes OR Error = Crypto.MlKemDecapsulate(decapKey, Crypto.Concat(Crypto.FromText("B"), rest))
+                                IF low IS Crypto.Bytes AND high IS Crypto.Bytes THEN
+                                    Check("ML-KEM (768) rejects a changed ciphertext implicitly", low.Length() = 32 AND NOT Crypto.ConstantTimeEquals(low, high) AND (NOT Crypto.ConstantTimeEquals(low, sent) OR NOT Crypto.ConstantTimeEquals(high, sent)))
+                                ELSE
+                                    Check("ML-KEM (768) rejects a changed ciphertext implicitly", FALSE)
+                                END IF
+                            END IF
                         ELSE
                             Check("ML-KEM (768) both sides agree", FALSE)
                         END IF

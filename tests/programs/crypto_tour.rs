@@ -16,7 +16,7 @@ const PROCESS_TIMEOUT: Duration = Duration::from_secs(120);
 const TOUR: &str = "examples/bncrypto_tour.bn";
 const LAST_LINE: &str = "BNCrypto tour done";
 /// Checks the tour makes; a removed check must be removed here on purpose.
-const CHECKS: usize = 134;
+const CHECKS: usize = 135;
 
 fn assert_all_pass(backend: &str, stdout: &str) {
     let failures: Vec<&str> = stdout

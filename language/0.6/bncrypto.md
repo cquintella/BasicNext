@@ -298,7 +298,7 @@ Deterministic signatures (RFC 8032 for Ed25519, RFC 6979 for ECDSA P-256). `Veri
 
 * ML-KEM-768 (FIPS 203) key encapsulation: `MlKemEncapsulate`, `MlKemDecapsulate`.
 * ML-DSA-65 (FIPS 204) digital signatures: `MlDsaSign`, `MlDsaVerify`.
-* Decapsulation follows **implicit rejection**: a well-sized invalid ciphertext produces an independent pseudo-random shared secret rather than `AUTHENTICATION_FAILED`.
+* Decapsulation follows **implicit rejection**: a well-sized invalid ciphertext produces an independent pseudo-random shared secret rather than `AUTHENTICATION_FAILED`. That secret is `J(z || c)`, the first 32 bytes of SHAKE256 over the seed half `z` and the ciphertext (FIPS 203, Algorithm 18), so it is the same for the same key and ciphertext. Key generation from a seed matches the NIST ACVP known-answer vectors; the seed is `d || z` for ML-KEM and `xi` for ML-DSA.
 
 ---
 
