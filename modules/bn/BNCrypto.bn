@@ -98,7 +98,6 @@ END STRUCT
 
 EXPORT STRUCT HashOptions
     alg AS INTEGER = 1
-    outLen AS INTEGER = 0
     policy AS Policy
 END STRUCT
 
@@ -115,7 +114,6 @@ END CLASS
 
 EXPORT STRUCT MacOptions
     alg AS INTEGER = 11
-    tagLen AS INTEGER = 0
     policy AS Policy
 END STRUCT
 

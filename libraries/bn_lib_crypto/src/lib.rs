@@ -2644,8 +2644,8 @@ fn csprng_dispatch(
 }
 
 /// Field index of `policy` in each options record (`modules/bn/BNCrypto.bn`).
-const HASH_OPTS_POLICY_FIELD: usize = 2;
-const MAC_OPTS_POLICY_FIELD: usize = 2;
+const HASH_OPTS_POLICY_FIELD: usize = 1;
+const MAC_OPTS_POLICY_FIELD: usize = 1;
 const KEY_PAIR_OPTS_POLICY_FIELD: usize = 1;
 
 /// The options record at `index`, or a type mismatch naming `expected`.

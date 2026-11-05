@@ -788,38 +788,30 @@ pub extern "C" fn bn_rt_crypto_import_key(
     BN_CRYPTO_OK
 }
 
-/// Returns the byte length of `key_handle`, or `-1` if unknown/zeroized.
+/// The byte length of `key_handle`; 0 once zeroized (as `bni`). A released
+/// handle is `USE_AFTER_RELEASE`.
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_key_length(key_handle: u64) -> i64 {
     with_keys(|keys| {
-        keys.get(&key_handle)
-            .and_then(|entry| {
-                if entry.zeroized {
-                    None
-                } else {
-                    i64::try_from(entry.material.len()).ok()
-                }
-            })
-            .unwrap_or(-1)
+        keys.get(&key_handle).map(|entry| {
+            if entry.zeroized {
+                0
+            } else {
+                i64::try_from(entry.material.len()).unwrap_or(i64::MAX)
+            }
+        })
     })
+    .unwrap_or_else(|| crate::arc_abi::abort_use_after_release())
 }
 
-/// Returns the algorithm constant of `key_handle`, or `-1` if unknown/zeroized.
+/// The algorithm constant of `key_handle`. A released handle is `USE_AFTER_RELEASE`.
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_key_algorithm(key_handle: u64) -> i32 {
-    with_keys(|keys| {
-        keys.get(&key_handle)
-            .and_then(|entry| {
-                if entry.zeroized {
-                    None
-                } else {
-                    Some(entry.algorithm)
-                }
-            })
-            .unwrap_or(-1)
-    })
+    // The algorithm is not secret: it survives Zeroize (as `bni`).
+    with_keys(|keys| keys.get(&key_handle).map(|entry| entry.algorithm))
+        .unwrap_or_else(|| crate::arc_abi::abort_use_after_release())
 }
 
 /// Explicitly zeroizes the key material in `key_handle`.

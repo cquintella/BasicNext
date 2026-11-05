@@ -331,7 +331,7 @@ EXPORT STRUCT Policy
 END STRUCT
 ```
 
-`HashOptions`, `MacOptions` and `KeyPairOptions` carry `policy AS Policy` as their last field. A call without options (`Hash`, `Mac`, `NewKeyPair`, …) uses the default policy.
+`HashOptions` is `{ alg AS INTEGER = Alg.SHA256, policy AS Policy }` and `MacOptions` is `{ alg AS INTEGER = Alg.HMAC_SHA256, policy AS Policy }`; an output or tag length is not an option of this version (BDFL decision, 2026-11-05). `HashOptions`, `MacOptions` and `KeyPairOptions` carry `policy AS Policy` as their last field. A call without options (`Hash`, `Mac`, `NewKeyPair`, …) uses the default policy.
 
 | Field | Effect in this version |
 | --- | --- |

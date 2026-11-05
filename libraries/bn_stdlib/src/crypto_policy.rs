@@ -74,10 +74,8 @@ const OBJECT_HEADER_BYTES: usize = 16;
 const POLICY_ALLOW_LEGACY_OFFSET: usize = OBJECT_HEADER_BYTES;
 const POLICY_FIPS_ONLY_OFFSET: usize = OBJECT_HEADER_BYTES + 1;
 
-/// Offset of `policy` in each options record: after the header and the
-/// earlier fields, the inline STRUCT aligned to 8. `INTEGER` is `INT32`, so
-/// `HashOptions` and `MacOptions` (`alg`, then `outLen` or `tagLen`) and
-/// `KeyPairOptions` (`alg` only) all fit their earlier fields in 8 bytes.
+/// Offset of `policy` in each options record: after the header and `alg`
+/// (`INTEGER` and `INT32` are 4 bytes), the inline STRUCT aligned to 8.
 const EARLIER_FIELDS_BYTES: usize = 8;
 pub(crate) const HASH_OPTS_POLICY_OFFSET: usize = OBJECT_HEADER_BYTES + EARLIER_FIELDS_BYTES;
 pub(crate) const MAC_OPTS_POLICY_OFFSET: usize = OBJECT_HEADER_BYTES + EARLIER_FIELDS_BYTES;

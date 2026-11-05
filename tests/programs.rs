@@ -28,6 +28,8 @@ mod compress_policy;
 mod conformance;
 #[path = "programs/crypto_limits.rs"]
 mod crypto_limits;
+#[path = "programs/crypto_tour.rs"]
+mod crypto_tour;
 #[path = "programs/destructuring.rs"]
 mod destructuring;
 #[path = "programs/fs_directories_policy.rs"]

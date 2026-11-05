@@ -1,0 +1,748 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// bncrypto_tour.bn — every public BNCrypto API, with usage you can copy and a
+// check on each result. Where a published test vector exists (FIPS 180-4,
+// FIPS 202, RFC 4648, RFC 8032, the CRC and Adler references), the check
+// compares against it; elsewhere it checks the properties that must hold
+// (round trips, lengths, refusals). Each line is PASS or FAIL.
+//
+// Run from the repository root:
+//     bni run examples/bncrypto_tour.bn
+//     bnc examples/bncrypto_tour.bn -o tour && ./tour
+// The tour writes three small files in the working directory and deletes them.
+
+IMPORT BNCrypto AS Crypto
+IMPORT HOST.FileSystem AS FS
+
+FUNCTION Check(label AS STRING, ok AS BOOLEAN) AS VOID
+    IF ok THEN
+        PRINT "PASS  ", label
+    ELSE
+        PRINT "FAIL  ", label
+    END IF
+END FUNCTION
+
+FUNCTION WriteFile(path AS STRING, text AS STRING) AS BOOLEAN
+    LET out AS FS.File OR Error = FS.Open(path, FS.WRITE)
+    IF out IS Error THEN
+        RETURN FALSE
+    END IF
+    LET written AS VOID OR Error = out.Write(text)
+    LET closed AS VOID OR Error = out.Close()
+    RELEASE out
+    RETURN NOT (written IS Error) AND NOT (closed IS Error)
+END FUNCTION
+
+FUNCTION DeleteFile(path AS STRING) AS VOID
+    LET removed AS VOID OR Error = FS.DeleteFile(path)
+    IF removed IS Error THEN
+        PRINT "FAIL  delete ", path
+    END IF
+END FUNCTION
+
+// Part of a text, by byte position, through the BNCrypto byte functions.
+FUNCTION TextPart(text AS STRING, start AS INTEGER, length AS INTEGER) AS STRING
+    LET part AS Crypto.Bytes OR Error = Crypto.Slice(Crypto.FromText(text), start, length)
+    IF part IS Error THEN
+        RETURN ""
+    END IF
+    LET decoded AS STRING OR Error = part.ToText()
+    IF decoded IS Error THEN
+        RETURN ""
+    END IF
+    RETURN decoded
+END FUNCTION
+
+// --- 1. Bytes and encodings (RFC 4648) ---------------------------------------
+FUNCTION BytesAndEncodings() AS VOID
+    LET hello AS Crypto.Bytes = Crypto.FromText("hello")
+    Check("Bytes.Length", hello.Length() = 5)
+    Check("Bytes.ToHex", hello.ToHex() = "68656c6c6f")
+    Check("Crypto.ToBase64", Crypto.ToBase64(hello) = "aGVsbG8=")
+    Check("Bytes.ToBase64", hello.ToBase64() = "aGVsbG8=")
+    Check("Bytes.ToBase64Url", hello.ToBase64Url() = "aGVsbG8")
+    Check("Crypto.ToBase64Url", Crypto.ToBase64Url(hello) = "aGVsbG8")
+
+    LET text AS STRING OR Error = hello.ToText()
+    IF text IS STRING THEN
+        Check("Bytes.ToText", text = "hello")
+    ELSE
+        Check("Bytes.ToText", FALSE)
+    END IF
+    LET text2 AS STRING OR Error = Crypto.ToText(hello)
+    IF text2 IS STRING THEN
+        Check("Crypto.ToText", text2 = "hello")
+    ELSE
+        Check("Crypto.ToText", FALSE)
+    END IF
+
+    LET fromHex AS Crypto.Bytes OR Error = Crypto.FromHex("68656c6c6f")
+    IF fromHex IS Crypto.Bytes THEN
+        Check("FromHex", Crypto.ConstantTimeEquals(fromHex, hello))
+    ELSE
+        Check("FromHex", FALSE)
+    END IF
+    LET fromB64 AS Crypto.Bytes OR Error = Crypto.FromBase64("aGVsbG8=")
+    IF fromB64 IS Crypto.Bytes THEN
+        Check("FromBase64", fromB64.ToHex() = "68656c6c6f")
+    ELSE
+        Check("FromBase64", FALSE)
+    END IF
+    LET fromB64Url AS Crypto.Bytes OR Error = Crypto.FromBase64Url("aGVsbG8")
+    IF fromB64Url IS Crypto.Bytes THEN
+        Check("FromBase64Url", fromB64Url.ToHex() = "68656c6c6f")
+    ELSE
+        Check("FromBase64Url", FALSE)
+    END IF
+
+    LET joined AS Crypto.Bytes = Crypto.Concat(hello, Crypto.FromText(" world"))
+    Check("Concat", joined.Length() = 11)
+    LET middle AS Crypto.Bytes OR Error = Crypto.Slice(joined, 6, 5)
+    IF middle IS Crypto.Bytes THEN
+        Check("Slice", middle.ToHex() = "776f726c64")
+    ELSE
+        Check("Slice", FALSE)
+    END IF
+    LET outside AS Crypto.Bytes OR Error = Crypto.Slice(joined, 8, 10)
+    Check("Slice beyond the end is an Error", outside IS Error)
+
+    LET pem AS STRING = Crypto.ToPem("TEST DATA", hello)
+    LET back AS Crypto.Bytes OR Error = Crypto.FromPem(pem)
+    IF back IS Crypto.Bytes THEN
+        Check("ToPem and FromPem round trip", back.ToHex() = "68656c6c6f")
+    ELSE
+        Check("ToPem and FromPem round trip", FALSE)
+    END IF
+
+    // Malformed input is refused, and the error never repeats the input.
+    LET badHex AS Crypto.Bytes OR Error = Crypto.FromHex("6g")
+    Check("FromHex refuses a non-hex digit", badHex IS Error)
+    LET badB64 AS Crypto.Bytes OR Error = Crypto.FromBase64("A")
+    Check("FromBase64 refuses an impossible length", badB64 IS Error)
+    LET badBits AS Crypto.Bytes OR Error = Crypto.FromBase64("QR==")
+    Check("FromBase64 refuses non-zero trailing bits", badBits IS Error)
+    LET badPem AS Crypto.Bytes OR Error = Crypto.FromPem("not a pem")
+    IF badPem IS Error THEN
+        Check("FromPem refuses malformed text with PARSE_ERROR", badPem.Code = Crypto.PARSE_ERROR)
+    ELSE
+        Check("FromPem refuses malformed text with PARSE_ERROR", FALSE)
+    END IF
+
+    LET same AS Crypto.Bytes = Crypto.FromText("hello")
+    Check("Bytes.ConstantTimeEquals", hello.ConstantTimeEquals(same))
+    Check("ConstantTimeEquals of different bytes", NOT Crypto.ConstantTimeEquals(hello, joined))
+    same.Zeroize()
+    Check("Bytes.Zeroize wipes the buffer", same.ToHex() = "0000000000")
+    LET wipe AS Crypto.Bytes = Crypto.FromText("abc")
+    Crypto.Zeroize(wipe)
+    Check("Crypto.Zeroize wipes the buffer", wipe.ToHex() = "000000")
+END FUNCTION
+
+// --- 2. Hashing (FIPS 180-4, FIPS 202) ---------------------------------------
+FUNCTION Hashing() AS VOID
+    LET abc AS Crypto.Bytes = Crypto.FromText("abc")
+    LET sha256Abc AS STRING = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    Check("SHA256 (FIPS 180-4 vector)", Crypto.SHA256("abc") = sha256Abc)
+    Check("HashText is SHA-256", Crypto.HashText("abc") = sha256Abc)
+    Check("Hash is SHA-256", Crypto.Hash(abc).ToHex() = sha256Abc)
+    Check("SHA512 (FIPS 180-4 vector)", Crypto.SHA512("abc") = "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f")
+
+    LET opts AS Crypto.HashOptions
+    opts.alg = Crypto.Alg.SHA3_256
+    LET sha3 AS Crypto.Bytes OR Error = Crypto.HashWith(abc, opts)
+    IF sha3 IS Crypto.Bytes THEN
+        Check("HashWith SHA3-256 (FIPS 202 vector)", sha3.ToHex() = "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532")
+    ELSE
+        Check("HashWith SHA3-256 (FIPS 202 vector)", FALSE)
+    END IF
+    opts.alg = Crypto.Alg.SHA384
+    LET sha384 AS Crypto.Bytes OR Error = Crypto.HashWith(abc, opts)
+    IF sha384 IS Crypto.Bytes THEN
+        Check("HashWith SHA-384 length", sha384.Length() = 48)
+    ELSE
+        Check("HashWith SHA-384 length", FALSE)
+    END IF
+    opts.alg = Crypto.Alg.BLAKE3
+    LET blake3 AS Crypto.Bytes OR Error = Crypto.HashWith(abc, opts)
+    IF blake3 IS Crypto.Bytes THEN
+        Check("HashWith BLAKE3 length", blake3.Length() = 32)
+    ELSE
+        Check("HashWith BLAKE3 length", FALSE)
+    END IF
+
+    // A stream gives the digest of the concatenation.
+    LET hasher AS Crypto.Hasher OR Error = Crypto.Hasher.New(Crypto.Alg.SHA256)
+    IF hasher IS Crypto.Hasher THEN
+        hasher.Update(Crypto.FromText("a"))
+        hasher.Update(Crypto.FromText("bc"))
+        Check("Hasher streams to the one-shot digest", hasher.Finish().ToHex() = sha256Abc)
+        RELEASE hasher
+    ELSE
+        Check("Hasher streams to the one-shot digest", FALSE)
+    END IF
+    LET withOpts AS Crypto.HashOptions
+    LET hasher2 AS Crypto.Hasher OR Error = Crypto.Hasher.NewWith(withOpts)
+    IF hasher2 IS Crypto.Hasher THEN
+        hasher2.Update(abc)
+        Check("Hasher.NewWith uses the options", hasher2.Finish().ToHex() = sha256Abc)
+    ELSE
+        Check("Hasher.NewWith uses the options", FALSE)
+    END IF
+
+    LET md5 AS Crypto.Hasher OR Error = Crypto.Hasher.New(Crypto.Alg.MD5)
+    IF md5 IS Error THEN
+        Check("MD5 is LEGACY_DISABLED", md5.Code = Crypto.LEGACY_DISABLED)
+    ELSE
+        Check("MD5 is LEGACY_DISABLED", FALSE)
+    END IF
+    LET unknown AS Crypto.Hasher OR Error = Crypto.Hasher.New(999)
+    IF unknown IS Error THEN
+        Check("An unknown hash is UNSUPPORTED_ALGORITHM", unknown.Code = Crypto.UNSUPPORTED_ALGORITHM)
+    ELSE
+        Check("An unknown hash is UNSUPPORTED_ALGORITHM", FALSE)
+    END IF
+
+    IF WriteFile("bncrypto-tour-hash.txt", "abc") THEN
+        LET fileDigest AS Crypto.Bytes OR Error = Crypto.HashFile("bncrypto-tour-hash.txt")
+        IF fileDigest IS Crypto.Bytes THEN
+            Check("HashFile streams the file", fileDigest.ToHex() = sha256Abc)
+        ELSE
+            Check("HashFile streams the file", FALSE)
+        END IF
+        Check("Checksum.VerifyFileChecksum sha256", Crypto.Checksum.VerifyFileChecksum("bncrypto-tour-hash.txt", "sha256:" + sha256Abc))
+        Check("Checksum.VerifyFileChecksum crc32", Crypto.Checksum.VerifyFileChecksum("bncrypto-tour-hash.txt", "crc32:352441c2"))
+        Check("Checksum.VerifyFileChecksum mismatch", NOT Crypto.Checksum.VerifyFileChecksum("bncrypto-tour-hash.txt", "crc32:00000000"))
+        DeleteFile("bncrypto-tour-hash.txt")
+    ELSE
+        Check("HashFile streams the file", FALSE)
+    END IF
+    LET missing AS Crypto.Bytes OR Error = Crypto.HashFile("bncrypto-tour-missing.txt")
+    Check("HashFile of a missing file is an Error", missing IS Error)
+END FUNCTION
+
+// --- 3. Non-cryptographic checksums ------------------------------------------
+FUNCTION Checksums() AS VOID
+    LET check AS Crypto.Bytes = Crypto.FromText("123456789")
+    Check("Checksum.Crc32 (reference 0xCBF43926)", Crypto.Checksum.Crc32(check) = 3421780262)
+    Check("Checksum.Crc32c (reference 0xE3069283)", Crypto.Checksum.Crc32c(check) = 3808858755)
+    Check("Checksum.Adler32 (reference 0x11E60398)", Crypto.Checksum.Adler32(Crypto.FromText("Wikipedia")) = 300286872)
+    Check("Checksum.XxHash64 is stable", Crypto.Checksum.XxHash64(check) = Crypto.Checksum.XxHash64(Crypto.FromText("123456789")))
+    Check("Checksum.XxHash64 differs on other input", Crypto.Checksum.XxHash64(check) <> Crypto.Checksum.XxHash64(Crypto.FromText("123456780")))
+END FUNCTION
+
+// --- 4. Random values (OS CSPRNG) --------------------------------------------
+FUNCTION Randomness() AS VOID
+    LET bytes AS Crypto.Bytes OR Error = Crypto.RandomBytes(32)
+    LET more AS Crypto.Bytes OR Error = Crypto.RandomBytes(32)
+    IF bytes IS Crypto.Bytes AND more IS Crypto.Bytes THEN
+        Check("RandomBytes length", bytes.Length() = 32)
+        Check("RandomBytes draws differ", NOT bytes.ConstantTimeEquals(more))
+    ELSE
+        Check("RandomBytes length", FALSE)
+    END IF
+    LET n AS INTEGER OR Error = Crypto.RandomInt(1, 6)
+    IF n IS INTEGER THEN
+        Check("RandomInt stays in [1, 6]", n >= 1 AND n <= 6)
+    ELSE
+        Check("RandomInt stays in [1, 6]", FALSE)
+    END IF
+    LET badRange AS INTEGER OR Error = Crypto.RandomInt(6, 1)
+    Check("RandomInt refuses min > max", badRange IS Error)
+    LET token AS STRING OR Error = Crypto.RandomToken(16)
+    IF token IS STRING THEN
+        Check("RandomToken of 16 bytes is 22 URL-safe characters", LEN(token) = 22)
+    ELSE
+        Check("RandomToken of 16 bytes is 22 URL-safe characters", FALSE)
+    END IF
+    LET uuid AS STRING = Crypto.RandomUuidV4()
+    Check("RandomUuidV4 is 36 characters, version 4", LEN(uuid) = 36 AND TextPart(uuid, 14, 1) = "4")
+    LET uuid7 AS STRING = Crypto.UuidV7()
+    Check("UuidV7 is 36 characters, version 7", LEN(uuid7) = 36 AND TextPart(uuid7, 14, 1) = "7")
+    LET pwOpts AS Crypto.PasswordGenOptions
+    pwOpts.length = 24
+    LET password AS STRING OR Error = Crypto.RandomPassword(pwOpts)
+    IF password IS STRING THEN
+        Check("RandomPassword length", LEN(password) = 24)
+    ELSE
+        Check("RandomPassword length", FALSE)
+    END IF
+    LET nonce AS Crypto.Bytes OR Error = Crypto.GenerateNonce(Crypto.ALG_AES_GCM_256)
+    IF nonce IS Crypto.Bytes THEN
+        Check("GenerateNonce for AES-GCM is 12 bytes", nonce.Length() = 12)
+    ELSE
+        Check("GenerateNonce for AES-GCM is 12 bytes", FALSE)
+    END IF
+END FUNCTION
+
+// --- 5. Secrets ----------------------------------------------------------------
+FUNCTION Secrets() AS VOID
+    LET a AS Crypto.Secret = Crypto.NewSecret("correct horse")
+    LET b AS Crypto.Secret = Crypto.SecretFromText("correct horse")
+    Check("Secret.Length", a.Length() = 13)
+    Check("Secret.ConstantTimeEquals", a.ConstantTimeEquals(b))
+    Check("Secret.ToBytes", a.ToBytes().Length() = 13)
+    b.Zeroize()
+    Check("Secret.Zeroize", NOT a.ConstantTimeEquals(b))
+END FUNCTION
+
+// --- 6. Symmetric keys and key wrapping ----------------------------------------
+FUNCTION SymmetricKeys() AS VOID
+    LET key AS Crypto.SecretKey = Crypto.NewSecretKey()
+    Check("NewSecretKey is 256 bits", key.Bits() = 256 AND key.Length() = 32)
+    Check("SecretKey purpose and algorithm", key.Purpose() = "AEAD" AND key.Algorithm() = "AES256")
+    Check("SecretKey.Id is 64 hex characters", LEN(key.Id()) = 64)
+    LET raw AS Crypto.Bytes = key.ExportSecret("RAW")
+    LET imported AS Crypto.SecretKey = Crypto.SecretKeyFromBytes(raw, "AEAD")
+    Check("SecretKeyFromBytes keeps the Id", imported.Id() = key.Id())
+
+    LET keyOpts AS Crypto.KeyOptions
+    LET configured AS Crypto.SecretKey = Crypto.NewSecretKeyWith(keyOpts)
+    Check("NewSecretKeyWith default options", configured.Bits() = 256)
+
+    LET kek AS Crypto.SecretKey = Crypto.NewSecretKey()
+    LET wrapped AS Crypto.Bytes = Crypto.WrapKey(kek, key)
+    Check("WrapKey output is 40 bytes", wrapped.Length() = 40)
+    Check("UnwrapKey restores the key", Crypto.UnwrapKey(kek, wrapped).Id() = key.Id())
+    Check("UnwrapKeyWith restores the key", Crypto.UnwrapKeyWith(kek, wrapped, keyOpts).Id() = key.Id())
+    key.Zeroize()
+    Check("SecretKey.Zeroize", key.Bits() = 0)
+END FUNCTION
+
+// --- 7. Envelope encryption (nonce inside, authenticated) ----------------------
+FUNCTION Envelopes() AS VOID
+    LET key AS Crypto.SecretKey = Crypto.NewSecretKey()
+    LET plain AS Crypto.Bytes = Crypto.FromText("meet at noon")
+    LET sealed AS Crypto.Bytes = Crypto.Encrypt(key, plain)
+    Check("Encrypt adds the envelope", sealed.Length() > plain.Length())
+    Check("Decrypt returns the plaintext", Crypto.ConstantTimeEquals(Crypto.Decrypt(key, sealed), plain))
+    LET again AS Crypto.Bytes = Crypto.Encrypt(key, plain)
+    Check("Each Encrypt uses a fresh nonce", NOT Crypto.ConstantTimeEquals(sealed, again))
+    LET token AS STRING = Crypto.EncryptText(key, "secret note")
+    Check("EncryptText and DecryptText", Crypto.DecryptText(key, token) = "secret note")
+
+    IF WriteFile("bncrypto-tour-plain.txt", "file contents") THEN
+        LET enc AS VOID OR Error = Crypto.EncryptFile(key, "bncrypto-tour-plain.txt", "bncrypto-tour-sealed.bin")
+        LET dec AS VOID OR Error = Crypto.DecryptFile(key, "bncrypto-tour-sealed.bin", "bncrypto-tour-plain.txt.out")
+        Check("EncryptFile and DecryptFile", NOT (enc IS Error) AND NOT (dec IS Error) AND Crypto.Checksum.VerifyFileChecksum("bncrypto-tour-plain.txt.out", "sha256:" + Crypto.SHA256("file contents")))
+        DeleteFile("bncrypto-tour-plain.txt")
+        DeleteFile("bncrypto-tour-sealed.bin")
+        DeleteFile("bncrypto-tour-plain.txt.out")
+    ELSE
+        Check("EncryptFile and DecryptFile", FALSE)
+    END IF
+END FUNCTION
+
+// --- 8. Raw AEAD (explicit nonce and associated data) -------------------------
+FUNCTION RawAead() AS VOID
+    LET aad AS Crypto.Bytes = Crypto.FromText("header")
+    LET plain AS Crypto.Bytes = Crypto.FromText("payload")
+
+    LET aesKey AS Crypto.Key OR Error = Crypto.GenerateKey(Crypto.ALG_AES_GCM_256)
+    LET aesNonce AS Crypto.Bytes OR Error = Crypto.GenerateNonce(Crypto.ALG_AES_GCM_256)
+    IF aesKey IS Crypto.Key AND aesNonce IS Crypto.Bytes THEN
+        Check("GenerateKey AES-256 is 32 bytes", aesKey.Length() = 32 AND aesKey.Algorithm() = Crypto.ALG_AES_GCM_256)
+        LET ct AS Crypto.Bytes OR Error = Crypto.SealAesGcm(aesKey, aesNonce, plain, aad)
+        IF ct IS Crypto.Bytes THEN
+            LET opened AS Crypto.Bytes OR Error = Crypto.OpenAesGcm(aesKey, aesNonce, ct, aad)
+            IF opened IS Crypto.Bytes THEN
+                Check("SealAesGcm and OpenAesGcm", Crypto.ConstantTimeEquals(opened, plain))
+            ELSE
+                Check("SealAesGcm and OpenAesGcm", FALSE)
+            END IF
+            LET wrongAad AS Crypto.Bytes OR Error = Crypto.OpenAesGcm(aesKey, aesNonce, ct, Crypto.FromText("other"))
+            IF wrongAad IS Error THEN
+                Check("OpenAesGcm with other AAD is AUTHENTICATION_FAILED", wrongAad.Code = Crypto.AUTHENTICATION_FAILED)
+            ELSE
+                Check("OpenAesGcm with other AAD is AUTHENTICATION_FAILED", FALSE)
+            END IF
+        ELSE
+            Check("SealAesGcm and OpenAesGcm", FALSE)
+        END IF
+    ELSE
+        Check("GenerateKey AES-256 is 32 bytes", FALSE)
+    END IF
+
+    LET chachaKey AS Crypto.Key OR Error = Crypto.GenerateKey(Crypto.ALG_CHACHA20_POLY1305)
+    LET chachaNonce AS Crypto.Bytes OR Error = Crypto.GenerateNonce(Crypto.ALG_CHACHA20_POLY1305)
+    IF chachaKey IS Crypto.Key AND chachaNonce IS Crypto.Bytes THEN
+        LET ct2 AS Crypto.Bytes OR Error = Crypto.SealChaCha20(chachaKey, chachaNonce, plain, aad)
+        IF ct2 IS Crypto.Bytes THEN
+            LET opened2 AS Crypto.Bytes OR Error = Crypto.OpenChaCha20(chachaKey, chachaNonce, ct2, aad)
+            IF opened2 IS Crypto.Bytes THEN
+                Check("SealChaCha20 and OpenChaCha20", Crypto.ConstantTimeEquals(opened2, plain))
+            ELSE
+                Check("SealChaCha20 and OpenChaCha20", FALSE)
+            END IF
+        ELSE
+            Check("SealChaCha20 and OpenChaCha20", FALSE)
+        END IF
+        chachaKey.Zeroize()
+        Check("Key.Zeroize leaves no material", chachaKey.Length() = 0)
+        Check("Key.Algorithm survives Zeroize", chachaKey.Algorithm() = Crypto.ALG_CHACHA20_POLY1305)
+        LET afterZeroize AS Crypto.Bytes OR Error = Crypto.SealChaCha20(chachaKey, chachaNonce, plain, aad)
+        Check("A zeroized Key cannot seal", afterZeroize IS Error)
+    ELSE
+        Check("SealChaCha20 and OpenChaCha20", FALSE)
+    END IF
+END FUNCTION
+
+// --- 9. Message authentication -------------------------------------------------
+FUNCTION Macs() AS VOID
+    LET data AS Crypto.Bytes = Crypto.FromText("message")
+    LET raw AS Crypto.Bytes = Crypto.FromText("0123456789abcdef0123456789abcdef")
+    LET key AS Crypto.SecretKey = Crypto.SecretKeyFromBytes(raw, "MAC")
+    LET tag AS Crypto.Bytes = Crypto.Mac(key, data)
+    Check("Mac is HMAC-SHA256 (32 bytes)", tag.Length() = 32)
+    Check("VerifyMac accepts the tag", Crypto.VerifyMac(key, data, tag))
+    Check("VerifyMac refuses other data", NOT Crypto.VerifyMac(key, Crypto.FromText("massage"), tag))
+
+    // The same key through the raw Key API gives the same HMAC.
+    LET rawKey AS Crypto.Key OR Error = Crypto.ImportKey(raw, Crypto.ALG_HMAC_SHA256)
+    IF rawKey IS Crypto.Key THEN
+        LET hmac AS Crypto.Bytes = Crypto.HmacSha256(rawKey, data)
+        Check("HmacSha256 equals Mac for the same key", hmac.ToHex() = tag.ToHex())
+        Check("VerifyHmacSha256", Crypto.VerifyHmacSha256(rawKey, data, hmac))
+    ELSE
+        Check("HmacSha256 equals Mac for the same key", FALSE)
+    END IF
+
+    LET opts AS Crypto.MacOptions
+    opts.alg = Crypto.Alg.HMAC_SHA512
+    LET long AS Crypto.Bytes OR Error = Crypto.MacWith(key, data, opts)
+    IF long IS Crypto.Bytes THEN
+        Check("MacWith HMAC-SHA512 is 64 bytes", long.Length() = 64)
+    ELSE
+        Check("MacWith HMAC-SHA512 is 64 bytes", FALSE)
+    END IF
+
+    LET stream AS Crypto.MacStream OR Error = Crypto.MacStream.New(key)
+    IF stream IS Crypto.MacStream THEN
+        stream.Update(Crypto.FromText("mess"))
+        stream.Update(Crypto.FromText("age"))
+        Check("MacStream streams to the one-shot tag", stream.Finish().ToHex() = tag.ToHex())
+        RELEASE stream
+    ELSE
+        Check("MacStream streams to the one-shot tag", FALSE)
+    END IF
+    LET defaults AS Crypto.MacOptions
+    LET verifier AS Crypto.MacStream OR Error = Crypto.MacStream.NewWith(key, defaults)
+    IF verifier IS Crypto.MacStream THEN
+        verifier.Update(data)
+        Check("MacStream.Verify", verifier.Verify(tag))
+    ELSE
+        Check("MacStream.Verify", FALSE)
+    END IF
+END FUNCTION
+
+// --- 10. Passwords and key derivation ------------------------------------------
+FUNCTION Passwords() AS VOID
+    LET phc AS STRING = Crypto.HashPassword("hunter2")
+    Check("HashPassword is an Argon2id PHC string", TextPart(phc, 0, 10) = "$argon2id$")
+    Check("VerifyPassword accepts the password", Crypto.VerifyPassword("hunter2", phc))
+    Check("VerifyPassword refuses another password", NOT Crypto.VerifyPassword("hunter3", phc))
+    LET salt AS Crypto.Bytes = Crypto.FromText("sixteen byte salt")
+    LET derived AS Crypto.Bytes OR Error = Crypto.Argon2id(Crypto.FromText("hunter2"), salt, 19456, 2, 1)
+    LET again AS Crypto.Bytes OR Error = Crypto.Argon2id(Crypto.FromText("hunter2"), salt, 19456, 2, 1)
+    IF derived IS Crypto.Bytes AND again IS Crypto.Bytes THEN
+        Check("Argon2id is deterministic for one salt", derived.Length() = 32 AND Crypto.ConstantTimeEquals(derived, again))
+    ELSE
+        Check("Argon2id is deterministic for one salt", FALSE)
+    END IF
+    LET ikm AS Crypto.SecretKey = Crypto.NewSecretKey()
+    LET k1 AS Crypto.SecretKey OR Error = Crypto.Hkdf(ikm, salt, Crypto.FromText("encryption"), 32)
+    LET k2 AS Crypto.SecretKey OR Error = Crypto.Hkdf(ikm, salt, Crypto.FromText("signing"), 32)
+    IF k1 IS Crypto.SecretKey AND k2 IS Crypto.SecretKey THEN
+        Check("Hkdf separates keys by info", k1.Length() = 32 AND k1.Id() <> k2.Id())
+    ELSE
+        Check("Hkdf separates keys by info", FALSE)
+    END IF
+END FUNCTION
+
+// --- 11. Key pairs, signatures and PEM -------------------------------------------
+FUNCTION KeyPairs() AS VOID
+    LET message AS Crypto.Bytes = Crypto.FromText("signed text")
+    LET kp AS Crypto.KeyPair OR Error = Crypto.NewKeyPair()
+    IF kp IS Error THEN
+        Check("NewKeyPair", FALSE)
+        RETURN
+    END IF
+    Check("NewKeyPair is Ed25519", kp.PublicKey.Algorithm() = Crypto.Alg.ED25519)
+    Check("Both halves share the Id", kp.PublicKey.Id() = kp.PrivateKey.Id())
+    Check("PrivateKey.PublicKey derives the same key", kp.PrivateKey.PublicKey().Id() = kp.PublicKey.Id())
+    Check("PrivateKey.Algorithm", kp.PrivateKey.Algorithm() = Crypto.Alg.ED25519)
+
+    LET signature AS Crypto.Bytes OR Error = Crypto.Sign(kp.PrivateKey, message)
+    IF signature IS Crypto.Bytes THEN
+        Check("Sign is 64 bytes", signature.Length() = 64)
+        Check("Verify accepts the signature", Crypto.Verify(kp.PublicKey, message, signature))
+        Check("Verify refuses another message", NOT Crypto.Verify(kp.PublicKey, Crypto.FromText("other"), signature))
+    ELSE
+        Check("Sign is 64 bytes", FALSE)
+    END IF
+
+    IF WriteFile("bncrypto-tour-signed.txt", "file to sign") THEN
+        LET fileSig AS Crypto.Bytes OR Error = Crypto.SignFile(kp.PrivateKey, "bncrypto-tour-signed.txt")
+        IF fileSig IS Crypto.Bytes THEN
+            Check("SignFile and VerifyFile", Crypto.VerifyFile(kp.PublicKey, "bncrypto-tour-signed.txt", fileSig))
+        ELSE
+            Check("SignFile and VerifyFile", FALSE)
+        END IF
+        DeleteFile("bncrypto-tour-signed.txt")
+    ELSE
+        Check("SignFile and VerifyFile", FALSE)
+    END IF
+
+    LET p256 AS Crypto.KeyPair OR Error = Crypto.NewKeyPairFor(Crypto.Alg.ECDSA_P256)
+    IF p256 IS Crypto.KeyPair THEN
+        LET p256Sig AS Crypto.Bytes OR Error = Crypto.Sign(p256.PrivateKey, message)
+        IF p256Sig IS Crypto.Bytes THEN
+            Check("ECDSA P-256 Sign and Verify", Crypto.Verify(p256.PublicKey, message, p256Sig))
+        ELSE
+            Check("ECDSA P-256 Sign and Verify", FALSE)
+        END IF
+    ELSE
+        Check("ECDSA P-256 Sign and Verify", FALSE)
+    END IF
+    LET xOpts AS Crypto.KeyPairOptions
+    xOpts.alg = Crypto.Alg.X25519
+    LET x AS Crypto.KeyPair OR Error = Crypto.NewKeyPairWith(xOpts)
+    IF x IS Crypto.KeyPair THEN
+        LET xSig AS Crypto.Bytes OR Error = Crypto.Sign(x.PrivateKey, message)
+        IF xSig IS Error THEN
+            Check("An X25519 key cannot sign: WRONG_KEY_TYPE", xSig.Code = Crypto.WRONG_KEY_TYPE)
+        ELSE
+            Check("An X25519 key cannot sign: WRONG_KEY_TYPE", FALSE)
+        END IF
+    ELSE
+        Check("An X25519 key cannot sign: WRONG_KEY_TYPE", FALSE)
+    END IF
+    LET bad AS Crypto.KeyPair OR Error = Crypto.NewKeyPairFor(Crypto.ALG_AES_GCM_256)
+    IF bad IS Error THEN
+        Check("NewKeyPairFor a symmetric id is UNSUPPORTED_ALGORITHM", bad.Code = Crypto.UNSUPPORTED_ALGORITHM)
+    ELSE
+        Check("NewKeyPairFor a symmetric id is UNSUPPORTED_ALGORITHM", FALSE)
+    END IF
+
+    // PEM: an encrypted private key, a plain one, and the public key.
+    LET pem AS STRING OR Error = kp.PrivateKey.ExportPem(Crypto.PemFormat.PKCS8, "pass phrase")
+    IF pem IS STRING THEN
+        LET loaded AS Crypto.PrivateKey OR Error = Crypto.LoadPrivateKey(pem, "pass phrase")
+        IF loaded IS Crypto.PrivateKey THEN
+            Check("ExportPem and LoadPrivateKey with the password", loaded.Id() = kp.PrivateKey.Id())
+        ELSE
+            Check("ExportPem and LoadPrivateKey with the password", FALSE)
+        END IF
+        LET wrong AS Crypto.PrivateKey OR Error = Crypto.LoadPrivateKey(pem, "wrong phrase")
+        IF wrong IS Error THEN
+            Check("LoadPrivateKey with a wrong password is WRONG_PASSWORD", wrong.Code = Crypto.WRONG_PASSWORD)
+        ELSE
+            Check("LoadPrivateKey with a wrong password is WRONG_PASSWORD", FALSE)
+        END IF
+    ELSE
+        Check("ExportPem and LoadPrivateKey with the password", FALSE)
+    END IF
+    LET plainPem AS STRING OR Error = kp.PrivateKey.ExportPemUnencrypted(Crypto.PemFormat.PKCS8)
+    IF plainPem IS STRING THEN
+        LET loadedPlain AS Crypto.PrivateKey OR Error = Crypto.LoadPrivateKey(plainPem, NULL)
+        IF loadedPlain IS Crypto.PrivateKey THEN
+            Check("ExportPemUnencrypted and LoadPrivateKey", loadedPlain.Id() = kp.PrivateKey.Id())
+        ELSE
+            Check("ExportPemUnencrypted and LoadPrivateKey", FALSE)
+        END IF
+    ELSE
+        Check("ExportPemUnencrypted and LoadPrivateKey", FALSE)
+    END IF
+    LET publicPem AS STRING OR Error = kp.PublicKey.ExportPem()
+    IF publicPem IS STRING THEN
+        LET loadedPublic AS Crypto.PublicKey OR Error = Crypto.LoadPublicKey(publicPem)
+        IF loadedPublic IS Crypto.PublicKey THEN
+            Check("PublicKey.ExportPem and LoadPublicKey", loadedPublic.Id() = kp.PublicKey.Id())
+        ELSE
+            Check("PublicKey.ExportPem and LoadPublicKey", FALSE)
+        END IF
+    ELSE
+        Check("PublicKey.ExportPem and LoadPublicKey", FALSE)
+    END IF
+    LET garbage AS Crypto.PublicKey OR Error = Crypto.LoadPublicKey("-----BEGIN PUBLIC KEY-----")
+    IF garbage IS Error THEN
+        Check("LoadPublicKey of malformed text is PARSE_ERROR", garbage.Code = Crypto.PARSE_ERROR)
+    ELSE
+        Check("LoadPublicKey of malformed text is PARSE_ERROR", FALSE)
+    END IF
+
+    // Zeroize wipes the secret; the public half and the Id stay usable.
+    LET idBefore AS STRING = kp.PrivateKey.Id()
+    kp.PrivateKey.Zeroize()
+    Check("PrivateKey.Zeroize keeps the public half", kp.PrivateKey.PublicKey().Id() = idBefore)
+    LET afterZeroize AS Crypto.Bytes OR Error = Crypto.Sign(kp.PrivateKey, message)
+    Check("A zeroized key cannot sign", afterZeroize IS Error)
+END FUNCTION
+
+// --- 12. Raw-key signatures (RFC 8032 test 1) -----------------------------------
+FUNCTION RawSignatures() AS VOID
+    LET seed AS Crypto.Bytes OR Error = Crypto.FromHex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
+    IF seed IS Error THEN
+        Check("Ed25519 (RFC 8032 test 1)", FALSE)
+        RETURN
+    END IF
+    LET key AS Crypto.Key OR Error = Crypto.ImportKey(seed, Crypto.ALG_ED25519)
+    IF key IS Error THEN
+        Check("Ed25519 (RFC 8032 test 1)", FALSE)
+        RETURN
+    END IF
+    LET publicKey AS Crypto.Bytes OR Error = Crypto.Ed25519PublicKey(key)
+    IF publicKey IS Crypto.Bytes THEN
+        Check("Ed25519PublicKey (RFC 8032 test 1)", publicKey.ToHex() = "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a")
+        LET empty AS Crypto.Bytes = Crypto.FromText("")
+        LET signature AS Crypto.Bytes OR Error = Crypto.Ed25519Sign(key, empty)
+        IF signature IS Crypto.Bytes THEN
+            Check("Ed25519Sign (RFC 8032 test 1)", signature.ToHex() = "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b")
+            Check("Ed25519Verify", Crypto.Ed25519Verify(publicKey, empty, signature))
+            Check("Ed25519Verify refuses another message", NOT Crypto.Ed25519Verify(publicKey, Crypto.FromText("x"), signature))
+        ELSE
+            Check("Ed25519Sign (RFC 8032 test 1)", FALSE)
+        END IF
+    ELSE
+        Check("Ed25519PublicKey (RFC 8032 test 1)", FALSE)
+    END IF
+
+    LET p256Key AS Crypto.Key OR Error = Crypto.GenerateKey(Crypto.ALG_ECDSA_P256)
+    IF p256Key IS Crypto.Key THEN
+        LET p256Public AS Crypto.Bytes OR Error = Crypto.EcdsaP256PublicKey(p256Key)
+        LET p256Sig AS Crypto.Bytes OR Error = Crypto.EcdsaP256Sign(p256Key, Crypto.FromText("abc"))
+        IF p256Public IS Crypto.Bytes AND p256Sig IS Crypto.Bytes THEN
+            Check("EcdsaP256PublicKey is SEC1 uncompressed (65 bytes)", p256Public.Length() = 65)
+            Check("EcdsaP256Sign and EcdsaP256Verify", Crypto.EcdsaP256Verify(p256Public, Crypto.FromText("abc"), p256Sig))
+        ELSE
+            Check("EcdsaP256Sign and EcdsaP256Verify", FALSE)
+        END IF
+    ELSE
+        Check("EcdsaP256Sign and EcdsaP256Verify", FALSE)
+    END IF
+END FUNCTION
+
+// --- 13. Post-quantum: ML-KEM-768 and ML-DSA-65 -------------------------------
+FUNCTION PostQuantum() AS VOID
+    LET kemSeed AS Crypto.Key OR Error = Crypto.GenerateKey(Crypto.ALG_ML_KEM_768)
+    IF kemSeed IS Crypto.Key THEN
+        LET pair AS Crypto.Bytes OR Error = Crypto.MlKemKeypair(kemSeed)
+        IF pair IS Crypto.Bytes THEN
+            // publicKey (1184 bytes) || 64-byte seed
+            LET kemPublic AS Crypto.Bytes OR Error = Crypto.Slice(pair, 0, 1184)
+            LET kemSecret AS Crypto.Bytes OR Error = Crypto.Slice(pair, 1184, 64)
+            IF kemPublic IS Crypto.Bytes AND kemSecret IS Crypto.Bytes THEN
+                LET decapKey AS Crypto.Key OR Error = Crypto.ImportKey(kemSecret, Crypto.ALG_ML_KEM_768)
+                LET sealed AS Crypto.Bytes OR Error = Crypto.MlKemEncapsulate(kemPublic)
+                IF decapKey IS Crypto.Key AND sealed IS Crypto.Bytes THEN
+                    // ciphertext (1088 bytes) || shared secret (32 bytes)
+                    LET ct AS Crypto.Bytes OR Error = Crypto.Slice(sealed, 0, 1088)
+                    LET sent AS Crypto.Bytes OR Error = Crypto.Slice(sealed, 1088, 32)
+                    IF ct IS Crypto.Bytes AND sent IS Crypto.Bytes THEN
+                        LET received AS Crypto.Bytes OR Error = Crypto.MlKemDecapsulate(decapKey, ct)
+                        IF received IS Crypto.Bytes THEN
+                            Check("ML-KEM-768 both sides agree", Crypto.ConstantTimeEquals(sent, received))
+                        ELSE
+                            Check("ML-KEM-768 both sides agree", FALSE)
+                        END IF
+                    ELSE
+                        Check("ML-KEM-768 both sides agree", FALSE)
+                    END IF
+                ELSE
+                    Check("ML-KEM-768 both sides agree", FALSE)
+                END IF
+            ELSE
+                Check("ML-KEM-768 both sides agree", FALSE)
+            END IF
+        ELSE
+            Check("ML-KEM-768 both sides agree", FALSE)
+        END IF
+    ELSE
+        Check("ML-KEM-768 both sides agree", FALSE)
+    END IF
+
+    LET dsaSeed AS Crypto.Key OR Error = Crypto.GenerateKey(Crypto.ALG_ML_DSA_65)
+    IF dsaSeed IS Crypto.Key THEN
+        LET dsaPair AS Crypto.Bytes OR Error = Crypto.MlDsaKeypair(dsaSeed)
+        IF dsaPair IS Crypto.Bytes THEN
+            LET verifying AS Crypto.Bytes OR Error = Crypto.Slice(dsaPair, 0, 1952)
+            LET dsaSig AS Crypto.Bytes OR Error = Crypto.MlDsaSign(dsaSeed, Crypto.FromText("abc"))
+            IF verifying IS Crypto.Bytes AND dsaSig IS Crypto.Bytes THEN
+                Check("ML-DSA-65 Sign and Verify", Crypto.MlDsaVerify(verifying, Crypto.FromText("abc"), dsaSig))
+                Check("ML-DSA-65 Verify refuses another message", NOT Crypto.MlDsaVerify(verifying, Crypto.FromText("abd"), dsaSig))
+            ELSE
+                Check("ML-DSA-65 Sign and Verify", FALSE)
+            END IF
+        ELSE
+            Check("ML-DSA-65 Sign and Verify", FALSE)
+        END IF
+    ELSE
+        Check("ML-DSA-65 Sign and Verify", FALSE)
+    END IF
+END FUNCTION
+
+// --- 14. Per-call policy ---------------------------------------------------------
+FUNCTION Policies() AS VOID
+    LET data AS Crypto.Bytes = Crypto.FromText("policy")
+    LET opts AS Crypto.HashOptions
+    opts.alg = Crypto.Alg.BLAKE3
+    opts.policy.fipsOnly = TRUE
+    LET refused AS Crypto.Bytes OR Error = Crypto.HashWith(data, opts)
+    IF refused IS Error THEN
+        Check("fipsOnly refuses BLAKE3", refused.Code = Crypto.UNSUPPORTED_ALGORITHM)
+    ELSE
+        Check("fipsOnly refuses BLAKE3", FALSE)
+    END IF
+    opts.alg = Crypto.Alg.SHA512
+    LET approved AS Crypto.Bytes OR Error = Crypto.HashWith(data, opts)
+    Check("fipsOnly admits SHA-512", approved IS Crypto.Bytes)
+    LET defaults AS Crypto.HashOptions
+    defaults.alg = Crypto.Alg.BLAKE3
+    LET next AS Crypto.Bytes OR Error = Crypto.HashWith(data, defaults)
+    Check("A policy does not reach the next call", next IS Crypto.Bytes)
+
+    LET pairOpts AS Crypto.KeyPairOptions
+    pairOpts.alg = Crypto.Alg.X25519
+    pairOpts.policy.fipsOnly = TRUE
+    LET x AS Crypto.KeyPair OR Error = Crypto.NewKeyPairWith(pairOpts)
+    IF x IS Error THEN
+        Check("fipsOnly refuses X25519", x.Code = Crypto.UNSUPPORTED_ALGORITHM)
+    ELSE
+        Check("fipsOnly refuses X25519", FALSE)
+    END IF
+    LET macOpts AS Crypto.MacOptions
+    macOpts.alg = Crypto.Alg.BLAKE3_KEYED
+    macOpts.policy.fipsOnly = TRUE
+    LET tag AS Crypto.Bytes OR Error = Crypto.MacWith(Crypto.NewSecretKey(), data, macOpts)
+    Check("fipsOnly refuses keyed BLAKE3", tag IS Error)
+
+    LET legacy AS Crypto.HashOptions
+    legacy.alg = Crypto.Alg.SHA1
+    legacy.policy.allowLegacy = TRUE
+    LET sha1 AS Crypto.Bytes OR Error = Crypto.HashWith(data, legacy)
+    IF sha1 IS Error THEN
+        Check("allowLegacy is reserved: SHA-1 stays LEGACY_DISABLED", sha1.Code = Crypto.LEGACY_DISABLED)
+    ELSE
+        Check("allowLegacy is reserved: SHA-1 stays LEGACY_DISABLED", FALSE)
+    END IF
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    BytesAndEncodings()
+    Hashing()
+    Checksums()
+    Randomness()
+    Secrets()
+    SymmetricKeys()
+    Envelopes()
+    RawAead()
+    Macs()
+    Passwords()
+    KeyPairs()
+    RawSignatures()
+    PostQuantum()
+    Policies()
+    PRINT "BNCrypto tour done"
+END FUNCTION
