@@ -3,6 +3,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests read back the fixture files they write"
+)]
 #![allow(unsafe_code)]
 
 use bn_stdlib::crypto::{bn_decrypt_file, bn_encrypt_file};

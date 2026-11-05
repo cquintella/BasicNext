@@ -577,7 +577,12 @@ mod tests {
         assert!(read_handle(handle).is_err());
         assert!(write_handle(handle, "bad").is_err());
         assert_eq!(bn_rt_file_close(handle), BN_FILE_OK);
-        assert_eq!(std::fs::read(&path).unwrap(), b"preserve");
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the test reads back the fixture file it wrote"
+        )]
+        let kept = std::fs::read(&path).unwrap();
+        assert_eq!(kept, b"preserve");
         std::fs::remove_file(path).unwrap();
     }
 

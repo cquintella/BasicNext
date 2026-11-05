@@ -22,10 +22,35 @@ path = "src/lib.rs"
 [workspace.lints.rust]
 unsafe_code = "deny"
 missing_debug_implementations = "warn"
+# An unsafe fn body is not one unsafe block: each operation is wrapped and
+# justified on its own.
+unsafe_op_in_unsafe_fn = "deny"
+# Lifetimes stay visible in paths (`Formatter<'_>`), so borrowing is readable.
+elided_lifetimes_in_paths = "warn"
 
 [workspace.lints.clippy]
-all = "warn"
-pedantic = "warn"
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# Restriction lints adopted as the project standard (secure, readable code).
+# Unfinished code never ships.
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+# Conversions that can fail are `TryFrom`, never a `From` that panics.
+fallible_impl_from = "deny"
+# Sharing and locking that is wrong by construction.
+rc_mutex = "deny"
+mutex_atomic = "warn"
+# Floating point: no equality on constants, no literal that loses precision.
+float_cmp_const = "deny"
+lossy_float_literal = "deny"
+# A loop that never ends is written so that it says so.
+infinite_loop = "warn"
+# Readability.
+rest_pat_in_fully_bound_structs = "warn"
+empty_structs_with_brackets = "warn"
+try_err = "warn"
+redundant_type_annotations = "warn"
 
 [lints]
 workspace = true

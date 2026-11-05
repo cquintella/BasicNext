@@ -1,3 +1,7 @@
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests read back the fixture files they write"
+)]
 use std::{
     collections::{BTreeSet, HashSet},
     fs,

@@ -1,3 +1,7 @@
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests read back the fixture files they write"
+)]
 #![allow(clippy::map_unwrap_or)]
 // Author: Carlos Quintella
 // This Source Code Form is subject to the terms of the Mozilla Public

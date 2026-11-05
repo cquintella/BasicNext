@@ -1,3 +1,7 @@
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests read back the fixture files they write"
+)]
 #![allow(clippy::map_unwrap_or)]
 
 //! Integration tests of the `bnc` executable (Clang-like surface).

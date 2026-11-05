@@ -67,6 +67,12 @@ impl StaticFileOpener for SystemFileOpener {
             .ok()
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map_or(0, |d| d.as_secs());
+        // Interim: this opener does not go through the filesystem policy, and the
+        // native server uses it; a policy-aware native opener replaces it.
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "interim: no policy-aware static file opener in the native server yet"
+        )]
         let bytes = std::fs::read(path).map_err(|e| StaticFileError::Io(e.to_string()))?;
         Ok(StaticFileContent { bytes, mtime_secs })
     }

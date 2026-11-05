@@ -1,3 +1,7 @@
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests read back the fixture files they write"
+)]
 #[path = "../support/inventory_tests.rs"]
 mod inventory_tests;
 
