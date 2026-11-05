@@ -293,6 +293,13 @@ pub extern "C" fn bn_rt_crypto_mac_with(
         }
         i32::from_le_bytes(alg_bytes)
     };
+    // SAFETY: `opts_ptr` is null or the `MacOptions` record the backend laid out.
+    let policy = unsafe {
+        crate::crypto_policy::read_policy(opts_ptr, crate::crypto_policy::MAC_OPTS_POLICY_OFFSET)
+    };
+    if let Err(failure) = policy.admits_mac(alg) {
+        return failed(&failure);
+    }
     match bn_mac(&key_bytes, &data_bytes, alg) {
         Ok(tag) => {
             let handle = store(tag);
@@ -325,6 +332,13 @@ pub extern "C" fn bn_rt_crypto_mac_stream_new_with(
         }
         i32::from_le_bytes(alg_bytes)
     };
+    // SAFETY: `opts_ptr` is null or the `MacOptions` record the backend laid out.
+    let policy = unsafe {
+        crate::crypto_policy::read_policy(opts_ptr, crate::crypto_policy::MAC_OPTS_POLICY_OFFSET)
+    };
+    if let Err(failure) = policy.admits_mac(alg) {
+        return failed(&failure);
+    }
     bn_rt_crypto_mac_stream_new(key_handle, alg, out_handle)
 }
 

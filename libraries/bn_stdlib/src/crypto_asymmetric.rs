@@ -484,3 +484,44 @@ pub extern "C" fn bn_rt_crypto_private_key_release(handle: u64) -> i32 {
     }
     BN_CRYPTO_OK
 }
+
+/// Offset of `alg AS INT32` in a native `KeyPairOptions` record.
+const KEY_PAIR_OPTS_ALG_OFFSET: usize = 16;
+
+/// C ABI: `NewKeyPairWith(opts)`: the algorithm and the policy come from the
+/// `KeyPairOptions` record.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_keypair_generate_with(
+    opts_ptr: *const u8,
+    out_pub: *mut u64,
+    out_priv: *mut u64,
+) -> i32 {
+    if opts_ptr.is_null() {
+        return crate::crypto_abi::failed(&CryptoFailure::UnsupportedAlgorithm {
+            operation: "BNCrypto.NewKeyPairWith",
+        });
+    }
+    let mut alg_bytes = [0u8; 4];
+    // SAFETY: `opts_ptr` was checked non-null and is the `KeyPairOptions`
+    // record the backend laid out; `alg` is an INT32 at its offset.
+    unsafe {
+        std::ptr::copy_nonoverlapping(
+            opts_ptr.add(KEY_PAIR_OPTS_ALG_OFFSET),
+            alg_bytes.as_mut_ptr(),
+            4,
+        );
+    }
+    let alg = i32::from_ne_bytes(alg_bytes);
+    // SAFETY: as above; `policy` is at `KEY_PAIR_OPTS_POLICY_OFFSET`.
+    let policy = unsafe {
+        crate::crypto_policy::read_policy(
+            opts_ptr,
+            crate::crypto_policy::KEY_PAIR_OPTS_POLICY_OFFSET,
+        )
+    };
+    if let Err(failure) = policy.admits_key_pair(alg) {
+        return crate::crypto_abi::failed(&failure);
+    }
+    bn_rt_crypto_keypair_generate(alg, out_pub, out_priv)
+}

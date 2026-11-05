@@ -1955,6 +1955,37 @@ fn compiled_bncrypto_encoding_matches_the_interpreter() {
 }
 
 #[test]
+fn compiled_bncrypto_policy_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_policy_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-policy/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), BNCRYPTO_POLICY_OUTPUT);
+    let _ = fs::remove_dir_all(&directory);
+}
+
+#[test]
 fn compiled_bncrypto_release_matches_the_interpreter() {
     let directory = std::env::temp_dir().join(format!(
         "bn-compiled_bncrypto_release_matches_the_interpreter-{}",
@@ -2263,3 +2294,7 @@ fn companion_log_never_replaces_or_hides_the_product() {
     assert!(!same.exists());
     fs::remove_dir_all(directory).expect("remove companion test directory");
 }
+
+/// What `tests/modules/bncrypto-policy` prints on both backends: 4 is
+/// `UNSUPPORTED_ALGORITHM`, 5 is `LEGACY_DISABLED`.
+const BNCRYPTO_POLICY_OUTPUT: &str = "hash-blake3 ok\nhash-blake3-fips 4\nhash-sha3-fips ok\nhasher-blake2b-fips 4\nhash-md5-allow-legacy 5\nhash-blake3-next-call ok\nmac-blake3-fips 4\nmac-stream-blake3-fips 4\nmac-hmac384-fips ok\nkeypair-x25519 ok\nkeypair-x25519-fips 4\nkeypair-ed25519-fips ok\n";

@@ -29,6 +29,7 @@ pub mod crypto_file;
 pub mod crypto_hash;
 pub mod crypto_mac;
 pub mod crypto_password;
+pub mod crypto_policy;
 pub mod crypto_secret_abi;
 pub mod crypto_sign;
 pub mod data_error;

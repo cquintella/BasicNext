@@ -28,6 +28,7 @@ pub const NAME: &str = "BNCrypto";
 
 use bn_stdlib::crypto::KeyEntry;
 use bn_stdlib::crypto_abi::{PrivateKeyEntry, PublicKeyEntry, SecretKeyEntry};
+use bn_stdlib::crypto_policy::CryptoPolicy;
 use bn_value::RecordValue;
 
 /// Interpreter-side owner of `BNCrypto.Bytes` and `BNCrypto.Key` handles. Compiled programs use
@@ -1331,35 +1332,41 @@ impl CryptoProvider {
             "HashWith" => {
                 require_arity(member, arguments, 2, span)?;
                 let data = self.bytes_at(arguments, 0, member, span)?;
-                let Value::Record { record } = &arguments[1] else {
-                    return Err(type_mismatch(
-                        "Crypto.HashOptions",
-                        "non-record value",
-                        member,
-                        span,
-                    ));
-                };
-                let alg = match record.get(0) {
-                    Some(Value::Integer(a, _)) => i32::try_from(*a).unwrap_or(1),
-                    _ => 1,
-                };
+                let record = options_record(arguments, 1, "BNCrypto.HashOptions", member, span)?;
+                let alg = options_alg(record, member, span)?;
+                if let Err(err) = options_policy(record, HASH_OPTS_POLICY_FIELD).admits_hash(alg) {
+                    return failure(&err);
+                }
                 match bn_stdlib::crypto::bn_hash(&data, alg) {
                     Ok(digest) => Ok(self.insert(digest)),
                     Err(err) => failure(&err),
                 }
             }
-            "New" if member.contains("Hasher") => {
+            "New" | "NewWith" if member.contains("Hasher") => {
                 require_arity(member, arguments, 1, span)?;
-                let Value::Integer(alg_val, _) = &arguments[0] else {
-                    return Err(type_mismatch("INTEGER", "non-INTEGER value", member, span));
-                };
-                let Ok(alg) = i32::try_from(*alg_val) else {
-                    return Err(type_mismatch(
-                        "an INTEGER algorithm code",
-                        "out-of-range value",
-                        member,
-                        span,
-                    ));
+                let alg = if method == "NewWith" {
+                    // `Hasher.NewWith(opts)`: algorithm and policy from `HashOptions`.
+                    let record =
+                        options_record(arguments, 0, "BNCrypto.HashOptions", member, span)?;
+                    let alg = options_alg(record, member, span)?;
+                    if let Err(err) =
+                        options_policy(record, HASH_OPTS_POLICY_FIELD).admits_hash(alg)
+                    {
+                        return failure(&err);
+                    }
+                    alg
+                } else {
+                    let Value::Integer(alg_val, _) = &arguments[0] else {
+                        return Err(type_mismatch("INTEGER", "non-INTEGER value", member, span));
+                    };
+                    i32::try_from(*alg_val).map_err(|_| {
+                        type_mismatch(
+                            "an INTEGER algorithm code",
+                            "out-of-range value",
+                            member,
+                            span,
+                        )
+                    })?
                 };
                 match bn_stdlib::crypto::Hasher::new(alg) {
                     Ok(hasher) => {
@@ -1542,18 +1549,10 @@ impl CryptoProvider {
                 require_arity(member, arguments, 3, span)?;
                 let key = self.key_bytes_at(arguments, 0, member, span)?;
                 let data = self.bytes_at(arguments, 1, member, span)?;
-                let alg = match arguments.get(2) {
-                    Some(Value::Record { record }) => match record.get(0) {
-                        Some(&Value::Integer(i, _)) => {
-                            i32::try_from(i).unwrap_or(bn_stdlib::crypto::MAC_HMAC_SHA256)
-                        }
-                        _ => bn_stdlib::crypto::MAC_HMAC_SHA256,
-                    },
-                    Some(&Value::Integer(i, _)) => {
-                        i32::try_from(i).unwrap_or(bn_stdlib::crypto::MAC_HMAC_SHA256)
-                    }
-                    _ => bn_stdlib::crypto::MAC_HMAC_SHA256,
-                };
+                let (alg, policy) = mac_alg_and_policy(arguments.get(2), member, span)?;
+                if let Err(err) = policy.admits_mac(alg) {
+                    return failure(&err);
+                }
                 match bn_stdlib::crypto::bn_mac(&key, &data, alg) {
                     Ok(tag) => Ok(self.insert(tag)),
                     Err(err) => failure(&err),
@@ -1626,22 +1625,10 @@ impl CryptoProvider {
         span: Span,
     ) -> Result<Value, Diagnostic> {
         let key = self.key_bytes_at(arguments, 0, member, span)?;
-        let alg = if arguments.len() > 1 {
-            match arguments.get(1) {
-                Some(Value::Record { record }) => match record.get(0) {
-                    Some(&Value::Integer(i, _)) => {
-                        i32::try_from(i).unwrap_or(bn_stdlib::crypto::MAC_HMAC_SHA256)
-                    }
-                    _ => bn_stdlib::crypto::MAC_HMAC_SHA256,
-                },
-                Some(&Value::Integer(i, _)) => {
-                    i32::try_from(i).unwrap_or(bn_stdlib::crypto::MAC_HMAC_SHA256)
-                }
-                _ => bn_stdlib::crypto::MAC_HMAC_SHA256,
-            }
-        } else {
-            bn_stdlib::crypto::MAC_HMAC_SHA256
-        };
+        let (alg, policy) = mac_alg_and_policy(arguments.get(1), member, span)?;
+        if let Err(err) = policy.admits_mac(alg) {
+            return failure(&err);
+        }
         match bn_stdlib::crypto::MacStream::new(&key, alg) {
             Ok(stream) => {
                 let stream_id = bn_stdlib::crypto::insert_mac_stream(stream);
@@ -1985,25 +1972,12 @@ impl CryptoProvider {
         span: Span,
     ) -> Result<Value, Diagnostic> {
         require_arity(member, arguments, 1, span)?;
-        let alg = match arguments.first() {
-            // `alg AS INT32` is the only field; its default (`Alg.ED25519`) is the
-            // record's, never chosen here.
-            Some(Value::Record { record }) => match record.get(0) {
-                Some(Value::Integer(value, _)) => i32::try_from(*value)
-                    .map_err(|_| type_mismatch("INT32", "out-of-range alg value", member, span))?,
-                _ => {
-                    return Err(type_mismatch("INT32", "non-INT32 alg field", member, span));
-                }
-            },
-            _ => {
-                return Err(type_mismatch(
-                    "BNCrypto.KeyPairOptions",
-                    "non-record value",
-                    member,
-                    span,
-                ));
-            }
-        };
+        // `alg` and `policy`; the default `alg` (`Alg.ED25519`) is the record's.
+        let record = options_record(arguments, 0, "BNCrypto.KeyPairOptions", member, span)?;
+        let alg = options_alg(record, member, span)?;
+        if let Err(err) = options_policy(record, KEY_PAIR_OPTS_POLICY_FIELD).admits_key_pair(alg) {
+            return failure(&err);
+        }
         self.op_new_keypair_internal(alg)
     }
 
@@ -2385,7 +2359,7 @@ impl Provider for CryptoProvider {
             "Crc32" | "Crc32c" | "Adler32" | "XxHash64" | "VerifyFileChecksum" => {
                 self.checksum_op(core.host().filesystem(), method, member, &arguments, span)
             }
-            "New" if member.contains("Hasher") => {
+            "New" | "NewWith" if member.contains("Hasher") => {
                 self.hash_op(core, method, member, &arguments, span)
             }
             "New" | "NewWith" if member.contains("MacStream") => {
@@ -2666,6 +2640,79 @@ fn csprng_dispatch(
             }
         }
         _ => Err(name_not_found(method, "BNCrypto CSPRNG function", span)),
+    }
+}
+
+/// Field index of `policy` in each options record (`modules/bn/BNCrypto.bn`).
+const HASH_OPTS_POLICY_FIELD: usize = 2;
+const MAC_OPTS_POLICY_FIELD: usize = 2;
+const KEY_PAIR_OPTS_POLICY_FIELD: usize = 1;
+
+/// The options record at `index`, or a type mismatch naming `expected`.
+fn options_record<'a>(
+    arguments: &'a [Value],
+    index: usize,
+    expected: &str,
+    member: &str,
+    span: Span,
+) -> Result<&'a RecordValue, Diagnostic> {
+    match arguments.get(index) {
+        Some(Value::Record { record }) => Ok(record),
+        _ => Err(type_mismatch(expected, "non-record value", member, span)),
+    }
+}
+
+/// The `alg` field (index 0) of an options record. Its default is the
+/// record's; a value out of `INT32` range is a type mismatch, never replaced.
+fn options_alg(record: &RecordValue, member: &str, span: Span) -> Result<i32, Diagnostic> {
+    match record.get(0) {
+        Some(Value::Integer(value, _)) => i32::try_from(*value)
+            .map_err(|_| type_mismatch("INT32", "out-of-range alg value", member, span)),
+        _ => Err(type_mismatch(
+            "INTEGER",
+            "non-integer alg field",
+            member,
+            span,
+        )),
+    }
+}
+
+/// The `policy` field of an options record (`Policy { allowLegacy, fipsOnly }`).
+fn options_policy(record: &RecordValue, field: usize) -> CryptoPolicy {
+    let Some(Value::Record { record: policy }) = record.get(field) else {
+        return CryptoPolicy::default();
+    };
+    CryptoPolicy {
+        allow_legacy: matches!(policy.get(0), Some(Value::Boolean(true))),
+        fips_only: matches!(policy.get(1), Some(Value::Boolean(true))),
+    }
+}
+
+/// `MacWith` and `MacStream.New`/`NewWith`: a `MacOptions` record gives the
+/// algorithm and the policy, an INTEGER gives the algorithm, no argument is
+/// HMAC-SHA256 with the default policy.
+fn mac_alg_and_policy(
+    argument: Option<&Value>,
+    member: &str,
+    span: Span,
+) -> Result<(i32, CryptoPolicy), Diagnostic> {
+    match argument {
+        Some(Value::Record { record }) => Ok((
+            options_alg(record, member, span)?,
+            options_policy(record, MAC_OPTS_POLICY_FIELD),
+        )),
+        Some(Value::Integer(value, _)) => Ok((
+            i32::try_from(*value)
+                .map_err(|_| type_mismatch("INT32", "out-of-range alg value", member, span))?,
+            CryptoPolicy::default(),
+        )),
+        None => Ok((bn_stdlib::crypto::MAC_HMAC_SHA256, CryptoPolicy::default())),
+        Some(_) => Err(type_mismatch(
+            "BNCrypto.MacOptions",
+            "non-record value",
+            member,
+            span,
+        )),
     }
 }
 

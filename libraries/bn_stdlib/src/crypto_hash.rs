@@ -295,6 +295,14 @@ pub extern "C" fn bn_rt_crypto_hash_with(
         );
         i32::from_ne_bytes(alg_bytes)
     };
+    // SAFETY: `opts_ptr` was checked non-null and is the `HashOptions` record the
+    // backend laid out.
+    let policy = unsafe {
+        crate::crypto_policy::read_policy(opts_ptr, crate::crypto_policy::HASH_OPTS_POLICY_OFFSET)
+    };
+    if let Err(failure) = policy.admits_hash(alg) {
+        return failed(&failure);
+    }
     hash_handle_status(data_handle, alg, out_handle)
 }
 
@@ -332,6 +340,35 @@ pub extern "C" fn bn_rt_crypto_hash_file(
         }
         Err(err) => failed(&err),
     }
+}
+
+/// C ABI: `Hasher.NewWith(opts)`: the algorithm and the policy come from the
+/// `HashOptions` record.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_hasher_new_with(opts_ptr: *const u8, out_handle: *mut i64) -> i32 {
+    if opts_ptr.is_null() {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    }
+    let mut alg_bytes = [0u8; 4];
+    // SAFETY: `opts_ptr` was checked non-null and is the `HashOptions` record
+    // the backend laid out; `alg` is at `HASH_OPTS_ALG_OFFSET`.
+    unsafe {
+        std::ptr::copy_nonoverlapping(
+            opts_ptr.add(HASH_OPTS_ALG_OFFSET),
+            alg_bytes.as_mut_ptr(),
+            4,
+        );
+    }
+    let alg = i32::from_ne_bytes(alg_bytes);
+    // SAFETY: as above; `policy` is at `HASH_OPTS_POLICY_OFFSET`.
+    let policy = unsafe {
+        crate::crypto_policy::read_policy(opts_ptr, crate::crypto_policy::HASH_OPTS_POLICY_OFFSET)
+    };
+    if let Err(failure) = policy.admits_hash(alg) {
+        return failed(&failure);
+    }
+    bn_rt_crypto_hasher_new(alg, out_handle)
 }
 
 /// C ABI: `Hasher.New(alg)`. Creates a new Hasher handle.

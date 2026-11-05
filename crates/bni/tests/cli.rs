@@ -1500,6 +1500,25 @@ fn sandboxed_bncrypto_file_operations_obey_the_read_root() {
     let _ = fs::remove_dir_all(&base);
 }
 
+/// Per-call policy: `fipsOnly` per family, reserved `allowLegacy`, no leak to
+/// the next call. The compiled twin is in the `bnc` suite.
+#[test]
+fn bncrypto_policy_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-policy/main.bn"])
+        .output()
+        .expect("run the BNCrypto policy fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        BNCRYPTO_POLICY_OUTPUT
+    );
+}
+
 /// RELEASE of each `BNCrypto` handle type; the compiled twin is in the `bnc` suite.
 #[test]
 fn bncrypto_release_interprets() {
@@ -1685,3 +1704,7 @@ fn unknown_member_names_the_member_and_its_owner() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+/// What `tests/modules/bncrypto-policy` prints on both backends: 4 is
+/// `UNSUPPORTED_ALGORITHM`, 5 is `LEGACY_DISABLED`.
+const BNCRYPTO_POLICY_OUTPUT: &str = "hash-blake3 ok\nhash-blake3-fips 4\nhash-sha3-fips ok\nhasher-blake2b-fips 4\nhash-md5-allow-legacy 5\nhash-blake3-next-call ok\nmac-blake3-fips 4\nmac-stream-blake3-fips 4\nmac-hmac384-fips ok\nkeypair-x25519 ok\nkeypair-x25519-fips 4\nkeypair-ed25519-fips ok\n";

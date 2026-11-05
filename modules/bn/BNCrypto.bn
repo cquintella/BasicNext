@@ -89,13 +89,23 @@ EXPORT CLASS Alg
     PUBLIC STATIC ML_DSA_65 AS INTEGER = 41
 END CLASS
 
+// Per-call policy: a field of the options record of the call (bncrypto.md,
+// "Per-Call Cryptographic Policy"). allowLegacy is reserved in this version.
+EXPORT STRUCT Policy
+    allowLegacy AS BOOLEAN = FALSE
+    fipsOnly AS BOOLEAN = FALSE
+END STRUCT
+
 EXPORT STRUCT HashOptions
     alg AS INTEGER = 1
     outLen AS INTEGER = 0
+    policy AS Policy
 END STRUCT
 
 EXPORT CLASS Hasher
     PUBLIC STATIC FUNCTION New(alg AS INTEGER) AS Hasher OR Error
+    END FUNCTION
+    PUBLIC STATIC FUNCTION NewWith(opts AS HashOptions) AS Hasher OR Error
     END FUNCTION
     PUBLIC FUNCTION Update(data AS Bytes) AS VOID
     END FUNCTION
@@ -106,6 +116,7 @@ END CLASS
 EXPORT STRUCT MacOptions
     alg AS INTEGER = 11
     tagLen AS INTEGER = 0
+    policy AS Policy
 END STRUCT
 
 EXPORT CLASS MacStream
@@ -248,6 +259,7 @@ END CLASS
 
 EXPORT STRUCT KeyPairOptions
     alg AS INT32 = 30
+    policy AS Policy
 END STRUCT
 
 EXPORT STRUCT KeyPair

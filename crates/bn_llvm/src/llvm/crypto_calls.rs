@@ -261,13 +261,15 @@ pub(super) fn lower_bncrypto_call(
                 I::gep(T::I8, kpptr.clone(), vec![(T::I32, O::int(24))]),
             );
             let priv_slot = O::reg(format!("kppriv_{dest}"));
-            let alg_op = if member == "NewKeyPair" {
-                O::int(30)
+            // `NewKeyPairWith(opts)`: the runtime reads `alg` and `policy` from
+            // the `KeyPairOptions` record; the other two pass the selector.
+            let (symbol, first) = if member == "NewKeyPair" {
+                ("bn_rt_crypto_keypair_generate", (T::I32, O::int(30)))
             } else if member == "NewKeyPairFor" {
                 let alg_val = arguments[0];
                 let alg_ty = analysis.values.get(&alg_val).expect("validated alg type");
                 let alg_llvm = llvm_type(alg_ty).expect("validated alg llvm type");
-                if alg_llvm == T::I32 {
+                let alg_op = if alg_llvm == T::I32 {
                     v(alg_val)
                 } else {
                     text.assign(
@@ -275,23 +277,16 @@ pub(super) fn lower_bncrypto_call(
                         I::cast(CastOp::Trunc, alg_llvm, v(alg_val), T::I32),
                     );
                     O::reg(format!("cryalg{dest}"))
-                }
+                };
+                ("bn_rt_crypto_keypair_generate", (T::I32, alg_op))
             } else {
-                text.assign(
-                    format!("cryalgp{dest}"),
-                    I::gep(T::I8, v(arguments[0]), vec![(T::I32, O::int(16))]),
-                );
-                text.assign(
-                    format!("cryalg{dest}"),
-                    I::load(T::I32, O::reg(format!("cryalgp{dest}"))),
-                );
-                O::reg(format!("cryalg{dest}"))
+                (
+                    "bn_rt_crypto_keypair_generate_with",
+                    (T::Ptr, v(arguments[0])),
+                )
             };
-            let args = vec![(T::I32, alg_op), (T::Ptr, pub_slot), (T::Ptr, priv_slot)];
-            text.assign(
-                format!("kprc{dest}"),
-                I::call(T::I32, "bn_rt_crypto_keypair_generate", args),
-            );
+            let args = vec![first, (T::Ptr, pub_slot), (T::Ptr, priv_slot)];
+            text.assign(format!("kprc{dest}"), I::call(T::I32, symbol, args));
             let rc = O::reg(format!("kprc{dest}"));
             text.assign(
                 format!("kppayload{dest}"),
@@ -718,6 +713,19 @@ pub(super) fn lower_bncrypto_call(
                     text,
                     destination,
                     "bn_rt_crypto_mac_stream_new",
+                    args,
+                    Out::Handle,
+                );
+                return;
+            }
+            if member == "NewWith" {
+                // `Hasher.NewWith(opts)`: the runtime reads the algorithm and
+                // the policy from the `HashOptions` record.
+                let args = vec![(T::Ptr, v(arguments[0]))];
+                lower_status_call(
+                    text,
+                    destination,
+                    "bn_rt_crypto_hasher_new_with",
                     args,
                     Out::Handle,
                 );

@@ -198,7 +198,7 @@ File encryption streams in 64 KiB authenticated chunks. New target files use ato
 | `HashWith` | `HashWith(data AS Bytes, opts AS HashOptions) AS Bytes OR Error` |
 
 Supported in `HashOptions.alg`: SHA-256, SHA-384, SHA-512, SHA-512/256, SHA3-256, SHA3-512, BLAKE2b, BLAKE3.
-Streaming hash updates are provided via `Hasher.New(alg)`. Legacy digests (MD5, SHA-1) are rejected unless `Crypto.Policy.allowLegacy = 1` and are restricted to non-signature checksums.
+Streaming hash updates are provided via `Hasher.New(alg)` and `Hasher.NewWith(opts AS HashOptions)`, which applies the options' algorithm and policy. `Alg.MD5` and `Alg.SHA1` are reserved: every request for them is `LEGACY_DISABLED`, with or without a policy (BDFL decision, 2026-11-05).
 
 ---
 
@@ -266,11 +266,12 @@ Non-cryptographic integrity checks are grouped under the `Checksum` class:
 | `NewKeyPairFor` | `NewKeyPairFor(alg AS INT32) AS KeyPair OR Error` | Supports `Alg.ED25519` (30), `Alg.X25519` (31), `Alg.ECDSA_P256` (32). |
 | `NewKeyPairWith` | `NewKeyPairWith(opts AS KeyPairOptions) AS KeyPair OR Error` | Configured generation. `KeyPairOptions` is below. No seed. |
 
-`KeyPairOptions` has one field (BDFL decision, 2026-11-04):
+`KeyPairOptions` has two fields (BDFL decisions, 2026-11-04 and 2026-11-05):
 
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `alg` | `INT32` | `Alg.ED25519` (30) | Algorithm to generate. A seed and a label are not fields of this version. |
+| `policy` | `Policy` | default `Policy` | See "Per-Call Cryptographic Policy". |
 
 ### Signatures
 
@@ -321,13 +322,20 @@ Error codes returned by BNCrypto operations:
 
 ## Per-Call Cryptographic Policy
 
-Policy constraints are scoped to individual operations via parameter structs:
+A policy is a field of the options record of the call that needs it (BDFL decision, 2026-11-05). It is a value of that call only: there is no process-wide switch and no environment variable, and a policy never reaches another call.
 
 ```basic
 EXPORT STRUCT Policy
-    allowLegacy AS BOOLEAN = 0  // Permits MD5, SHA-1 checksums or legacy verification
-    fipsOnly AS BOOLEAN = 0     // Enforces strict FIPS-approved algorithms
+    allowLegacy AS BOOLEAN = FALSE
+    fipsOnly AS BOOLEAN = FALSE
 END STRUCT
 ```
 
-No global process-wide switch exists; policies never leak across unrelated calls.
+`HashOptions`, `MacOptions` and `KeyPairOptions` carry `policy AS Policy` as their last field. A call without options (`Hash`, `Mac`, `NewKeyPair`, …) uses the default policy.
+
+| Field | Effect in this version |
+| --- | --- |
+| `allowLegacy` | Reserved. No legacy algorithm is available in this version: `Alg.MD5` and `Alg.SHA1` are `LEGACY_DISABLED` whatever the policy (BDFL decision, 2026-11-05). |
+| `fipsOnly` | The call refuses, with `UNSUPPORTED_ALGORITHM`, an algorithm its options select that is not FIPS-approved: `Alg.BLAKE2B` and `Alg.BLAKE3` in `HashOptions`, `Alg.BLAKE3_KEYED` in `MacOptions`, `Alg.X25519` in `KeyPairOptions`. |
+
+`fipsOnly` is an algorithm filter, not FIPS 140-3 validation: the runtime is not a validated cryptographic module. Functions whose algorithm is fixed and is not FIPS-approved (`HashPassword` and `DeriveKey` with Argon2id, envelope encryption with XChaCha20-Poly1305, `ExportPem` with scrypt) take no options record, so no policy reaches them; a program that needs only approved algorithms does not call them.
