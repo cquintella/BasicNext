@@ -422,12 +422,11 @@ pub(crate) fn vector_shape_to_depth(expression: &Expression, depth: usize) -> Op
     Some(shape)
 }
 /// Whether `ty` is the `BNDispatch` class `class` (`Ticket`, `Queue`): a
-/// class of that name exported by a standard module. Only `AWAIT` on a
+/// class of that name exported by a standard module. Only `BNDispatch`
+/// exports `Ticket` or `Queue` today; a standard module that adds a class of
+/// that name would need the module's identity here. Only `AWAIT` on a
 /// ticket and `ASYNC` on a queue get the dispatch rules; any other `Wait` or
 /// `Async` is an ordinary method.
-// ponytail: matched by class name; BNDispatch is the only standard module
-// exporting `Ticket` or `Queue`. A standard module that adds one needs the
-// module identity instead.
 #[must_use]
 pub(crate) fn is_dispatch_class(
     ty: &Type,
@@ -444,10 +443,15 @@ pub(crate) fn is_dispatch_class(
 }
 
 /// The six `BNDispatch` handle classes: `Queue`, `Ticket`, `Group`, `Barrier`, `Semaphore`, `Mutex`.
+/// A class imported from a standard module is matched by its module; a bare name
+/// (`Type::Named`) names a class of the module being analyzed, so it is a
+/// dispatch class only when that module is itself a standard module (`BNDispatch`
+/// declaring its own classes). A user class called `Queue` is a user class.
 #[must_use]
 pub(crate) fn is_dispatch_sync_class(
     ty: &Type,
     standard_modules: &std::collections::HashSet<ModuleId>,
+    in_standard_module: bool,
 ) -> bool {
     const CLASSES: &[&str] = &["Queue", "Ticket", "Group", "Barrier", "Semaphore", "Mutex"];
     match ty {
@@ -455,8 +459,9 @@ pub(crate) fn is_dispatch_sync_class(
             CLASSES.contains(&name.as_str()) && standard_modules.contains(module)
         }
         Type::Named(name) | Type::TypeName(name) => {
-            CLASSES.contains(&name.as_str())
-                || CLASSES.iter().any(|c| name.ends_with(&format!(".{c}")))
+            in_standard_module
+                && (CLASSES.contains(&name.as_str())
+                    || CLASSES.iter().any(|c| name.ends_with(&format!(".{c}"))))
         }
         _ => false,
     }
@@ -470,6 +475,7 @@ pub(crate) fn is_dispatch_sync_class(
 pub(crate) fn is_valid_async_parameter_type(
     ty: &Type,
     standard_modules: &std::collections::HashSet<ModuleId>,
+    in_standard_module: bool,
 ) -> bool {
     match ty {
         Type::Boolean
@@ -483,7 +489,7 @@ pub(crate) fn is_valid_async_parameter_type(
         {
             true
         }
-        _ => is_dispatch_sync_class(ty, standard_modules),
+        _ => is_dispatch_sync_class(ty, standard_modules, in_standard_module),
     }
 }
 

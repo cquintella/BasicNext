@@ -39,6 +39,13 @@ FUNCTION Start() AS INTEGER
     END IF
     LET liveSocket AS Net.Endpoint OR Error = second.LocalEndpoint()
     PRINT "udp live", liveSocket IS Net.Endpoint
+    // Closing the stale id again must not close the socket now in its slot.
+    LET staleClose AS VOID OR Error = first.Close()
+    IF staleClose IS Error THEN
+        RETURN 1
+    END IF
+    LET stillLive AS Net.Endpoint OR Error = second.LocalEndpoint()
+    PRINT "udp stale close keeps the live socket", stillLive IS Net.Endpoint
 
     LET endpoints AS Net.Endpoint[1] = [anyPort]
     LET oldListener AS Net.TCPListener OR Error = Net.TCPListen(endpoints, 4)

@@ -13,6 +13,7 @@ use sha2::{Digest, Sha256};
 use zeroize::Zeroize;
 
 use crate::c_string;
+use crate::counted::{Counted, Release};
 use crate::crypto_abi::{BN_CRYPTO_INVALID_HANDLE, BN_CRYPTO_OK, next_handle};
 use crate::crypto_error::CryptoFailure;
 
@@ -81,48 +82,50 @@ impl PrivateKeyEntry {
 }
 
 #[derive(Default)]
-struct PublicKeys {
-    values: Mutex<HashMap<u64, PublicKeyEntry>>,
-    holders: Mutex<HashMap<u64, usize>>,
-}
+struct PublicKeys(Mutex<Counted<PublicKeyEntry>>);
 
 #[derive(Default)]
-struct PrivateKeys {
-    values: Mutex<HashMap<u64, PrivateKeyEntry>>,
-    holders: Mutex<HashMap<u64, usize>>,
-}
+struct PrivateKeys(Mutex<Counted<PrivateKeyEntry>>);
 
 pub fn with_public_keys<T>(operation: impl FnOnce(&mut HashMap<u64, PublicKeyEntry>) -> T) -> T {
     let table = bn_core_copy::table::<PublicKeys>();
-    operation(&mut table.values.lock().unwrap_or_else(PoisonError::into_inner))
+    operation(
+        &mut table
+            .0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .values,
+    )
 }
 
 pub fn with_private_keys<T>(operation: impl FnOnce(&mut HashMap<u64, PrivateKeyEntry>) -> T) -> T {
     let table = bn_core_copy::table::<PrivateKeys>();
-    operation(&mut table.values.lock().unwrap_or_else(PoisonError::into_inner))
+    operation(
+        &mut table
+            .0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .values,
+    )
 }
 
 pub fn store_public_key(entry: PublicKeyEntry) -> u64 {
     let handle = next_handle();
-    with_public_keys(|keys| keys.insert(handle, entry));
-    let table = bn_core_copy::table::<PublicKeys>();
-    table
-        .holders
+    bn_core_copy::table::<PublicKeys>()
+        .0
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
-        .insert(handle, 1);
+        .insert(handle, entry);
     handle
 }
 
 pub fn store_private_key(entry: PrivateKeyEntry) -> u64 {
     let handle = next_handle();
-    with_private_keys(|keys| keys.insert(handle, entry));
-    let table = bn_core_copy::table::<PrivateKeys>();
-    table
-        .holders
+    bn_core_copy::table::<PrivateKeys>()
+        .0
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
-        .insert(handle, 1);
+        .insert(handle, entry);
     handle
 }
 
@@ -394,10 +397,12 @@ pub extern "C" fn bn_rt_crypto_public_key_algorithm(handle: u64) -> i32 {
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_public_key_retain(handle: u64) -> i32 {
-    let table = bn_core_copy::table::<PublicKeys>();
-    let mut holders = table.holders.lock().unwrap_or_else(PoisonError::into_inner);
-    if let Some(count) = holders.get_mut(&handle) {
-        *count += 1;
+    let held = bn_core_copy::table::<PublicKeys>()
+        .0
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .retain(handle);
+    if held {
         BN_CRYPTO_OK
     } else {
         BN_CRYPTO_INVALID_HANDLE
@@ -407,20 +412,15 @@ pub extern "C" fn bn_rt_crypto_public_key_retain(handle: u64) -> i32 {
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_public_key_release(handle: u64) -> i32 {
-    let table = bn_core_copy::table::<PublicKeys>();
-    let mut holders = table.holders.lock().unwrap_or_else(PoisonError::into_inner);
-    let Some(count) = holders.get_mut(&handle) else {
-        return BN_CRYPTO_INVALID_HANDLE;
-    };
-    *count -= 1;
-    if *count == 0 {
-        holders.remove(&handle);
-        drop(holders);
-        with_public_keys(|keys| {
-            keys.remove(&handle);
-        });
+    let released = bn_core_copy::table::<PublicKeys>()
+        .0
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .release(handle);
+    match released {
+        Release::Last(_) | Release::Held => BN_CRYPTO_OK,
+        Release::Unknown => BN_CRYPTO_INVALID_HANDLE,
     }
-    BN_CRYPTO_OK
 }
 
 #[allow(unsafe_code)]
@@ -454,10 +454,12 @@ pub extern "C" fn bn_rt_crypto_private_key_zeroize(handle: u64) -> i32 {
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_private_key_retain(handle: u64) -> i32 {
-    let table = bn_core_copy::table::<PrivateKeys>();
-    let mut holders = table.holders.lock().unwrap_or_else(PoisonError::into_inner);
-    if let Some(count) = holders.get_mut(&handle) {
-        *count += 1;
+    let held = bn_core_copy::table::<PrivateKeys>()
+        .0
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .retain(handle);
+    if held {
         BN_CRYPTO_OK
     } else {
         BN_CRYPTO_INVALID_HANDLE
@@ -467,22 +469,19 @@ pub extern "C" fn bn_rt_crypto_private_key_retain(handle: u64) -> i32 {
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_private_key_release(handle: u64) -> i32 {
-    let table = bn_core_copy::table::<PrivateKeys>();
-    let mut holders = table.holders.lock().unwrap_or_else(PoisonError::into_inner);
-    let Some(count) = holders.get_mut(&handle) else {
-        return BN_CRYPTO_INVALID_HANDLE;
-    };
-    *count -= 1;
-    if *count == 0 {
-        holders.remove(&handle);
-        drop(holders);
-        with_private_keys(|keys| {
-            if let Some(mut entry) = keys.remove(&handle) {
-                entry.seed.as_mut_slice().zeroize();
-            }
-        });
+    let released = bn_core_copy::table::<PrivateKeys>()
+        .0
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .release(handle);
+    match released {
+        Release::Last(mut entry) => {
+            entry.seed.as_mut_slice().zeroize();
+            BN_CRYPTO_OK
+        }
+        Release::Held => BN_CRYPTO_OK,
+        Release::Unknown => BN_CRYPTO_INVALID_HANDLE,
     }
-    BN_CRYPTO_OK
 }
 
 /// Offset of `alg AS INT32` in a native `KeyPairOptions` record.

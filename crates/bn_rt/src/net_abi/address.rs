@@ -96,8 +96,10 @@ pub extern "C" fn bn_rt_net_neighbor(address: *const c_char, out: *mut *mut c_ch
 
 /// The live resolved address lists. An id is generation-checked
 /// (`crate::handle_table`) and travels as an opaque pointer: a freed list is
-/// never read or freed twice. No ceiling: a list lives only as long as the
-/// binding that holds it.
+/// never read or freed twice. No ceiling of its own: `bnc` does not yet free
+/// a list when its binding ends, so the table holds every list until exit.
+/// The id travels as a pointer, so pointers must hold 64 bits.
+const _: () = assert!(std::mem::size_of::<*mut std::ffi::c_void>() >= std::mem::size_of::<i64>());
 static ADDRESS_LISTS: std::sync::Mutex<crate::handle_table::GenerationTable<AddressesHandle>> =
     std::sync::Mutex::new(crate::handle_table::GenerationTable::new());
 
@@ -123,8 +125,9 @@ pub extern "C" fn bn_rt_net_resolve(
     out: *mut *mut std::ffi::c_void,
 ) -> i32 {
     const OPERATION: &str = "HOST.Net.Resolve";
-    let addresses = authorized(OPERATION, "resolve a host")
-        .and_then(|()| text_argument(host, OPERATION, "resolve a host"))
+    const ACTION: &str = "resolve a host";
+    let addresses = authorized(OPERATION, ACTION)
+        .and_then(|()| text_argument(host, OPERATION, ACTION))
         .and_then(|host| {
             net::resolve_host(
                 host,
@@ -134,13 +137,17 @@ pub extern "C" fn bn_rt_net_resolve(
         });
     match addresses {
         Ok(addresses) => {
-            let id = ADDRESS_LISTS
+            let stored = ADDRESS_LISTS
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .insert(AddressesHandle::from_addresses(addresses), usize::MAX)
-                .unwrap_or_else(|| crate::arc_abi::abort_use_after_release());
-            write_out(out, id as *mut std::ffi::c_void);
-            0
+                .insert(AddressesHandle::from_addresses(addresses), usize::MAX);
+            match stored {
+                Some(id) => {
+                    write_out(out, id as *mut std::ffi::c_void);
+                    0
+                }
+                None => failed(&net::quota_exceeded(OPERATION, ACTION)),
+            }
         }
         Err(error) => failed(&error),
     }

@@ -511,7 +511,11 @@ impl Analyzer {
                     ));
                 }
                 for (argument, parameter) in rest.iter().zip(parameters) {
-                    if !is_valid_async_parameter_type(&parameter, &self.standard_modules) {
+                    if !is_valid_async_parameter_type(
+                        &parameter,
+                        &self.standard_modules,
+                        self.is_standard_module,
+                    ) {
                         return Err(type_mismatch(
                             bn_catalog::text(
                                 "frontend",

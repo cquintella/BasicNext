@@ -221,6 +221,12 @@ pub(crate) fn emit_function(
         } else {
             function_return_llvm(&function.return_type).expect("validated return type")
         },
+        next_synthetic_value: analysis
+            .values
+            .keys()
+            .map(|value| value.0)
+            .max()
+            .map_or(0, |highest| highest + 1),
     };
     let reachable_blocks = reachable_block_ids(function);
     for block in &function.blocks {

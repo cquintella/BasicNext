@@ -1,0 +1,14 @@
+// A user class named like a BNDispatch class is still a user class: it is
+// not a dispatch handle, so it is not a valid ASYNC parameter. The name does
+// not decide; the module does.
+CLASS Queue
+    PUBLIC count AS INTEGER = 0
+END CLASS
+
+ASYNC FUNCTION Work(queue AS Queue) AS INTEGER OR Error
+    RETURN 1
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    PRINT "unused"
+END FUNCTION

@@ -1,5 +1,7 @@
-//! A handle table whose ids carry a generation: `(generation << 32) | slot`,
-//! the packing of the ARC `ObjectId`. Removing a value bumps its slot's
+//! A handle table whose ids carry a generation: `(generation << 32) | slot`.
+//! Like the ARC `ObjectId`, one 64-bit id holds a slot and a generation (the
+//! ARC puts the slot in the high half; here the generation is there, so ids
+//! stay positive `i64` values). Removing a value bumps its slot's
 //! generation, so an id kept after close or free never reaches a value stored
 //! later in the same slot, and a second close finds nothing instead of freeing
 //! memory twice (value-memory-abi.md: a stale handle returns a status, never
@@ -9,6 +11,8 @@
 /// Bits of an id that hold the slot index; the generation is above them.
 const SLOT_BITS: u32 = 32;
 const SLOT_MASK: i64 = (1 << SLOT_BITS) - 1;
+/// Slots an id can name: an index above this would spill into the generation.
+const SLOT_CAPACITY: usize = 1 << SLOT_BITS;
 /// The first generation of a slot. Never 0, so no valid id is 0.
 const FIRST_GENERATION: i64 = 1;
 /// A slot whose generation reaches this value is retired, never reused, so
@@ -56,7 +60,7 @@ impl<T> GenerationTable<T> {
     }
 
     /// Stores `value` and returns its id; `None` when the table already holds
-    /// `max` slots and none is free.
+    /// `max` slots (or every slot an id can name) and none is free.
     pub fn insert(&mut self, value: T, max: usize) -> Option<i64> {
         if let Some((index, slot)) = self
             .slots
@@ -67,7 +71,7 @@ impl<T> GenerationTable<T> {
             slot.value = Some(value);
             return Some(Self::pack(index, slot.generation));
         }
-        if self.slots.len() >= max {
+        if self.slots.len() >= max.min(SLOT_CAPACITY) {
             return None;
         }
         self.slots.push(Slot {

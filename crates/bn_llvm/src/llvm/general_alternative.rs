@@ -842,10 +842,9 @@ pub(crate) fn emit_print(
         state
             .control_flow
             .label(text, label(&format!("print{index}")));
-        // ponytail: a synthetic value id names the extracted member, so the
-        // existing per-type `PRINT` lowering prints it; real ids are dense
-        // from 0 and never reach this range.
-        let held = ValueId(0x8000_0000 + u32::try_from(n * 64 + index).expect("print id"));
+        // A fresh value id names the extracted member, so the existing per-type
+        // `PRINT` lowering prints it.
+        let held = state.fresh_value();
         if *member == Type::Null {
             lower_print_value(text, held, &Type::Null, state);
         } else if let Some(global) = match member {

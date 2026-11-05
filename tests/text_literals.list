@@ -2101,7 +2101,6 @@ crates/bn_rt/src/net_abi/address.rs	prose	parse an IP address
 crates/bn_rt/src/net_abi/address.rs	prose	parse an IP address
 crates/bn_rt/src/net_abi/address.rs	prose	ping an address
 crates/bn_rt/src/net_abi/address.rs	prose	resolve a host
-crates/bn_rt/src/net_abi/address.rs	prose	resolve a host
 crates/bn_rt/src/net_abi/handles.rs	prose	network handle table poisoned
 crates/bn_rt/src/net_abi/handles.rs	prose	network handle table poisoned
 crates/bn_rt/src/net_abi/handles.rs	prose	network handle table poisoned

@@ -16,6 +16,7 @@ use super::dispatch_abi::BNValue;
 use super::file_abi::{read_handle, write_handle};
 
 use super::data_error::DataFailure;
+use crate::counted::{Counted, Release};
 
 pub(crate) type BNDataFrameHandle = u64;
 pub(crate) type BNDataFrameStatus = u32;
@@ -79,11 +80,7 @@ type Frame = DataFrameResource<StoredValue>;
 pub(crate) fn register_frame_columns(
     columns: Vec<DataFrameColumn<StoredValue>>,
 ) -> BNDataFrameHandle {
-    let handle = next_handle();
-    with_frames(|frames| {
-        frames.insert(handle, DataFrameResource { columns });
-    });
-    handle
+    store_frame(DataFrameResource { columns })
 }
 
 #[must_use]
@@ -108,16 +105,14 @@ fn render_value(value: &StoredValue) -> String {
 /// a task's are freed when the task ends.
 struct Registry {
     next: AtomicU64,
-    frames: Mutex<HashMap<BNDataFrameHandle, Frame>>,
-    holders: Mutex<HashMap<BNDataFrameHandle, usize>>,
+    frames: Mutex<Counted<Frame>>,
 }
 
 impl Default for Registry {
     fn default() -> Self {
         Self {
             next: AtomicU64::new(1),
-            frames: Mutex::new(HashMap::new()),
-            holders: Mutex::new(HashMap::new()),
+            frames: Mutex::new(Counted::default()),
         }
     }
 }
@@ -126,13 +121,15 @@ fn registry() -> std::sync::Arc<Registry> {
     bn_core_copy::table::<Registry>()
 }
 
-pub(crate) fn next_handle() -> BNDataFrameHandle {
-    let handle = registry().next.fetch_add(1, Ordering::Relaxed);
-    registry()
-        .holders
+/// Stores `frame` under a new handle with one holder, count and frame in one
+/// step.
+pub(crate) fn store_frame(frame: Frame) -> BNDataFrameHandle {
+    let reg = registry();
+    let handle = reg.next.fetch_add(1, Ordering::Relaxed);
+    reg.frames
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .insert(handle, 1);
+        .insert(handle, frame);
     handle
 }
 
@@ -455,7 +452,8 @@ pub(crate) fn with_frames<T>(
         &mut registry()
             .frames
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner),
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .values,
     )
 }
 
@@ -665,10 +663,7 @@ pub extern "C" fn bn_rt_dataframe_create(
                 &DataFailure::InvalidArgument("invalid column view".into()),
             );
         };
-        let handle = next_handle();
-        with_frames(|frames| {
-            frames.insert(handle, DataFrameResource { columns });
-        });
+        let handle = store_frame(DataFrameResource { columns });
         // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
         unsafe {
             *out_frame = handle;
@@ -707,10 +702,7 @@ pub extern "C" fn bn_rt_dataframe_append_rows(
             Ok(frame) => frame,
             Err(failure) => return failed("BNData.DataFrame.AppendRows", &failure),
         };
-        let handle = next_handle();
-        with_frames(|frames| {
-            frames.insert(handle, frame);
-        });
+        let handle = store_frame(frame);
         // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
         unsafe {
             *out_frame = handle;
@@ -744,10 +736,7 @@ pub extern "C" fn bn_rt_dataframe_append_columns(
             Ok(frame) => frame,
             Err(failure) => return failed("BNData.DataFrame.AppendColumns", &failure),
         };
-        let handle = next_handle();
-        with_frames(|frames| {
-            frames.insert(handle, frame);
-        });
+        let handle = store_frame(frame);
         // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
         unsafe {
             *out_frame = handle;
@@ -810,10 +799,7 @@ pub extern "C" fn bn_rt_dataframe_join(
         Ok(value) => value,
         Err(failure) => return failed("BNData.DataFrame.Join", &failure),
     };
-    let handle = next_handle();
-    with_frames(|frames| {
-        frames.insert(handle, result);
-    });
+    let handle = store_frame(result);
     // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe {
         out_frame.write(handle);
@@ -991,10 +977,7 @@ pub extern "C" fn bn_rt_dataframe_select(
             Ok(result) => result,
             Err(failure) => return failed("BNData.DataFrame.Select", &failure),
         };
-        let handle = next_handle();
-        with_frames(|frames| {
-            frames.insert(handle, result);
-        });
+        let handle = store_frame(result);
         // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
         unsafe {
             *out_frame = handle;
@@ -1032,10 +1015,7 @@ pub extern "C" fn bn_rt_dataframe_slice(
         Ok(value) => value,
         Err(failure) => return failed("BNData.DataFrame.Slice", &failure),
     };
-    let handle = next_handle();
-    with_frames(|frames| {
-        frames.insert(handle, result);
-    });
+    let handle = store_frame(result);
     // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe {
         out_frame.write(handle);
@@ -1066,10 +1046,7 @@ pub extern "C" fn bn_rt_dataframe_transpose(
         Ok(value) => value,
         Err(failure) => return failed("BNData.DataFrame.Transpose", &failure),
     };
-    let handle = next_handle();
-    with_frames(|frames| {
-        frames.insert(handle, result);
-    });
+    let handle = store_frame(result);
     // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe {
         out_frame.write(handle);
@@ -1112,10 +1089,7 @@ pub extern "C" fn bn_rt_dataframe_zscore(
             Ok(result) => result,
             Err(failure) => return failed("BNData.DataFrame.ZScore", &failure),
         };
-        let handle = next_handle();
-        with_frames(|frames| {
-            frames.insert(handle, result);
-        });
+        let handle = store_frame(result);
         // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
         unsafe {
             out_frame.write(handle);
@@ -1253,10 +1227,7 @@ pub extern "C" fn bn_rt_dataframe_read_csv(
             },
         );
     };
-    let handle = next_handle();
-    with_frames(|frames| {
-        frames.insert(handle, frame);
-    });
+    let handle = store_frame(frame);
     // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe {
         out_frame.write(handle);
@@ -1271,19 +1242,11 @@ pub extern "C" fn bn_rt_dataframe_retain(frame: BNDataFrameHandle) -> BNDataFram
     if frame == 0 {
         return BN_DATAFRAME_OK;
     }
-    let held = {
-        let reg = registry();
-        let mut holders = reg
-            .holders
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(count) = holders.get_mut(&frame) {
-            *count += 1;
-            true
-        } else {
-            false
-        }
-    };
+    let held = registry()
+        .frames
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .retain(frame);
     if held {
         BN_DATAFRAME_OK
     } else {
@@ -1302,21 +1265,13 @@ pub extern "C" fn bn_rt_dataframe_close(frame: BNDataFrameHandle) -> BNDataFrame
         return BN_DATAFRAME_OK;
     }
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let reg = registry();
-        let mut holders = reg
-            .holders
+        let released = registry()
+            .frames
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let Some(count) = holders.get_mut(&frame) else {
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .release(frame);
+        if matches!(released, Release::Unknown) {
             return failed("BNData.DataFrame.Close", &DataFailure::InvalidHandle);
-        };
-        *count -= 1;
-        if *count == 0 {
-            holders.remove(&frame);
-            drop(holders);
-            with_frames(|frames| {
-                frames.remove(&frame);
-            });
         }
         BN_DATAFRAME_OK
     }))

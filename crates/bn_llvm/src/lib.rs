@@ -185,6 +185,19 @@ struct EmissionState {
     is_start: bool,
     synchronize_prints: bool,
     return_llvm: crate::ir::LlvmType,
+    /// The next value id no instruction of this function uses: a value the
+    /// lowering itself introduces (a member extracted to be printed) takes one
+    /// from here, so it never collides with a real value.
+    next_synthetic_value: u32,
+}
+
+impl EmissionState {
+    /// A value id that names no instruction of the function being lowered.
+    fn fresh_value(&mut self) -> ValueId {
+        let id = ValueId(self.next_synthetic_value);
+        self.next_synthetic_value += 1;
+        id
+    }
 }
 
 /// Lower the supported typed BN IR subset to LLVM IR.

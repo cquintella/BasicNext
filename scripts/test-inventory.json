@@ -9,6 +9,8 @@
   "added_tests": [
     "fixture::tests/grammar/valid/mixed-case-reserved-spellings.bn",
     "fixture::tests/grammar/invalid/uppercase-reserved-binding-name.bn",
+    "fixture::tests/grammar/invalid/async-parameter-user-class-named-queue.bn",
+    "fixture::tests/grammar/valid/build-print-general-alternatives.bn",
     "bn::test/frontend::numeric_literal_range::constants_that_fit_or_have_a_destination_are_accepted",
     "bn::test/frontend::numeric_literal_range::literal_fixtures_are_type_mismatches",
     "bn::test/frontend::numeric_literal_range::out_of_range_literals_name_the_value_and_the_range",
@@ -67,6 +69,7 @@
     "bn::test/programs::crypto_limits::crypto_limits_return_errors_on_both_backends",
     "bn::test/programs::crypto_tour::bncrypto_tour_passes_on_both_backends",
     "bn::test/programs::parity::stale_net_handles_stay_closed_across_backends",
+    "bn::test/programs::parity::general_alternative_prints_match_across_backends",
     "fixture::tests/grammar/invalid/parameter-vector-element-assignment.bn",
     "fixture::tests/grammar/invalid/parameter-open-vector-element-assignment.bn",
     "fixture::tests/grammar/invalid/parameter-struct-field-assignment.bn",

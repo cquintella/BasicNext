@@ -14,7 +14,7 @@ use super::dataframe::{
 };
 use super::dataframe_abi::{
     BN_DATAFRAME_OK, BNDataFrameHandle, BNDataFrameStatus, StoredValue, failed, input_string,
-    next_handle, with_frames,
+    store_frame, with_frames,
 };
 
 /// The operation names the runtime records with a failure.
@@ -91,10 +91,7 @@ pub extern "C" fn bn_rt_dataframe_drop_na(
     let Some(kept) = kept else {
         return failed(DROP_NA, &DataFailure::InvalidHandle);
     };
-    let handle = next_handle();
-    with_frames(|frames| {
-        frames.insert(handle, kept);
-    });
+    let handle = store_frame(kept);
     // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe { out_frame.write(handle) };
     BN_DATAFRAME_OK

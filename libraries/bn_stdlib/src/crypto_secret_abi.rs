@@ -15,6 +15,7 @@ use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 use zeroize::Zeroize;
 
+use crate::counted::{Counted, Release};
 use crate::crypto_abi::{BN_CRYPTO_INVALID_HANDLE, BN_CRYPTO_OK, next_handle, store, with_buffers};
 use crate::crypto_error::CryptoFailure;
 use crate::{c_str, c_string};
@@ -154,10 +155,7 @@ pub fn rfc3394_key_unwrap(kek: &[u8], wrapped: &[u8]) -> Result<Vec<u8>, CryptoF
 
 /// The secret buffers of the module copy that runs on this thread.
 #[derive(Default)]
-struct Secrets {
-    values: Mutex<HashMap<u64, zeroize::Zeroizing<Vec<u8>>>>,
-    holders: Mutex<HashMap<u64, usize>>,
-}
+struct Secrets(Mutex<Counted<zeroize::Zeroizing<Vec<u8>>>>);
 
 fn with_secrets<T>(
     operation: impl FnOnce(&mut HashMap<u64, zeroize::Zeroizing<Vec<u8>>>) -> T,
@@ -165,21 +163,20 @@ fn with_secrets<T>(
     let secrets = bn_core_copy::table::<Secrets>();
     operation(
         &mut secrets
-            .values
+            .0
             .lock()
-            .unwrap_or_else(PoisonError::into_inner),
+            .unwrap_or_else(PoisonError::into_inner)
+            .values,
     )
 }
 
 fn store_secret(bytes: Vec<u8>) -> u64 {
     let handle = next_handle();
-    with_secrets(|secrets| secrets.insert(handle, zeroize::Zeroizing::new(bytes)));
-    let secrets = bn_core_copy::table::<Secrets>();
-    secrets
-        .holders
+    bn_core_copy::table::<Secrets>()
+        .0
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
-        .insert(handle, 1);
+        .insert(handle, zeroize::Zeroizing::new(bytes));
     handle
 }
 
@@ -189,10 +186,8 @@ pub extern "C" fn bn_rt_crypto_secret_from_text(text: *const c_char) -> u64 {
     // Not a BN STRING: refused, no handle (an empty secret is not a default).
     match c_str(text) {
         Some(text) => store_secret(text.as_bytes().to_vec()),
-        None => {
-            crate::crypto_abi::failed(&crate::crypto_error::CryptoFailure::Utf8);
-            0
-        }
+        // No error record: `SecretFromText` returns `Secret`, not `OR Error`.
+        None => 0,
     }
 }
 
@@ -243,13 +238,12 @@ pub extern "C" fn bn_rt_crypto_secret_zeroize(handle: u64) -> i32 {
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_secret_retain(handle: u64) -> i32 {
-    let secrets = bn_core_copy::table::<Secrets>();
-    let mut holders = secrets
-        .holders
+    let held = bn_core_copy::table::<Secrets>()
+        .0
         .lock()
-        .unwrap_or_else(PoisonError::into_inner);
-    if let Some(count) = holders.get_mut(&handle) {
-        *count += 1;
+        .unwrap_or_else(PoisonError::into_inner)
+        .retain(handle);
+    if held {
         BN_CRYPTO_OK
     } else {
         BN_CRYPTO_INVALID_HANDLE
@@ -259,25 +253,19 @@ pub extern "C" fn bn_rt_crypto_secret_retain(handle: u64) -> i32 {
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_secret_release(handle: u64) -> i32 {
-    let secrets = bn_core_copy::table::<Secrets>();
-    let mut holders = secrets
-        .holders
+    let released = bn_core_copy::table::<Secrets>()
+        .0
         .lock()
-        .unwrap_or_else(PoisonError::into_inner);
-    let Some(count) = holders.get_mut(&handle) else {
-        return BN_CRYPTO_INVALID_HANDLE;
-    };
-    *count -= 1;
-    if *count == 0 {
-        holders.remove(&handle);
-        drop(holders);
-        with_secrets(|secrets| {
-            if let Some(mut buf) = secrets.remove(&handle) {
-                buf.as_mut_slice().zeroize();
-            }
-        });
+        .unwrap_or_else(PoisonError::into_inner)
+        .release(handle);
+    match released {
+        Release::Last(mut buf) => {
+            buf.as_mut_slice().zeroize();
+            BN_CRYPTO_OK
+        }
+        Release::Held => BN_CRYPTO_OK,
+        Release::Unknown => BN_CRYPTO_INVALID_HANDLE,
     }
-    BN_CRYPTO_OK
 }
 
 /// The secret key representation for the C ABI runtime.
@@ -291,26 +279,22 @@ pub struct SecretKeyEntry {
 }
 
 #[derive(Default)]
-struct SecretKeys {
-    values: Mutex<HashMap<u64, SecretKeyEntry>>,
-    holders: Mutex<HashMap<u64, usize>>,
-}
+struct SecretKeys(Mutex<Counted<SecretKeyEntry>>);
 
 pub(crate) fn with_secret_keys<T>(
     operation: impl FnOnce(&mut HashMap<u64, SecretKeyEntry>) -> T,
 ) -> T {
     let keys = bn_core_copy::table::<SecretKeys>();
-    operation(&mut keys.values.lock().unwrap_or_else(PoisonError::into_inner))
+    operation(&mut keys.0.lock().unwrap_or_else(PoisonError::into_inner).values)
 }
 
 fn store_secret_key(entry: SecretKeyEntry) -> u64 {
     let handle = next_handle();
-    with_secret_keys(|keys| keys.insert(handle, entry));
-    let keys = bn_core_copy::table::<SecretKeys>();
-    keys.holders
+    bn_core_copy::table::<SecretKeys>()
+        .0
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
-        .insert(handle, 1);
+        .insert(handle, entry);
     handle
 }
 
@@ -503,10 +487,12 @@ pub extern "C" fn bn_rt_crypto_secret_key_zeroize(handle: u64) -> i32 {
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_secret_key_retain(handle: u64) -> i32 {
-    let keys = bn_core_copy::table::<SecretKeys>();
-    let mut holders = keys.holders.lock().unwrap_or_else(PoisonError::into_inner);
-    if let Some(count) = holders.get_mut(&handle) {
-        *count += 1;
+    let held = bn_core_copy::table::<SecretKeys>()
+        .0
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .retain(handle);
+    if held {
         BN_CRYPTO_OK
     } else {
         BN_CRYPTO_INVALID_HANDLE
@@ -516,20 +502,17 @@ pub extern "C" fn bn_rt_crypto_secret_key_retain(handle: u64) -> i32 {
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_secret_key_release(handle: u64) -> i32 {
-    let keys = bn_core_copy::table::<SecretKeys>();
-    let mut holders = keys.holders.lock().unwrap_or_else(PoisonError::into_inner);
-    let Some(count) = holders.get_mut(&handle) else {
-        return BN_CRYPTO_INVALID_HANDLE;
-    };
-    *count -= 1;
-    if *count == 0 {
-        holders.remove(&handle);
-        drop(holders);
-        with_secret_keys(|keys| {
-            if let Some(mut entry) = keys.remove(&handle) {
-                entry.material.as_mut_slice().zeroize();
-            }
-        });
+    let released = bn_core_copy::table::<SecretKeys>()
+        .0
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .release(handle);
+    match released {
+        Release::Last(mut entry) => {
+            entry.material.as_mut_slice().zeroize();
+            BN_CRYPTO_OK
+        }
+        Release::Held => BN_CRYPTO_OK,
+        Release::Unknown => BN_CRYPTO_INVALID_HANDLE,
     }
-    BN_CRYPTO_OK
 }

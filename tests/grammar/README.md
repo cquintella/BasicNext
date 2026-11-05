@@ -24,6 +24,7 @@ with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.
 | `valid/negative-local-constants.bn` | Accept and run | 0.6.2 C1: inferred local `CONST` from `-1`, `-2.5`, `-0xFF`. |
 | `valid/literal-into-numeric-alternative.bn` | Accept and run | A numeric literal in an alternative type takes its default type, else the only alternative of its class. |
 | `valid/build-float-compare-nan.bn` | Accept and run | IEEE 754 comparisons with `NAN` at run time on both backends (`<>` is `TRUE`). |
+| `valid/build-print-general-alternatives.bn` | Accept and run | `PRINT` of a general alternative (`INTEGER OR STRING OR BOOLEAN [OR NULL]`) repeated in one function and through a parameter; the native lowering uses a fresh value id per extracted member. |
 | `valid/alternative-widening.bn` | Accept and run | An alternative widens to one that contains all its members (`LET`, argument, return, field, reassignment); `IS` keeps answering for the alternative held. |
 | `valid/error-from-fallible-call.bn` | Accept and run | An `Error` received from a fallible call flows through `LET`, parameters and returns. |
 | `valid/as-string.bn` | Accept and run | 0.6.2 C3: `AS STRING` on integer, float, and `BOOLEAN` values yields the `PRINT` text on both backends. |
@@ -85,6 +86,7 @@ with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.
 | `invalid/literal-ambiguous-numeric-alternative.bn` | Reject (semantic) | A literal in `INT8 OR INT16` has no default-type or single same-class alternative. |
 | `invalid/vector-literal-unrelated-element.bn` | Reject (semantic) | A vector literal element not assignable to the declared element type is `TYPE_MISMATCH` naming that element. |
 | `invalid/alternative-duplicate-member.bn` | Reject (semantic) | `INTEGER OR INT32` repeats a member after alias resolution. |
+| `invalid/async-parameter-user-class-named-queue.bn` | Reject (semantic) | A user class named `Queue` is not a dispatch handle, so it is not a valid `ASYNC` parameter: the module decides, not the name. |
 | `invalid/alternative-narrowing-without-is.bn` | Reject (semantic) | `INT32 OR NULL OR Error` stored as `INT32 OR NULL` without an `IS` test. |
 | `invalid/error-without-initializer.bn` | Reject (semantic) | An `Error` binding has no default value. |
 | `invalid/parameter-assignment.bn` | Reject (semantic) | A parameter is constant (Swift ARC model): no assignment. |

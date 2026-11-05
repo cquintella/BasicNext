@@ -18,7 +18,8 @@ struct ExecResult {
 
 /// The live `HOST.Exec.Result` values. An id is generation-checked
 /// (`crate::handle_table`): a closed result is never read or freed twice.
-/// No ceiling: a result lives only as long as the binding that holds it.
+/// No ceiling of its own: `bnc` does not yet release a result when its
+/// binding ends, so the table holds every result until the process exits.
 static RESULTS: std::sync::Mutex<crate::handle_table::GenerationTable<ExecResult>> =
     std::sync::Mutex::new(crate::handle_table::GenerationTable::new());
 
@@ -95,7 +96,9 @@ pub extern "C" fn bn_rt_exec_run(
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .insert(result, usize::MAX)
-        .unwrap_or_else(|| crate::arc_abi::abort_use_after_release());
+        // Refused only past 2^32 live results, each holding heap memory: that is
+        // allocation failure, reported as such.
+        .unwrap_or_else(|| std::alloc::handle_alloc_error(std::alloc::Layout::new::<ExecResult>()));
     // SAFETY: `out_result` was checked non-null above and points to the
     // caller's result slot.
     unsafe { *out_result = id.cast_unsigned() };

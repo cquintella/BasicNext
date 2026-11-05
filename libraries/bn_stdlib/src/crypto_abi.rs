@@ -28,58 +28,8 @@ pub(crate) const BN_CRYPTO_OK: i32 = 0;
 pub(crate) const BN_CRYPTO_INVALID_ARGUMENT: i32 = 1;
 pub(crate) const BN_CRYPTO_INVALID_HANDLE: i32 = 2;
 
+use crate::counted::{Counted, Release};
 use crate::crypto::KeyEntry;
-
-/// Values behind reference-counted handles, with each count kept beside its
-/// value under one lock: a retain, a release that reaches zero and a read
-/// are one critical section, so no read sees a value its release already
-/// ended (the protocol of `Arc`: the release that reaches zero owns the
-/// value alone).
-struct Counted<V> {
-    values: HashMap<u64, V>,
-    holders: HashMap<u64, usize>,
-}
-
-impl<V> Default for Counted<V> {
-    fn default() -> Self {
-        Self {
-            values: HashMap::new(),
-            holders: HashMap::new(),
-        }
-    }
-}
-
-impl<V> Counted<V> {
-    fn insert(&mut self, handle: u64, value: V) {
-        self.values.insert(handle, value);
-        self.holders.insert(handle, 1);
-    }
-
-    fn retain(&mut self, handle: u64) -> i32 {
-        match self.holders.get_mut(&handle) {
-            Some(count) => {
-                *count += 1;
-                BN_CRYPTO_OK
-            }
-            None => BN_CRYPTO_INVALID_HANDLE,
-        }
-    }
-
-    /// Drops one reference; at zero the value leaves the table and is
-    /// returned, in the same critical section.
-    fn release(&mut self, handle: u64) -> Result<Option<V>, i32> {
-        let count = self
-            .holders
-            .get_mut(&handle)
-            .ok_or(BN_CRYPTO_INVALID_HANDLE)?;
-        *count -= 1;
-        if *count > 0 {
-            return Ok(None);
-        }
-        self.holders.remove(&handle);
-        Ok(self.values.remove(&handle))
-    }
-}
 
 #[derive(Default)]
 struct Keys(Mutex<Counted<KeyEntry>>);
@@ -148,7 +98,7 @@ pub(crate) fn store(bytes: Vec<u8>) -> u64 {
 }
 
 /// Stores the UTF-8 bytes of `text` and returns the handle. A null pointer or
-/// an argument that is not a BN STRING is `INVALID_ARGUMENT` and returns no
+/// an argument that is not a BN STRING is refused and returns no
 /// handle (0), so a later use of it is `USE_AFTER_RELEASE`.
 #[allow(unsafe_code)] // C ABI: STRING in, opaque handle out.
 #[unsafe(no_mangle)]
@@ -157,10 +107,9 @@ pub extern "C" fn bn_rt_crypto_bytes_from_text(text: *const c_char) -> u64 {
     // an empty key or MAC key downstream.
     match c_str(text) {
         Some(text) => store(text.as_bytes().to_vec()),
-        None => {
-            failed(&crate::crypto_error::CryptoFailure::Utf8);
-            0
-        }
+        // No error record: `FromText` returns `Bytes`, not `OR Error`, so nothing
+        // would read it, and a stale record could reach a later failure.
+        None => 0,
     }
 }
 
@@ -214,11 +163,16 @@ pub extern "C" fn bn_rt_crypto_bytes_retain(handle: u64) -> i32 {
     if handle == 0 {
         return BN_CRYPTO_OK;
     }
-    bn_core_copy::table::<Buffers>()
+    let held = bn_core_copy::table::<Buffers>()
         .0
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
-        .retain(handle)
+        .retain(handle);
+    if held {
+        BN_CRYPTO_OK
+    } else {
+        BN_CRYPTO_INVALID_HANDLE
+    }
 }
 
 /// Drops one reference to `handle`. When the count reaches zero, the buffer
@@ -236,13 +190,12 @@ pub extern "C" fn bn_rt_crypto_bytes_release(handle: u64) -> i32 {
         .unwrap_or_else(PoisonError::into_inner)
         .release(handle);
     match released {
-        Ok(last) => {
-            if let Some(mut buf) = last {
-                buf.zeroize();
-            }
+        Release::Last(mut buf) => {
+            buf.zeroize();
             BN_CRYPTO_OK
         }
-        Err(status) => status,
+        Release::Held => BN_CRYPTO_OK,
+        Release::Unknown => BN_CRYPTO_INVALID_HANDLE,
     }
 }
 
@@ -869,11 +822,16 @@ pub extern "C" fn bn_rt_crypto_key_retain(key_handle: u64) -> i32 {
     if key_handle == 0 {
         return BN_CRYPTO_OK;
     }
-    bn_core_copy::table::<Keys>()
+    let held = bn_core_copy::table::<Keys>()
         .0
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
-        .retain(key_handle)
+        .retain(key_handle);
+    if held {
+        BN_CRYPTO_OK
+    } else {
+        BN_CRYPTO_INVALID_HANDLE
+    }
 }
 
 /// Releases a reference to `key_handle`. When refcount drops to 0, zeroizes and frees the key.
@@ -889,13 +847,12 @@ pub extern "C" fn bn_rt_crypto_key_release(key_handle: u64) -> i32 {
         .unwrap_or_else(PoisonError::into_inner)
         .release(key_handle);
     match released {
-        Ok(last) => {
-            if let Some(mut entry) = last {
-                entry.material.zeroize();
-            }
+        Release::Last(mut entry) => {
+            entry.material.zeroize();
             BN_CRYPTO_OK
         }
-        Err(status) => status,
+        Release::Held => BN_CRYPTO_OK,
+        Release::Unknown => BN_CRYPTO_INVALID_HANDLE,
     }
 }
 

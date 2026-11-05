@@ -293,6 +293,7 @@ fn semantic_fixtures_are_rejected() {
         "tests/grammar/invalid/struct-literal-vector-element-short.bn",
         "tests/grammar/invalid/release-field.bn",
         "tests/grammar/invalid/release-static.bn",
+        "tests/grammar/invalid/async-parameter-user-class-named-queue.bn",
     ] {
         let source = SourceFile::new(path, fs::read_to_string(path).expect("read fixture"));
         let tokens = lex(&source).expect("lex fixture");
