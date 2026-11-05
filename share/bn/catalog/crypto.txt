@@ -29,3 +29,13 @@ password.wrong.message = the password did not decrypt the private key
 password.wrong.cause = PKCS#8 PBES2 decryption failed authentication
 format.rejected.message = the export format is not supported
 format.rejected.cause = the format must be PKCS8
+
+# Decode errors (never echo the input: it may be a secret).
+decode.base64.message = cannot decode the text as base64
+decode.base64.cause = the text must be valid base64 (RFC 4648 section 4)
+decode.base64url.message = cannot decode the text as base64url
+decode.base64url.cause = the text must be valid URL-safe base64 (RFC 4648 section 5)
+decode.pem.message = cannot decode the PEM text
+decode.pem.cause = the text must be one block from -----BEGIN <label>----- to -----END <label>----- with a valid base64 payload
+decode.utf8.message = cannot decode the bytes as UTF-8 text
+decode.utf8.cause = the byte sequence is not valid UTF-8

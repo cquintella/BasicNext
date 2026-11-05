@@ -68,12 +68,12 @@ pub enum CryptoFailure {
     EnvelopeKeyLength,
     /// File I/O error during file encryption or decryption.
     FileIo(String),
-    /// Cannot decode input as Base64.
-    Base64(String),
-    /// Cannot decode input as `Base64Url`.
-    Base64Url(String),
-    /// Malformed PEM input.
-    Pem(String),
+    /// Cannot decode input as Base64. The input is not kept: it may be a secret.
+    Base64,
+    /// Cannot decode input as `Base64Url`. The input is not kept.
+    Base64Url,
+    /// Malformed PEM input (`PARSE_ERROR`). The input is not kept.
+    Pem,
     /// Strict UTF-8 validation failed.
     Utf8,
     /// Requested algorithm id is not accepted by this operation (`UNSUPPORTED_ALGORITHM`).
@@ -100,7 +100,7 @@ impl CryptoFailure {
             }
             Self::Random(_) => crypto::UNAVAILABLE,
             Self::UnsupportedAlgorithm { .. } => crypto::UNSUPPORTED_ALGORITHM,
-            Self::Parse { .. } => crypto::PARSE_ERROR,
+            Self::Parse { .. } | Self::Pem => crypto::PARSE_ERROR,
             Self::WrongKeyType { .. } => crypto::WRONG_KEY_TYPE,
             Self::Io { .. } => crypto::IO_ERROR,
             Self::WrongPassword { .. } => crypto::WRONG_PASSWORD,
@@ -142,9 +142,9 @@ impl CryptoFailure {
             Self::EnvelopeFormat | Self::EnvelopeAuth => "BNCrypto.Decrypt",
             Self::EnvelopeKeyLength => "BNCrypto.Encrypt",
             Self::FileIo(_) => "BNCrypto.File",
-            Self::Base64(_) => "BNCrypto.FromBase64",
-            Self::Base64Url(_) => "BNCrypto.FromBase64Url",
-            Self::Pem(_) => "BNCrypto.FromPem",
+            Self::Base64 => "BNCrypto.FromBase64",
+            Self::Base64Url => "BNCrypto.FromBase64Url",
+            Self::Pem => "BNCrypto.FromPem",
             Self::Utf8 => "BNCrypto.Bytes.ToText",
         }
     }
@@ -208,10 +208,10 @@ impl CryptoFailure {
                 "key material length must be 32 bytes for authenticated encryption".into()
             }
             Self::FileIo(err) => format!("file I/O error: {err}"),
-            Self::Base64(s) => format!("cannot decode \"{s}\" as base64"),
-            Self::Base64Url(s) => format!("cannot decode \"{s}\" as base64url"),
-            Self::Pem(err) => format!("cannot decode PEM: {err}"),
-            Self::Utf8 => "cannot decode bytes as valid UTF-8 text".into(),
+            Self::Base64 => bn_catalog::text("crypto", "decode.base64.message").into(),
+            Self::Base64Url => bn_catalog::text("crypto", "decode.base64url.message").into(),
+            Self::Pem => bn_catalog::text("crypto", "decode.pem.message").into(),
+            Self::Utf8 => bn_catalog::text("crypto", "decode.utf8.message").into(),
             Self::UnsupportedAlgorithm { .. } => {
                 bn_catalog::text("crypto", "algorithm.unsupported.message").into()
             }
@@ -299,10 +299,10 @@ impl CryptoFailure {
                 "authenticated encryption envelopes require a 256-bit (32-byte) key".into()
             }
             Self::FileIo(_) => "filesystem read or write failed".into(),
-            Self::Base64(_) => "the text must be valid base64 (RFC 4648 §4)".into(),
-            Self::Base64Url(_) => "the text must be valid URL-safe base64 (RFC 4648 §5)".into(),
-            Self::Pem(_) => "the text must start with -----BEGIN and end with -----END with valid base64 payload".into(),
-            Self::Utf8 => "the byte sequence is not valid UTF-8".into(),
+            Self::Base64 => bn_catalog::text("crypto", "decode.base64.cause").into(),
+            Self::Base64Url => bn_catalog::text("crypto", "decode.base64url.cause").into(),
+            Self::Pem => bn_catalog::text("crypto", "decode.pem.cause").into(),
+            Self::Utf8 => bn_catalog::text("crypto", "decode.utf8.cause").into(),
             Self::UnsupportedAlgorithm { .. } => {
                 bn_catalog::text("crypto", "algorithm.unsupported.cause").into()
             }

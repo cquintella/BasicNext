@@ -238,7 +238,7 @@ Streaming hash updates are provided via `Hasher.New(alg)`. Legacy digests (MD5, 
 | `FromBase64Url` | `FromBase64Url(text AS STRING) AS Bytes OR Error` | Decodes URL-safe Base64. |
 | `Concat` | `Concat(a AS Bytes, b AS Bytes) AS Bytes` | Concatenates two byte buffers into an owned byte buffer. |
 | `ToPem` | `ToPem(label AS STRING, der AS Bytes) AS STRING` | Encodes binary DER payload into PEM with `-----BEGIN <LABEL>-----` and `-----END <LABEL>-----` boundaries. |
-| `FromPem` | `FromPem(pem AS STRING) AS Bytes OR Error` | Parses PEM and extracts the binary DER bytes. |
+| `FromPem` | `FromPem(pem AS STRING) AS Bytes OR Error` | Parses PEM and extracts the binary DER bytes. Malformed PEM is `PARSE_ERROR`. |
 
 ---
 
@@ -285,7 +285,7 @@ Deterministic signatures (RFC 8032 for Ed25519, RFC 6979 for ECDSA P-256). `Veri
 
 ### Key Import and Export
 
-* `ExportPem(key AS PrivateKey, format AS INT32, password AS STRING) AS STRING OR Error`: Encrypts private keys using PKCS#8 with PBES2 (Argon2id/scrypt). `format` is `PemFormat.PKCS8` (1). Any other `INT32` is `INVALID_ARGUMENT` (BDFL decision, 2026-11-04).
+* `ExportPem(key AS PrivateKey, format AS INT32, password AS STRING) AS STRING OR Error`: Encrypts private keys using PKCS#8 with PBES2 (scrypt N = 2^17, r = 8, p = 1; AES-256-CBC). `format` is `PemFormat.PKCS8` (1). Any other `INT32` is `INVALID_ARGUMENT` (BDFL decision, 2026-11-04).
 * `ExportPemUnencrypted(key AS PrivateKey, format AS INT32) AS STRING OR Error`: Explicit unencrypted PKCS#8 export. The same `format` values.
 * `ExportPem(key AS PublicKey) AS STRING OR Error`: Exports SPKI PEM. No format parameter.
 * `LoadPrivateKey(pem AS STRING, password AS STRING OR NULL) AS PrivateKey OR Error`: Unambiguous header detection; fails closed (`PARSE_ERROR`) on ambiguous inputs. The key-derivation cost of an encrypted key is checked before any derivation runs: scrypt with N above 2^17, r above 8 or p above 1, PBKDF2 above 2,000,000 iterations, or another KDF is `PARSE_ERROR`.

@@ -264,3 +264,31 @@ fn test_c_abi_encoding_and_checksums() {
     let _ = bn_rt_crypto_bytes_release(concat_handle.cast_unsigned());
     let _ = bn_rt_crypto_bytes_release(pem_dec_handle.cast_unsigned());
 }
+
+/// A decode error names the rule, never the input: the text may be a secret.
+#[test]
+fn decode_errors_do_not_echo_the_input() {
+    let secret = "c2VjcmV0LWtleQ==!";
+    for failure in [
+        bn_base64_decode(secret).expect_err("not base64"),
+        bn_base64url_decode(secret).expect_err("not base64url"),
+        bn_pem_decode(secret).expect_err("not PEM"),
+    ] {
+        assert!(
+            !failure.message().contains("c2VjcmV0"),
+            "{}",
+            failure.message()
+        );
+        assert!(!failure.cause().contains("c2VjcmV0"), "{}", failure.cause());
+    }
+}
+
+#[test]
+fn malformed_pem_is_a_parse_error() {
+    for pem in ["garbage", "-----BEGIN X-----\n!!!!\n-----END X-----\n"] {
+        assert_eq!(
+            bn_pem_decode(pem).expect_err("malformed PEM").code(),
+            bn_types::error_codes::crypto::PARSE_ERROR
+        );
+    }
+}

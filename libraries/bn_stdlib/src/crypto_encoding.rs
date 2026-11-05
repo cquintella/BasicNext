@@ -65,7 +65,7 @@ pub fn bn_base64_decode(input: &str) -> Result<Vec<u8>, CryptoFailure> {
             b'+' => 62,
             b'/' => 63,
             b' ' | b'\r' | b'\n' | b'\t' => continue,
-            _ => return Err(CryptoFailure::Base64(input.to_owned())),
+            _ => return Err(CryptoFailure::Base64),
         };
         buf = (buf << 6) | u32::from(val);
         bits += 6;
@@ -85,7 +85,7 @@ pub fn bn_base64url_encode(bytes: &[u8]) -> String {
 
 /// Decodes a URL-safe Base64 string (RFC 4648 §5), ignoring trailing padding.
 pub fn bn_base64url_decode(input: &str) -> Result<Vec<u8>, CryptoFailure> {
-    decode_base64url(input).ok_or_else(|| CryptoFailure::Base64Url(input.to_owned()))
+    decode_base64url(input).ok_or(CryptoFailure::Base64Url)
 }
 
 /// Encodes `der` bytes into a standard PEM container with 64-column wrapping.
@@ -111,19 +111,18 @@ pub fn bn_pem_decode(pem: &str) -> Result<Vec<u8>, CryptoFailure> {
         .filter(|l| !l.is_empty())
         .collect();
     if lines.len() < 2 {
-        return Err(CryptoFailure::Pem("too few lines in PEM".to_owned()));
+        return Err(CryptoFailure::Pem);
     }
     let first = lines[0];
     let last = lines[lines.len() - 1];
     if !first.starts_with("-----BEGIN ") || !first.ends_with("-----") {
-        return Err(CryptoFailure::Pem("invalid BEGIN header in PEM".to_owned()));
+        return Err(CryptoFailure::Pem);
     }
     if !last.starts_with("-----END ") || !last.ends_with("-----") {
-        return Err(CryptoFailure::Pem("invalid END footer in PEM".to_owned()));
+        return Err(CryptoFailure::Pem);
     }
     let b64_content = lines[1..lines.len() - 1].concat();
-    bn_base64_decode(&b64_content)
-        .map_err(|_| CryptoFailure::Pem("invalid base64 payload in PEM".to_owned()))
+    bn_base64_decode(&b64_content).map_err(|_| CryptoFailure::Pem)
 }
 
 /// Strict UTF-8 text conversion from bytes.
