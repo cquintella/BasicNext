@@ -96,7 +96,7 @@ END CLASS
 | --- | --- | --- |
 | `Crypto.Bytes` | Opaque buffer | Owned byte buffer. Does not implicitly convert to `STRING`. Wiped (`zeroize`) upon last `RELEASE`. Supports `.Length()`, `.ToHex()`, `.ToText()`. |
 | `Crypto.SecretKey` | Opaque symmetric key | Zeroized on drop or `RELEASE`. Memory locked (`mlock`) where platform permits. Not printable; `ToHex()` is forbidden. Exports only via explicit `ExportSecret`. |
-| `Crypto.PrivateKey` | Opaque asymmetric private key | Zeroized on drop or `RELEASE`. Memory locked (`mlock`) where platform permits. Exports only encrypted via `.ExportPem(format, password)` or explicit `.ExportPemUnencrypted(format)`. |
+| `Crypto.PrivateKey` | Opaque asymmetric private key | Zeroized on drop or `RELEASE`. Memory locked (`mlock`) where platform permits. Exports only encrypted via `.ExportPem(format, password)` or explicit `.ExportPemUnencrypted(format)`. After `.Zeroize()`, `.PublicKey()`, `.Id()` and `.Algorithm()` still answer: they hold no secret (BDFL decision, 2026-11-05). |
 | `Crypto.PublicKey` | Opaque asymmetric public key | Public key representation. Supports `.ExportPem()`, `.Fingerprint(hashAlg)`. |
 | `Crypto.KeyPair` | `STRUCT` | Contains `PublicKey AS PublicKey` and `PrivateKey AS PrivateKey`. |
 | `Crypto.Secret` | Sensitive text | Prints as `"***"`. Cannot be concatenated. Converts explicitly to `Bytes`. |

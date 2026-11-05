@@ -1858,9 +1858,8 @@ impl CryptoProvider {
                 span,
             )
         })?;
-        if entry.zeroized {
-            return failure(&CryptoFailure::ZeroizedKey);
-        }
+        // Zeroize wipes the seed only; the public key holds no secret and stays
+        // derivable (bncrypto.md, `Crypto.PrivateKey`).
         let pub_entry = entry.to_public_entry();
         Ok(self.insert_public_key(pub_entry))
     }
@@ -1879,9 +1878,6 @@ impl CryptoProvider {
             return Ok(Value::String(shared_string(entry.key_id.as_str())));
         }
         if let Some(entry) = self.private_keys.get(handle) {
-            if entry.zeroized {
-                return Ok(Value::String(shared_string("")));
-            }
             return Ok(Value::String(shared_string(entry.key_id.as_str())));
         }
         Err(runtime_error(
@@ -1908,9 +1904,6 @@ impl CryptoProvider {
             ));
         }
         if let Some(entry) = self.private_keys.get(handle) {
-            if entry.zeroized {
-                return Ok(Value::Integer(0, IntegerType::Int32));
-            }
             return Ok(Value::Integer(
                 i128::from(entry.algorithm),
                 IntegerType::Int32,

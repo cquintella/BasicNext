@@ -16,8 +16,9 @@ use pkcs8::der::{Decode, Encode};
 use crate::crypto::{ed25519_sign, ed25519_verify, p256_sign, p256_verify};
 use crate::crypto_abi::{failed, store, with_buffers};
 use crate::crypto_asymmetric::{
-    private_entry_from_seed, public_entry_from_spki, store_private_key, store_public_key,
-    with_private_keys, with_public_keys,
+    KEY_ALG_ECDSA_P256, KEY_ALG_ED25519, KEY_ALG_X25519, private_entry_from_seed,
+    public_entry_from_spki, store_private_key, store_public_key, with_private_keys,
+    with_public_keys,
 };
 use crate::crypto_encoding::bn_pem_encode;
 use crate::crypto_error::CryptoFailure;
@@ -71,9 +72,9 @@ fn public_material(handle: u64) -> Option<(Vec<u8>, i32)> {
 /// X25519 is not a signature algorithm.
 pub fn bn_sign(seed: &[u8], algorithm: i32, message: &[u8]) -> Result<Vec<u8>, CryptoFailure> {
     match algorithm {
-        1 | 4 | 30 => ed25519_sign(seed, message).ok_or(CryptoFailure::Key(SIGN)),
-        5 | 32 => p256_sign(seed, message).ok_or(CryptoFailure::Key(SIGN)),
-        31 => Err(CryptoFailure::WrongKeyType { operation: SIGN }),
+        KEY_ALG_ED25519 => ed25519_sign(seed, message).ok_or(CryptoFailure::Key(SIGN)),
+        KEY_ALG_ECDSA_P256 => p256_sign(seed, message).ok_or(CryptoFailure::Key(SIGN)),
+        KEY_ALG_X25519 => Err(CryptoFailure::WrongKeyType { operation: SIGN }),
         _ => Err(CryptoFailure::UnsupportedAlgorithm { operation: SIGN }),
     }
 }
@@ -82,8 +83,8 @@ pub fn bn_sign(seed: &[u8], algorithm: i32, message: &[u8]) -> Result<Vec<u8>, C
 #[must_use]
 pub fn bn_verify(raw_public: &[u8], algorithm: i32, message: &[u8], signature: &[u8]) -> bool {
     match algorithm {
-        1 | 4 | 30 => ed25519_verify(raw_public, message, signature),
-        5 | 32 => p256_verify(raw_public, message, signature),
+        KEY_ALG_ED25519 => ed25519_verify(raw_public, message, signature),
+        KEY_ALG_ECDSA_P256 => p256_verify(raw_public, message, signature),
         _ => false,
     }
 }
@@ -172,20 +173,20 @@ pub fn bn_export_private_pem(
 ) -> Result<String, CryptoFailure> {
     require_pkcs8(format, EXPORT)?;
     match algorithm {
-        1 | 4 | 30 => {
+        KEY_ALG_ED25519 => {
             let seed: [u8; 32] = seed.try_into().map_err(|_| CryptoFailure::Key(EXPORT))?;
             let key = ed25519_dalek::SigningKey::from_bytes(&seed);
             key.to_pkcs8_encrypted_pem(rng(), password.as_bytes(), pkcs8::LineEnding::LF)
                 .map(pem_string)
                 .map_err(|_| parse(EXPORT))
         }
-        5 | 32 => {
+        KEY_ALG_ECDSA_P256 => {
             let key = p256::SecretKey::from_slice(seed).map_err(|_| CryptoFailure::Key(EXPORT))?;
             key.to_pkcs8_encrypted_pem(rng(), password.as_bytes(), pkcs8::LineEnding::LF)
                 .map(pem_string)
                 .map_err(|_| parse(EXPORT))
         }
-        31 => {
+        KEY_ALG_X25519 => {
             let der = x25519_private_der(seed)?;
             encrypt_der(&der, password)
         }
@@ -201,7 +202,7 @@ pub fn bn_export_private_pem_unencrypted(
 ) -> Result<String, CryptoFailure> {
     require_pkcs8(format, EXPORT_PLAIN)?;
     match algorithm {
-        1 | 4 | 30 => {
+        KEY_ALG_ED25519 => {
             let seed: [u8; 32] = seed
                 .try_into()
                 .map_err(|_| CryptoFailure::Key(EXPORT_PLAIN))?;
@@ -210,14 +211,14 @@ pub fn bn_export_private_pem_unencrypted(
                 .map(pem_string)
                 .map_err(|_| parse(EXPORT_PLAIN))
         }
-        5 | 32 => {
+        KEY_ALG_ECDSA_P256 => {
             let key =
                 p256::SecretKey::from_slice(seed).map_err(|_| CryptoFailure::Key(EXPORT_PLAIN))?;
             key.to_pkcs8_pem(pkcs8::LineEnding::LF)
                 .map(pem_string)
                 .map_err(|_| parse(EXPORT_PLAIN))
         }
-        31 => {
+        KEY_ALG_X25519 => {
             let der = x25519_private_der(seed).map_err(|_| parse(EXPORT_PLAIN))?;
             Ok(bn_pem_encode(LABEL_PRIVATE, &der))
         }
@@ -257,14 +258,14 @@ fn material_from_pkcs8(der: &[u8]) -> Result<(Vec<u8>, i32), CryptoFailure> {
     let ec = pkcs8::ObjectIdentifier::new_unwrap("1.2.840.10045.2.1");
     if info.algorithm.oid == ed25519 {
         let key = ed25519_dalek::SigningKey::try_from(info).map_err(|_| parse(LOAD_PRIVATE))?;
-        return Ok((key.to_bytes().to_vec(), 30));
+        return Ok((key.to_bytes().to_vec(), KEY_ALG_ED25519));
     }
     if info.algorithm.oid == x25519 {
-        return Ok((x25519_seed_from_private(info.private_key)?, 31));
+        return Ok((x25519_seed_from_private(info.private_key)?, KEY_ALG_X25519));
     }
     if info.algorithm.oid == ec {
         let key = p256::SecretKey::from_pkcs8_der(der).map_err(|_| parse(LOAD_PRIVATE))?;
-        return Ok((key.to_bytes().to_vec(), 32));
+        return Ok((key.to_bytes().to_vec(), KEY_ALG_ECDSA_P256));
     }
     Err(CryptoFailure::UnsupportedAlgorithm {
         operation: LOAD_PRIVATE,

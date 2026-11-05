@@ -54,7 +54,7 @@ fn test_ed25519_keypair_and_key_ids() {
 fn test_asymmetric_key_c_abi() {
     let mut pub_handle = 0u64;
     let mut priv_handle = 0u64;
-    let rc = bn_rt_crypto_keypair_generate(1, &raw mut pub_handle, &raw mut priv_handle);
+    let rc = bn_rt_crypto_keypair_generate(30, &raw mut pub_handle, &raw mut priv_handle);
     assert_eq!(rc, 0);
     assert_ne!(pub_handle, 0);
     assert_ne!(priv_handle, 0);
@@ -69,8 +69,8 @@ fn test_asymmetric_key_c_abi() {
     let priv_id = unsafe { CStr::from_ptr(priv_id_ptr) }.to_str().unwrap();
     assert_eq!(priv_id, pub_id);
 
-    assert_eq!(bn_rt_crypto_public_key_algorithm(pub_handle), 1);
-    assert_eq!(bn_rt_crypto_private_key_algorithm(priv_handle), 1);
+    assert_eq!(bn_rt_crypto_public_key_algorithm(pub_handle), 30);
+    assert_eq!(bn_rt_crypto_private_key_algorithm(priv_handle), 30);
 
     let derived_pub = bn_rt_crypto_private_key_public_key(priv_handle);
     assert_ne!(derived_pub, 0);
@@ -80,6 +80,11 @@ fn test_asymmetric_key_c_abi() {
     assert_eq!(derived_id, pub_id);
 
     assert_eq!(bn_rt_crypto_private_key_zeroize(priv_handle), 0);
+    // The public half holds no secret: it stays derivable after zeroize.
+    assert_eq!(bn_rt_crypto_private_key_algorithm(priv_handle), 30);
+    let after_zeroize = bn_rt_crypto_private_key_public_key(priv_handle);
+    assert_ne!(after_zeroize, 0);
+    assert_eq!(bn_rt_crypto_public_key_release(after_zeroize), 0);
 
     bn_rt_str_release(pub_id_ptr);
     bn_rt_str_release(priv_id_ptr);
@@ -88,6 +93,10 @@ fn test_asymmetric_key_c_abi() {
     assert_eq!(bn_rt_crypto_public_key_release(pub_handle), 0);
     assert_eq!(bn_rt_crypto_private_key_release(priv_handle), 0);
     assert_eq!(bn_rt_crypto_public_key_release(derived_pub), 0);
+
+    // An unsupported selector reports its own code natively, as in bni.
+    let rc = bn_rt_crypto_keypair_generate(999, &raw mut pub_handle, &raw mut priv_handle);
+    assert_ne!(rc, 0);
 }
 
 #[test]
@@ -144,6 +153,15 @@ fn test_p256_keypair_generation() {
 fn test_unsupported_algorithm_keypair_generation() {
     let err = bn_keypair_generate_internal(999).expect_err("unknown algorithm");
     assert_eq!(err.code(), 4);
+    // The symmetric and legacy ALG_* ids (1 AES-GCM, 4 and 5 the legacy
+    // Ed25519 and P-256 keys) are not key-pair selectors.
+    for algorithm in [1, 4, 5] {
+        let err = bn_keypair_generate_internal(algorithm).expect_err("not a key-pair selector");
+        assert_eq!(
+            err.code(),
+            bn_types::error_codes::crypto::UNSUPPORTED_ALGORITHM
+        );
+    }
 }
 
 const PASSWORD: &str = "s3cret-phrase";
@@ -161,7 +179,8 @@ fn detached_signatures_follow_the_key_algorithm() {
     let message = b"asymmetric";
     let ed_public = ed25519_public_key(&seed).expect("ed25519 public");
     let ed_sig = bn_sign(&seed, 30, message).expect("ed25519 sign");
-    assert_eq!(bn_sign(&seed, 4, message).unwrap(), ed_sig);
+    // The legacy ALG_ED25519 id (4) is not a key-pair algorithm.
+    assert_eq!(bn_sign(&seed, 4, message).unwrap_err().code(), 4);
     assert!(bn_verify(&ed_public, 30, message, &ed_sig));
     assert!(!bn_verify(&ed_public, 30, b"other", &ed_sig));
     assert_eq!(bn_sign(&seed, 31, message).unwrap_err().code(), 7);
@@ -170,7 +189,7 @@ fn detached_signatures_follow_the_key_algorithm() {
     let p256_seed = [1_u8; 32];
     let p256_public = p256_public_key(&p256_seed).expect("p256 public");
     let p256_sig = bn_sign(&p256_seed, 32, message).expect("p256 sign");
-    assert_eq!(bn_sign(&p256_seed, 5, message).unwrap(), p256_sig);
+    assert_eq!(bn_sign(&p256_seed, 5, message).unwrap_err().code(), 4);
     assert!(bn_verify(&p256_public, 32, message, &p256_sig));
     assert!(!bn_verify(&p256_public, 32, message, &ed_sig));
 }

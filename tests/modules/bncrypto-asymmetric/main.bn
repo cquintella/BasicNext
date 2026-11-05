@@ -54,6 +54,17 @@ FUNCTION Start() AS VOID
     LET kpBad AS Crypto.KeyPair OR Error = Crypto.NewKeyPairFor(999)
     IF kpBad IS Error THEN
         PRINT "invalid-alg-rejected"
+        IF kpBad.Code = Crypto.UNSUPPORTED_ALGORITHM THEN
+            PRINT "invalid-alg-code-ok"
+        END IF
+    END IF
+
+    // Only Alg.ED25519, Alg.X25519 and Alg.ECDSA_P256 make a key pair; the
+    // symmetric id 1 (ALG_AES_GCM_256) and the legacy id 4 (ALG_ED25519) are refused.
+    LET kpAes AS Crypto.KeyPair OR Error = Crypto.NewKeyPairFor(1)
+    LET kpLegacy AS Crypto.KeyPair OR Error = Crypto.NewKeyPairFor(4)
+    IF kpAes IS Error AND kpLegacy IS Error THEN
+        PRINT "non-keypair-alg-rejected"
     END IF
 
     LET opts AS Crypto.KeyPairOptions
@@ -144,6 +155,16 @@ FUNCTION Start() AS VOID
                     PRINT "x25519-verify-false"
                 END IF
             END IF
+        END IF
+    END IF
+
+    // Zeroize wipes the secret; the public half and the id stay usable.
+    LET kpZ AS Crypto.KeyPair OR Error = Crypto.NewKeyPair()
+    IF kpZ IS Crypto.KeyPair THEN
+        LET idBefore AS STRING = kpZ.PublicKey.Id()
+        kpZ.PrivateKey.Zeroize()
+        IF kpZ.PrivateKey.PublicKey().Id() = idBefore AND kpZ.PrivateKey.Id() = idBefore THEN
+            PRINT "public-after-zeroize-ok"
         END IF
     END IF
 END FUNCTION

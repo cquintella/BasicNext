@@ -1480,7 +1480,7 @@ fn bncrypto_asymmetric_interprets() {
     );
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "asym-keypair-ok\nkey-ids-match\nderived-public-matches\ned25519-for-ok\nx25519-for-ok\np256-for-ok\ninvalid-alg-rejected\nwith-default-ok\nsign-verify-ok\nverify-rejects\npem-roundtrip\nwrong-password\nplain-roundtrip\nplain-password-rejected\npublic-from-private-rejected\npublic-pem-ok\np256-sign-ok\nx25519-sign-rejected\nx25519-verify-false\n"
+        "asym-keypair-ok\nkey-ids-match\nderived-public-matches\ned25519-for-ok\nx25519-for-ok\np256-for-ok\ninvalid-alg-rejected\ninvalid-alg-code-ok\nnon-keypair-alg-rejected\nwith-default-ok\nsign-verify-ok\nverify-rejects\npem-roundtrip\nwrong-password\nplain-roundtrip\nplain-password-rejected\npublic-from-private-rejected\npublic-pem-ok\np256-sign-ok\nx25519-sign-rejected\nx25519-verify-false\npublic-after-zeroize-ok\n"
     );
 }
 

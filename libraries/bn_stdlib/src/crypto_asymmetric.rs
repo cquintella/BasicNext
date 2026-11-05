@@ -140,15 +140,21 @@ fn store_keypair(
     (store_public_key(pub_entry), store_private_key(priv_entry))
 }
 
+/// `Alg` selectors of the key-pair types (`modules/bn/BNCrypto.bn`, class `Alg`).
+/// Only these three make a key pair; the symmetric and legacy `ALG_*` ids do not.
+pub const KEY_ALG_ED25519: i32 = 30;
+pub const KEY_ALG_X25519: i32 = 31;
+pub const KEY_ALG_ECDSA_P256: i32 = 32;
+
 /// Generates an Ed25519 keypair and registers both handles.
 pub fn bn_ed25519_keypair_generate() -> Result<(u64, u64), CryptoFailure> {
-    bn_keypair_generate_internal(30)
+    bn_keypair_generate_internal(KEY_ALG_ED25519)
 }
 
 /// Generates a keypair for the given algorithm ID.
 pub fn bn_keypair_generate_internal(algorithm: i32) -> Result<(u64, u64), CryptoFailure> {
     match algorithm {
-        1 | 4 | 30 => {
+        KEY_ALG_ED25519 => {
             let mut seed = [0u8; 32];
             getrandom::getrandom(&mut seed)
                 .map_err(|_| CryptoFailure::Random("BNCrypto.NewKeyPair"))?;
@@ -164,7 +170,7 @@ pub fn bn_keypair_generate_internal(algorithm: i32) -> Result<(u64, u64), Crypto
             let (pub_h, priv_h) = store_keypair(seed.to_vec(), spki, raw_pub, algorithm, key_id);
             Ok((pub_h, priv_h))
         }
-        31 => {
+        KEY_ALG_X25519 => {
             let mut seed = [0u8; 32];
             getrandom::getrandom(&mut seed)
                 .map_err(|_| CryptoFailure::Random("BNCrypto.NewKeyPair"))?;
@@ -180,7 +186,7 @@ pub fn bn_keypair_generate_internal(algorithm: i32) -> Result<(u64, u64), Crypto
             let (pub_h, priv_h) = store_keypair(seed.to_vec(), spki, raw_pub, algorithm, key_id);
             Ok((pub_h, priv_h))
         }
-        32 => {
+        KEY_ALG_ECDSA_P256 => {
             let mut seed = [0u8; 32];
             let secret_key = loop {
                 getrandom::getrandom(&mut seed)
@@ -230,11 +236,11 @@ pub fn private_entry_from_seed(
 /// Rebuilds a `PublicKey` from SPKI bytes. The header selects the algorithm.
 pub fn public_entry_from_spki(spki: &[u8]) -> Result<PublicKeyEntry, CryptoFailure> {
     let (algorithm, header_len, raw_len) = if spki.starts_with(&ED25519_SPKI_HEADER) {
-        (30, ED25519_SPKI_HEADER.len(), 32)
+        (KEY_ALG_ED25519, ED25519_SPKI_HEADER.len(), 32)
     } else if spki.starts_with(&X25519_SPKI_HEADER) {
-        (31, X25519_SPKI_HEADER.len(), 32)
+        (KEY_ALG_X25519, X25519_SPKI_HEADER.len(), 32)
     } else if spki.starts_with(&P256_SPKI_HEADER) {
-        (32, P256_SPKI_HEADER.len(), 65)
+        (KEY_ALG_ECDSA_P256, P256_SPKI_HEADER.len(), 65)
     } else {
         return Err(CryptoFailure::Parse {
             operation: "BNCrypto.LoadPublicKey",
@@ -245,7 +251,9 @@ pub fn public_entry_from_spki(spki: &[u8]) -> Result<PublicKeyEntry, CryptoFailu
             operation: "BNCrypto.LoadPublicKey",
         });
     }
-    if algorithm == 30 && !crate::crypto::ed25519_public_key_is_strong(&spki[header_len..]) {
+    if algorithm == KEY_ALG_ED25519
+        && !crate::crypto::ed25519_public_key_is_strong(&spki[header_len..])
+    {
         return Err(CryptoFailure::Parse {
             operation: "BNCrypto.LoadPublicKey",
         });
@@ -260,13 +268,13 @@ pub fn public_entry_from_spki(spki: &[u8]) -> Result<PublicKeyEntry, CryptoFailu
 
 fn spki_from_seed(seed: &[u8], algorithm: i32) -> Result<(Vec<u8>, Vec<u8>), CryptoFailure> {
     let (header, raw): (&[u8], Vec<u8>) = match algorithm {
-        1 | 4 | 30 => {
+        KEY_ALG_ED25519 => {
             let raw = crate::crypto::ed25519_public_key(seed).ok_or(CryptoFailure::Parse {
                 operation: "BNCrypto.LoadPrivateKey",
             })?;
             (&ED25519_SPKI_HEADER, raw)
         }
-        31 => {
+        KEY_ALG_X25519 => {
             let seed: [u8; 32] = seed.try_into().map_err(|_| CryptoFailure::Parse {
                 operation: "BNCrypto.LoadPrivateKey",
             })?;
@@ -275,7 +283,7 @@ fn spki_from_seed(seed: &[u8], algorithm: i32) -> Result<(Vec<u8>, Vec<u8>), Cry
                 .to_vec();
             (&X25519_SPKI_HEADER, raw)
         }
-        5 | 32 => {
+        KEY_ALG_ECDSA_P256 => {
             let secret = p256::SecretKey::from_slice(seed).map_err(|_| CryptoFailure::Parse {
                 operation: "BNCrypto.LoadPrivateKey",
             })?;
@@ -307,31 +315,18 @@ pub fn bn_public_key_algorithm(handle: u64) -> Option<i32> {
 }
 
 pub fn bn_private_key_id(handle: u64) -> Option<String> {
-    with_private_keys(|keys| {
-        keys.get(&handle).and_then(|e| {
-            if e.zeroized {
-                None
-            } else {
-                Some(e.key_id.clone())
-            }
-        })
-    })
+    with_private_keys(|keys| keys.get(&handle).map(|e| e.key_id.clone()))
 }
 
 pub fn bn_private_key_algorithm(handle: u64) -> Option<i32> {
-    with_private_keys(|keys| {
-        keys.get(&handle)
-            .and_then(|e| if e.zeroized { None } else { Some(e.algorithm) })
-    })
+    with_private_keys(|keys| keys.get(&handle).map(|e| e.algorithm))
 }
 
 pub fn bn_private_key_public_key(handle: u64) -> Option<u64> {
     with_private_keys(|keys| {
-        let entry = keys.get(&handle)?;
-        if entry.zeroized {
-            return None;
-        }
-        let pub_entry = entry.to_public_entry();
+        // Zeroize wipes the seed only; the public key holds no secret and stays
+        // derivable (bncrypto.md, `Crypto.PrivateKey`).
+        let pub_entry = keys.get(&handle)?.to_public_entry();
         Some(store_public_key(pub_entry))
     })
 }
@@ -368,7 +363,7 @@ pub extern "C" fn bn_rt_crypto_keypair_generate(
             }
             0
         }
-        Err(_) => -1,
+        Err(failure) => crate::crypto_abi::failed(&failure),
     }
 }
 
