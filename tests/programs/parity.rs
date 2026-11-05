@@ -978,6 +978,21 @@ fn udp_results_match_across_backends() {
     native_matches_interpreter(path);
 }
 
+/// A closed `HOST.Net` handle stays closed when a later socket or listener is
+/// opened: the old id answers `Net.CLOSED` on both backends and never reaches
+/// the new object (value-memory-abi.md, stale handles).
+#[test]
+fn stale_net_handles_stay_closed_across_backends() {
+    let path = "tests/host/net_stale_handles.bn";
+    let output = bni().args(["run", path]).output().expect("run fixture");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "udp TRUE\nudp live TRUE\ntcp TRUE\ntcp live TRUE\n"
+    );
+    native_matches_interpreter(path);
+}
+
 /// `BNCrypto` failures carry the shared `bn_rt::crypto_error` report (Code,
 /// Operation, Message, Cause) on both backends (bncrypto.md "Errors").
 #[test]
