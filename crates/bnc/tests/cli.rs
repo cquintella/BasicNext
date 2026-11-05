@@ -83,6 +83,12 @@ fn native_exec_program(label: &str, body: &str, env: &[(&str, &str)]) -> String 
     stdout
 }
 
+/// A path as a BN string literal: BN strings escape only `\"` and `\\`, so a
+/// Windows path doubles its backslashes.
+fn bn_literal(path: &std::path::Path) -> String {
+    path.display().to_string().replace('\\', "\\\\")
+}
+
 /// `Checksum.VerifyFileChecksum` reads through the execution policy: a file
 /// outside the read root is FALSE even when its checksum matches.
 #[test]
@@ -102,9 +108,9 @@ fn compiled_verify_file_checksum_obeys_the_read_root() {
         &fixture,
         format!(
             "IMPORT BNCrypto AS Crypto\n\nFUNCTION Start() AS VOID\n    PRINT Crypto.Checksum.VerifyFileChecksum(\"{}\", \"crc32:352441c2\")\n    PRINT Crypto.Checksum.VerifyFileChecksum(\"{}\", \"crc32:352441c2\")\n    LET digest AS Crypto.Bytes OR Error = Crypto.HashFile(\"{}\")\n    IF digest IS Error THEN\n        PRINT \"hashfile-denied\"\n    END IF\nEND FUNCTION\n",
-            inside.display(),
-            outside.display(),
-            outside.display()
+            bn_literal(&inside),
+            bn_literal(&outside),
+            bn_literal(&outside)
         ),
     )
     .expect("write checksum fixture");

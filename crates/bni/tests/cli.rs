@@ -1450,6 +1450,12 @@ fn bncrypto_encoding_interprets() {
     );
 }
 
+/// A path as a BN string literal: BN strings escape only `\"` and `\\`, so a
+/// Windows path doubles its backslashes.
+fn bn_literal(path: &std::path::Path) -> String {
+    path.display().to_string().replace('\\', "\\\\")
+}
+
 /// `BNCrypto` file operations read through the execution policy: under
 /// `--sandbox --read-root`, a file outside the root is neither verified nor
 /// hashed. The compiled twin is in the `bnc` suite.
@@ -1470,9 +1476,9 @@ fn sandboxed_bncrypto_file_operations_obey_the_read_root() {
         &fixture,
         format!(
             "IMPORT BNCrypto AS Crypto\n\nFUNCTION Start() AS VOID\n    PRINT Crypto.Checksum.VerifyFileChecksum(\"{}\", \"crc32:352441c2\")\n    PRINT Crypto.Checksum.VerifyFileChecksum(\"{}\", \"crc32:352441c2\")\n    LET digest AS Crypto.Bytes OR Error = Crypto.HashFile(\"{}\")\n    IF digest IS Error THEN\n        PRINT \"hashfile-denied\"\n    END IF\nEND FUNCTION\n",
-            inside.display(),
-            outside.display(),
-            outside.display()
+            bn_literal(&inside),
+            bn_literal(&outside),
+            bn_literal(&outside)
         ),
     )
     .expect("write checksum fixture");
