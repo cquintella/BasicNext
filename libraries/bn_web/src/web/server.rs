@@ -286,14 +286,14 @@ impl ServerState {
     ) {
         self.static_opener = Some(opener);
     }
-    /// Returns the static opener, or default system file opener if none set.
+    /// Returns the static opener, or the policy-checked opener if none set.
     #[must_use]
     pub fn static_opener(
         &self,
     ) -> std::sync::Arc<dyn super::static_files::StaticFileOpener + Send + Sync> {
         self.static_opener
             .clone()
-            .unwrap_or_else(|| std::sync::Arc::new(super::static_files::SystemFileOpener))
+            .unwrap_or_else(|| std::sync::Arc::new(super::policy_opener::PolicyFileOpener))
     }
     /// Registers a static file mount point (before `Start`).
     pub fn add_static(&mut self, prefix: &str, directory: &str) -> Result<(), &'static str> {
