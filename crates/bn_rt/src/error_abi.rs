@@ -62,7 +62,10 @@ pub fn take_error_report() -> (i32, String, String, String) {
     })
 }
 
-/// Sets the recorded report for the next `bn_rt_error_take` from C ABI.
+/// Sets the recorded report for the next `bn_rt_error_take` from C ABI. The
+/// callers are libraries (`BNWeb`), which pass plain NUL-terminated strings,
+/// not STRING payloads: they are read as C strings. Reading them through
+/// `text` would take the bytes before each pointer for a STRING header.
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_error_set_report(
@@ -71,7 +74,18 @@ pub extern "C" fn bn_rt_error_set_report(
     message: *const c_char,
     cause: *const c_char,
 ) {
-    set_error_report(code, text(operation), text(message), text(cause));
+    set_error_report(code, c_text(operation), c_text(message), c_text(cause));
+}
+
+/// A plain NUL-terminated string; null or invalid UTF-8 is empty.
+#[allow(unsafe_code)]
+fn c_text<'a>(ptr: *const c_char) -> &'a str {
+    if ptr.is_null() {
+        return "";
+    }
+    // SAFETY: the caller passes a non-null NUL-terminated string that lives
+    // for this call (`bn_rt_error_set_report`'s contract).
+    unsafe { CStr::from_ptr(ptr) }.to_str().unwrap_or("")
 }
 
 /// One native `Error`'s fields: its code and owned NUL-terminated texts.
@@ -236,6 +250,26 @@ mod tests {
         bn_rt_error_code, bn_rt_error_field, bn_rt_error_take, bn_rt_error_wrap, set_error_report,
         text,
     };
+
+    /// A library reports its failure with plain NUL-terminated strings (the
+    /// `BNWeb` ABI builds them with `format!`), not STRING payloads: the
+    /// record keeps their text.
+    #[test]
+    fn a_report_of_plain_c_strings_keeps_its_texts() {
+        let operation = std::ffi::CString::new("BNWeb.Client.Request").expect("text");
+        let message =
+            std::ffi::CString::new("destination is outside the egress policy").expect("text");
+        let cause = std::ffi::CString::new("a private address").expect("text");
+        super::bn_rt_error_set_report(7, operation.as_ptr(), message.as_ptr(), cause.as_ptr());
+        let record = bn_rt_error_take(1, std::ptr::null());
+        assert_eq!(bn_rt_error_code(record), 7);
+        assert_eq!(
+            text(bn_rt_error_field(record, 0)),
+            "destination is outside the egress policy"
+        );
+        assert_eq!(text(bn_rt_error_field(record, 1)), "BNWeb.Client.Request");
+        assert_eq!(text(bn_rt_error_field(record, 2)), "a private address");
+    }
 
     #[test]
     fn records_carry_three_fields_and_plain_messages_still_read() {

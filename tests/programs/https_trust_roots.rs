@@ -107,24 +107,18 @@ fn outcome(backend: Backend, beside: &[(&str, bool)], variable: Option<&Path>) -
     String::from_utf8_lossy(&output.stdout).into_owned()
 }
 
-/// A `bnc` artifact reports only the error code of a `BNWeb.Client` failure
-/// today (its `Cause` is empty, an open parity defect), so there the code alone
-/// tells the outcome: `HTTP_FAILED` for refused roots, the egress code for
-/// accepted ones. The interpreter also shows which file and why.
-fn accepted(backend: Backend, output: &str) -> bool {
-    match backend {
-        Backend::Interpreter => !output.contains(TRUST_FAILED) && output.contains(ROOTS_ACCEPTED),
-        Backend::Native => output.starts_with(OTHER_FAILURE),
-    }
+/// Accepted roots: no trust failure, and the next check refuses the loopback
+/// destination (code `EGRESS_DENIED`).
+fn accepted(output: &str) -> bool {
+    output.starts_with(OTHER_FAILURE) && output.contains(ROOTS_ACCEPTED)
 }
 
-fn refused(backend: Backend, output: &str, file: &str, reason: &str) -> bool {
-    match backend {
-        Backend::Interpreter => {
-            output.starts_with(TRUST_FAILED) && output.contains(file) && output.contains(reason)
-        }
-        Backend::Native => output.starts_with(HTTP_FAILURE),
-    }
+/// Refused roots: `HTTP_FAILED`, naming the file and the reason.
+fn refused(output: &str, file: &str, reason: &str) -> bool {
+    output.starts_with(HTTP_FAILURE)
+        && output.starts_with(TRUST_FAILED)
+        && output.contains(file)
+        && output.contains(reason)
 }
 
 fn check(backend: Backend) {
@@ -132,37 +126,28 @@ fn check(backend: Backend) {
     let missing = Path::new("/no/such/ca.pem");
     // The platform store alone; the SSL_* variables name a bad file in vain.
     let output = outcome(backend, &[], None);
-    assert!(
-        accepted(backend, &output),
-        "{backend:?}, no extra file: {output}"
-    );
+    assert!(accepted(&output), "{backend:?}, no extra file: {output}");
     // bn-cacert.pem beside the program is read, and a bad one fails.
     let output = outcome(backend, &[(PRIMARY, false)], None);
     assert!(
-        refused(backend, &output, PRIMARY, NO_CERTIFICATE),
+        refused(&output, PRIMARY, NO_CERTIFICATE),
         "{backend:?}, bad {PRIMARY}: {output}"
     );
     // bn-ca.pem is read when bn-cacert.pem is absent.
     let output = outcome(backend, &[(SECONDARY, false)], None);
     assert!(
-        refused(backend, &output, SECONDARY, NO_CERTIFICATE),
+        refused(&output, SECONDARY, NO_CERTIFICATE),
         "{backend:?}, bad {SECONDARY}: {output}"
     );
     // bn-cacert.pem comes first: a good one hides a bad bn-ca.pem.
     let output = outcome(backend, &[(PRIMARY, true), (SECONDARY, false)], None);
-    assert!(
-        accepted(backend, &output),
-        "{backend:?}, {PRIMARY} first: {output}"
-    );
+    assert!(accepted(&output), "{backend:?}, {PRIMARY} first: {output}");
     // BN_CA_FILE comes before both, and is never skipped.
     let output = outcome(backend, &[(PRIMARY, false)], Some(&ca));
-    assert!(
-        accepted(backend, &output),
-        "{backend:?}, BN_CA_FILE first: {output}"
-    );
+    assert!(accepted(&output), "{backend:?}, BN_CA_FILE first: {output}");
     let output = outcome(backend, &[(PRIMARY, true)], Some(missing));
     assert!(
-        refused(backend, &output, "/no/such/ca.pem", UNREADABLE),
+        refused(&output, "/no/such/ca.pem", UNREADABLE),
         "{backend:?}, unreadable BN_CA_FILE: {output}"
     );
 }
