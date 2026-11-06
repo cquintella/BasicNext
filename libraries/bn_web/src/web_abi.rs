@@ -1432,8 +1432,15 @@ pub extern "C" fn bn_web_egress_policy_new(
     let schemes_str = string_text(schemes).unwrap_or_default();
     let cidrs_str = string_text(cidrs).unwrap_or_default();
     let ports_str = string_text(ports).unwrap_or_default();
-    let redirects = usize::try_from(max_redirects.max(0)).unwrap_or(0);
-    let deadline = u64::try_from(deadline_ms.max(0)).unwrap_or(0);
+    // A negative value is refused, not clamped (`EgressPolicy OR Error`).
+    let (Ok(redirects), Ok(deadline)) =
+        (usize::try_from(max_redirects), u64::try_from(deadline_ms))
+    else {
+        return record_failure(
+            "EgressPolicy.New",
+            &WebFailure::InvalidArgument(crate::web::EGRESS_POLICY_BOUNDS.into()),
+        );
+    };
 
     match crate::web::EgressPolicy::from_csv(
         &schemes_str,
@@ -1453,7 +1460,7 @@ pub extern "C" fn bn_web_egress_policy_new(
             }
             BN_WEB_OK
         }
-        Err(err) => record_failure("EgressPolicy.New", &WebFailure::from_message(err)),
+        Err(err) => record_failure("EgressPolicy.New", &WebFailure::InvalidArgument(err.into())),
     }
 }
 

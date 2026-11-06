@@ -151,7 +151,6 @@ diagnostic_registry! {
     INVALID_CONSTRUCTOR { code: "INVALID_CONSTRUCTOR", fluent: "INVALID_CONSTRUCTOR", severity: Error, schema: LEGACY_MESSAGE },
     INVALID_DATE { code: "INVALID_DATE", fluent: "INVALID_DATE", severity: Error, schema: DETAIL },
     INVALID_DESTRUCTOR { code: "INVALID_DESTRUCTOR", fluent: "INVALID_DESTRUCTOR", severity: Error, schema: LEGACY_MESSAGE },
-    INVALID_EGRESS_POLICY { code: "INVALID_EGRESS_POLICY", fluent: "INVALID_EGRESS_POLICY", severity: Error, schema: DETAIL },
     INVALID_EXIT_CODE { code: "INVALID_EXIT_CODE", fluent: "INVALID_EXIT_CODE", severity: Error, schema: DETAIL },
     INVALID_EXPONENT { code: "INVALID_EXPONENT", fluent: "INVALID_EXPONENT", severity: Error, schema: DETAIL },
     INVALID_FILE_MODE { code: "INVALID_FILE_MODE", fluent: "INVALID_FILE_MODE", severity: Error, schema: LEGACY_MESSAGE },

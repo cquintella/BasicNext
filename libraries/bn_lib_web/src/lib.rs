@@ -1750,31 +1750,29 @@ impl WebProvider {
                         span,
                     ));
                 };
-                let max_redirects =
-                    usize::try_from(integer(&arguments[3], span)?.0).map_err(|_| {
-                        runtime_error(
-                            bn_diag::DiagId::INVALID_EGRESS_POLICY,
-                            "invalid redirect limit",
-                            span,
-                        )
-                    })?;
-                let deadline = u64::try_from(integer(&arguments[4], span)?.0).map_err(|_| {
-                    runtime_error(
-                        bn_diag::DiagId::INVALID_EGRESS_POLICY,
-                        "invalid egress deadline",
-                        span,
-                    )
-                })?;
-                let policy = crate::web::EgressPolicy::from_csv(
+                // `EgressPolicy OR Error`: a setting outside its bounds is an
+                // `INVALID_ARGUMENT` the program handles (bnweb.md, "Errors").
+                let (Ok(max_redirects), Ok(deadline)) = (
+                    usize::try_from(integer(&arguments[3], span)?.0),
+                    u64::try_from(integer(&arguments[4], span)?.0),
+                ) else {
+                    return Ok(failed(
+                        name,
+                        &WebFailure::InvalidArgument(crate::web::EGRESS_POLICY_BOUNDS.into()),
+                    ));
+                };
+                let policy = match crate::web::EgressPolicy::from_csv(
                     schemes,
                     cidrs,
                     ports,
                     max_redirects,
                     deadline,
-                )
-                .map_err(|message| {
-                    runtime_error(bn_diag::DiagId::INVALID_EGRESS_POLICY, message, span)
-                })?;
+                ) {
+                    Ok(policy) => policy,
+                    Err(message) => {
+                        return Ok(failed(name, &WebFailure::InvalidArgument(message.into())));
+                    }
+                };
                 let object = core.allocate_object("BNWeb.EgressPolicy", span)?;
                 if let Value::Object { handle, .. } = object {
                     self.egress_policies.insert(handle, policy);

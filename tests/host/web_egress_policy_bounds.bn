@@ -1,0 +1,31 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Web.EgressPolicy.New: a redirect limit of 0 is valid (no redirect is
+// followed); a setting outside its bounds is an Error with
+// Web.INVALID_ARGUMENT, and the program goes on.
+IMPORT BNWeb AS Web
+
+FUNCTION Report(label AS STRING, policy AS Web.EgressPolicy OR Error) AS VOID
+    IF policy IS Error THEN
+        PRINT label, policy.Code = Web.INVALID_ARGUMENT, policy.Operation
+    ELSE
+        PRINT label, "policy"
+    END IF
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    Report("zero redirects", Web.EgressPolicy.New("https", "203.0.113.0/24", "443", 0, 5000))
+    Report("ten redirects", Web.EgressPolicy.New("https", "203.0.113.0/24", "443", 10, 5000))
+    Report("negative redirects", Web.EgressPolicy.New("https", "203.0.113.0/24", "443", -1, 5000))
+    Report("eleven redirects", Web.EgressPolicy.New("https", "203.0.113.0/24", "443", 11, 5000))
+    Report("zero deadline", Web.EgressPolicy.New("https", "203.0.113.0/24", "443", 1, 0))
+    Report("negative deadline", Web.EgressPolicy.New("https", "203.0.113.0/24", "443", 1, -5))
+    Report("long deadline", Web.EgressPolicy.New("https", "203.0.113.0/24", "443", 1, 600001))
+    Report("ftp scheme", Web.EgressPolicy.New("ftp", "203.0.113.0/24", "443", 1, 5000))
+    Report("port zero", Web.EgressPolicy.New("https", "203.0.113.0/24", "0", 1, 5000))
+    Report("bad CIDR", Web.EgressPolicy.New("https", "203.0.113.0/99", "443", 1, 5000))
+    PRINT "after"
+END FUNCTION

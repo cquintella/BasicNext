@@ -220,6 +220,22 @@ response bodies, decompression policy, cookie jars, and connection reuse.
 HTTPS servers never silently downgrade and retain the accepted
 certificate/SNI/ALPN policy.
 
+**Egress policy.** `EgressPolicy.New(schemes AS STRING, cidrs AS STRING,
+ports AS STRING, maxRedirects AS INTEGER, totalDeadlineMs AS INTEGER) AS
+EgressPolicy OR Error` narrows where `Client.RequestWithPolicy` may connect.
+`schemes`, `cidrs` and `ports` are comma-separated lists of at most 64
+items each: the schemes `http` and `https`, IPv4 or IPv6 CIDR blocks, and
+ports `1..65535`. A request is allowed only when its scheme, its port and
+one resolved address are in the lists; an empty `cidrs` or `ports` list
+allows nothing. Loopback and private-network addresses stay refused
+whatever the CIDRs. `maxRedirects` is `0..10`; 0 follows no redirect.
+`totalDeadlineMs` is `1..600000` and bounds the whole request with its
+redirects. A setting outside these bounds, an empty or unsupported scheme
+list, port 0, an unparsable CIDR, or a list of more than 64 items returns
+`Web.INVALID_ARGUMENT`
+(BDFL decision, 2026-11-06). `Client.Request` uses no lists, at most 10
+redirects and a 120000 ms deadline.
+
 **HTTPS client trust roots** (BDFL decision, 2026-11-06). An HTTPS request
 verifies the server's certificate chain against these roots, and against
 nothing else:
@@ -281,7 +297,7 @@ Every function and method in `BNWeb` that returns `T OR Error` yields an
 
 | Constant | Value | When |
 | --- | ---: | --- |
-| `Web.INVALID_ARGUMENT` | 1 | A status outside 100..599; an unsupported method; a negative cookie age; an invalid SameSite policy or `SameSite=None` without `Secure`; an invalid session idle timeout; a route handler or filter that is not a FUNCTION |
+| `Web.INVALID_ARGUMENT` | 1 | A status outside 100..599; an unsupported method; a negative cookie age; an invalid SameSite policy or `SameSite=None` without `Secure`; an invalid session idle timeout; a route handler or filter that is not a FUNCTION; an `EgressPolicy` setting outside its bounds |
 | `Web.NOT_FOUND` | 2 | A cookie, session, header, or route that does not exist |
 | `Web.OUT_OF_RANGE` | 3 | An index outside a collection |
 | `Web.LIMIT` | 4 | Too many filters, handlers, or connections |
