@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version = "1.97"
 description = "Shared Basic Next language and IR type identities"
 license.workspace = true
+publish = false
 
 [lib]
 path = "src/lib.rs"

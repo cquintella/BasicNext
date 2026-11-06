@@ -8,6 +8,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 REPOSITORY_GATES=(
     tests/check-forbidden-deps.sh
+    tests/check-licenses.sh
     tests/check-shared-cores.sh
     tests/check-value-layout.sh
 )

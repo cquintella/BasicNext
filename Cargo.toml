@@ -15,6 +15,7 @@ edition.workspace = true
 rust-version.workspace = true
 description = "Basic Next workspace root: cross-crate integration tests only (no executable)"
 license.workspace = true
+publish = false
 
 [lib]
 path = "src/lib.rs"
