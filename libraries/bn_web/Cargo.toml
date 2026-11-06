@@ -28,9 +28,20 @@ hyper-util = { version = "0.1.20", default-features = false, features = ["http1"
 libc = "0.2"
 ring = "0.17.14"
 rustls = { version = "0.23.43", default-features = false, features = ["ring", "std"] }
-rustls-native-certs = "0.8.5"
 tokio = { version = "1.53.1", default-features = false, features = ["net", "rt", "rt-multi-thread", "sync", "time"] }
 tokio-rustls = { version = "0.26.4", default-features = false, features = ["ring"] }
+
+# The platform trust stores, read without `SSL_CERT_FILE`/`SSL_CERT_DIR`
+# (`tls_roots`).
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3.7.0"
+
+[target.'cfg(windows)'.dependencies]
+schannel = "0.1.30"
+
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+openssl-probe = "0.2.2"
+rustls-native-certs = "0.8.5"
 
 [dev-dependencies]
 bn_rt = { path = "../../crates/bn_rt" }

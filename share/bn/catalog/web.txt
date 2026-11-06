@@ -35,3 +35,7 @@ context.session.key_or_value = BNWeb.Session key or value
 context.session.receiver = BNWeb.Session operation receiver
 context.queue.not_live = Dispatch.Queue handle is not live
 context.queue.non_queue = non-queue value
+tls.ca_file_unreadable.cause = the CA file {path} cannot be read: {error}
+tls.ca_file_empty.cause = the CA file {path} holds no valid certificate
+tls.no_roots.cause = no trusted CA certificate is available: the system trust store holds none and no extra CA file was given
+tls.trust_failed.message = TLS trust roots unavailable: {cause}

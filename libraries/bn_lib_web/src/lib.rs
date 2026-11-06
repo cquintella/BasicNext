@@ -15,6 +15,10 @@ pub use bn_web::web;
 use bn_web::web::drain_server;
 use bn_web::{http, tls, web_state};
 
+/// Where the HTTPS client looks for `bn-cacert.pem` and `bn-ca.pem` (bnweb.md,
+/// "HTTPS client trust roots"): `bni` names the entry file's directory.
+pub use bn_web::tls_roots::{ProgramDirectory, set_program_directory};
+
 mod access_log;
 mod request_response;
 mod sessions;
@@ -415,16 +419,6 @@ impl WebProvider {
                     }
                     if let Err(message) = crate::web::validate_client_url(url) {
                         return Ok(failed(name, &WebFailure::from_message(message)));
-                    }
-                    let authority = url
-                        .split_once("://")
-                        .and_then(|(_, rest)| rest.split(['/', '?']).next())
-                        .unwrap_or_default();
-                    if let Ok(address) = authority.parse::<std::net::IpAddr>()
-                        && let Err(message) =
-                            crate::web::validate_ssrf_destinations(&[address], false)
-                    {
-                        return Ok(failed(name, &WebFailure::SsrfDenied(message.to_string())));
                     }
                     if let Err(message) = crate::web::bounded_body(body, 8 * 1024 * 1024) {
                         return Ok(failed(name, &WebFailure::from_message(message)));

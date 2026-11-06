@@ -62,6 +62,7 @@ pub fn host_env(
     interpreter: &crate::options::InterpreterOptions,
     arguments: Vec<String>,
 ) -> Result<HostEnv, String> {
+    tell_web_the_program_directory(arguments.first());
     let host = if options.sandbox {
         HostEnv::system(arguments)
             .with_default_providers_with_ffi(&interpreter.ffi_paths)
@@ -76,6 +77,25 @@ pub fn host_env(
     // One environment read, one parser (`bn_rt::Policy::narrow_from_env`).
     host.narrowed_by_env(|name| env::var(name).ok())
         .map_err(|error| error.to_string())
+}
+
+/// The HTTPS client looks for its default CA files in the program's
+/// directory (bnweb.md, "HTTPS client trust roots"): under `bni` that is the
+/// entry file's directory (`HOST.Args[0]`), not the directory of `bni`. A
+/// program without a file (`eval`, a REPL session) has none.
+fn tell_web_the_program_directory(entry: Option<&String>) {
+    #[cfg(feature = "lib-web")]
+    bn_lib_web::set_program_directory(
+        entry
+            .map(std::path::Path::new)
+            .filter(|path| path.is_file())
+            .and_then(std::path::Path::parent)
+            .map_or(bn_lib_web::ProgramDirectory::None, |directory| {
+                bn_lib_web::ProgramDirectory::Known(directory.to_path_buf())
+            }),
+    );
+    #[cfg(not(feature = "lib-web"))]
+    let _ = entry;
 }
 
 #[cfg(test)]

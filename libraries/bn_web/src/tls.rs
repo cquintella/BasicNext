@@ -1,29 +1,14 @@
 use std::sync::OnceLock;
 
-/// Builds a client configuration from the platform trust store: the system
-/// keychain on macOS, the certificate store on Windows, and on other systems
-/// the usual bundle files (`SSL_CERT_FILE` and `SSL_CERT_DIR` apply there).
-/// The loader fails closed: with no usable root there is no configuration, and
-/// no mode accepts a certificate the store does not vouch for.
+/// Builds a client configuration over the HTTPS client trust roots
+/// (`tls_roots`): the platform store plus at most one extra CA file. With no
+/// usable root there is no configuration, and no mode accepts a certificate
+/// the roots do not vouch for.
 pub(crate) fn client_config() -> Result<rustls::ClientConfig, String> {
-    client_config_from(rustls_native_certs::load_native_certs())
-}
-
-fn client_config_from(
-    native: rustls_native_certs::CertificateResult,
-) -> Result<rustls::ClientConfig, String> {
-    let mut roots = rustls::RootCertStore::empty();
-    // A store may hold an entry rustls cannot parse; it is skipped, and the
-    // others still count. A store with none left is no store.
-    let (added, _skipped) = roots.add_parsable_certificates(native.certs);
-    if added == 0 {
-        return Err(match native.errors.first() {
-            Some(error) => format!("no system trust store could be read: {error}"),
-            None => "the system trust store holds no usable CA certificate".into(),
-        });
-    }
     Ok(rustls::ClientConfig::builder()
-        .with_root_certificates(roots)
+        .with_root_certificates(crate::tls_roots::client_roots().map_err(|cause| {
+            bn_catalog::fill("web", "tls.trust_failed.message", &[("cause", &cause)])
+        })?)
         .with_no_client_auth())
 }
 
@@ -146,27 +131,5 @@ mod tests {
         assert!(super::server_config_from_pem(&"x".repeat(65 * 1024), "").is_err());
         assert!(super::decode_base64("T=Q=").is_err());
         assert_eq!(super::decode_base64("TQ==").unwrap(), b"M");
-    }
-
-    #[test]
-    fn client_config_follows_the_platform_trust_store() {
-        // A configuration exists exactly when the platform store holds a usable
-        // root: on macOS and Windows the system store, elsewhere the bundle files.
-        let usable = rustls_native_certs::load_native_certs()
-            .certs
-            .into_iter()
-            .any(|der| rustls::RootCertStore::empty().add(der).is_ok());
-        assert_eq!(super::client_config().is_ok(), usable);
-    }
-
-    #[test]
-    fn client_config_fails_closed_without_a_usable_root() {
-        let empty = rustls_native_certs::CertificateResult::default();
-        assert!(super::client_config_from(empty).is_err());
-        let mut garbage = rustls_native_certs::CertificateResult::default();
-        garbage
-            .certs
-            .push(rustls::pki_types::CertificateDer::from(vec![0_u8, 1, 2, 3]));
-        assert!(super::client_config_from(garbage).is_err());
     }
 }

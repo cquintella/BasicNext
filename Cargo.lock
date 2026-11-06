@@ -703,9 +703,12 @@ dependencies = [
  "hyper",
  "hyper-util",
  "libc",
+ "openssl-probe",
  "ring",
  "rustls",
  "rustls-native-certs",
+ "schannel",
+ "security-framework",
  "tokio",
  "tokio-rustls",
 ]

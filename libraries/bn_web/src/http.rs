@@ -336,6 +336,18 @@ fn client_request_once(
     };
     let (host, port) =
         parse_authority_with_default(authority, if scheme == "https" { 443 } else { 80 })?;
+    // The trust roots are settled before any name is resolved or any packet
+    // is sent: a bad CA file is a configuration error, not a network one.
+    let tls_config = if scheme == "https" {
+        Some(Arc::new(crate::tls::client_config()?))
+    } else {
+        None
+    };
+    // A literal private or loopback address is refused before any socket is
+    // opened, on both backends alike.
+    if let Ok(address) = host.parse::<std::net::IpAddr>() {
+        crate::web::validate_ssrf_destinations(&[address], false).map_err(str::to_owned)?;
+    }
     let addresses =
         resolve_validated_addresses_with_policy(host.as_str(), port, resolver, policy, scheme)?;
     if addresses.is_empty() {
@@ -378,9 +390,8 @@ fn client_request_once(
     runtime.block_on(async move {
         let stream =
             tokio::net::TcpStream::from_std(std_stream).map_err(|error| error.to_string())?;
-        if scheme == "https" {
-            let config = crate::tls::client_config()?;
-            let connector = TlsConnector::from(Arc::new(config));
+        if let Some(config) = tls_config {
+            let connector = TlsConnector::from(config);
             let server_name = rustls::pki_types::ServerName::try_from(host.clone())
                 .map_err(|_| "invalid TLS server name".to_string())?;
             let stream = connector

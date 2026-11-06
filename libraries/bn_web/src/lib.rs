@@ -22,6 +22,7 @@ pub mod http;
 #[cfg(test)]
 mod test_support;
 pub mod tls;
+pub mod tls_roots;
 pub mod web;
 pub(crate) mod web_abi;
 pub mod web_error;

@@ -36,6 +36,8 @@ mod destructuring;
 mod fs_directories_policy;
 #[path = "programs/host_handle_release.rs"]
 mod host_handle_release;
+#[path = "programs/https_trust_roots.rs"]
+mod https_trust_roots;
 #[path = "programs/loop_scope.rs"]
 mod loop_scope;
 #[path = "programs/math_expressions.rs"]

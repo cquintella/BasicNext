@@ -217,9 +217,29 @@ material are not written. `NEW Client()` has no logger and writes nothing.
 
 The 0.3 client has bounded cleartext connect/read/write/total timeouts,
 response bodies, decompression policy, cookie jars, and connection reuse.
-HTTPS client transport and certificate trust roots wait for the same integration and a decision
-gate; 0.3 makes no HTTPS client support claim before that gate closes. HTTPS servers
-never silently downgrade and retain the accepted certificate/SNI/ALPN policy.
+HTTPS servers never silently downgrade and retain the accepted
+certificate/SNI/ALPN policy.
+
+**HTTPS client trust roots** (BDFL decision, 2026-11-06). An HTTPS request
+verifies the server's certificate chain against these roots, and against
+nothing else:
+
+1. The operating system's trust store, always: the keychain trust settings
+   on macOS, the current user's `ROOT` certificate store on Windows, and the
+   system CA bundle files and directories on other systems.
+2. Added to it, at most one extra PEM file, chosen in this order:
+   - the file named by the environment variable `BN_CA_FILE`, when it is
+     set;
+   - otherwise `bn-cacert.pem`, then `bn-ca.pem`, in the program's
+     directory: the directory of the entry `.bn` file under `bni`, the
+     directory of the executable a `bnc` build produced.
+
+`SSL_CERT_FILE` and `SSL_CERT_DIR` do not change the roots. The request
+fails with `Web.HTTP_FAILED` when `BN_CA_FILE` names a file that cannot be
+read, when the chosen extra file holds no valid certificate, or when no
+usable root remains; an extra file is never skipped. No mode accepts a
+certificate that these roots do not vouch for. The roots are read once per
+process, at the first HTTPS request that reads them successfully.
 
 HTTPS servers receive certificates through the explicit external `TLSConfig`
 type. `TLSConfig.FromPEM(certificatePem, privateKeyPem)` accepts bounded PEM

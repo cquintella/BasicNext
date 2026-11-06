@@ -493,6 +493,15 @@ impl WebFailure {
                 count: 0,
             },
             s if s.contains("provider unavailable") => Self::Unavailable(s.into()),
+            // Before the egress arm: a CA file path may contain any word.
+            s if s.starts_with(&bn_catalog::fill(
+                "web",
+                "tls.trust_failed.message",
+                &[("cause", &"")],
+            )) =>
+            {
+                Self::HttpFailed(s.into())
+            }
             s if s.contains("destinations")
                 || s.contains("private or local")
                 || s.contains("egress") =>
