@@ -49,10 +49,84 @@ pub type KillResult = io::Result<()>;
 mod unix {
     use super::{Child, KillResult};
     use std::io;
+    use std::sync::Once;
+    use std::sync::atomic::{AtomicI32, Ordering};
 
-    /// The process group a child leads.
+    /// Process groups of `HOST.Exec` calls that can be live at once and still
+    /// be ended by a signal to the program; a group past this many is ended by
+    /// its timeout only.
+    const LIVE_GROUPS_MAX: usize = 256;
+    /// An empty slot of [`LIVE_GROUPS`].
+    const NO_GROUP: i32 = 0;
+    /// The signals that end a program and must end its Exec children: the
+    /// terminal's interrupt and hang-up, and a termination request.
+    const ENDING_SIGNALS: [libc::c_int; 3] = [libc::SIGINT, libc::SIGTERM, libc::SIGHUP];
+
+    /// The live groups, in slots a signal handler can read: atomics only, no
+    /// lock and no allocation.
+    static LIVE_GROUPS: [AtomicI32; LIVE_GROUPS_MAX] =
+        [const { AtomicI32::new(NO_GROUP) }; LIVE_GROUPS_MAX];
+    static INSTALL: Once = Once::new();
+
+    /// The child leads its own group, so the terminal's Ctrl-C reaches the
+    /// program and not the child. This handler ends every live group and then
+    /// lets the signal end the program as it would have: default action,
+    /// raised again. It calls only async-signal-safe functions.
+    #[allow(unsafe_code)]
+    extern "C" fn end_groups_then_reraise(signal: libc::c_int) {
+        for slot in &LIVE_GROUPS {
+            let group = slot.load(Ordering::Acquire);
+            if group != NO_GROUP {
+                // SAFETY: `killpg` is async-signal-safe and touches no memory.
+                unsafe { libc::killpg(group, libc::SIGKILL) };
+            }
+        }
+        // SAFETY: `signal` and `raise` are async-signal-safe; the signal is
+        // blocked while this handler runs, so it is delivered with its
+        // default action as soon as the handler returns.
+        unsafe { libc::signal(signal, libc::SIG_DFL) };
+        // SAFETY: as above.
+        unsafe { libc::raise(signal) };
+    }
+
+    /// Installs the handler for each ending signal whose disposition is still
+    /// the default: a handler the program or its host installed is kept, and
+    /// an ignored signal stays ignored.
+    #[allow(unsafe_code)]
+    fn install_handler() {
+        for signal in ENDING_SIGNALS {
+            // SAFETY: an all-zero `sigaction` is a valid value for the kernel
+            // to overwrite.
+            let mut current: libc::sigaction = unsafe { std::mem::zeroed() };
+            // SAFETY: a null new action only reads the current one into
+            // `current`, a live local.
+            if unsafe { libc::sigaction(signal, std::ptr::null(), &raw mut current) } != 0
+                || current.sa_sigaction != libc::SIG_DFL
+            {
+                continue;
+            }
+            // SAFETY: as above.
+            let mut action: libc::sigaction = unsafe { std::mem::zeroed() };
+            action.sa_sigaction = (end_groups_then_reraise as *const ()).expose_provenance();
+            action.sa_flags = libc::SA_RESTART;
+            // SAFETY: `action` is a live, fully initialised local; the
+            // handler is a plain `extern "C"` function that lives forever.
+            unsafe { libc::sigaction(signal, &raw const action, std::ptr::null_mut()) };
+        }
+    }
+
+    /// The process group a child leads, registered while the call lives.
     pub struct ProcessTree {
         group: libc::pid_t,
+        slot: Option<usize>,
+    }
+
+    impl Drop for ProcessTree {
+        fn drop(&mut self) {
+            if let Some(slot) = self.slot {
+                LIVE_GROUPS[slot].store(NO_GROUP, Ordering::Release);
+            }
+        }
     }
 
     impl ProcessTree {
@@ -65,7 +139,12 @@ mod unix {
         pub fn adopt(child: &Child) -> io::Result<Self> {
             let group = libc::pid_t::try_from(child.id())
                 .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-            Ok(Self { group })
+            INSTALL.call_once(install_handler);
+            let slot = LIVE_GROUPS.iter().position(|slot| {
+                slot.compare_exchange(NO_GROUP, group, Ordering::AcqRel, Ordering::Acquire)
+                    .is_ok()
+            });
+            Ok(Self { group, slot })
         }
 
         /// Sends `SIGKILL` to every member of the group.

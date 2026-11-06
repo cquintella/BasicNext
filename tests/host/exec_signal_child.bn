@@ -1,0 +1,16 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Runs a child that writes its pid to HOST.Args[1] and sleeps. A signal that
+// ends this program must end the child too.
+IMPORT HOST.Exec AS Exec
+
+FUNCTION Start() AS VOID
+    LET args AS STRING[2]
+    args[0] = "-c"
+    args[1] = "echo $$ > '" + HOST.Args[1] + "'; exec sleep 50"
+    LET result AS Exec.Result OR Error = Exec.Run("/bin/sh", args)
+    PRINT result IS Error
+END FUNCTION

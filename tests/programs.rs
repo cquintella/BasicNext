@@ -32,6 +32,8 @@ mod crypto_limits;
 mod crypto_tour;
 #[path = "programs/destructuring.rs"]
 mod destructuring;
+#[path = "programs/exec_signal_child.rs"]
+mod exec_signal_child;
 #[path = "programs/fs_directories_policy.rs"]
 mod fs_directories_policy;
 #[path = "programs/host_handle_release.rs"]

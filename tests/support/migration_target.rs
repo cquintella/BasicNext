@@ -47,6 +47,8 @@ pub fn assert_matches_ledger(target: &str) {
         "bn::test/execute::host_exec::host_exec_e11_signal_termination_negative_return_code",
         "bn::test/programs::compress_policy::bncompress_never_writes_through_a_symlink_on_both_backends",
         "bn::test/programs::fs_directories_policy::directory_operations_obey_every_policy_on_both_backends",
+        "bn::test/programs::exec_signal_child::a_signal_that_ends_a_compiled_program_ends_its_exec_child",
+        "bn::test/programs::exec_signal_child::a_signal_that_ends_the_interpreter_ends_its_exec_child",
         "bn::test/programs::host_handle_release::a_compiled_loop_of_exec_runs_keeps_memory_flat",
         "bn::test/programs::host_handle_release::exec_results_and_address_lists_keep_their_counts_on_both_backends",
         "bn::test/programs::compiler_parity::env_value_not_utf8_is_invalid_utf8_on_both_backends",
