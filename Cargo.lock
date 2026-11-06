@@ -331,6 +331,8 @@ version = "0.6.12"
 dependencies = [
  "bn_catalog",
  "bn_types",
+ "libc",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

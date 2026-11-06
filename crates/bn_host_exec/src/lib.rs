@@ -14,12 +14,53 @@
 use std::{
     io::{self, Read},
     process::{Child, Command, Stdio},
-    sync::mpsc,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        mpsc,
+    },
     thread,
     time::{Duration, Instant},
 };
 
+mod process_tree;
+
+use process_tree::ProcessTree;
+
 pub use bn_types::error_codes::exec::*;
+
+/// How long the call waits, after it ended the process tree, for the capture
+/// threads to see end of file. They end at once unless a descendant left the
+/// tree (see `process_tree`), and then the call must not wait for it.
+const READER_GRACE: Duration = Duration::from_secs(2);
+
+/// Reader threads alive now. A reader ends when every holder of its pipe has
+/// closed it, so after a timeout that ends the whole process tree the count
+/// returns to what it was before the call.
+static LIVE_READERS: AtomicUsize = AtomicUsize::new(0);
+
+/// Counts a reader thread from before it starts until it ends.
+struct ReaderGuard;
+
+impl ReaderGuard {
+    fn new() -> Self {
+        LIVE_READERS.fetch_add(1, Ordering::SeqCst);
+        Self
+    }
+}
+
+impl Drop for ReaderGuard {
+    fn drop(&mut self) {
+        LIVE_READERS.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// The number of capture threads alive. It exists so a test can show that
+/// repeated timeouts leave none behind.
+#[doc(hidden)]
+#[must_use]
+pub fn live_reader_threads() -> usize {
+    LIVE_READERS.load(Ordering::SeqCst)
+}
 
 /// The execution policy in force for one call. The interpreter reads it from
 /// `HostEnv`; the native runtime from its policy ceiling.
@@ -215,6 +256,28 @@ fn terminate(child: &mut Child, kill: fn(&mut Child) -> io::Result<()>) -> Resul
     })
 }
 
+/// Ends the whole tree past the timeout, reaps the child, and waits a short,
+/// fixed time for the capture threads: with the tree gone every pipe end is
+/// closed, so they finish at once.
+fn end_tree(
+    tree: &ProcessTree,
+    child: &mut Child,
+    readers: &[&mpsc::Receiver<StreamCapture>],
+) -> Result<(), Failure> {
+    tree.kill().map_err(|error| {
+        Failure::new(
+            TERMINATION_FAILED,
+            bn_catalog::fill("exec", "run.tree_kill_failed", &[("cause", &error)]),
+        )
+    })?;
+    terminate(child, Child::kill)?;
+    let deadline = Instant::now() + READER_GRACE;
+    for reader in readers {
+        let _ = reader.recv_timeout(deadline.saturating_duration_since(Instant::now()));
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_lines)]
 fn run_checked(program: &str, args: &[&str], policy: &Policy) -> Result<Output, Failure> {
     check(program, args, policy)?;
@@ -224,6 +287,7 @@ fn run_checked(program: &str, args: &[&str], policy: &Policy) -> Result<Output, 
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    process_tree::isolate(&mut command);
     let mut child = match command.spawn() {
         Ok(child) => child,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -237,6 +301,17 @@ fn run_checked(program: &str, args: &[&str], policy: &Policy) -> Result<Output, 
         }
         Err(error) => return Err(Failure::new(SPAWN_FAILED, error.to_string())),
     };
+    let tree = match ProcessTree::adopt(&child) {
+        Ok(tree) => tree,
+        Err(error) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(Failure::new(
+                SPAWN_FAILED,
+                bn_catalog::fill("exec", "run.tree_adopt_failed", &[("cause", &error)]),
+            ));
+        }
+    };
     let capture_limit = policy.capture_limit;
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
@@ -245,7 +320,9 @@ fn run_checked(program: &str, args: &[&str], policy: &Policy) -> Result<Output, 
     let (err_tx, err_rx) = mpsc::channel();
 
     if let Some(pipe) = stdout {
+        let alive = ReaderGuard::new();
         thread::spawn(move || {
+            let _alive = alive;
             let res = read_pipe(pipe, capture_limit);
             let _ = out_tx.send(res);
         });
@@ -254,7 +331,9 @@ fn run_checked(program: &str, args: &[&str], policy: &Policy) -> Result<Output, 
     }
 
     if let Some(pipe) = stderr {
+        let alive = ReaderGuard::new();
         thread::spawn(move || {
+            let _alive = alive;
             let res = read_pipe(pipe, capture_limit);
             let _ = err_tx.send(res);
         });
@@ -267,9 +346,7 @@ fn run_checked(program: &str, args: &[&str], policy: &Policy) -> Result<Output, 
         match child.try_wait() {
             Ok(Some(status)) => break status,
             Ok(None) if Instant::now() >= deadline => {
-                terminate(&mut child, Child::kill)?;
-                // Return immediately without waiting for reader threads to prevent deadlock
-                // if background grandchildren inherited pipe file descriptors.
+                end_tree(&tree, &mut child, &[&out_rx, &err_rx])?;
                 return Err(Failure::new(
                     TIMEOUT,
                     format!(
@@ -283,8 +360,19 @@ fn run_checked(program: &str, args: &[&str], policy: &Policy) -> Result<Output, 
         }
     };
 
-    let stdout = collect(&out_rx, deadline, policy)?;
-    let stderr = collect(&err_rx, deadline, policy)?;
+    let collected = collect(&out_rx, deadline, policy)
+        .and_then(|stdout| collect(&err_rx, deadline, policy).map(|stderr| (stdout, stderr)));
+    let (stdout, stderr) = match collected {
+        Ok(streams) => streams,
+        Err(failure) => {
+            // A process the child started still holds a pipe: it is in the
+            // tree, and the timeout ends it too.
+            if failure.code == TIMEOUT {
+                end_tree(&tree, &mut child, &[&out_rx, &err_rx])?;
+            }
+            return Err(failure);
+        }
+    };
 
     // D-H1-02: count bytes before UTF-8 validation; overflow is a stable Error, not truncation.
     if stdout.overflow || stderr.overflow {
