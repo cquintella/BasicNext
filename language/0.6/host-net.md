@@ -149,7 +149,9 @@ lookup past that ceiling returns `Net.LIMIT` at once. A lookup whose timeout
 expires returns `Net.TIMEOUT` and is cancelled: one that has not started never
 starts, and the late answer of one that has started is discarded. The system
 resolver cannot be interrupted, so a stalled lookup holds its thread until the
-system resolver gives up.
+system resolver gives up, and a cancelled lookup keeps its place until a
+lookup thread takes it from the queue: while the resolver is stalled, further
+lookups return `Net.LIMIT` rather than queueing without bound.
 
 ## Verification boundary
 

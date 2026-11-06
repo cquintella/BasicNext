@@ -121,14 +121,17 @@ impl LookupPool {
         let job_state = Arc::clone(&state);
         let job_shared = Arc::clone(shared);
         let job: Job = Box::new(move || {
+            // The place is held from the queue until a worker takes the job,
+            // so the queue never outgrows the ceiling; it is given back here,
+            // whether the lookup runs, was cancelled, or panics.
+            let _place = Place(job_shared);
             if job_state
                 .compare_exchange(QUEUED, RUNNING, Ordering::AcqRel, Ordering::Acquire)
                 .is_err()
             {
-                // The caller gave up and already gave back the place.
+                // The caller gave up before a worker took it: never started.
                 return;
             }
-            let _place = Place(job_shared);
             let _ = sender.send(lookup());
         });
         shared
@@ -140,14 +143,10 @@ impl LookupPool {
         match receiver.recv_timeout(timeout) {
             Ok(answer) => Ok(Some(answer)),
             Err(RecvTimeoutError::Timeout) => {
-                // Not started: cancel it and give the place back. Started:
-                // the worker gives the place back when the lookup returns.
-                if state
-                    .compare_exchange(QUEUED, CANCELLED, Ordering::AcqRel, Ordering::Acquire)
-                    .is_ok()
-                {
-                    shared.in_flight.fetch_sub(1, Ordering::AcqRel);
-                }
+                // Not started: cancel it, so the worker that takes it drops it
+                // unrun. Either way the worker gives the place back.
+                let _ =
+                    state.compare_exchange(QUEUED, CANCELLED, Ordering::AcqRel, Ordering::Acquire);
                 Ok(None)
             }
             Err(RecvTimeoutError::Disconnected) => {
@@ -245,13 +244,23 @@ mod tests {
     fn many_timeouts_use_the_fixed_threads_and_leave_no_lookup_behind() {
         let pool = LookupPool::new(WORKERS, IN_FLIGHT_MAX);
         let silence = Silence::new();
+        let mut refused = 0;
         for _ in 0..CALLS {
-            assert_eq!(pool.run(SHORT, silence.lookup()), Ok(None));
+            match pool.run(SHORT, silence.lookup()) {
+                Ok(None) => {}
+                Err(Refusal::Full { .. }) => refused += 1,
+                outcome => panic!("the resolver does not answer: {outcome:?}"),
+            }
+            // A cancelled lookup still in the queue holds its place, so the
+            // queue never outgrows the ceiling while the workers are stalled.
+            let queued = pool.shared.queue.lock().unwrap().len();
             assert!(
-                pool.in_flight() <= WORKERS,
-                "a cancelled lookup kept its place"
+                queued <= IN_FLIGHT_MAX && pool.in_flight() <= IN_FLIGHT_MAX,
+                "{queued} lookups queued, {} in flight, past the ceiling {IN_FLIGHT_MAX}",
+                pool.in_flight()
             );
         }
+        assert!(refused > 0, "a stalled resolver must reach the ceiling");
         // Release the silent lookups and let the queue drain.
         silence.open.store(true, Ordering::Release);
         let deadline = Instant::now() + Duration::from_secs(5);
