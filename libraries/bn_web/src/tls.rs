@@ -1,28 +1,26 @@
 use std::sync::OnceLock;
 
-/// Builds a client configuration from the host's conventional CA bundle.
-/// The loader fails closed when no system trust store is available.
+/// Builds a client configuration from the platform trust store: the system
+/// keychain on macOS, the certificate store on Windows, and on other systems
+/// the usual bundle files (`SSL_CERT_FILE` and `SSL_CERT_DIR` apply there).
+/// The loader fails closed: with no usable root there is no configuration, and
+/// no mode accepts a certificate the store does not vouch for.
 pub(crate) fn client_config() -> Result<rustls::ClientConfig, String> {
+    client_config_from(rustls_native_certs::load_native_certs())
+}
+
+fn client_config_from(
+    native: rustls_native_certs::CertificateResult,
+) -> Result<rustls::ClientConfig, String> {
     let mut roots = rustls::RootCertStore::empty();
-    let candidates = ["/etc/ssl/cert.pem", "/etc/ssl/certs/ca-certificates.crt"];
-    let mut loaded = false;
-    for path in candidates {
-        let Ok(pem) = std::fs::read_to_string(path) else {
-            continue;
-        };
-        for block in pem_blocks(&pem, "CERTIFICATE") {
-            let der = rustls::pki_types::CertificateDer::from(block?);
-            roots
-                .add(der)
-                .map_err(|error| format!("invalid system CA certificate: {error}"))?;
-            loaded = true;
-        }
-        if loaded {
-            break;
-        }
-    }
-    if !loaded {
-        return Err("no system CA bundle was found".into());
+    // A store may hold an entry rustls cannot parse; it is skipped, and the
+    // others still count. A store with none left is no store.
+    let (added, _skipped) = roots.add_parsable_certificates(native.certs);
+    if added == 0 {
+        return Err(match native.errors.first() {
+            Some(error) => format!("no system trust store could be read: {error}"),
+            None => "the system trust store holds no usable CA certificate".into(),
+        });
     }
     Ok(rustls::ClientConfig::builder()
         .with_root_certificates(roots)
@@ -59,23 +57,6 @@ fn pem_block(input: &str, label: &str) -> Result<Vec<u8>, String> {
         .ok_or_else(|| format!("missing PEM {label} block"))?;
     let encoded: String = body.chars().filter(|c| !c.is_ascii_whitespace()).collect();
     decode_base64(&encoded)
-}
-
-fn pem_blocks(input: &str, label: &str) -> Vec<Result<Vec<u8>, String>> {
-    let begin = format!("-----BEGIN {label}-----");
-    let end = format!("-----END {label}-----");
-    input
-        .split(&begin)
-        .skip(1)
-        .map(|part| {
-            let body = part
-                .split_once(&end)
-                .map(|(body, _)| body)
-                .ok_or_else(|| format!("missing PEM {label} end marker"))?;
-            let encoded: String = body.chars().filter(|c| !c.is_ascii_whitespace()).collect();
-            decode_base64(&encoded)
-        })
-        .collect()
 }
 
 #[allow(clippy::cast_possible_truncation)] // each extraction is limited to one byte by the bit layout.
@@ -168,11 +149,24 @@ mod tests {
     }
 
     #[test]
-    fn client_config_uses_a_system_trust_store_when_available() {
-        if std::path::Path::new("/etc/ssl/cert.pem").exists()
-            || std::path::Path::new("/etc/ssl/certs/ca-certificates.crt").exists()
-        {
-            assert!(super::client_config().is_ok());
-        }
+    fn client_config_follows_the_platform_trust_store() {
+        // A configuration exists exactly when the platform store holds a usable
+        // root: on macOS and Windows the system store, elsewhere the bundle files.
+        let usable = rustls_native_certs::load_native_certs()
+            .certs
+            .into_iter()
+            .any(|der| rustls::RootCertStore::empty().add(der).is_ok());
+        assert_eq!(super::client_config().is_ok(), usable);
+    }
+
+    #[test]
+    fn client_config_fails_closed_without_a_usable_root() {
+        let empty = rustls_native_certs::CertificateResult::default();
+        assert!(super::client_config_from(empty).is_err());
+        let mut garbage = rustls_native_certs::CertificateResult::default();
+        garbage
+            .certs
+            .push(rustls::pki_types::CertificateDer::from(vec![0_u8, 1, 2, 3]));
+        assert!(super::client_config_from(garbage).is_err());
     }
 }
