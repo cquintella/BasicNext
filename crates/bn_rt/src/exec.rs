@@ -45,9 +45,9 @@ struct ExecResult {
 }
 
 /// The live `HOST.Exec.Result` values. An id is generation-checked
-/// (`crate::handle_table`): a released result is never read or freed twice.
-static RESULTS: std::sync::Mutex<crate::handle_table::GenerationTable<ExecResult>> =
-    std::sync::Mutex::new(crate::handle_table::GenerationTable::new());
+/// (`crate::handle_table_abi`): a released result is never read or freed twice.
+static RESULTS: std::sync::Mutex<crate::handle_table_abi::GenerationTable<ExecResult>> =
+    std::sync::Mutex::new(crate::handle_table_abi::GenerationTable::new());
 
 /// Runs `f` on the live result `handle`. A released or unknown handle is a
 /// `USE_AFTER_RELEASE` failure that ends the process, never another result.
@@ -97,7 +97,12 @@ pub extern "C" fn bn_rt_exec_run(
             arguments.push(value);
         }
     }
-    let output = match bn_host_exec::run(program, &arguments, &crate::policy::exec_policy()) {
+    let output = match bn_host_exec::run(
+        program,
+        &arguments,
+        &crate::policy::exec_policy(),
+        &bn_os_process::OsProcessControl,
+    ) {
         Ok(output) => output,
         Err(failure) => {
             crate::set_error_report(

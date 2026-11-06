@@ -15,5 +15,8 @@ policy.rs
 secure_fs.rs
 secure_fs_entries.rs
 secure_fs_windows.rs
+# static_file.rs reads through policy.rs and secure_fs.rs; it moves with them
+# to the filesystem core.
+static_file.rs
 string.rs
 terminal.rs

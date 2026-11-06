@@ -92,7 +92,7 @@ fn exec_run(
         };
         values.push(value.as_ref());
     }
-    match bn_host_exec::run(program, &values, &policy) {
+    match bn_host_exec::run(program, &values, &policy, &bn_os_process::OsProcessControl) {
         Ok(output) => {
             let mut fields = vec![Value::Null; 3];
             fields[RESULT_RETURN_CODE] =

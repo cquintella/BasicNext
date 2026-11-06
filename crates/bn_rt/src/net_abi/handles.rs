@@ -1,10 +1,10 @@
 //! The table of native network handles (sockets, listeners, streams, UDP
 //! packets) of the module copy that runs on this thread. Ids carry a
-//! generation (`crate::handle_table`): an id kept after `Close` never reaches
+//! generation (`crate::handle_table_abi`): an id kept after `Close` never reaches
 //! a socket opened later in the same slot and answers `Net.CLOSED`, as in
 //! `bni`.
 
-use crate::handle_table::GenerationTable;
+use crate::handle_table_abi::GenerationTable;
 use crate::net::{TcpListener, TcpStream, UdpPacket, UdpSocket};
 use std::sync::{Arc, Mutex};
 

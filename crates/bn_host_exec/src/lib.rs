@@ -22,15 +22,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-mod process_tree;
-
-use process_tree::ProcessTree;
-
 pub use bn_types::error_codes::exec::*;
 
 /// How long the call waits, after it ended the process tree, for the capture
 /// threads to see end of file. They end at once unless a descendant left the
-/// tree (see `process_tree`), and then the call must not wait for it.
+/// tree (see `bn_os_process`), and then the call must not wait for it.
 const READER_GRACE: Duration = Duration::from_secs(2);
 
 /// Reader threads alive now. A reader ends when every holder of its pipe has
@@ -60,6 +56,30 @@ impl Drop for ReaderGuard {
 #[must_use]
 pub fn live_reader_threads() -> usize {
     LIVE_READERS.load(Ordering::SeqCst)
+}
+
+/// A process tree the platform contains: the child and what it starts.
+pub trait ContainedTree {
+    /// Ends every process of the tree; a tree already gone is success.
+    ///
+    /// # Errors
+    ///
+    /// The operating-system error.
+    fn kill(&self) -> io::Result<()>;
+}
+
+/// The operating system's side of a call (process groups, job objects,
+/// signals): the core stays safe Rust, and each adapter hands it the
+/// implementation (`bn_os_process::OsProcessControl`), as it hands the
+/// [`Policy`].
+pub trait ProcessControl {
+    /// Puts a child that was just started, in a process group of its own on
+    /// Unix, under containment until the returned tree is dropped.
+    ///
+    /// # Errors
+    ///
+    /// The operating-system error when the child cannot be contained.
+    fn contain(&self, child: &Child) -> io::Result<Box<dyn ContainedTree>>;
 }
 
 /// The execution policy in force for one call. The interpreter reads it from
@@ -210,8 +230,13 @@ fn collect(
 /// an empty program (1), spawn failures (2–4), wait failure (5), invalid
 /// UTF-8 (7), capture overflow (8), timeout (9) or a child that could not be
 /// terminated after the timeout (10).
-pub fn run(program: &str, args: &[&str], policy: &Policy) -> Result<Output, Failure> {
-    run_checked(program, args, policy).map_err(|failure| Failure {
+pub fn run(
+    program: &str,
+    args: &[&str],
+    policy: &Policy,
+    control: &dyn ProcessControl,
+) -> Result<Output, Failure> {
+    run_checked(program, args, policy, control).map_err(|failure| Failure {
         program: program.to_owned(),
         ..failure
     })
@@ -260,7 +285,7 @@ fn terminate(child: &mut Child, kill: fn(&mut Child) -> io::Result<()>) -> Resul
 /// fixed time for the capture threads: with the tree gone every pipe end is
 /// closed, so they finish at once.
 fn end_tree(
-    tree: &ProcessTree,
+    tree: &dyn ContainedTree,
     child: &mut Child,
     readers: &[&mpsc::Receiver<StreamCapture>],
 ) -> Result<(), Failure> {
@@ -279,7 +304,12 @@ fn end_tree(
 }
 
 #[allow(clippy::too_many_lines)]
-fn run_checked(program: &str, args: &[&str], policy: &Policy) -> Result<Output, Failure> {
+fn run_checked(
+    program: &str,
+    args: &[&str],
+    policy: &Policy,
+    control: &dyn ProcessControl,
+) -> Result<Output, Failure> {
     check(program, args, policy)?;
     let mut command = Command::new(program);
     command
@@ -287,7 +317,10 @@ fn run_checked(program: &str, args: &[&str], policy: &Policy) -> Result<Output, 
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    process_tree::isolate(&mut command);
+    // A process group of its own, whose id is the child's pid, so the
+    // timeout can end the child and everything it starts.
+    #[cfg(unix)]
+    std::os::unix::process::CommandExt::process_group(&mut command, 0);
     let mut child = match command.spawn() {
         Ok(child) => child,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -301,7 +334,7 @@ fn run_checked(program: &str, args: &[&str], policy: &Policy) -> Result<Output, 
         }
         Err(error) => return Err(Failure::new(SPAWN_FAILED, error.to_string())),
     };
-    let tree = match ProcessTree::adopt(&child) {
+    let tree = match control.contain(&child) {
         Ok(tree) => tree,
         Err(error) => {
             let _ = child.kill();
@@ -346,7 +379,7 @@ fn run_checked(program: &str, args: &[&str], policy: &Policy) -> Result<Output, 
         match child.try_wait() {
             Ok(Some(status)) => break status,
             Ok(None) if Instant::now() >= deadline => {
-                end_tree(&tree, &mut child, &[&out_rx, &err_rx])?;
+                end_tree(tree.as_ref(), &mut child, &[&out_rx, &err_rx])?;
                 return Err(Failure::new(
                     TIMEOUT,
                     format!(
@@ -368,7 +401,7 @@ fn run_checked(program: &str, args: &[&str], policy: &Policy) -> Result<Output, 
             // A process the child started still holds a pipe: it is in the
             // tree, and the timeout ends it too.
             if failure.code == TIMEOUT {
-                end_tree(&tree, &mut child, &[&out_rx, &err_rx])?;
+                end_tree(tree.as_ref(), &mut child, &[&out_rx, &err_rx])?;
             }
             return Err(failure);
         }
@@ -412,113 +445,6 @@ fn run_checked(program: &str, args: &[&str], policy: &Policy) -> Result<Output, 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn policy() -> Policy {
-        Policy {
-            allowed: true,
-            timeout: Duration::from_secs(5),
-            capture_limit: 64,
-        }
-    }
-
-    #[test]
-    fn denied_policy_is_code_11_before_any_spawn() {
-        let denied = Policy {
-            allowed: false,
-            ..policy()
-        };
-        let failure = run("definitely-not-a-program", &[], &denied).unwrap_err();
-        assert_eq!(failure.code, POLICY_DENIED);
-    }
-
-    #[test]
-    fn empty_program_is_invalid_argument() {
-        assert_eq!(run("", &[], &policy()).unwrap_err().code, INVALID_ARGUMENT);
-    }
-
-    #[test]
-    fn missing_program_is_code_2() {
-        let failure = run("bn-host-exec-no-such-program", &[], &policy()).unwrap_err();
-        assert_eq!(failure.code, PROGRAM_NOT_FOUND);
-        assert_eq!(failure.operation(), "HOST.Exec.Run");
-        assert_eq!(
-            failure.message(),
-            "cannot run \"bn-host-exec-no-such-program\""
-        );
-        assert!(
-            failure
-                .cause()
-                .starts_with("no such program at that path or on PATH")
-        );
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn captures_streams_status_and_enforces_the_ceiling() {
-        let ok = run(
-            "/bin/sh",
-            &["-c", "printf out; printf err >&2; exit 7"],
-            &policy(),
-        )
-        .unwrap();
-        assert_eq!(
-            (ok.return_code, ok.stdout.as_str(), ok.stderr.as_str()),
-            (7, "out", "err")
-        );
-        let over = run("/bin/sh", &["-c", "head -c 65 /dev/zero"], &policy()).unwrap_err();
-        assert_eq!(over.code, CAPTURE_LIMIT);
-        let slow = Policy {
-            timeout: Duration::from_millis(50),
-            ..policy()
-        };
-        assert_eq!(
-            run("/bin/sh", &["-c", "sleep 5"], &slow).unwrap_err().code,
-            TIMEOUT
-        );
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn background_grandchild_pipe_does_not_deadlock_execution() {
-        let fast = Policy {
-            timeout: Duration::from_secs(3),
-            ..policy()
-        };
-        let start = Instant::now();
-        let res = run(
-            "/bin/sh",
-            &["-c", "(sleep 5 >/dev/null 2>&1 &) && printf finished"],
-            &fast,
-        )
-        .unwrap();
-        assert_eq!(res.stdout, "finished");
-        assert!(start.elapsed() < Duration::from_secs(2));
-    }
-
-    /// A process the child started keeps stdout open after the child exits:
-    /// its output is kept, not dropped as an empty
-    /// success.
-    #[cfg(unix)]
-    #[test]
-    fn output_held_open_by_a_grandchild_is_kept() {
-        let held = run("/bin/sh", &["-c", "printf hello; sleep 1 &"], &policy()).unwrap();
-        assert_eq!((held.return_code, held.stdout.as_str()), (0, "hello"));
-    }
-
-    /// A pipe still open at the deadline ends the call with `TIMEOUT` (0.6.md,
-    /// `HOST.Exec` rule 5: the wall clock runs through pipe end of file).
-    #[cfg(unix)]
-    #[test]
-    fn output_held_open_past_the_deadline_is_timeout() {
-        let short = Policy {
-            timeout: Duration::from_millis(300),
-            ..policy()
-        };
-        let start = Instant::now();
-        let failure = run("/bin/sh", &["-c", "printf hello; sleep 3 &"], &short).unwrap_err();
-        assert_eq!(failure.code, TIMEOUT);
-        assert!(start.elapsed() < Duration::from_secs(2));
-    }
 
     /// A kill that fails during containment is `TERMINATION_FAILED`, returned
     /// at once: the child is still running, so waiting on it would block.

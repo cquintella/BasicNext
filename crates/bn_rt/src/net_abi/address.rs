@@ -102,13 +102,13 @@ struct HeldAddresses {
 }
 
 /// The live resolved address lists. An id is generation-checked
-/// (`crate::handle_table`) and travels as an opaque pointer: a freed list is
+/// (`crate::handle_table_abi`) and travels as an opaque pointer: a freed list is
 /// never read or freed twice. No ceiling of its own: each list is freed when
 /// its last binding ends.
 /// The id travels as a pointer, so pointers must hold 64 bits.
 const _: () = assert!(std::mem::size_of::<*mut std::ffi::c_void>() >= std::mem::size_of::<i64>());
-static ADDRESS_LISTS: std::sync::Mutex<crate::handle_table::GenerationTable<HeldAddresses>> =
-    std::sync::Mutex::new(crate::handle_table::GenerationTable::new());
+static ADDRESS_LISTS: std::sync::Mutex<crate::handle_table_abi::GenerationTable<HeldAddresses>> =
+    std::sync::Mutex::new(crate::handle_table_abi::GenerationTable::new());
 
 /// Runs `f` on the live list `handle`. A freed or unknown handle is a
 /// `USE_AFTER_RELEASE` failure that ends the process.

@@ -3,8 +3,11 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! The process tree of one `HOST.Exec.Run` call (BDFL decision, 2026-11-05,
-//! D-1: a timeout ends the child and everything it started).
+//! Process control for `HOST.Exec` (BDFL decision, 2026-11-06): the one
+//! place its operating-system calls live, so the `bn_host_exec` core stays
+//! safe Rust. Both adapters hand [`OsProcessControl`] to `bn_host_exec::run`.
+//! A timeout ends the child and everything it started (BDFL decision,
+//! 2026-11-05).
 //!
 //! Unix: the child leads a new process group, and the timeout sends
 //! `SIGKILL` to the group. The kernel keeps a process-group id in use while
@@ -19,31 +22,35 @@
 //! until it exits (recorded as an open issue).
 
 use std::io;
-use std::process::{Child, Command};
+use std::process::Child;
+
+use bn_host_exec::{ContainedTree, ProcessControl};
 
 #[cfg(unix)]
-pub use unix::ProcessTree;
+use unix::ProcessTree;
 #[cfg(windows)]
-pub use windows::ProcessTree;
-
-/// Prepares `command` so its child starts a tree of its own. Call before
-/// `spawn`.
-pub fn isolate(command: &mut Command) {
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        // Process group 0: a new group whose id is the child's pid.
-        command.process_group(0);
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = command;
-    }
-}
+use windows::ProcessTree;
 
 /// The result of the call that ends a tree: a tree that is already gone is
 /// success.
-pub type KillResult = io::Result<()>;
+type KillResult = io::Result<()>;
+
+/// The operating system's process control: a process group (Unix) or a
+/// job object (Windows) per call.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct OsProcessControl;
+
+impl ProcessControl for OsProcessControl {
+    fn contain(&self, child: &Child) -> io::Result<Box<dyn ContainedTree>> {
+        Ok(Box::new(ProcessTree::adopt(child)?))
+    }
+}
+
+impl ContainedTree for ProcessTree {
+    fn kill(&self) -> io::Result<()> {
+        ProcessTree::kill(self)
+    }
+}
 
 #[cfg(unix)]
 mod unix {
@@ -130,7 +137,7 @@ mod unix {
     }
 
     impl ProcessTree {
-        /// Names the tree of a child spawned after [`super::isolate`].
+        /// Names the tree of a child the core started in a new process group.
         ///
         /// # Errors
         ///

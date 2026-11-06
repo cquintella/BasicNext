@@ -1,3 +1,6 @@
+//! C ABI plumbing, not domain logic: the ids every native resource handle
+//! carries across the C boundary (BDFL decision, 2026-11-06).
+//!
 //! A handle table whose ids carry a generation: `(generation << 32) | slot`.
 //! Like the ARC `ObjectId`, one 64-bit id holds a slot and a generation (the
 //! ARC puts the slot in the high half; here the generation is there, so ids

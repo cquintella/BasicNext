@@ -9,7 +9,8 @@
 
 #![cfg(unix)]
 
-use bn_host_exec::{Policy, TIMEOUT, live_reader_threads, run};
+use bn_host_exec::{Policy, TIMEOUT, live_reader_threads};
+use bn_os_process::OsProcessControl;
 use std::fs;
 use std::process::{Command, Stdio};
 use std::thread;
@@ -63,10 +64,11 @@ fn a_timeout_ends_the_grandchildren_and_the_capture_threads() {
     for index in 0..RUNS {
         let pid_file = directory.join(format!("pid_{index}"));
         let pid_path = pid_file.to_str().expect("utf-8 path");
-        let failure = run(
+        let failure = bn_host_exec::run(
             "/bin/sh",
             &["-c", GRANDCHILD_SCRIPT, "sh", pid_path],
             &policy(),
+            &OsProcessControl,
         )
         .expect_err("the script runs past the timeout");
         assert_eq!(failure.code, TIMEOUT);

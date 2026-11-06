@@ -35,7 +35,7 @@ mod exec;
 pub mod file;
 pub mod file_abi;
 mod file_error;
-pub mod handle_table;
+pub mod handle_table_abi;
 mod stack_abi;
 #[cfg(feature = "net")]
 pub use bn_core_net as net;
