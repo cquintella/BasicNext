@@ -7,7 +7,11 @@
   "retained": "Crate-local identity retained unchanged; oracle not audited by this inventory.",
   "added": "Added after the S0 baseline; not part of the timed baseline.",
   "added_tests": [
-    "bn_web::rlib/bn_web::web::policy_opener::tests::reads_through_the_runtime_and_reports_a_missing_file",
+    "bn::test/programs::web_static_policy::a_static_mount_refuses_a_fifo_and_paths_outside_the_read_root",
+    "bn_llvm::lib/bn_llvm::functions::tests::a_synthetic_value_is_above_every_defined_value",
+    "bn_rt::rlib/bn_rt::handle_table::tests::freed_slots_are_reused_and_retired_slots_are_not",
+    "bn_rt::rlib/bn_rt::static_file::tests::a_static_read_serves_only_regular_files_inside_the_policy",
+    "bn_web::rlib/bn_web::web::policy_opener::tests::reads_through_the_runtime_and_maps_its_statuses",
     "fixture::tests/grammar/valid/mixed-case-reserved-spellings.bn",
     "fixture::tests/grammar/invalid/uppercase-reserved-binding-name.bn",
     "fixture::tests/grammar/invalid/async-parameter-user-class-named-queue.bn",

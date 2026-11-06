@@ -5,7 +5,8 @@
 
 //! Dead C ABI gate. Every C export of `bn_rt`
 //! (`#[unsafe(no_mangle)] pub extern "C" fn`) is reached by code `bnc`
-//! emits (`crates/bn_llvm/src`) or by the Wasm host (`bin/`), or is listed
+//! emits (`crates/bn_llvm/src`), by the Wasm host (`bin/`) or by the native
+//! web library (`libraries/bn_web/src`), or is listed
 //! in `tests/abi_exports.list` with a category and a reason:
 //!
 //! - `debugger`: called by a person from a native debugger, as the book
@@ -99,6 +100,8 @@ fn reaching_words() -> BTreeSet<String> {
     let mut sources = Vec::new();
     files(Path::new("crates/bn_llvm/src"), &["rs"], &mut sources);
     files(Path::new("bin"), &["rs", "js", "mjs"], &mut sources);
+    // The native web library calls the runtime it links with.
+    files(Path::new("libraries/bn_web/src"), &["rs"], &mut sources);
     sources
         .iter()
         .flat_map(|path| {

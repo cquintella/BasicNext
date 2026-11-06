@@ -43,6 +43,22 @@ pub(crate) const EXEC_TIMEOUT_DEFAULT: Duration = Duration::from_secs(60);
 
 const FS_OUTSIDE_POLICY: &str = "filesystem path is outside execution policy";
 const FS_WRITES_DENIED: &str = "filesystem writes are denied by execution policy";
+/// Clears `O_NONBLOCK` on `file`, so reads wait for data as usual.
+#[cfg(unix)]
+fn blocking(file: &File) -> io::Result<()> {
+    use std::os::fd::AsRawFd as _;
+    let descriptor = file.as_raw_fd();
+    // SAFETY: `descriptor` belongs to `file`, which is open for this call.
+    let flags = unsafe { libc::fcntl(descriptor, libc::F_GETFL) };
+    if flags < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: as above; only the status flags change.
+    if unsafe { libc::fcntl(descriptor, libc::F_SETFL, flags & !libc::O_NONBLOCK) } < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
 
 /// One side (read or write) of the filesystem scope. `Rooted` with no roots
 /// denies every path.
@@ -166,6 +182,34 @@ impl FsPolicy {
             Scope::Unrestricted => true,
             Scope::Rooted(roots) => roots.iter().any(|root| root.contains_resolved(path)),
         }
+    }
+
+    /// Opens `path` for reading only when it is a regular file. The open never
+    /// waits (a FIFO would block until a writer appears), and the type is read
+    /// from the opened descriptor, so a swap after a path check changes
+    /// nothing. The file returned reads in blocking mode.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::open`]; `InvalidInput` when the entry is not a regular file.
+    pub fn open_regular(&self, path: &Path) -> io::Result<File> {
+        let file = match self.read.root_for(path)? {
+            Some(root) => root.open_nonblocking(path)?,
+            None => {
+                let mut options = OpenOptions::new();
+                options.read(true);
+                #[cfg(unix)]
+                std::os::unix::fs::OpenOptionsExt::custom_flags(&mut options, libc::O_NONBLOCK);
+                options.open(path)?
+            }
+        };
+        if !file.metadata()?.is_file() {
+            // Callers map the kind; no text reaches a user.
+            return Err(io::ErrorKind::InvalidInput.into());
+        }
+        #[cfg(unix)]
+        blocking(&file)?;
+        Ok(file)
     }
 
     /// # Errors

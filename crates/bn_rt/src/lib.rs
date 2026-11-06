@@ -43,6 +43,7 @@ pub use bn_core_net as net;
 mod net_abi;
 pub mod policy;
 pub mod secure_fs;
+pub mod static_file;
 pub mod string;
 mod terminal;
 pub mod text_abi;

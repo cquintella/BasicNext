@@ -112,6 +112,30 @@ impl RootedDir {
         }
     }
 
+    /// Opens `path` for reading without waiting on it: a FIFO or a device
+    /// opens at once instead of blocking until a writer appears. The caller
+    /// checks the type on the opened descriptor ([`super::policy::FsPolicy::open_regular`]).
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::open`].
+    pub fn open_nonblocking(&self, path: &Path) -> io::Result<File> {
+        let relative = self.relative(path)?;
+        #[cfg(unix)]
+        {
+            self.open_unix_with(&relative, OpenMode::Read, libc::O_NONBLOCK)
+        }
+        #[cfg(windows)]
+        {
+            windows::open(&self.canonical_path, &relative, OpenMode::Read)
+        }
+        #[cfg(not(any(unix, windows)))]
+        {
+            let _ = relative;
+            Err(denied(ROOTED_ACCESS_UNAVAILABLE))
+        }
+    }
+
     /// Removes a regular file relative to the pinned root.
     ///
     /// # Errors
@@ -205,6 +229,17 @@ impl RootedDir {
 
     #[cfg(unix)]
     fn open_unix(&self, relative: &Path, mode: OpenMode) -> io::Result<File> {
+        self.open_unix_with(relative, mode, 0)
+    }
+
+    /// `open_unix` with `extra` open flags on the last component.
+    #[cfg(unix)]
+    fn open_unix_with(
+        &self,
+        relative: &Path,
+        mode: OpenMode,
+        extra: libc::c_int,
+    ) -> io::Result<File> {
         use std::os::fd::{AsRawFd as _, FromRawFd as _, OwnedFd};
 
         let mut directory = self.directory.try_clone()?;
@@ -223,7 +258,8 @@ impl RootedDir {
                 OpenMode::Write => libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC,
                 OpenMode::Append => libc::O_WRONLY | libc::O_CREAT | libc::O_APPEND,
             } | libc::O_CLOEXEC
-                | libc::O_NOFOLLOW;
+                | libc::O_NOFOLLOW
+                | extra;
             // SAFETY: the descriptor and component satisfy `openat`; the mode
             // argument is supplied for the two branches that include O_CREAT.
             let descriptor =

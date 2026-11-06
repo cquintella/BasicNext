@@ -26,12 +26,16 @@ struct Slot<T> {
 
 pub struct GenerationTable<T> {
     slots: Vec<Slot<T>>,
+    /// Empty slots that are not retired, reused last-in first-out, so an
+    /// insert takes constant time however many slots the table has.
+    free: Vec<usize>,
 }
 
 impl<T> std::fmt::Debug for GenerationTable<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("GenerationTable")
             .field("slots", &self.slots.len())
+            .field("free", &self.free.len())
             .finish_non_exhaustive()
     }
 }
@@ -45,7 +49,10 @@ impl<T> Default for GenerationTable<T> {
 impl<T> GenerationTable<T> {
     #[must_use]
     pub const fn new() -> Self {
-        Self { slots: Vec::new() }
+        Self {
+            slots: Vec::new(),
+            free: Vec::new(),
+        }
     }
 
     fn pack(index: usize, generation: i64) -> i64 {
@@ -62,12 +69,8 @@ impl<T> GenerationTable<T> {
     /// Stores `value` and returns its id; `None` when the table already holds
     /// `max` slots (or every slot an id can name) and none is free.
     pub fn insert(&mut self, value: T, max: usize) -> Option<i64> {
-        if let Some((index, slot)) = self
-            .slots
-            .iter_mut()
-            .enumerate()
-            .find(|(_, slot)| slot.value.is_none() && slot.generation < RETIRED_GENERATION)
-        {
+        if let Some(index) = self.free.pop() {
+            let slot = &mut self.slots[index];
             slot.value = Some(value);
             return Some(Self::pack(index, slot.generation));
         }
@@ -89,6 +92,9 @@ impl<T> GenerationTable<T> {
         let value = slot.value.take();
         if value.is_some() {
             slot.generation += 1;
+            if slot.generation < RETIRED_GENERATION {
+                self.free.push(index);
+            }
         }
         value
     }
@@ -120,6 +126,24 @@ mod tests {
         assert_eq!(table.remove(first), None, "a second close finds nothing");
         assert_eq!(table.get(second), Some(&"second"));
         assert!(first > 0 && second > 0);
+    }
+
+    /// A freed slot is reused before the table grows, and a slot whose
+    /// generation reaches the retired value is never handed out again.
+    #[test]
+    fn freed_slots_are_reused_and_retired_slots_are_not() {
+        let mut table = GenerationTable::new();
+        let first = table.insert(1, 2).expect("first");
+        let second = table.insert(2, 2).expect("second");
+        assert_eq!(table.remove(first), Some(1));
+        let third = table.insert(3, 2).expect("reuses the freed slot");
+        assert_eq!(third & super::SLOT_MASK, first & super::SLOT_MASK);
+        assert!(table.insert(4, 2).is_none(), "both slots are live");
+        table.slots[0].generation = super::RETIRED_GENERATION - 1;
+        let last = GenerationTable::<i32>::pack(0, super::RETIRED_GENERATION - 1);
+        assert_eq!(table.remove(last), Some(3));
+        assert!(table.insert(5, 2).is_none(), "a retired slot is not reused");
+        assert_eq!(table.get(second), Some(&2));
     }
 
     #[test]

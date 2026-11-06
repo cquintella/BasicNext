@@ -52,3 +52,5 @@ mod signed_zero;
 mod spec_0_6_5_s13;
 #[path = "programs/struct_vector_literals.rs"]
 mod struct_vector_literals;
+#[path = "programs/web_static_policy.rs"]
+mod web_static_policy;

@@ -7,7 +7,7 @@
 
 #![allow(clippy::wildcard_imports)]
 use super::*;
-use std::io::{Read, Write};
+use std::io::Write;
 
 pub(super) fn write_client_access(
     logger: &bn_core_log::Logger,
@@ -73,35 +73,21 @@ impl bn_web::StaticFileOpener for InterpStaticFileOpener {
         path: &std::path::Path,
         max_bytes: usize,
     ) -> Result<bn_web::StaticFileContent, bn_web::StaticFileError> {
-        if !self.policy.allows_path(path, false) {
-            return Err(bn_web::StaticFileError::Forbidden);
-        }
-        let mut file = self
-            .policy
-            .open(path, bn_rt::secure_fs::OpenMode::Read)
-            .map_err(|e| match e.kind() {
-                std::io::ErrorKind::NotFound => bn_web::StaticFileError::NotFound,
-                std::io::ErrorKind::PermissionDenied => bn_web::StaticFileError::Forbidden,
-                _ => bn_web::StaticFileError::Io(e.to_string()),
-            })?;
-        let meta = file
-            .metadata()
-            .map_err(|e| bn_web::StaticFileError::Io(e.to_string()))?;
-        if !meta.is_file() {
-            return Err(bn_web::StaticFileError::NotFound);
-        }
-        if meta.len() > max_bytes as u64 {
-            return Err(bn_web::StaticFileError::TooLarge);
-        }
-        let mtime_secs = meta
-            .modified()
-            .ok()
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map_or(0, |d| d.as_secs());
-        let cap = usize::try_from(meta.len()).unwrap_or(max_bytes);
-        let mut bytes = Vec::with_capacity(cap);
-        file.read_to_end(&mut bytes)
-            .map_err(|e| bn_web::StaticFileError::Io(e.to_string()))?;
-        Ok(bn_web::StaticFileContent { bytes, mtime_secs })
+        // The one static reader of both backends (`bn_rt::static_file`).
+        bn_rt::static_file::read(&self.policy, path, max_bytes)
+            .map(|file| bn_web::StaticFileContent {
+                bytes: file.bytes,
+                mtime_secs: file.mtime_secs,
+            })
+            .map_err(|error| match error {
+                bn_rt::static_file::StaticReadError::NotFound => bn_web::StaticFileError::NotFound,
+                bn_rt::static_file::StaticReadError::Forbidden => {
+                    bn_web::StaticFileError::Forbidden
+                }
+                bn_rt::static_file::StaticReadError::TooLarge => bn_web::StaticFileError::TooLarge,
+                bn_rt::static_file::StaticReadError::Io(message) => {
+                    bn_web::StaticFileError::Io(message)
+                }
+            })
     }
 }
