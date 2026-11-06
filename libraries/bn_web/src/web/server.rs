@@ -208,7 +208,8 @@ pub struct ServerState {
     /// One permit: without a queue, handlers run one at a time
     /// (`bnweb.md`, "Server lifecycle").
     serial_gate: std::sync::Arc<tokio::sync::Semaphore>,
-    active_handler_tasks: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    active_handler_tasks: std::sync::Arc<super::HandlerTasks>,
+    drain_signal: std::sync::Arc<super::DrainSignal>,
     options: ServerOptions,
     rate_limiter: RateLimiter,
     stats: ServerStats,
@@ -253,6 +254,7 @@ impl Default for ServerState {
 impl ServerState {
     #[must_use]
     pub fn new() -> Self {
+        let drain_signal = std::sync::Arc::new(super::DrainSignal::default());
         Self {
             routes: Vec::new(),
             started: false,
@@ -267,7 +269,10 @@ impl ServerState {
             work_sender: None,
             http_runtime: None,
             serial_gate: std::sync::Arc::new(tokio::sync::Semaphore::new(1)),
-            active_handler_tasks: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            active_handler_tasks: std::sync::Arc::new(super::HandlerTasks::new(
+                std::sync::Arc::clone(&drain_signal),
+            )),
+            drain_signal,
             options: ServerOptions::default(),
             rate_limiter: RateLimiter::new(&ServerOptions::default()),
             stats: ServerStats::default(),
@@ -432,9 +437,11 @@ impl ServerState {
         let mut workers = Vec::with_capacity(self.options.worker_count);
         for index in 0..self.options.worker_count {
             let worker_receiver = receiver.clone();
+            let exit_notice = self.drain_signal.notify_on_drop();
             let worker = std::thread::Builder::new()
                 .name(format!("bnweb-worker-{index}"))
                 .spawn(move || {
+                    let _exit_notice = exit_notice;
                     loop {
                         let work = match worker_receiver.lock() {
                             Ok(receiver) => receiver.recv(),
@@ -475,13 +482,18 @@ impl ServerState {
     pub(crate) fn serial_gate(&self) -> std::sync::Arc<tokio::sync::Semaphore> {
         std::sync::Arc::clone(&self.serial_gate)
     }
-    pub(crate) fn active_handler_tasks(&self) -> std::sync::Arc<std::sync::atomic::AtomicUsize> {
+    pub(crate) fn active_handler_tasks(&self) -> std::sync::Arc<super::HandlerTasks> {
         std::sync::Arc::clone(&self.active_handler_tasks)
+    }
+    /// What `Server.Stop` waits on: it is notified when a connection, handler
+    /// task, worker or listener ends.
+    #[must_use]
+    pub fn drain_signal(&self) -> std::sync::Arc<super::DrainSignal> {
+        std::sync::Arc::clone(&self.drain_signal)
     }
     #[cfg(test)]
     pub(crate) fn begin_handler_task(&self) {
-        self.active_handler_tasks
-            .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+        self.active_handler_tasks.begin();
     }
     pub(crate) fn try_begin_handler(&mut self) -> Result<(), &'static str> {
         if self.pending >= self.options.pending_work {
@@ -492,11 +504,11 @@ impl ServerState {
     }
     pub(crate) fn finish_handler(&mut self) {
         self.pending = self.pending.saturating_sub(1);
+        self.drain_signal.notify();
     }
     #[cfg(test)]
     pub(crate) fn finish_handler_task(&self) {
-        self.active_handler_tasks
-            .fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+        self.active_handler_tasks.end();
     }
     pub(crate) fn begin_request(&mut self) -> Result<(), &'static str> {
         if !self.started || self.stopping || self.closed {
@@ -529,6 +541,7 @@ impl ServerState {
     pub fn release_connection(&mut self) {
         self.active_connections = self.active_connections.saturating_sub(1);
         let _ = self.active_sockets.pop();
+        self.drain_signal.notify();
     }
     #[must_use]
     pub fn active_connections(&self) -> usize {
@@ -666,11 +679,7 @@ impl ServerState {
             return Ok(());
         }
         self.reap_finished_workers();
-        if self
-            .active_handler_tasks
-            .load(std::sync::atomic::Ordering::Acquire)
-            != 0
-        {
+        if self.active_handler_tasks.running() != 0 {
             return Err("server drain timed out with active handlers");
         }
         if self.active_connections != 0 {

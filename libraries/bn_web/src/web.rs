@@ -699,7 +699,7 @@ pub use routing::{Route, RouteOutcome};
 pub(crate) use routing::{allowed_methods, select_route};
 pub(crate) use routing::{dispatch_route, route_for_request, valid_method, valid_route_pattern};
 mod drain;
-pub use drain::drain_server;
+pub use drain::{DrainNotice, DrainSignal, HandlerTasks, drain_server};
 pub(crate) mod policy_opener;
 mod server;
 pub mod sessions;

@@ -822,9 +822,14 @@ impl WebProvider {
                         state.clone(),
                     );
                     let accept_state = state.clone();
+                    let exit_notice = accept_state
+                        .lock()
+                        .ok()
+                        .map(|server| server.drain_signal().notify_on_drop());
                     let listener_handle = std::thread::Builder::new()
                         .name("bnweb-listener".into())
                         .spawn(move || {
+                            let _exit_notice = exit_notice;
                             loop {
                                 let stopped = accept_state
                                     .lock()
@@ -985,9 +990,14 @@ impl WebProvider {
                         state.clone(),
                     );
                     let accept_state = state.clone();
+                    let exit_notice = accept_state
+                        .lock()
+                        .ok()
+                        .map(|server| server.drain_signal().notify_on_drop());
                     let listener_handle = std::thread::Builder::new()
                         .name("bnweb-tls-listener".into())
                         .spawn(move || {
+                            let _exit_notice = exit_notice;
                             loop {
                                 let stopped = accept_state.lock().map_or(true, |server| {
                                     server.is_stopping() || server.is_closed()

@@ -35,11 +35,11 @@ trait AddressResolver {
 
 struct SystemAddressResolver;
 
-struct HandlerTaskGuard(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+struct HandlerTaskGuard(std::sync::Arc<crate::web::HandlerTasks>);
 
 impl Drop for HandlerTaskGuard {
     fn drop(&mut self) {
-        self.0.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+        self.0.end();
     }
 }
 
@@ -580,7 +580,7 @@ async fn route_response(
     options: crate::web::ServerOptions,
     deadline: tokio::time::Instant,
     serial_gate: std::sync::Arc<tokio::sync::Semaphore>,
-    active_handler_tasks: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    active_handler_tasks: std::sync::Arc<crate::web::HandlerTasks>,
 ) -> Response<Full<Bytes>> {
     let (parts, body) = request.into_parts();
     let header_bytes = parts
@@ -856,7 +856,7 @@ async fn run_serially(
     state: &Arc<Mutex<ServerState>>,
     deadline: tokio::time::Instant,
     serial_gate: &std::sync::Arc<tokio::sync::Semaphore>,
-    active_handler_tasks: &std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    active_handler_tasks: &std::sync::Arc<crate::web::HandlerTasks>,
 ) -> Response<Full<Bytes>> {
     let record = |timed_out: bool| {
         if let Ok(mut server) = state.lock() {
@@ -885,7 +885,7 @@ async fn run_serially(
                 return response(StatusCode::REQUEST_TIMEOUT, "handler timed out");
             }
         };
-    active_handler_tasks.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+    active_handler_tasks.begin();
     let task_guard = HandlerTaskGuard(std::sync::Arc::clone(active_handler_tasks));
     let task_request = request.clone();
     // The turn is held until the handler returns, even past the deadline.
@@ -924,12 +924,12 @@ async fn run_on_queue(
     request: crate::web::Request,
     state: &Arc<Mutex<ServerState>>,
     deadline: tokio::time::Instant,
-    active_handler_tasks: &std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    active_handler_tasks: &std::sync::Arc<crate::web::HandlerTasks>,
 ) -> Response<Full<Bytes>> {
     let (sender, receiver) = tokio::sync::oneshot::channel();
     let task_request = request.clone();
     // Counted until the task ends or is dropped unrun, so `Stop` waits for it.
-    active_handler_tasks.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+    active_handler_tasks.begin();
     let task_guard = HandlerTaskGuard(std::sync::Arc::clone(active_handler_tasks));
     let submitted = queue.submit_with("BNWeb handler".into(), move |_ticket| {
         let _task_guard = task_guard;
