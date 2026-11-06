@@ -98,11 +98,17 @@ fn choose_extra(variable: Option<PathBuf>, directory: Option<&Path>) -> Option<P
 
 /// The platform roots plus the extra file. An extra file is never skipped:
 /// unreadable, or without a valid certificate, it is an error.
+/// A platform store that could not be read counts as empty; its error is
+/// reported only when no root remains.
 fn build_roots(
-    platform: Vec<CertificateDer<'static>>,
+    platform: Result<Vec<CertificateDer<'static>>, String>,
     extra: Option<&Path>,
 ) -> Result<RootCertStore, String> {
     let mut roots = RootCertStore::empty();
+    let (platform, unreadable) = match platform {
+        Ok(certificates) => (certificates, None),
+        Err(error) => (Vec::new(), Some(error)),
+    };
     // A platform store may hold an entry rustls cannot parse; it is skipped.
     roots.add_parsable_certificates(platform);
     if let Some(path) = extra {
@@ -117,7 +123,12 @@ fn build_roots(
         }
     }
     if roots.is_empty() {
-        return Err(bn_catalog::text("web", "tls.no_roots.cause").into());
+        return Err(match unreadable {
+            Some(error) => {
+                bn_catalog::fill("web", "tls.platform_unreadable.cause", &[("error", &error)])
+            }
+            None => bn_catalog::text("web", "tls.no_roots.cause").into(),
+        });
     }
     Ok(roots)
 }
@@ -146,13 +157,16 @@ mod platform {
     /// The certificates the keychain trust settings make roots for TLS. User
     /// settings override admin settings, which override system settings, so
     /// the first domain that names a certificate decides.
-    pub(super) fn roots() -> Vec<CertificateDer<'static>> {
+    pub(super) fn roots() -> Result<Vec<CertificateDer<'static>>, String> {
         let mut decided: BTreeMap<Vec<u8>, TrustSettingsForCertificate> = BTreeMap::new();
         for domain in [Domain::User, Domain::Admin, Domain::System] {
             let settings = TrustSettings::new(domain);
-            let Ok(certificates) = settings.iter() else {
-                // A domain with no trust settings (common for User and Admin).
-                continue;
+            let certificates = match settings.iter() {
+                Ok(certificates) => certificates,
+                // The system domain holds the roots: its failure is reported.
+                Err(error) if matches!(domain, Domain::System) => return Err(error.to_string()),
+                // User and Admin domains usually have no trust settings.
+                Err(_) => continue,
             };
             for certificate in certificates {
                 // No specific setting means "trust as a root" (Apple's rule).
@@ -164,7 +178,7 @@ mod platform {
                     .or_insert_with(|| trust.unwrap_or(TrustSettingsForCertificate::TrustRoot));
             }
         }
-        decided
+        Ok(decided
             .into_iter()
             .filter(|(_, trust)| {
                 matches!(
@@ -174,7 +188,7 @@ mod platform {
                 )
             })
             .map(|(der, _)| CertificateDer::from(der))
-            .collect()
+            .collect())
     }
 }
 
@@ -189,11 +203,9 @@ mod platform {
 
     /// The current user's `ROOT` store, which includes the machine's roots:
     /// the certificates valid now and usable for server authentication.
-    pub(super) fn roots() -> Vec<CertificateDer<'static>> {
-        let Ok(store) = CertStore::open_current_user("ROOT") else {
-            return Vec::new();
-        };
-        store
+    pub(super) fn roots() -> Result<Vec<CertificateDer<'static>>, String> {
+        let store = CertStore::open_current_user("ROOT").map_err(|error| error.to_string())?;
+        Ok(store
             .certs()
             .filter(|certificate| {
                 let usable = certificate.valid_uses().is_ok_and(|uses| match uses {
@@ -203,7 +215,7 @@ mod platform {
                 usable && certificate.is_time_valid().unwrap_or(false)
             })
             .map(|certificate| CertificateDer::from(certificate.to_der().to_vec()))
-            .collect()
+            .collect())
     }
 }
 
@@ -227,7 +239,7 @@ mod platform {
     #[cfg(not(target_os = "linux"))]
     const BUNDLE_FILES: &[&str] = &["/etc/ssl/cert.pem", "/usr/local/etc/ssl/cert.pem"];
 
-    pub(super) fn roots() -> Vec<CertificateDer<'static>> {
+    pub(super) fn roots() -> Result<Vec<CertificateDer<'static>>, String> {
         let file = BUNDLE_FILES
             .iter()
             .map(Path::new)
@@ -239,7 +251,7 @@ mod platform {
             certificates
                 .extend(rustls_native_certs::load_certs_from_paths(None, Some(directory)).certs);
         }
-        certificates
+        Ok(certificates)
     }
 }
 
@@ -291,17 +303,17 @@ mod tests {
     fn an_extra_file_is_added_never_skipped() {
         let platform = test_ca();
         // Added to the platform roots, not in place of them.
-        let both = build_roots(platform.clone(), Some(&fixture("test-ca.pem"))).expect("roots");
+        let both = build_roots(Ok(platform.clone()), Some(&fixture("test-ca.pem"))).expect("roots");
         assert_eq!(both.len(), 2, "the platform root and the extra one");
         // A file that cannot be read fails, though the platform has roots.
-        let missing = build_roots(platform.clone(), Some(Path::new("/no/such/bn-ca.pem")));
+        let missing = build_roots(Ok(platform.clone()), Some(Path::new("/no/such/bn-ca.pem")));
         assert!(missing.is_err_and(|message| message.contains("cannot be read")));
         // A file without a certificate fails.
         let directory = tempfile_directory("empty");
         let empty = directory.join(PROGRAM_CA_FILES[0]);
         std::fs::write(&empty, "no certificate here").expect("write");
         assert!(
-            build_roots(platform, Some(&empty))
+            build_roots(Ok(platform), Some(&empty))
                 .is_err_and(|message| message.contains("no valid certificate"))
         );
         std::fs::remove_dir_all(&directory).expect("clean up");
@@ -358,18 +370,23 @@ mod tests {
 
     #[test]
     fn the_extra_root_lets_a_private_ca_server_through_and_only_it() {
-        let platform = super::platform::roots();
-        let without = build_roots(platform.clone(), None).expect("platform roots");
+        let platform = super::platform::roots().expect("the platform store");
+        let without = build_roots(Ok(platform.clone()), None).expect("platform roots");
         let refused = handshake(without).expect_err("the test CA is no platform root");
         assert!(refused.contains("UnknownIssuer"), "{refused}");
-        let with = build_roots(platform, Some(&fixture("test-ca.pem"))).expect("roots");
+        let with = build_roots(Ok(platform), Some(&fixture("test-ca.pem"))).expect("roots");
         handshake(with).expect("the extra root verifies the server");
     }
 
     #[test]
     fn no_usable_root_fails_closed() {
-        assert!(build_roots(Vec::new(), None).is_err());
-        assert!(build_roots(Vec::new(), Some(&fixture("test-ca.pem"))).is_ok());
+        assert!(build_roots(Ok(Vec::new()), None).is_err());
+        assert!(build_roots(Ok(Vec::new()), Some(&fixture("test-ca.pem"))).is_ok());
+        // An unreadable store is reported, not described as empty; an extra
+        // file still gives a root.
+        let unreadable = build_roots(Err("the keychain is locked".into()), None);
+        assert!(unreadable.is_err_and(|message| message.contains("the keychain is locked")));
+        assert!(build_roots(Err("locked".into()), Some(&fixture("test-ca.pem"))).is_ok());
     }
 
     #[test]
@@ -377,7 +394,9 @@ mod tests {
         // The loaders take no environment input; on a host with a trust
         // store they find roots (the CI images have one).
         assert!(
-            !super::platform::roots().is_empty(),
+            !super::platform::roots()
+                .expect("the platform store")
+                .is_empty(),
             "no platform root found"
         );
     }

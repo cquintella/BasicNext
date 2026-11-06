@@ -39,3 +39,4 @@ tls.ca_file_unreadable.cause = the CA file {path} cannot be read: {error}
 tls.ca_file_empty.cause = the CA file {path} holds no valid certificate
 tls.no_roots.cause = no trusted CA certificate is available: the system trust store holds none and no extra CA file was given
 tls.trust_failed.message = TLS trust roots unavailable: {cause}
+tls.platform_unreadable.cause = the system trust store cannot be read ({error}) and no extra CA file was given
