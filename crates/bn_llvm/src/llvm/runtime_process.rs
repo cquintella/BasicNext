@@ -18,8 +18,8 @@ use crate::ir::{
 use crate::layout::{handle_result_ty, vector_ty};
 use runtime_abi::{
     CLOCK_NOW, CLOCK_TIMER, CONSOLE_BEEP, CONSOLE_CLS, CONSOLE_NUM_COLS, CONSOLE_NUM_ROWS,
-    CONSOLE_PRINT_AT, ENV_GET, ENV_HAS, ERROR_TAKE, EXEC_RESULT_CLOSE, EXEC_RESULT_RETURN_CODE,
-    EXEC_RESULT_STDERR, EXEC_RESULT_STDOUT, EXEC_RUN, HOST_NUM_PROCS,
+    CONSOLE_PRINT_AT, ENV_GET, ENV_HAS, ERROR_TAKE, EXEC_RESULT_RETURN_CODE, EXEC_RESULT_STDERR,
+    EXEC_RESULT_STDOUT, EXEC_RUN, HOST_NUM_PROCS,
 };
 
 pub(crate) fn lower_process_call(
@@ -189,10 +189,7 @@ pub(crate) fn lower_process_call(
                 ),
             );
         }
-        "HOST.Exec.Result.ReturnCode"
-        | "HOST.Exec.Result.Stdout"
-        | "HOST.Exec.Result.Stderr"
-        | "HOST.Exec.Result.Close" => {
+        "HOST.Exec.Result.ReturnCode" | "HOST.Exec.Result.Stdout" | "HOST.Exec.Result.Stderr" => {
             let payload = format!("execpayload{}", arguments[0].0);
             text.assign(
                 payload.clone(),
@@ -202,8 +199,7 @@ pub(crate) fn lower_process_call(
             let call = match name {
                 "HOST.Exec.Result.ReturnCode" => EXEC_RESULT_RETURN_CODE.call(handle),
                 "HOST.Exec.Result.Stdout" => EXEC_RESULT_STDOUT.call(handle),
-                "HOST.Exec.Result.Stderr" => EXEC_RESULT_STDERR.call(handle),
-                _ => EXEC_RESULT_CLOSE.call(handle),
+                _ => EXEC_RESULT_STDERR.call(handle),
             };
             text.assign(format!("v{dest}"), call);
         }

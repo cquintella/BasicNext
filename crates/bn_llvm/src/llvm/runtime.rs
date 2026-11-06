@@ -34,7 +34,6 @@ pub(crate) fn is_bn_rt_host_call(name: &str) -> bool {
                 | "HOST.Exec.Result.ReturnCode"
                 | "HOST.Exec.Result.Stdout"
                 | "HOST.Exec.Result.Stderr"
-                | "HOST.Exec.Result.Close"
                 | "HOST.Net.Address.Parse"
                 | "HOST.Net.Address.ToString"
                 | "HOST.Net.Endpoint.Create"
@@ -243,10 +242,6 @@ pub(crate) fn bn_rt_call_supported(
                 && values.get(&arguments[1]).and_then(llvm_type) == Some(crate::layout::vector_ty())
         }
         "HOST.Exec.Result.ReturnCode" | "HOST.Exec.Result.Stdout" | "HOST.Exec.Result.Stderr" => {
-            arguments.len() == 1
-                && values.get(&arguments[0]).and_then(llvm_type) == Some(crate::layout::handle_result_ty())
-        }
-        "HOST.Exec.Result.Close" => {
             arguments.len() == 1
                 && values.get(&arguments[0]).and_then(llvm_type) == Some(crate::layout::handle_result_ty())
         }
