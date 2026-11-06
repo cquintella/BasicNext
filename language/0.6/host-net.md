@@ -143,6 +143,14 @@ network exception bypasses BN control flow.
 | `Net.IO_FAILED` | 12 | Any other network failure |
 | `Net.POLICY_DENIED` | 13 | The execution policy denies the operation (when the host execution policy ceiling masks `POLICY_NET`) |
 
+**Name lookups.** `Resolve` and `Reverse` run on a fixed set of 4 lookup
+threads shared by the process, with at most 32 lookups queued or running. A
+lookup past that ceiling returns `Net.LIMIT` at once. A lookup whose timeout
+expires returns `Net.TIMEOUT` and is cancelled: one that has not started never
+starts, and the late answer of one that has started is discarded. The system
+resolver cannot be interrupted, so a stalled lookup holds its thread until the
+system resolver gives up.
+
 ## Verification boundary
 
 Conformance uses local IPv4/IPv6 services and injected providers. No test

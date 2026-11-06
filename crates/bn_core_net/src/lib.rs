@@ -13,6 +13,7 @@ mod cidr;
 pub mod error;
 mod icmp;
 mod lookup;
+mod lookup_pool;
 mod neighbor;
 mod reverse;
 mod socket;
@@ -32,6 +33,7 @@ pub use addressing::{parse_address, parse_cidr};
 pub use cidr::Cidr;
 pub use icmp::{PingError, PingReply, ping};
 pub use lookup::{address_index, neighbor_of, ping_address, resolve_host, reverse_lookup};
+pub use lookup_pool::{LOOKUP_WORKERS, LOOKUPS_IN_FLIGHT_MAX, LookupPool, Refusal};
 pub use neighbor::{NeighborError, neighbor};
 pub use reverse::{ReverseError, reverse_timeout};
 
@@ -71,46 +73,6 @@ impl Endpoint {
 #[derive(Debug)]
 pub struct AddressesHandle {
     values: Vec<Address>,
-}
-
-fn resolver_tasks() -> &'static std::sync::Mutex<Vec<std::thread::JoinHandle<()>>> {
-    static TASKS: std::sync::OnceLock<std::sync::Mutex<Vec<std::thread::JoinHandle<()>>>> =
-        std::sync::OnceLock::new();
-    TASKS.get_or_init(|| std::sync::Mutex::new(Vec::new()))
-}
-
-fn reap_resolver_tasks() {
-    let tasks = resolver_tasks();
-    let mut tasks = tasks
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let mut index = 0;
-    while index < tasks.len() {
-        if tasks[index].is_finished() {
-            let task = tasks.swap_remove(index);
-            let _ = task.join();
-        } else {
-            index += 1;
-        }
-    }
-}
-
-pub(crate) fn retain_resolver_task(task: std::thread::JoinHandle<()>) {
-    resolver_tasks()
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .push(task);
-}
-
-/// Joins retained reverse/resolve workers.
-pub fn join_resolver_tasks() {
-    let tasks = resolver_tasks();
-    let mut tasks = tasks
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    while let Some(task) = tasks.pop() {
-        let _ = task.join();
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
@@ -196,37 +158,40 @@ pub fn resolve(host: &str, _port: u16, maximum: usize) -> std::io::Result<Vec<Ad
     Ok(addresses)
 }
 
-/// Resolves with a bounded worker and timeout; `Ok(None)` means the timeout
-/// elapsed and the worker was retained for a later join.
+/// Resolves on the shared lookup workers with a timeout; `Ok(None)` means the
+/// timeout elapsed (the lookup is cancelled if it has not started, and its
+/// late answer is dropped if it has).
 ///
 /// # Errors
 ///
-/// Returns the OS resolution error.
+/// The OS resolution error; `QuotaExceeded` when [`LOOKUPS_IN_FLIGHT_MAX`]
+/// lookups are already in flight, `Other` when the lookup died.
 pub fn resolve_timeout(
     host: &str,
     port: u16,
     maximum: usize,
     timeout: std::time::Duration,
 ) -> std::io::Result<Option<Vec<Address>>> {
-    reap_resolver_tasks();
+    resolve_timeout_in(LookupPool::global(), host, port, maximum, timeout)
+}
+
+/// [`resolve_timeout`] on a given pool.
+fn resolve_timeout_in(
+    pool: &LookupPool,
+    host: &str,
+    port: u16,
+    maximum: usize,
+    timeout: std::time::Duration,
+) -> std::io::Result<Option<Vec<Address>>> {
     let host = host.to_owned();
-    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
-    let task = std::thread::spawn(move || {
-        let _ = sender.send(resolve(&host, port, maximum));
-    });
-    match receiver.recv_timeout(timeout) {
-        Ok(result) => {
-            let _ = task.join();
-            result.map(Some)
-        }
-        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-            retain_resolver_task(task);
-            Ok(None)
-        }
-        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-            let _ = task.join();
-            Err(std::io::Error::other("resolver worker stopped"))
-        }
+    match pool.run(timeout, move || resolve(&host, port, maximum)) {
+        Ok(Some(result)) => result.map(Some),
+        Ok(None) => Ok(None),
+        Err(Refusal::Full { .. }) => Err(std::io::Error::from(std::io::ErrorKind::QuotaExceeded)),
+        Err(Refusal::Lost) => Err(std::io::Error::other(bn_catalog::text(
+            "net",
+            "resolve.worker_lost.cause",
+        ))),
     }
 }
 
@@ -280,7 +245,8 @@ impl AddressesHandle {
 
 #[cfg(test)]
 mod tests {
-    use super::{AddressesHandle, join_resolver_tasks, reap_resolver_tasks, retain_resolver_task};
+    use super::{AddressesHandle, LookupPool, resolve_timeout_in};
+    use std::time::Duration;
 
     #[test]
     fn resolve_handle_honors_zero_bound_without_network_access() {
@@ -292,20 +258,10 @@ mod tests {
     }
 
     #[test]
-    fn resolver_tasks_mutex_poison_recovery() {
-        // Deliberately poison the resolver_tasks mutex
-        let _ = std::thread::spawn(|| {
-            let tasks = super::resolver_tasks();
-            let _guard = tasks.lock().unwrap();
-            panic!("intentional panic to poison resolver_tasks mutex");
-        })
-        .join();
-
-        assert!(super::resolver_tasks().is_poisoned());
-
-        // Operations must recover cleanly without panic
-        reap_resolver_tasks();
-        retain_resolver_task(std::thread::spawn(|| {}));
-        join_resolver_tasks();
+    fn a_full_pool_is_a_quota_error_not_a_thread() {
+        let pool = LookupPool::new(1, 0);
+        let error = resolve_timeout_in(&pool, "localhost", 0, 1, Duration::from_millis(1))
+            .expect_err("no place in the pool");
+        assert_eq!(error.kind(), std::io::ErrorKind::QuotaExceeded);
     }
 }

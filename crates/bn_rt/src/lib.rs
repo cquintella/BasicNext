@@ -63,7 +63,7 @@ pub use file_abi::*;
 #[cfg(feature = "net")]
 pub use net::{
     Address as NetAddress, AddressesHandle, NeighborError, PingError, PingReply, ReverseError,
-    join_resolver_tasks, neighbor, ping, reverse_timeout,
+    neighbor, ping, reverse_timeout,
 };
 #[cfg(feature = "net")]
 pub use net_abi::*;
