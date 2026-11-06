@@ -150,6 +150,8 @@ pub(crate) fn emit_ownership(
     } else if is_fs_file(ty) {
         // Before the object path: a file aggregate is not an ARC pointer.
         emit_file_count(text, op, ty, operand, state);
+    } else if let Some(handle) = host_handle(ty) {
+        emit_host_handle_count(text, op, handle, ty, operand, state);
     } else if is_object_type(module, ty) || nullable_object(module, ty) {
         call(text, operand);
     } else if general_alternative(ty).is_some() && object_class(module, ty).is_some() {
@@ -313,6 +315,91 @@ fn emit_file_count(
     state.control_flow.label(text, format!("{tag}_done"));
 }
 
+/// A HOST value the runtime counts per binding, as it counts `FS.File`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum HostHandle {
+    /// `HOST.Exec.Result`: an `i64` id.
+    ExecResult,
+    /// `HOST.Net.Addresses`: an id that travels as a pointer.
+    Addresses,
+}
+
+fn host_handle(ty: &Type) -> Option<HostHandle> {
+    match ty {
+        Type::Named(name) if name == bn_ir::names::exec_result() => Some(HostHandle::ExecResult),
+        _ if is_net_addresses_type(ty) => Some(HostHandle::Addresses),
+        Type::Alternative(members) => members.iter().find_map(host_handle),
+        _ => None,
+    }
+}
+
+/// One strong reference on a counted HOST value. In an `OR Error` result the
+/// tag (field 0) is checked first: an error holds no handle, only its code.
+/// A bare value is the handle itself (an `i64` behind a pointer).
+fn emit_host_handle_count(
+    text: &mut crate::ir::LlvmModule,
+    op: Ownership,
+    handle: HostHandle,
+    ty: &Type,
+    operand: &crate::ir::LlvmOperand,
+    state: &mut EmissionState,
+) {
+    let Some(layout) = llvm_type(ty) else {
+        return;
+    };
+    let (symbol, returns) = match (handle, op) {
+        (HostHandle::ExecResult, Ownership::Retain) => ("bn_rt_exec_result_retain", I32),
+        (HostHandle::ExecResult, Ownership::Release) => ("bn_rt_exec_result_close", I32),
+        (HostHandle::Addresses, Ownership::Retain) => ("bn_rt_net_addresses_retain", I32),
+        (HostHandle::Addresses, Ownership::Release) => ("bn_rt_net_addresses_free", LlvmType::Void),
+    };
+    let tag = fresh(state, "hostown");
+    let alternative = matches!(layout, LlvmType::Struct(_));
+    if alternative {
+        text.assign(
+            format!("{tag}_err"),
+            LlvmInst::extract(layout.clone(), operand.clone(), 0),
+        );
+        text.emit(LlvmInst::CondBr {
+            cond: LlvmOperand::reg(format!("{tag}_err")),
+            true_dest: format!("{tag}_done"),
+            false_dest: format!("{tag}_walk"),
+        });
+        state.control_flow.label(text, format!("{tag}_walk"));
+    }
+    let argument = match (handle, alternative) {
+        (HostHandle::ExecResult, true) => {
+            text.assign(
+                format!("{tag}_handle"),
+                LlvmInst::extract(layout, operand.clone(), 2),
+            );
+            (I64, LlvmOperand::reg(format!("{tag}_handle")))
+        }
+        (HostHandle::ExecResult, false) => {
+            text.assign(
+                format!("{tag}_handle"),
+                LlvmInst::cast(CastOp::PtrToInt, Ptr, operand.clone(), I64),
+            );
+            (I64, LlvmOperand::reg(format!("{tag}_handle")))
+        }
+        (HostHandle::Addresses, true) => {
+            text.assign(
+                format!("{tag}_handle"),
+                LlvmInst::extract(layout, operand.clone(), 1),
+            );
+            (Ptr, LlvmOperand::reg(format!("{tag}_handle")))
+        }
+        (HostHandle::Addresses, false) => (Ptr, operand.clone()),
+    };
+    text.emit(LlvmInst::call(returns, symbol, vec![argument]));
+    if alternative {
+        text.emit(LlvmInst::Br {
+            dest: format!("{tag}_done"),
+        });
+        state.control_flow.label(text, format!("{tag}_done"));
+    }
+}
+
 /// `bn_rt_str_retain` / `bn_rt_str_release` on one STRING payload.
 fn emit_string_buffer(
     text: &mut crate::ir::LlvmModule,
@@ -445,6 +532,7 @@ pub(crate) fn holds_references(module: &Module, ty: &Type) -> bool {
         || matches!(ty, Type::Vector { element, .. } if holds_references(module, element))
         || *ty == Type::String
         || is_fs_file(ty)
+        || host_handle(ty).is_some()
         || matches!(ty, Type::Alternative(_) if contains_string(module, ty))
 }
 

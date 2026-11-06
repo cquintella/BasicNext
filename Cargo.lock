@@ -173,6 +173,7 @@ dependencies = [
  "bn_source",
  "bn_types",
  "bn_value",
+ "libc",
  "lsp-types",
  "rustix",
  "serde",

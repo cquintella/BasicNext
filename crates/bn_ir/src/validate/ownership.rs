@@ -29,8 +29,9 @@ use crate::{
 pub(super) fn is_arc_type(module: &Module, ty: &Type) -> bool {
     match ty {
         Type::String | Type::Pointer { .. } => true,
-        // `FS.File` is a counted handle. The count lives in the file table.
-        Type::Named(name) if name == "FS.File" => true,
+        // A counted HOST handle (`FS.File`, an Exec result, an address list):
+        // the count lives in a runtime table.
+        Type::Named(name) if crate::names::is_counted_host_handle(name) => true,
         Type::Named(name) => is_declared(module, name),
         // A `BNLog.Logger` is a counted handle; any other type of a natively
         // implemented library is a handle the IR does not count (the same

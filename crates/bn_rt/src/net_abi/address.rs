@@ -94,13 +94,20 @@ pub extern "C" fn bn_rt_net_neighbor(address: *const c_char, out: *mut *mut c_ch
     }
 }
 
+/// A resolved address list and the bindings that hold it (a counted handle,
+/// like `FS.File`): the release that reaches 0 frees it.
+struct HeldAddresses {
+    list: AddressesHandle,
+    holders: u32,
+}
+
 /// The live resolved address lists. An id is generation-checked
 /// (`crate::handle_table`) and travels as an opaque pointer: a freed list is
-/// never read or freed twice. No ceiling of its own: `bnc` does not yet free
-/// a list when its binding ends, so the table holds every list until exit.
+/// never read or freed twice. No ceiling of its own: each list is freed when
+/// its last binding ends.
 /// The id travels as a pointer, so pointers must hold 64 bits.
 const _: () = assert!(std::mem::size_of::<*mut std::ffi::c_void>() >= std::mem::size_of::<i64>());
-static ADDRESS_LISTS: std::sync::Mutex<crate::handle_table::GenerationTable<AddressesHandle>> =
+static ADDRESS_LISTS: std::sync::Mutex<crate::handle_table::GenerationTable<HeldAddresses>> =
     std::sync::Mutex::new(crate::handle_table::GenerationTable::new());
 
 /// Runs `f` on the live list `handle`. A freed or unknown handle is a
@@ -109,9 +116,10 @@ fn with_addresses<T>(handle: *const std::ffi::c_void, f: impl FnOnce(&AddressesH
     let lists = ADDRESS_LISTS
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    lists
-        .get(handle as i64)
-        .map_or_else(|| crate::arc_abi::abort_use_after_release(), f)
+    lists.get(handle as i64).map_or_else(
+        || crate::arc_abi::abort_use_after_release(),
+        |held| f(&held.list),
+    )
 }
 
 /// `HOST.Net.Resolve`: `out` receives an opaque `AddressesHandle`, freed with
@@ -140,7 +148,13 @@ pub extern "C" fn bn_rt_net_resolve(
             let stored = ADDRESS_LISTS
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .insert(AddressesHandle::from_addresses(addresses), usize::MAX);
+                .insert(
+                    HeldAddresses {
+                        list: AddressesHandle::from_addresses(addresses),
+                        holders: 1,
+                    },
+                    usize::MAX,
+                );
             match stored {
                 Some(id) => {
                     write_out(out, id as *mut std::ffi::c_void);
@@ -200,14 +214,39 @@ pub extern "C" fn bn_rt_net_addresses_get(
 #[allow(unsafe_code)] // C ABI export.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_addresses_free(handle: *mut std::ffi::c_void) {
-    // Idempotent: a second free of the same id finds nothing.
-    if !handle.is_null() {
-        drop(
-            ADDRESS_LISTS
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .remove(handle as i64),
-        );
+    // One binding fewer; the last one frees the list. A stale id finds nothing.
+    if handle.is_null() {
+        return;
+    }
+    let id = handle as i64;
+    let mut lists = ADDRESS_LISTS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let last = lists.get_mut(id).is_some_and(|held| {
+        held.holders -= 1;
+        held.holders == 0
+    });
+    if last {
+        drop(lists.remove(id));
+    }
+}
+
+/// One more binding holds the list `handle`.
+#[allow(unsafe_code)] // C ABI export.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_net_addresses_retain(handle: *mut std::ffi::c_void) -> i32 {
+    if handle.is_null() {
+        return 0;
+    }
+    let mut lists = ADDRESS_LISTS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    match lists.get_mut(handle as i64) {
+        Some(held) => {
+            held.holders = held.holders.saturating_add(1);
+            0
+        }
+        None => crate::arc_abi::abort_use_after_release(),
     }
 }
 
@@ -305,20 +344,35 @@ pub extern "C" fn bn_rt_net_cidr_contains(
 
 #[cfg(test)]
 mod tests {
-    use super::{ADDRESS_LISTS, AddressesHandle, bn_rt_net_addresses_free};
+    use super::{
+        ADDRESS_LISTS, AddressesHandle, HeldAddresses, bn_rt_net_addresses_free,
+        bn_rt_net_addresses_retain,
+    };
 
-    /// A second free of the same list finds nothing (it was a double free on
-    /// a raw pointer before the generation table).
+    /// The last holder frees the list; a free past the last finds nothing
+    /// (it was a double free on a raw pointer before the generation table).
     #[test]
-    fn freeing_a_list_twice_frees_it_once() {
+    fn the_last_holder_frees_the_list_once() {
         let id = ADDRESS_LISTS
             .lock()
             .expect("lists")
-            .insert(AddressesHandle::from_addresses(Vec::new()), usize::MAX)
+            .insert(
+                HeldAddresses {
+                    list: AddressesHandle::from_addresses(Vec::new()),
+                    holders: 1,
+                },
+                usize::MAX,
+            )
             .expect("insert");
         let handle = id as *mut std::ffi::c_void;
+        assert_eq!(bn_rt_net_addresses_retain(handle), 0);
         bn_rt_net_addresses_free(handle);
+        assert!(
+            ADDRESS_LISTS.lock().expect("lists").get(id).is_some(),
+            "one holder left"
+        );
         bn_rt_net_addresses_free(handle);
         assert!(ADDRESS_LISTS.lock().expect("lists").get(id).is_none());
+        bn_rt_net_addresses_free(handle);
     }
 }

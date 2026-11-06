@@ -1788,7 +1788,6 @@ crates/bn_llvm/src/llvm/math.rs	prose	validated float BNMath arity
 crates/bn_llvm/src/llvm/math.rs	prose	validated integer BNMath
 crates/bn_llvm/src/llvm/math.rs	prose	validated unary float BNMath
 crates/bn_llvm/src/llvm/math.rs	prose	validated vector BNMath
-crates/bn_llvm/src/llvm/ownership_emission.rs	identifier	HOST.Exec.Result
 crates/bn_llvm/src/llvm/power_shift.rs	prose	integer LLVM type
 crates/bn_llvm/src/llvm/power_shift.rs	prose	shift count must be in 0..{width}
 crates/bn_llvm/src/llvm/power_shift.rs	prose	validated float power type

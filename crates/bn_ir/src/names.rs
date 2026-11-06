@@ -140,6 +140,27 @@ fn is_identifier(text: &str) -> bool {
 /// check apply the same rule; other library types are not counted yet.
 pub const BNLOG_COUNTED_CLASS: &str = "Logger";
 
+/// The type name of `HOST.Exec.Result` (catalog `modules`).
+#[must_use]
+pub fn exec_result() -> &'static str {
+    bn_catalog::text("modules", "type.host_exec_result")
+}
+
+/// Whether `name` is a HOST value that is a counted handle (`FS.File`, an
+/// Exec result, an address list): each binding holds one count in a runtime
+/// table, and the end of the last binding closes or frees the value. The
+/// lowering, the IR validator and the native backend read this one list.
+#[must_use]
+pub fn is_counted_host_handle(name: &str) -> bool {
+    [
+        "type.fs_file",
+        "type.host_exec_result",
+        "type.host_net_addresses",
+    ]
+    .iter()
+    .any(|key| bn_catalog::text("modules", key) == name)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{EmittedNameKind, classify};

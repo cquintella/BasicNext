@@ -34,6 +34,8 @@ mod crypto_tour;
 mod destructuring;
 #[path = "programs/fs_directories_policy.rs"]
 mod fs_directories_policy;
+#[path = "programs/host_handle_release.rs"]
+mod host_handle_release;
 #[path = "programs/loop_scope.rs"]
 mod loop_scope;
 #[path = "programs/math_expressions.rs"]

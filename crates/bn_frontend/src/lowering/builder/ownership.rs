@@ -36,10 +36,10 @@ impl Builder<'_> {
                 })
         };
         match ty {
-            // `FS.File` is a counted handle, not an object: the last strong
-            // reference closes it (host.md). The count is the file table, not
-            // `bn_rt_arc_retain`.
-            Type::Named(name) if name == "FS.File" => true,
+            // A counted HOST handle (`FS.File`, an Exec result, an address
+            // list) is not an object: the last strong reference closes or frees
+            // it (host.md). The count is a runtime table, not `bn_rt_arc_retain`.
+            Type::Named(name) if bn_ir::names::is_counted_host_handle(name) => true,
             Type::Named(name) => declared(name),
             // A `BNLog.Logger` is a counted handle: a copy retains it and the
             // end of its last binding destroys it, which closes its

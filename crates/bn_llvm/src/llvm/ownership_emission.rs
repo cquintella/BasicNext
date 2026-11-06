@@ -113,7 +113,7 @@ pub(crate) fn lower_ownership_emission(
                 }
             } else if let Some((slot, symbol, checked)) = release_call(module, ty) {
                 // A handle-backed value: a `bn_rt` table index behind a ptr,
-                // or slot 2 of the aggregate (`FS.File`, `HOST.Exec.Result`).
+                // or slot 2 of the aggregate (`FS.File`).
                 let v = value.0;
                 let own = O::reg(format!("v{v}"));
                 let handle = format!("{slot}delhandle{v}");
@@ -494,13 +494,8 @@ fn json_document_release(module: &Module, ty: &Type) -> Option<(&'static str, &'
 /// slot prefix of its registers.
 fn release_call(module: &Module, ty: &Type) -> Option<(&'static str, &'static str, Rc)> {
     let aggregate = llvm_type(ty) == Some(crate::layout::handle_result_ty());
-    let exec = matches!(ty, Type::Alternative(alternatives) if alternatives.iter().any(
-        |item| matches!(item, Type::Named(name) if name == "HOST.Exec.Result")
-    ));
     Some(if is_bndata_dataframe_type(module, ty) {
         ("df", "bn_rt_dataframe_close", Rc::Checked)
-    } else if aggregate && exec {
-        ("exec", "bn_rt_exec_result_close", Rc::Dropped)
     } else if aggregate {
         ("file", "bn_rt_file_release", Rc::Dropped)
     } else if let Some(release) = json_document_release(module, ty) {
