@@ -39,8 +39,7 @@ fn is_parameter(text: &str) -> bool {
         return false;
     };
     match (words.next(), words.next()) {
-        (None, None) => is_identifier(name),
-        (Some("AS"), Some(_)) => is_identifier(name),
+        (None, None) | (Some("AS"), Some(_)) => is_identifier(name),
         _ => false,
     }
 }
@@ -56,7 +55,7 @@ fn function_of(span: &str) -> Option<&str> {
         return None;
     }
     let parameters_are_names =
-        arguments.trim().is_empty() || arguments.split(',').all(|argument| is_parameter(argument));
+        arguments.trim().is_empty() || arguments.split(',').all(is_parameter);
     parameters_are_names.then(|| target.rsplit('.').next().unwrap_or(target))
 }
 

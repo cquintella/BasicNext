@@ -2337,7 +2337,7 @@ fn companion_log_never_replaces_or_hides_the_product() {
 /// `UNSUPPORTED_ALGORITHM`, 5 is `LEGACY_DISABLED`.
 const BNCRYPTO_POLICY_OUTPUT: &str = "hash-blake3 ok\nhash-blake3-fips 4\nhash-sha3-fips ok\nhasher-blake2b-fips 4\nhash-md5-allow-legacy 5\nhash-blake3-next-call ok\nmac-blake3-fips 4\nmac-stream-blake3-fips 4\nmac-hmac384-fips ok\nkeypair-x25519 ok\nkeypair-x25519-fips 4\nkeypair-ed25519-fips ok\n";
 
-/// EncryptWith and DecryptWith: the AAD is bound, the KEYID names the key, an unsupported algorithm and a wrong key are Errors.
+/// `EncryptWith` and `DecryptWith`: the AAD is bound, the `KEYID` names the key, an unsupported algorithm and a wrong key are Errors.
 #[test]
 fn compiled_bncrypto_aead_options_matches_the_interpreter() {
     let directory = std::env::temp_dir().join(format!(
@@ -2372,7 +2372,7 @@ fn compiled_bncrypto_aead_options_matches_the_interpreter() {
     let _ = fs::remove_dir_all(&directory);
 }
 
-/// A BNCrypto handle widened into T OR Error keeps its value; a program class named SecretKey stays an object.
+/// A `BNCrypto` handle widened into `T OR Error` keeps its value; a program class named `SecretKey` stays an object.
 #[test]
 fn compiled_bncrypto_widened_handles_matches_the_interpreter() {
     let directory = std::env::temp_dir().join(format!(
@@ -2407,7 +2407,7 @@ fn compiled_bncrypto_widened_handles_matches_the_interpreter() {
     let _ = fs::remove_dir_all(&directory);
 }
 
-/// HashPasswordWith, NeedsRehash, DeriveKey and DeriveSubkey: cost floor, fail-safe rehash, deterministic derived keys, refusals as Errors.
+/// `HashPasswordWith`, `NeedsRehash`, `DeriveKey` and `DeriveSubkey`: cost floor, fail-safe rehash, deterministic derived keys, refusals as Errors.
 #[test]
 fn compiled_bncrypto_kdf_options_matches_the_interpreter() {
     let directory = std::env::temp_dir().join(format!(
@@ -2442,7 +2442,7 @@ fn compiled_bncrypto_kdf_options_matches_the_interpreter() {
     let _ = fs::remove_dir_all(&directory);
 }
 
-/// EncryptFileWithPassword and DecryptFileWithPassword: round trip, WRONG_PASSWORD without partial output, and no opening by key.
+/// `EncryptFileWithPassword` and `DecryptFileWithPassword`: round trip, `WRONG_PASSWORD` without partial output, and no opening by key.
 #[test]
 fn compiled_bncrypto_password_file_matches_the_interpreter() {
     let directory = std::env::temp_dir().join(format!(
