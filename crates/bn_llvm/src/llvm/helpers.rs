@@ -652,7 +652,7 @@ pub(crate) fn provider_name(module: &Module, name: &str) -> Option<&'static str>
         .iter()
         .any(|provider| provider.0 == module_id)
     {
-        Some("BNJson")
+        Some(bn_catalog::text("modules", "module.json"))
     } else if module
         .bnsqlite_providers
         .iter()

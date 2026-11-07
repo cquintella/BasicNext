@@ -33,6 +33,11 @@ pub(crate) fn carries_bnjson(module: &Module, ty: &Type) -> bool {
 /// The `BNJson` member `name` selects, if this module imports `BNJson`.
 #[cfg(feature = "json")]
 pub(crate) fn bnjson_member<'a>(module: &Module, name: &'a str) -> Option<&'a str> {
+    if name.starts_with('#')
+        && provider_name(module, name) != Some(bn_catalog::text("modules", "module.json"))
+    {
+        return None;
+    }
     let method = name.rsplit('.').next()?;
     (!module.bnjson_providers.is_empty()
         && matches!(
@@ -206,7 +211,7 @@ pub(crate) fn carries_bncrypto_public_key(module: &Module, ty: &Type) -> bool {
 /// The `BNCrypto` handle types whose explicit `RELEASE` ends their runtime
 /// table entry: type name, register slot prefix, release symbol. A `KeyPair`
 /// is a STRUCT and is not here. The counted ownership walk releases each key
-/// and frees the record (`crypto_ownership`); this table must not release
+/// and frees the record (`library_ownership`); this table must not release
 /// them a second time.
 const BNCRYPTO_HANDLE_RELEASES: [(&str, &str, &str); 4] = [
     ("Hasher", "cryhs", "bn_rt_crypto_hasher_release"),
@@ -566,6 +571,11 @@ pub(crate) fn carries_bnsqlite_connection(module: &Module, ty: &Type) -> bool {
 /// the callee is part of the supported surface.
 #[cfg(feature = "sqlite")]
 pub(crate) fn bnsqlite_method<'a>(module: &Module, name: &'a str) -> Option<&'a str> {
+    if name.starts_with('#')
+        && provider_name(module, name) != Some(bn_catalog::text("llvm", "msg.bnsqlite"))
+    {
+        return None;
+    }
     let method = name.rsplit('.').next()?;
     (!module.bnsqlite_providers.is_empty()
         && matches!(

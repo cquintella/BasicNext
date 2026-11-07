@@ -60,9 +60,32 @@ impl Builder<'_> {
             {
                 true
             }
-            // Any other type of a natively implemented library (`BNJson`,
-            // `BNData`, …) is a library handle the IR does not count yet
-            // (the same gap a logger had before its handles were released).
+            Type::ImportedNamed { module, name }
+                if self.model.bnjson_modules.contains(module)
+                    && name == bn_ir::names::BNJSON_COUNTED_CLASS =>
+            {
+                true
+            }
+            Type::ImportedNamed { module, name }
+                if self.model.bndata_modules.contains(module)
+                    && name == bn_ir::names::BNDATA_COUNTED_CLASS =>
+            {
+                true
+            }
+            Type::ImportedNamed { module, name }
+                if self.model.bnsqlite_modules.contains(module)
+                    && name == bn_ir::names::BNSQLITE_COUNTED_CLASS =>
+            {
+                true
+            }
+            Type::ImportedNamed { module, name }
+                if self.model.bncompress_modules.contains(module)
+                    && bn_ir::names::is_bncompress_counted_handle(name) =>
+            {
+                true
+            }
+            // Any other type of a natively implemented library is a handle
+            // the IR does not count.
             Type::ImportedNamed { module, .. } if self.model.standard_modules.contains(module) => {
                 false
             }

@@ -1728,7 +1728,6 @@ crates/bn_llvm/src/llvm/functions.rs	prose	TARGET_UNSUPPORTED_TYPE: function '{}
 crates/bn_llvm/src/llvm/general_alternative.rs	prose	a general alternative contains only `Class OR NULL` or `T OR Error`
 crates/bn_llvm/src/llvm/helpers.rs	identifier	BNCrypto
 crates/bn_llvm/src/llvm/helpers.rs	identifier	BNDispatch
-crates/bn_llvm/src/llvm/helpers.rs	identifier	BNJson
 crates/bn_llvm/src/llvm/helpers.rs	identifier	BNMath
 crates/bn_llvm/src/llvm/helpers.rs	identifier	BNWeb
 crates/bn_llvm/src/llvm/helpers.rs	identifier	HOST.
@@ -2363,7 +2362,6 @@ libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Bytes, BNCrypto.Key, BNCrypto.
 libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Bytes, BNCrypto.Secret, BNCrypto.Key or BNCrypto.SecretKey
 libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Hasher or BNCrypto.MacStream
 libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Hasher or BNCrypto.MacStream
-libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Key has been zeroized
 libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Key is invalid
 libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Key is invalid
 libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Key is invalid
@@ -2375,7 +2373,6 @@ libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Secret is invalid
 libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Secret is invalid
 libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Secret was already released
 libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Secret was already released
-libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.SecretKey has been zeroized
 libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.SecretKey is invalid
 libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.SecretKey is invalid
 libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.SecretKey is invalid

@@ -33,10 +33,8 @@ pub(super) fn is_arc_type(module: &Module, ty: &Type) -> bool {
         // the count lives in a runtime table.
         Type::Named(name) if crate::names::is_counted_host_handle(name) => true,
         Type::Named(name) => is_declared(module, name),
-        // A `BNLog.Logger` and the counted `BNCrypto` handles (including the
-        // `KeyPair` record) carry a count. Any other type of a natively
-        // implemented library is a handle the IR does not count yet (the
-        // same rule the lowering applies).
+        // A `BNLog.Logger`, counted `BNCrypto`, `BNJson`, `BNData`, `BNSqlite`
+        // and `BNCompress` handles carry a count (the same rule lowering applies).
         Type::ImportedNamed { module: id, name }
             if module.standard_library_of((*id).into()).is_some() =>
         {
@@ -45,6 +43,14 @@ pub(super) fn is_arc_type(module: &Module, ty: &Type) -> bool {
                 || (module.bncrypto_providers.contains(&(*id).into())
                     && (crate::names::is_bncrypto_counted_handle(name)
                         || crate::names::is_bncrypto_counted_record(name)))
+                || (module.bnjson_providers.contains(&(*id).into())
+                    && name == crate::names::BNJSON_COUNTED_CLASS)
+                || (module.bndata_providers.contains(&(*id).into())
+                    && name == crate::names::BNDATA_COUNTED_CLASS)
+                || (module.bnsqlite_providers.contains(&(*id).into())
+                    && name == crate::names::BNSQLITE_COUNTED_CLASS)
+                || (module.bncompress_providers.contains(&(*id).into())
+                    && crate::names::is_bncompress_counted_handle(name))
         }
         Type::ImportedNamed { module: id, name } => {
             is_declared(module, &format!("#{}.{name}", id.0))

@@ -185,6 +185,21 @@ pub fn is_bncrypto_counted_record(name: &str) -> bool {
     name == "KeyPair"
 }
 
+/// The `BNJson` class whose binding holds one count in the document table.
+pub const BNJSON_COUNTED_CLASS: &str = "Json";
+
+/// The `BNData` class whose binding holds one count in the frame table.
+pub const BNDATA_COUNTED_CLASS: &str = "DataFrame";
+
+/// The `BNSqlite` class whose binding holds one count in the connection table.
+pub const BNSQLITE_COUNTED_CLASS: &str = "Connection";
+
+/// A `BNCompress` handle whose binding holds one count in the runtime table.
+#[must_use]
+pub fn is_bncompress_counted_handle(name: &str) -> bool {
+    matches!(name, "Bytes" | "ZipArchive")
+}
+
 #[cfg(test)]
 mod tests {
     use super::{EmittedNameKind, classify};

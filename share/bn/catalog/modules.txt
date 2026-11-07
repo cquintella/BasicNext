@@ -3,6 +3,7 @@
 # identifiers live in the catalog). One `key = value` per line.
 
 module.compress = BNCompress
+module.json = BNJson
 file.compress = BNCompress.bn
 type.compress_bytes = BNCompress.Bytes
 type.compress_zip_archive = BNCompress.ZipArchive

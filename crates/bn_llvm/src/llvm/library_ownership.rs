@@ -3,23 +3,33 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Counted `BNCrypto` handles. The IR emits `Retain` and `Release`; this
-//! module calls the runtime table, never `bn_rt_arc_retain`. Handle 0 is the
-//! empty binding and the error arm of `T OR Error`.
+//! Counted library handles (`BNCrypto`, `BNJson`, `BNData`, `BNSqlite`,
+//! `BNCompress`). The IR emits `Retain` and `Release`; this module calls the
+//! runtime table, never `bn_rt_arc_retain`. Handle 0 is the empty binding and
+//! the error arm of `T OR Error`.
 
 use super::{Ownership, emit_ownership, fresh};
 use crate::ir::{CastOp, ICmpCond, InstSink as _, LlvmInst, LlvmOperand, LlvmType};
 use bn_ir::{Module, ModuleId};
 use bn_types::Type;
 
-/// Whether `ty` is a counted crypto handle, a `KeyPair`, or an alternative
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ProviderKind {
+    Crypto,
+    Json,
+    Data,
+    Sqlite,
+    Compress,
+}
+
+/// Whether `ty` is a counted library handle, a `KeyPair`, or an alternative
 /// that holds one.
-pub(super) fn holds_counted_crypto(module: &Module, ty: &Type) -> bool {
+pub(super) fn holds_counted_library(module: &Module, ty: &Type) -> bool {
     match ty {
         Type::Alternative(members) => members
             .iter()
-            .any(|member| holds_counted_crypto(module, member)),
-        other => provider_name(module, other).is_some_and(counted_name),
+            .any(|member| holds_counted_library(module, member)),
+        other => handle_symbols(module, other).is_some() || is_keypair(module, other),
     }
 }
 
@@ -49,55 +59,83 @@ pub(super) fn emit_if_counted(
     false
 }
 
-fn counted_name(name: &str) -> bool {
-    bn_ir::names::is_bncrypto_counted_handle(name) || bn_ir::names::is_bncrypto_counted_record(name)
+fn provider_of(module: &Module, module_id: ModuleId) -> Option<ProviderKind> {
+    if module.bncrypto_providers.contains(&module_id) {
+        Some(ProviderKind::Crypto)
+    } else if module.bnjson_providers.contains(&module_id) {
+        Some(ProviderKind::Json)
+    } else if module.bndata_providers.contains(&module_id) {
+        Some(ProviderKind::Data)
+    } else if module.bnsqlite_providers.contains(&module_id) {
+        Some(ProviderKind::Sqlite)
+    } else if module.bncompress_providers.contains(&module_id) {
+        Some(ProviderKind::Compress)
+    } else {
+        None
+    }
 }
 
-fn provider_name<'a>(module: &Module, ty: &'a Type) -> Option<&'a str> {
+fn provider_and_name<'a>(module: &Module, ty: &'a Type) -> Option<(ProviderKind, &'a str)> {
     match ty {
         Type::ImportedNamed {
             module: id, name, ..
-        } if module.bncrypto_providers.contains(&ModuleId::from(*id)) => Some(name.as_str()),
+        } => {
+            let provider = provider_of(module, ModuleId::from(*id))?;
+            Some((provider, name.as_str()))
+        }
         // A field of a library STRUCT is `Named("#<id>.PublicKey")`. The
         // layout qualifier rewrites the module's own types in place, so the
         // walk of a `KeyPair` never sees `ImportedNamed`.
-        Type::Named(qualified) => qualified_provider_name(module, qualified),
+        Type::Named(qualified) => {
+            let (id_text, name) = qualified.strip_prefix('#')?.split_once('.')?;
+            let id = id_text.parse::<u32>().ok()?;
+            let provider = provider_of(module, ModuleId(id))?;
+            Some((provider, name))
+        }
         _ => None,
     }
 }
 
-/// `#<id>.Name` when `<id>` is a `BNCrypto` provider this program imports.
-fn qualified_provider_name<'a>(module: &Module, qualified: &'a str) -> Option<&'a str> {
-    let (id_text, name) = qualified.strip_prefix('#')?.split_once('.')?;
-    let id = id_text.parse::<u32>().ok()?;
-    module
-        .bncrypto_providers
-        .contains(&ModuleId(id))
-        .then_some(name)
-}
-
-fn symbols_of(name: &str) -> Option<(&'static str, &'static str)> {
-    match name {
-        "Bytes" => Some(("bn_rt_crypto_bytes_retain", "bn_rt_crypto_bytes_release")),
-        "Key" => Some(("bn_rt_crypto_key_retain", "bn_rt_crypto_key_release")),
-        "Secret" => Some(("bn_rt_crypto_secret_retain", "bn_rt_crypto_secret_release")),
-        "SecretKey" => Some((
+fn symbols_of(provider: ProviderKind, name: &str) -> Option<(&'static str, &'static str)> {
+    match (provider, name) {
+        (ProviderKind::Crypto, "Bytes") => {
+            Some(("bn_rt_crypto_bytes_retain", "bn_rt_crypto_bytes_release"))
+        }
+        (ProviderKind::Crypto, "Key") => {
+            Some(("bn_rt_crypto_key_retain", "bn_rt_crypto_key_release"))
+        }
+        (ProviderKind::Crypto, "Secret") => {
+            Some(("bn_rt_crypto_secret_retain", "bn_rt_crypto_secret_release"))
+        }
+        (ProviderKind::Crypto, "SecretKey") => Some((
             "bn_rt_crypto_secret_key_retain",
             "bn_rt_crypto_secret_key_release",
         )),
-        "PublicKey" => Some((
+        (ProviderKind::Crypto, "PublicKey") => Some((
             "bn_rt_crypto_public_key_retain",
             "bn_rt_crypto_public_key_release",
         )),
-        "PrivateKey" => Some((
+        (ProviderKind::Crypto, "PrivateKey") => Some((
             "bn_rt_crypto_private_key_retain",
             "bn_rt_crypto_private_key_release",
         )),
-        "Hasher" => Some(("bn_rt_crypto_hasher_retain", "bn_rt_crypto_hasher_release")),
-        "MacStream" => Some((
+        (ProviderKind::Crypto, "Hasher") => {
+            Some(("bn_rt_crypto_hasher_retain", "bn_rt_crypto_hasher_release"))
+        }
+        (ProviderKind::Crypto, "MacStream") => Some((
             "bn_rt_crypto_mac_stream_retain",
             "bn_rt_crypto_mac_stream_release",
         )),
+        (ProviderKind::Json, "Json") => Some(("bn_rt_json_retain", "bn_rt_json_release")),
+        (ProviderKind::Data, "DataFrame") => {
+            Some(("bn_rt_dataframe_retain", "bn_rt_dataframe_close"))
+        }
+        (ProviderKind::Sqlite, "Connection") => Some(("bn_rt_sqlite_retain", "bn_rt_sqlite_close")),
+        (ProviderKind::Compress, "Bytes") => Some((
+            "bn_rt_compress_bytes_retain",
+            "bn_rt_compress_bytes_release",
+        )),
+        (ProviderKind::Compress, "ZipArchive") => Some(("bn_rt_zip_retain", "bn_rt_zip_release")),
         _ => None,
     }
 }
@@ -108,9 +146,19 @@ fn handle_symbols(module: &Module, ty: &Type) -> Option<(&'static str, &'static 
     match ty {
         Type::Alternative(members) => members
             .iter()
-            .find_map(|member| provider_name(module, member).and_then(symbols_of)),
-        other => provider_name(module, other).and_then(symbols_of),
+            .find_map(|member| handle_symbols(module, member)),
+        other => {
+            let (provider, name) = provider_and_name(module, other)?;
+            symbols_of(provider, name)
+        }
     }
+}
+
+fn is_keypair(module: &Module, ty: &Type) -> bool {
+    matches!(
+        provider_and_name(module, ty),
+        Some((ProviderKind::Crypto, "KeyPair"))
+    )
 }
 
 /// The `KeyPair` member of a `KeyPair OR Error` alternative.
@@ -120,7 +168,7 @@ fn keypair_member(module: &Module, ty: &Type) -> Option<Type> {
     };
     members
         .iter()
-        .find(|member| provider_name(module, member).is_some_and(|name| name == "KeyPair"))
+        .find(|member| is_keypair(module, member))
         .cloned()
 }
 
@@ -131,8 +179,8 @@ fn emit_handle(
     symbol: &str,
     state: &mut crate::EmissionState,
 ) {
-    let tag = fresh(state, "cryown");
-    let handle = if matches!(ty, Type::Alternative(_)) {
+    let tag = fresh(state, "libown");
+    let handle = if crate::layout::llvm_type(ty) == Some(crate::layout::handle_result_ty()) {
         let union = crate::layout::handle_result_ty();
         text.assign(
             format!("{tag}err"),

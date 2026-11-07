@@ -49,15 +49,33 @@ fn crypto_handles_end_with_their_binding_on_both_backends() {
 #[test]
 fn a_compiled_loop_of_crypto_handles_keeps_memory_flat() {
     let payload = "a".repeat(PAYLOAD_BYTES);
-    let cases = [
+    for (name, body, expected, uses_payload) in crypto_cases() {
+        let directory = TestDir::new(&format!("crypto-handle-{name}")).expect("directory");
+        let source = directory.join("loop.bn");
+        let text = if uses_payload { payload.as_str() } else { "" };
+        fs::write(&source, loop_program(&body, text, expected)).expect("source");
+        let artifact = compile_native(&source, &directory);
+        let mut command = Command::new(&artifact);
+        command.stdout(std::process::Stdio::null());
+        let (status, peak) = super::resident::peak_resident_bytes(&mut command);
+        assert_eq!(status, 0, "{name} exited with {status}");
+        assert!(
+            peak < RESIDENT_CEILING_BYTES,
+            "{name} peak resident {peak} bytes after {SCOPES} scopes"
+        );
+    }
+}
+
+fn crypto_cases() -> [(&'static str, String, i64, bool); 9] {
+    let payload_len = i64::try_from(PAYLOAD_BYTES).expect("fits i64");
+    [
         (
             "bytes",
-            format!(
-                "FUNCTION Once(text AS STRING) AS INTEGER\n    \
-                 LET value AS Crypto.Bytes = Crypto.FromText(text)\n    \
-                 RETURN value.Length()\nEND FUNCTION\n"
-            ),
-            i64::from(SCOPES) * PAYLOAD_BYTES as i64,
+            "FUNCTION Once(text AS STRING) AS INTEGER\n    \
+             LET value AS Crypto.Bytes = Crypto.FromText(text)\n    \
+             RETURN value.Length()\nEND FUNCTION\n"
+                .to_string(),
+            i64::from(SCOPES) * payload_len,
             true,
         ),
         (
@@ -140,22 +158,7 @@ fn a_compiled_loop_of_crypto_handles_keeps_memory_flat() {
             i64::from(SCOPES) * 30,
             false,
         ),
-    ];
-    for (name, body, expected, uses_payload) in cases {
-        let directory = TestDir::new(&format!("crypto-handle-{name}")).expect("directory");
-        let source = directory.join("loop.bn");
-        let text = if uses_payload { payload.as_str() } else { "" };
-        fs::write(&source, loop_program(&body, text, expected)).expect("source");
-        let artifact = compile_native(&source, &directory);
-        let mut command = Command::new(&artifact);
-        command.stdout(std::process::Stdio::null());
-        let (status, peak) = super::resident::peak_resident_bytes(&mut command);
-        assert_eq!(status, 0, "{name} exited with {status}");
-        assert!(
-            peak < RESIDENT_CEILING_BYTES,
-            "{name} peak resident {peak} bytes after {SCOPES} scopes"
-        );
-    }
+    ]
 }
 
 fn loop_program(body: &str, text: &str, expected: i64) -> String {

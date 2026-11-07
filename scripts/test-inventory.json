@@ -17,6 +17,8 @@
     "bn::test/programs::host_handle_release::a_compiled_loop_of_exec_runs_keeps_memory_flat",
     "bn::test/programs::crypto_handle_release::crypto_handles_end_with_their_binding_on_both_backends",
     "bn::test/programs::crypto_handle_release::a_compiled_loop_of_crypto_handles_keeps_memory_flat",
+    "bn::test/programs::library_handle_release::library_handles_end_with_their_binding_on_both_backends",
+    "bn::test/programs::library_handle_release::a_compiled_loop_of_library_handles_keeps_memory_flat",
     "bn::test/programs::web_static_policy::a_static_mount_refuses_a_fifo_and_paths_outside_the_read_root",
     "bn_llvm::lib/bn_llvm::functions::tests::a_synthetic_value_is_above_every_defined_value",
     "bn_rt::rlib/bn_rt::handle_table::tests::freed_slots_are_reused_and_retired_slots_are_not",

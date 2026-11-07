@@ -45,6 +45,8 @@ mod fs_directories_policy;
 mod host_handle_release;
 #[path = "programs/https_trust_roots.rs"]
 mod https_trust_roots;
+#[path = "programs/library_handle_release.rs"]
+mod library_handle_release;
 #[path = "programs/loop_scope.rs"]
 mod loop_scope;
 #[path = "programs/math_expressions.rs"]

@@ -147,8 +147,8 @@ pub(crate) fn emit_ownership(
         };
         let tag = fresh(state, "logown");
         crate::log_emission::emit_logger_ownership(text, ty, operand, &tag, symbol);
-    } else if crypto_ownership::emit_if_counted(text, module, op, ty, operand, state) {
-        // A counted crypto handle is an i64 in a pointer slot, not an object.
+    } else if library_ownership::emit_if_counted(text, module, op, ty, operand, state) {
+        // A counted library handle is an i64 in a pointer slot, not an object.
     } else if is_fs_file(ty) {
         // Before the object path: a file aggregate is not an ARC pointer.
         emit_file_count(text, op, ty, operand, state);
@@ -536,11 +536,11 @@ pub(crate) fn holds_references(module: &Module, ty: &Type) -> bool {
         || is_fs_file(ty)
         || host_handle(ty).is_some()
         || matches!(ty, Type::Alternative(_) if contains_string(module, ty))
-        || crypto_ownership::holds_counted_crypto(module, ty)
+        || library_ownership::holds_counted_library(module, ty)
 }
 
-#[path = "crypto_ownership.rs"]
-mod crypto_ownership;
+#[path = "library_ownership.rs"]
+mod library_ownership;
 
 /// Whether `ty` contains a STRING buffer the native code counts.
 pub(crate) fn contains_string(module: &Module, ty: &Type) -> bool {

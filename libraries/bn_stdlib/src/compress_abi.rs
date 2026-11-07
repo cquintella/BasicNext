@@ -193,6 +193,9 @@ pub extern "C" fn bn_rt_compress_bytes_to_text(handle: u64, out: *mut *mut c_cha
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_compress_bytes_retain(handle: u64) -> i32 {
+    if handle == 0 {
+        return BN_COMPRESS_OK;
+    }
     let held = bn_core_copy::table::<Buffers>()
         .0
         .lock()
@@ -708,6 +711,9 @@ pub extern "C" fn bn_rt_zip_close(handle: u64) -> i32 {
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_zip_retain(handle: u64) -> i32 {
+    if handle == 0 {
+        return BN_COMPRESS_OK;
+    }
     let held = bn_core_copy::table::<Archives>()
         .0
         .lock()

@@ -112,6 +112,14 @@ pub struct SemanticModel {
     /// The `BNCrypto` modules this module imports: their handles and the
     /// `KeyPair` record are counted, released when the last binding ends.
     pub bncrypto_modules: HashSet<ModuleId>,
+    /// The `BNJson` modules this module imports: their `Json` handle is counted.
+    pub bnjson_modules: HashSet<ModuleId>,
+    /// The `BNData` modules this module imports: their `DataFrame` handle is counted.
+    pub bndata_modules: HashSet<ModuleId>,
+    /// The `BNSqlite` modules this module imports: their `Connection` handle is counted.
+    pub bnsqlite_modules: HashSet<ModuleId>,
+    /// The `BNCompress` modules this module imports: their handles are counted.
+    pub bncompress_modules: HashSet<ModuleId>,
     /// The standard (`modules/bn/`) modules this module imports.
     pub standard_modules: HashSet<ModuleId>,
     pub module_constants: HashMap<(ModuleId, String), ConstantValue>,
@@ -529,22 +537,7 @@ fn analyze_modules_with_warnings_mode(
             diagnostic: Box::new(diagnostic),
         })?;
         let mut model = analysis.model;
-        model.bnlog_modules = graph
-            .modules
-            .iter()
-            .filter_map(|loaded| {
-                (loaded.standard_module == Some(crate::module_graph::StandardModule::BNLog))
-                    .then_some(loaded.id)
-            })
-            .collect();
-        model.bncrypto_modules = graph
-            .modules
-            .iter()
-            .filter_map(|loaded| {
-                (loaded.standard_module == Some(crate::module_graph::StandardModule::BNCrypto))
-                    .then_some(loaded.id)
-            })
-            .collect();
+        attach_standard_library_modules(&mut model, graph);
         models.push(model);
         if collect_warnings {
             warnings.extend(
@@ -559,6 +552,22 @@ fn analyze_modules_with_warnings_mode(
         }
     }
     Ok(ModuleAnalysis { models, warnings })
+}
+
+fn attach_standard_library_modules(model: &mut SemanticModel, graph: &ModuleGraph) {
+    let find_std = |std| {
+        graph
+            .modules
+            .iter()
+            .filter_map(|loaded| (loaded.standard_module == Some(std)).then_some(loaded.id))
+            .collect()
+    };
+    model.bnlog_modules = find_std(crate::module_graph::StandardModule::BNLog);
+    model.bncrypto_modules = find_std(crate::module_graph::StandardModule::BNCrypto);
+    model.bnjson_modules = find_std(crate::module_graph::StandardModule::BNJson);
+    model.bndata_modules = find_std(crate::module_graph::StandardModule::BNData);
+    model.bnsqlite_modules = find_std(crate::module_graph::StandardModule::BNSqlite);
+    model.bncompress_modules = find_std(crate::module_graph::StandardModule::BNCompress);
 }
 
 #[path = "semantic/module_analysis.rs"]
