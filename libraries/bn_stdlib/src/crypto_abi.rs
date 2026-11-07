@@ -856,6 +856,32 @@ pub extern "C" fn bn_rt_crypto_key_release(key_handle: u64) -> i32 {
     }
 }
 
+/// The key material of `handle` for a MAC or a derivation: a `SecretKey`, a
+/// raw `Key` or a `Bytes`. A zeroized key is `ZeroizedKey`
+/// (`INVALID_ARGUMENT`); a handle that is none of them is a key failure of
+/// `operation`. One rule for every caller, so each records its failure.
+pub(crate) fn any_key_material(
+    handle: u64,
+    operation: &'static str,
+) -> Result<zeroize::Zeroizing<Vec<u8>>, crate::crypto_error::CryptoFailure> {
+    use crate::crypto_error::CryptoFailure;
+    let secret = crate::crypto_secret_abi::with_secret_keys(|keys| {
+        keys.get(&handle)
+            .map(|entry| (!entry.zeroized).then(|| entry.material.clone()))
+    });
+    if let Some(found) = secret {
+        return found.ok_or(CryptoFailure::ZeroizedKey);
+    }
+    let raw = with_keys(|keys| {
+        keys.get(&handle)
+            .map(|entry| (!entry.zeroized).then(|| entry.material.clone()))
+    });
+    if let Some(found) = raw {
+        return found.ok_or(CryptoFailure::ZeroizedKey);
+    }
+    with_buffers(|buffers| buffers.get(&handle).cloned()).ok_or(CryptoFailure::Key(operation))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -931,30 +957,4 @@ mod tests {
             BN_CRYPTO_INVALID_HANDLE
         );
     }
-}
-
-/// The key material of `handle` for a MAC or a derivation: a `SecretKey`, a
-/// raw `Key` or a `Bytes`. A zeroized key is `ZeroizedKey`
-/// (`INVALID_ARGUMENT`); a handle that is none of them is a key failure of
-/// `operation`. One rule for every caller, so each records its failure.
-pub(crate) fn any_key_material(
-    handle: u64,
-    operation: &'static str,
-) -> Result<zeroize::Zeroizing<Vec<u8>>, crate::crypto_error::CryptoFailure> {
-    use crate::crypto_error::CryptoFailure;
-    let secret = crate::crypto_secret_abi::with_secret_keys(|keys| {
-        keys.get(&handle)
-            .map(|entry| (!entry.zeroized).then(|| entry.material.clone()))
-    });
-    if let Some(found) = secret {
-        return found.ok_or(CryptoFailure::ZeroizedKey);
-    }
-    let raw = with_keys(|keys| {
-        keys.get(&handle)
-            .map(|entry| (!entry.zeroized).then(|| entry.material.clone()))
-    });
-    if let Some(found) = raw {
-        return found.ok_or(CryptoFailure::ZeroizedKey);
-    }
-    with_buffers(|buffers| buffers.get(&handle).cloned()).ok_or(CryptoFailure::Key(operation))
 }
