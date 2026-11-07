@@ -1799,3 +1799,21 @@ fn bncrypto_password_file_interprets() {
         "encrypted\nopened-with-password\nwrong-password\nno-partial-output\nnot-a-key-file\n"
     );
 }
+
+/// A zeroized key: `INVALID_ARGUMENT` with its operation for every `T OR Error` call, FALSE for `VerifyMac`, the key checked before the options.
+#[test]
+fn bncrypto_zeroized_key_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-zeroized-key/main.bn"])
+        .output()
+        .expect("run the fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "Mac invalid-argument BNCrypto.Key\nMacWith invalid-argument BNCrypto.Key\nMacStream.New invalid-argument BNCrypto.Key\nHkdf invalid-argument BNCrypto.Key\nVerifyMac false\nEncryptWith invalid-argument BNCrypto.Key\n"
+    );
+}

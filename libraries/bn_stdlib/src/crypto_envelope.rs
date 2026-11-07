@@ -286,16 +286,16 @@ pub extern "C" fn bn_rt_crypto_encrypt_with(
     out: *mut i64,
 ) -> i32 {
     let operation = bn_catalog::text("crypto", "op.encrypt_with");
-    let result = admit_aead(alg, operation)
-        .and_then(|()| secret_material(key, operation))
-        .and_then(|material| {
-            let aad = buffer(aad, operation)?;
-            let options = EnvelopeOptions {
-                aad: &aad,
-                include_key_id: include_key_id != 0,
-            };
-            bn_encrypt_envelope_with(&material, &buffer(plaintext, operation)?, &options)
-        });
+    // The key first, then the options, in the order the interpreter checks them.
+    let result = secret_material(key, operation).and_then(|material| {
+        admit_aead(alg, operation)?;
+        let aad = buffer(aad, operation)?;
+        let options = EnvelopeOptions {
+            aad: &aad,
+            include_key_id: include_key_id != 0,
+        };
+        bn_encrypt_envelope_with(&material, &buffer(plaintext, operation)?, &options)
+    });
     handle_status(out, result)
 }
 
@@ -311,12 +311,12 @@ pub extern "C" fn bn_rt_crypto_decrypt_with(
     out: *mut i64,
 ) -> i32 {
     let operation = bn_catalog::text("crypto", "op.decrypt_with");
-    let result = admit_aead(alg, operation)
-        .and_then(|()| secret_material(key, operation))
-        .and_then(|material| {
-            let aad = buffer(aad, operation)?;
-            bn_decrypt_envelope_with(&material, &buffer(sealed, operation)?, &aad)
-        });
+    // The key first, then the options, in the order the interpreter checks them.
+    let result = secret_material(key, operation).and_then(|material| {
+        admit_aead(alg, operation)?;
+        let aad = buffer(aad, operation)?;
+        bn_decrypt_envelope_with(&material, &buffer(sealed, operation)?, &aad)
+    });
     handle_status(out, result)
 }
 

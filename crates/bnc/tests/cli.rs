@@ -2477,3 +2477,38 @@ fn compiled_bncrypto_password_file_matches_the_interpreter() {
     );
     let _ = fs::remove_dir_all(&directory);
 }
+
+/// A zeroized key: `INVALID_ARGUMENT` with its operation for every `T OR Error` call, FALSE for `VerifyMac`, the key checked before the options.
+#[test]
+fn compiled_bncrypto_zeroized_key_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_zeroized_key_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-zeroized-key/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "Mac invalid-argument BNCrypto.Key\nMacWith invalid-argument BNCrypto.Key\nMacStream.New invalid-argument BNCrypto.Key\nHkdf invalid-argument BNCrypto.Key\nVerifyMac false\nEncryptWith invalid-argument BNCrypto.Key\n"
+    );
+    let _ = fs::remove_dir_all(&directory);
+}

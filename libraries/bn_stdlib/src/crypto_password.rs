@@ -261,19 +261,6 @@ pub fn bn_hkdf_sha256(
 // C ABI exports for password hashing and HKDF
 // ---------------------------------------------------------------------------
 
-fn get_any_key(handle: u64) -> Option<zeroize::Zeroizing<Vec<u8>>> {
-    if let Some(mat) = with_secret_keys(|keys| {
-        keys.get(&handle)
-            .and_then(|e| (!e.zeroized).then(|| e.material.clone()))
-    }) {
-        return Some(mat);
-    }
-    if let Ok(mat) = crate::crypto_abi::get_key_material(handle) {
-        return Some(mat);
-    }
-    crate::crypto_abi::with_buffers(|bufs| bufs.get(&handle).cloned())
-}
-
 fn store_secret_key(entry: SecretKeyEntry) -> u64 {
     let handle = crate::crypto_abi::next_handle();
     with_secret_keys(|keys| keys.insert(handle, entry));
@@ -329,9 +316,12 @@ pub extern "C" fn bn_rt_crypto_hkdf(
     if out_handle.is_null() {
         return BN_CRYPTO_INVALID_ARGUMENT;
     }
-    let Some(ikm_bytes) = get_any_key(ikm_handle) else {
-        return BN_CRYPTO_INVALID_ARGUMENT;
-    };
+    let ikm_bytes =
+        match crate::crypto_abi::any_key_material(ikm_handle, bn_catalog::text(CATALOG, "op.hkdf"))
+        {
+            Ok(material) => material,
+            Err(failure) => return failed(&failure),
+        };
     let salt_bytes = if salt_handle == 0 {
         Vec::new()
     } else {
@@ -470,11 +460,11 @@ pub extern "C" fn bn_rt_crypto_derive_subkey(
     raw_context: *const c_char,
     out: *mut i64,
 ) -> i32 {
-    let result = get_any_key(master)
-        .ok_or(CryptoFailure::ZeroizedKey)
-        .and_then(|material| {
-            let context = str_from_ptr(raw_context).ok_or(CryptoFailure::Utf8)?;
-            bn_derive_subkey(&material, context)
-        });
+    let result =
+        crate::crypto_abi::any_key_material(master, bn_catalog::text(CATALOG, "op.derive_subkey"))
+            .and_then(|material| {
+                let context = str_from_ptr(raw_context).ok_or(CryptoFailure::Utf8)?;
+                bn_derive_subkey(&material, context)
+            });
     derived_key_status(out, result, "key.alg.hkdf")
 }

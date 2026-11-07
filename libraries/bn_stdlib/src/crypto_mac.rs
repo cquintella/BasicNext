@@ -199,19 +199,6 @@ pub fn release_mac_stream(handle: i64) -> Result<(), CryptoFailure> {
 
 use crate::crypto_abi::{BN_CRYPTO_INVALID_ARGUMENT, BN_CRYPTO_OK, failed, store};
 
-fn get_any_key(handle: u64) -> Option<zeroize::Zeroizing<Vec<u8>>> {
-    if let Some(mat) = crate::crypto_secret_abi::with_secret_keys(|keys| {
-        keys.get(&handle)
-            .and_then(|e| (!e.zeroized).then(|| e.material.clone()))
-    }) {
-        return Some(mat);
-    }
-    if let Ok(mat) = crate::crypto_abi::get_key_material(handle) {
-        return Some(mat);
-    }
-    crate::crypto_abi::with_buffers(|bufs| bufs.get(&handle).cloned())
-}
-
 /// C ABI: `VerifyMac(key, data, tag)` handle helper.
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
@@ -220,7 +207,11 @@ pub extern "C" fn bn_rt_crypto_mac_verify_handle(
     data_handle: u64,
     tag_handle: u64,
 ) -> i32 {
-    let Some(key_bytes) = get_any_key(key_handle) else {
+    let Ok(key_bytes) = crate::crypto_abi::any_key_material(
+        key_handle,
+        bn_catalog::text("crypto", "op.verify_mac"),
+    ) else {
+        // A zeroized or unknown key authenticates nothing (fail-closed).
         return 0;
     };
     let Some(data_bytes) = crate::crypto_abi::with_buffers(|bufs| bufs.get(&data_handle).cloned())
@@ -253,8 +244,10 @@ pub extern "C" fn bn_rt_crypto_mac_with(
     if out_handle.is_null() {
         return BN_CRYPTO_INVALID_ARGUMENT;
     }
-    let Some(key_bytes) = get_any_key(key_handle) else {
-        return BN_CRYPTO_INVALID_ARGUMENT;
+    let operation = bn_catalog::text("crypto", "op.mac");
+    let key_bytes = match crate::crypto_abi::any_key_material(key_handle, operation) {
+        Ok(material) => material,
+        Err(failure) => return failed(&failure),
     };
     let Some(data_bytes) = crate::crypto_abi::with_buffers(|bufs| bufs.get(&data_handle).cloned())
     else {
@@ -322,8 +315,12 @@ pub extern "C" fn bn_rt_crypto_mac_stream_new(
     if out_handle.is_null() {
         return BN_CRYPTO_INVALID_ARGUMENT;
     }
-    let Some(key_bytes) = get_any_key(key_handle) else {
-        return BN_CRYPTO_INVALID_ARGUMENT;
+    let key_bytes = match crate::crypto_abi::any_key_material(
+        key_handle,
+        bn_catalog::text("crypto", "op.mac_stream_new"),
+    ) {
+        Ok(material) => material,
+        Err(failure) => return failed(&failure),
     };
     match MacStream::new(&key_bytes, alg) {
         Ok(stream) => {

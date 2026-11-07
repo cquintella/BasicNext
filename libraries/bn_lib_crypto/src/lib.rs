@@ -1644,13 +1644,17 @@ impl CryptoProvider {
         }
     }
 
+    /// The material of the `SecretKey` or `Key` operand at `index`. A released
+    /// key or another operand is a diagnostic; a zeroized key is the
+    /// `INVALID_ARGUMENT` failure of `bncrypto.md`, which each caller turns
+    /// into its result (an `Error`, or FALSE for `VerifyMac`).
     fn key_bytes_at(
         &self,
         arguments: &[Value],
         index: usize,
         member: &str,
         span: Span,
-    ) -> Result<zeroize::Zeroizing<Vec<u8>>, Diagnostic> {
+    ) -> Result<Result<zeroize::Zeroizing<Vec<u8>>, CryptoFailure>, Diagnostic> {
         match arguments.get(index) {
             Some(Value::CryptoSecretKey(handle)) => {
                 let entry = self.secret_keys.get(handle).ok_or_else(|| {
@@ -1661,13 +1665,9 @@ impl CryptoProvider {
                     )
                 })?;
                 if entry.zeroized {
-                    return Err(runtime_error(
-                        bn_diag::DiagId::USE_AFTER_RELEASE,
-                        "BNCrypto.SecretKey has been zeroized",
-                        span,
-                    ));
+                    return Ok(Err(CryptoFailure::ZeroizedKey));
                 }
-                Ok(entry.material.clone())
+                Ok(Ok(entry.material.clone()))
             }
             Some(Value::CryptoKey(handle)) => {
                 let entry = self.keys.get(handle).ok_or_else(|| {
@@ -1678,13 +1678,9 @@ impl CryptoProvider {
                     )
                 })?;
                 if entry.zeroized {
-                    return Err(runtime_error(
-                        bn_diag::DiagId::USE_AFTER_RELEASE,
-                        "BNCrypto.Key has been zeroized",
-                        span,
-                    ));
+                    return Ok(Err(CryptoFailure::ZeroizedKey));
                 }
-                Ok(entry.material.clone())
+                Ok(Ok(entry.material.clone()))
             }
             _ => Err(type_mismatch(
                 "BNCrypto.SecretKey",
@@ -1705,7 +1701,10 @@ impl CryptoProvider {
         match method {
             "Mac" => {
                 require_arity(member, arguments, 2, span)?;
-                let key = self.key_bytes_at(arguments, 0, member, span)?;
+                let key = match self.key_bytes_at(arguments, 0, member, span)? {
+                    Ok(key) => key,
+                    Err(err) => return failure(&err),
+                };
                 let data = self.bytes_at(arguments, 1, member, span)?;
                 match bn_stdlib::crypto::bn_mac(&key, &data, bn_stdlib::crypto::MAC_HMAC_SHA256) {
                     Ok(tag) => Ok(self.insert(tag)),
@@ -1714,7 +1713,10 @@ impl CryptoProvider {
             }
             "VerifyMac" => {
                 require_arity(member, arguments, 3, span)?;
-                let key = self.key_bytes_at(arguments, 0, member, span)?;
+                let Ok(key) = self.key_bytes_at(arguments, 0, member, span)? else {
+                    // A zeroized key authenticates nothing (fail-closed).
+                    return Ok(Value::Boolean(false));
+                };
                 let data = self.bytes_at(arguments, 1, member, span)?;
                 let tag = self.bytes_at(arguments, 2, member, span)?;
                 let matches = bn_stdlib::crypto::bn_mac_verify(
@@ -1727,7 +1729,10 @@ impl CryptoProvider {
             }
             "MacWith" => {
                 require_arity(member, arguments, 3, span)?;
-                let key = self.key_bytes_at(arguments, 0, member, span)?;
+                let key = match self.key_bytes_at(arguments, 0, member, span)? {
+                    Ok(key) => key,
+                    Err(err) => return failure(&err),
+                };
                 let data = self.bytes_at(arguments, 1, member, span)?;
                 let (alg, policy) = mac_alg_and_policy(arguments.get(2), member, span)?;
                 if let Err(err) = policy.admits_mac(alg) {
@@ -1773,7 +1778,10 @@ impl CryptoProvider {
             }
             "Hkdf" => {
                 require_arity(member, arguments, 4, span)?;
-                let ikm = self.key_bytes_at(arguments, 0, member, span)?;
+                let ikm = match self.key_bytes_at(arguments, 0, member, span)? {
+                    Ok(key) => key,
+                    Err(err) => return failure(&err),
+                };
                 let salt = self.bytes_at(arguments, 1, member, span)?;
                 let info = self.bytes_at(arguments, 2, member, span)?;
                 let Value::Integer(len_val, _) = &arguments[3] else {
@@ -1804,7 +1812,10 @@ impl CryptoProvider {
         arguments: &[Value],
         span: Span,
     ) -> Result<Value, Diagnostic> {
-        let key = self.key_bytes_at(arguments, 0, member, span)?;
+        let key = match self.key_bytes_at(arguments, 0, member, span)? {
+            Ok(key) => key,
+            Err(err) => return failure(&err),
+        };
         let (alg, policy) = mac_alg_and_policy(arguments.get(1), member, span)?;
         if let Err(err) = policy.admits_mac(alg) {
             return failure(&err);

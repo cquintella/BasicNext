@@ -151,3 +151,7 @@ op.encrypt_file = BNCrypto.EncryptFile
 op.encrypt_file_with_password = BNCrypto.EncryptFileWithPassword
 op.decrypt_file_with_password = BNCrypto.DecryptFileWithPassword
 file.argument.not_string = a path or password argument is not a STRING
+op.mac = BNCrypto.Mac
+op.verify_mac = BNCrypto.VerifyMac
+op.mac_stream_new = BNCrypto.MacStream.New
+op.hkdf = BNCrypto.Hkdf
