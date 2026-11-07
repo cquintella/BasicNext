@@ -34,13 +34,18 @@ impl ReverseError {
 /// Returns timeout, not-found, or resolver I/O failures.
 pub fn reverse_timeout(address: Address, timeout: Duration) -> Result<String, ReverseError> {
     let ip = address.as_std();
-    match LookupPool::global().run(timeout, move || lookup(ip)) {
+    let outcome = LookupPool::global().and_then(|pool| pool.run(timeout, move || lookup(ip)));
+    match outcome {
         Ok(Some(answer)) => answer,
         Ok(None) => Err(ReverseError::Timeout),
         Err(Refusal::Full { in_flight_max }) => Err(ReverseError::Limit(in_flight_max)),
         Err(Refusal::Lost) => Err(ReverseError::Io(io::Error::other(bn_catalog::text(
             "net",
             "resolve.worker_lost.cause",
+        )))),
+        Err(Refusal::Unavailable) => Err(ReverseError::Io(io::Error::other(bn_catalog::text(
+            "net",
+            "resolve.workers_unavailable.cause",
         )))),
     }
 }

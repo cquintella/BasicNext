@@ -31,6 +31,8 @@ pub enum Refusal {
     Full { in_flight_max: usize },
     /// The lookup started and then died (it panicked) without an answer.
     Lost,
+    /// The lookup threads could not start (the operating system refused).
+    Unavailable,
 }
 
 /// A place in the pool, given back when the lookup that holds it ends, also
@@ -64,11 +66,11 @@ pub struct LookupPool {
 impl LookupPool {
     /// Starts `workers` threads. They live as long as the process.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// When the operating system cannot start a thread.
-    #[must_use]
-    pub fn new(workers: usize, in_flight_max: usize) -> Self {
+    /// The operating system's error when a thread cannot start; threads
+    /// already started stay idle on an empty queue.
+    pub fn new(workers: usize, in_flight_max: usize) -> std::io::Result<Self> {
         let shared = Arc::new(Shared {
             queue: Mutex::new(VecDeque::new()),
             wake: Condvar::new(),
@@ -79,16 +81,30 @@ impl LookupPool {
             let shared = Arc::clone(&shared);
             std::thread::Builder::new()
                 .name(format!("bn-lookup-{index}"))
-                .spawn(move || work(&shared))
-                .expect("start a lookup worker");
+                .spawn(move || work(&shared))?;
         }
-        Self { shared }
+        Ok(Self { shared })
     }
 
-    /// The pool every `HOST.Net` lookup of the process shares.
-    pub fn global() -> &'static Self {
+    /// The pool every `HOST.Net` lookup of the process shares, started at the
+    /// first lookup. A start that fails is not kept: the next lookup tries again.
+    ///
+    /// # Errors
+    ///
+    /// [`Refusal::Unavailable`] when the lookup threads cannot start.
+    pub fn global() -> Result<&'static Self, Refusal> {
         static POOL: OnceLock<LookupPool> = OnceLock::new();
-        POOL.get_or_init(|| Self::new(LOOKUP_WORKERS, LOOKUPS_IN_FLIGHT_MAX))
+        static STARTING: Mutex<()> = Mutex::new(());
+        if let Some(pool) = POOL.get() {
+            return Ok(pool);
+        }
+        let _starting = STARTING.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(pool) = POOL.get() {
+            return Ok(pool);
+        }
+        let pool =
+            Self::new(LOOKUP_WORKERS, LOOKUPS_IN_FLIGHT_MAX).map_err(|_| Refusal::Unavailable)?;
+        Ok(POOL.get_or_init(|| pool))
     }
 
     /// Runs `lookup` on a worker and waits at most `timeout` for its answer;
@@ -242,7 +258,7 @@ mod tests {
 
     #[test]
     fn many_timeouts_use_the_fixed_threads_and_leave_no_lookup_behind() {
-        let pool = LookupPool::new(WORKERS, IN_FLIGHT_MAX);
+        let pool = LookupPool::new(WORKERS, IN_FLIGHT_MAX).expect("start the pool");
         let silence = Silence::new();
         let mut refused = 0;
         for _ in 0..CALLS {
@@ -285,7 +301,7 @@ mod tests {
     fn the_ceiling_refuses_lookups_past_the_places_in_flight() {
         const CALLERS: usize = IN_FLIGHT_MAX + 4;
         const PATIENCE: Duration = Duration::from_secs(10);
-        let pool = Arc::new(LookupPool::new(WORKERS, IN_FLIGHT_MAX));
+        let pool = Arc::new(LookupPool::new(WORKERS, IN_FLIGHT_MAX).expect("start the pool"));
         let silence = Silence::new();
         let callers: Vec<_> = (0..CALLERS)
             .map(|_| {
@@ -311,7 +327,7 @@ mod tests {
 
     #[test]
     fn an_answer_in_time_is_returned_and_gives_its_place_back() {
-        let pool = LookupPool::new(WORKERS, IN_FLIGHT_MAX);
+        let pool = LookupPool::new(WORKERS, IN_FLIGHT_MAX).expect("start the pool");
         assert_eq!(pool.run(Duration::from_secs(5), || 42), Ok(Some(42)));
         let deadline = Instant::now() + Duration::from_secs(5);
         while pool.in_flight() > 0 && Instant::now() < deadline {
@@ -322,7 +338,7 @@ mod tests {
 
     #[test]
     fn a_panicking_lookup_neither_kills_the_worker_nor_keeps_its_place() {
-        let pool = LookupPool::new(1, IN_FLIGHT_MAX);
+        let pool = LookupPool::new(1, IN_FLIGHT_MAX).expect("start the pool");
         let outcome = pool.run(Duration::from_millis(200), || -> u32 {
             panic!("a failing resolver");
         });

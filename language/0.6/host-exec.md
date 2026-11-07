@@ -23,7 +23,8 @@ call. A process that left the group or job on purpose (`setsid`, a job
 breakaway) is outside the tree. When the call ends without a timeout, a
 process still running in the tree is left alone. A signal that ends the program
 with its default action (`SIGINT`, `SIGTERM`, `SIGHUP` on POSIX) also ends the
-tree of every call still running; a handler the program's host installed for
+tree of every call still running, up to 256 calls at once (the tree of a
+further call is ended by its timeout only); a handler the program's host installed for
 those signals is kept.
 
 Result fields are immutable: `ReturnCode AS INT64`, `Stdout AS STRING`, and

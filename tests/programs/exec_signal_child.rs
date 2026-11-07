@@ -13,7 +13,7 @@
 
 use super::support::{TestDir, bni, compile_native, workspace_root};
 use std::fs;
-use std::os::unix::process::CommandExt;
+use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::thread;
@@ -99,9 +99,26 @@ fn check(mut command: Command, delivery: Delivery, pid_file: &Path, label: &str)
     if !ended {
         let _ = program.kill();
     }
-    let _ = program.wait();
+    let status = program.wait().expect("the program's status");
     assert!(ended, "{label}: {delivery:?} did not end the program");
     assert!(child_gone, "{label}: {delivery:?} left the child running");
+    // The handler ends the groups and raises the signal again with its
+    // default action, so the program dies of that signal, not of an exit.
+    assert_eq!(
+        status.signal(),
+        Some(delivery.signal()),
+        "{label}: {delivery:?} must end the program by the signal itself"
+    );
+}
+
+impl Delivery {
+    fn signal(self) -> i32 {
+        match self {
+            Self::TerminalInterrupt => libc::SIGINT,
+            Self::Terminate => libc::SIGTERM,
+            Self::HangUp => libc::SIGHUP,
+        }
+    }
 }
 
 const DELIVERIES: [Delivery; 3] = [

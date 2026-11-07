@@ -244,14 +244,19 @@ mod platform {
             .iter()
             .map(Path::new)
             .find(|path| path.is_file());
-        let mut certificates = rustls_native_certs::load_certs_from_paths(file, None).certs;
+        let mut loaded = rustls_native_certs::load_certs_from_paths(file, None);
         // `candidate_cert_dirs` lists system directories only, never the
         // environment.
         for directory in openssl_probe::candidate_cert_dirs() {
-            certificates
-                .extend(rustls_native_certs::load_certs_from_paths(None, Some(directory)).certs);
+            let more = rustls_native_certs::load_certs_from_paths(None, Some(directory));
+            loaded.certs.extend(more.certs);
+            loaded.errors.extend(more.errors);
         }
-        Ok(certificates)
+        // A store that yields nothing reports why, rather than looking empty.
+        match (loaded.certs.is_empty(), loaded.errors.first()) {
+            (true, Some(error)) => Err(error.to_string()),
+            _ => Ok(loaded.certs),
+        }
     }
 }
 

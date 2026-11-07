@@ -289,13 +289,16 @@ fn end_tree(
     child: &mut Child,
     readers: &[&mpsc::Receiver<StreamCapture>],
 ) -> Result<(), Failure> {
-    tree.kill().map_err(|error| {
+    // The child is killed and reaped even when the tree could not be ended,
+    // so a failure never leaves it running unreaped.
+    let tree_ended = tree.kill();
+    terminate(child, Child::kill)?;
+    tree_ended.map_err(|error| {
         Failure::new(
             TERMINATION_FAILED,
             bn_catalog::fill("exec", "run.tree_kill_failed", &[("cause", &error)]),
         )
     })?;
-    terminate(child, Child::kill)?;
     let deadline = Instant::now() + READER_GRACE;
     for reader in readers {
         let _ = reader.recv_timeout(deadline.saturating_duration_since(Instant::now()));

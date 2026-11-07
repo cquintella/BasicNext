@@ -226,10 +226,9 @@ impl UdpSocket {
     /// loses the source endpoint.
     pub fn receive(&self, maximum: usize) -> io::Result<UdpPacket> {
         RECEIVE_AREA.with_borrow_mut(|area| {
-            let area = area.get_or_insert_with(|| vec![0; UDP_PAYLOAD_MAX.max(maximum)]);
-            if area.len() < maximum {
-                area.resize(maximum, 0);
-            }
+            // No datagram is larger than `UDP_PAYLOAD_MAX`, so the area never
+            // grows past it whatever `maximum` asks for.
+            let area = area.get_or_insert_with(|| vec![0; UDP_PAYLOAD_MAX]);
             let (count, source) = self.inner.recv_from(area)?;
             Ok(UdpPacket {
                 source: Endpoint::new(Address::from_ip(source.ip()), source.port()),

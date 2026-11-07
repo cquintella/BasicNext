@@ -11,8 +11,11 @@
 //!
 //! Unix: the child leads a new process group, and the timeout sends
 //! `SIGKILL` to the group. The kernel keeps a process-group id in use while
-//! any member lives, so the id cannot name another process even after the
-//! child has been reaped.
+//! any member lives, so while one does the id names this tree alone. Once the
+//! child is reaped and the last member is gone, a recycled pid that leads a
+//! group of its own could reuse the id before the call ends; the window is
+//! at most the call's timeout, and the risk is accepted (recorded as an open
+//! issue).
 //!
 //! Windows: the child is assigned to a job object, and the timeout
 //! terminates the job.
@@ -84,8 +87,10 @@ mod unix {
         for slot in &LIVE_GROUPS {
             let group = slot.load(Ordering::Acquire);
             if group != NO_GROUP {
-                // SAFETY: `killpg` is async-signal-safe and touches no memory.
-                unsafe { libc::killpg(group, libc::SIGKILL) };
+                // SAFETY: `kill` is on the POSIX list of async-signal-safe
+                // functions and touches no memory; a negative pid names the
+                // group (`killpg` is not on that list).
+                unsafe { libc::kill(-group, libc::SIGKILL) };
             }
         }
         // SAFETY: `signal` and `raise` are async-signal-safe; the signal is

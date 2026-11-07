@@ -172,7 +172,8 @@ pub fn resolve_timeout(
     maximum: usize,
     timeout: std::time::Duration,
 ) -> std::io::Result<Option<Vec<Address>>> {
-    resolve_timeout_in(LookupPool::global(), host, port, maximum, timeout)
+    let pool = LookupPool::global().map_err(|refusal| refusal_error(&refusal))?;
+    resolve_timeout_in(pool, host, port, maximum, timeout)
 }
 
 /// [`resolve_timeout`] on a given pool.
@@ -188,10 +189,20 @@ fn resolve_timeout_in(
         Ok(Some(result)) => result.map(Some),
         Ok(None) => Ok(None),
         Err(Refusal::Full { .. }) => Err(std::io::Error::from(std::io::ErrorKind::QuotaExceeded)),
-        Err(Refusal::Lost) => Err(std::io::Error::other(bn_catalog::text(
-            "net",
-            "resolve.worker_lost.cause",
-        ))),
+        Err(refusal @ (Refusal::Lost | Refusal::Unavailable)) => Err(refusal_error(&refusal)),
+    }
+}
+
+/// The I/O error a refused lookup reports.
+fn refusal_error(refusal: &Refusal) -> std::io::Error {
+    match refusal {
+        Refusal::Full { .. } => std::io::Error::from(std::io::ErrorKind::QuotaExceeded),
+        Refusal::Lost => {
+            std::io::Error::other(bn_catalog::text("net", "resolve.worker_lost.cause"))
+        }
+        Refusal::Unavailable => {
+            std::io::Error::other(bn_catalog::text("net", "resolve.workers_unavailable.cause"))
+        }
     }
 }
 
@@ -259,7 +270,7 @@ mod tests {
 
     #[test]
     fn a_full_pool_is_a_quota_error_not_a_thread() {
-        let pool = LookupPool::new(1, 0);
+        let pool = LookupPool::new(1, 0).expect("start the pool");
         let error = resolve_timeout_in(&pool, "localhost", 0, 1, Duration::from_millis(1))
             .expect_err("no place in the pool");
         assert_eq!(error.kind(), std::io::ErrorKind::QuotaExceeded);
