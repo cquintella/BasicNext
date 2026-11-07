@@ -14,6 +14,12 @@ impl Executor<'_, '_> {
             _ => true,
         };
         if native && let Some(released) = self.release_from_library(&target, span) {
+            // A library object (a hasher, a MAC stream) counts its native
+            // handle and its shell together: one `Release` drops one of each.
+            if matches!(target, Value::Object { .. }) {
+                let shell = self.release_owned_value(target, span);
+                return released.and(shell);
+            }
             return released;
         }
         self.release_owned_value(target, span)

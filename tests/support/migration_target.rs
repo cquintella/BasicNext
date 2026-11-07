@@ -51,6 +51,7 @@ pub fn assert_matches_ledger(target: &str) {
         "bn::test/programs::exec_signal_child::a_signal_that_ends_the_interpreter_ends_its_exec_child",
         "bn::test/programs::host_handle_release::a_compiled_loop_of_exec_runs_keeps_memory_flat",
         "bn::test/programs::host_handle_release::exec_results_and_address_lists_keep_their_counts_on_both_backends",
+        "bn::test/programs::crypto_handle_release::a_compiled_loop_of_crypto_handles_keeps_memory_flat",
         "bn::test/programs::compiler_parity::env_value_not_utf8_is_invalid_utf8_on_both_backends",
         "bn::test/programs::parity::console_size_uses_stdout_when_stdin_is_piped",
         "bn::test/programs::parity_regressions::the_end_of_an_async_task_closes_its_files",

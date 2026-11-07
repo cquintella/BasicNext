@@ -2699,6 +2699,17 @@ impl Provider for CryptoProvider {
                     span,
                 )),
             }),
+            Value::Object { handle, .. } => {
+                if let Some(stream_id) = self.hashers.get(handle).copied() {
+                    let _ = bn_stdlib::crypto::retain_hasher(stream_id);
+                    return Some(Ok(()));
+                }
+                if let Some(stream_id) = self.mac_streams.get(handle).copied() {
+                    let _ = bn_stdlib::crypto::retain_mac_stream(stream_id);
+                    return Some(Ok(()));
+                }
+                None
+            }
             _ => None,
         }
     }
@@ -2761,17 +2772,38 @@ impl Provider for CryptoProvider {
                 },
             ),
             Value::Object { handle, .. } => {
-                if let Some(stream_id) = self.hashers.remove(handle) {
-                    let _ = bn_stdlib::crypto::release_hasher(stream_id);
+                if let Some(stream_id) = self.hashers.get(handle).copied() {
+                    self.release_stream_handle(stream_id, *handle, true);
                     return Some(Ok(()));
                 }
-                if let Some(stream_id) = self.mac_streams.remove(handle) {
-                    let _ = bn_stdlib::crypto::release_mac_stream(stream_id);
+                if let Some(stream_id) = self.mac_streams.get(handle).copied() {
+                    self.release_stream_handle(stream_id, *handle, false);
                     return Some(Ok(()));
                 }
                 None
             }
             _ => None,
+        }
+    }
+}
+
+impl CryptoProvider {
+    /// Drops one native holder. The object-to-handle map entry goes away with
+    /// the last holder, or when the native entry was already consumed.
+    fn release_stream_handle(&mut self, stream_id: i64, handle: Handle, hasher: bool) {
+        let gone = if hasher {
+            bn_stdlib::crypto::release_hasher(stream_id)
+        } else {
+            bn_stdlib::crypto::release_mac_stream(stream_id)
+        };
+        // One holder remains: the map still names the native entry. The last
+        // holder, or a native entry finish already consumed, drops the map.
+        if !matches!(gone, Ok(false)) {
+            if hasher {
+                self.hashers.remove(&handle);
+            } else {
+                self.mac_streams.remove(&handle);
+            }
         }
     }
 }

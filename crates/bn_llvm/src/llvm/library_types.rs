@@ -203,9 +203,11 @@ pub(crate) fn carries_bncrypto_public_key(module: &Module, ty: &Type) -> bool {
     }
 }
 
-/// The `BNCrypto` handle types whose `RELEASE` ends their runtime table entry:
-/// type name, register slot prefix, release symbol. A `KeyPair` is a STRUCT
-/// and is not here: releasing it leaves the keys it holds alive (as `bni`).
+/// The `BNCrypto` handle types whose explicit `RELEASE` ends their runtime
+/// table entry: type name, register slot prefix, release symbol. A `KeyPair`
+/// is a STRUCT and is not here. The counted ownership walk releases each key
+/// and frees the record (`crypto_ownership`); this table must not release
+/// them a second time.
 const BNCRYPTO_HANDLE_RELEASES: [(&str, &str, &str); 4] = [
     ("Hasher", "cryhs", "bn_rt_crypto_hasher_release"),
     ("MacStream", "crymac", "bn_rt_crypto_mac_stream_release"),

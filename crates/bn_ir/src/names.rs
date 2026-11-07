@@ -161,6 +161,30 @@ pub fn is_counted_host_handle(name: &str) -> bool {
     .any(|key| bn_catalog::text("modules", key) == name)
 }
 
+/// A `BNCrypto` handle whose binding holds one count in the runtime table.
+/// The last release wipes `Bytes`, `Secret`, `SecretKey` and `PrivateKey`.
+#[must_use]
+pub fn is_bncrypto_counted_handle(name: &str) -> bool {
+    matches!(
+        name,
+        "Bytes"
+            | "Key"
+            | "Secret"
+            | "SecretKey"
+            | "PublicKey"
+            | "PrivateKey"
+            | "Hasher"
+            | "MacStream"
+    )
+}
+
+/// `BNCrypto.KeyPair`: a record of two counted keys. Releasing the record
+/// releases each key's count and frees the record.
+#[must_use]
+pub fn is_bncrypto_counted_record(name: &str) -> bool {
+    name == "KeyPair"
+}
+
 #[cfg(test)]
 mod tests {
     use super::{EmittedNameKind, classify};

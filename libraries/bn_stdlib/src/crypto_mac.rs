@@ -131,10 +131,15 @@ pub fn bn_mac_verify(key: &[u8], data: &[u8], tag: &[u8], alg: i32) -> bool {
     expected.ct_eq(tag).into()
 }
 
-static NEXT_STREAM_HANDLE: AtomicI64 = AtomicI64::new(1);
-static STREAMS: Mutex<Option<HashMap<i64, MacStream>>> = Mutex::new(None);
+struct HeldStream {
+    stream: MacStream,
+    holders: u32,
+}
 
-fn with_streams<R>(f: impl FnOnce(&mut HashMap<i64, MacStream>) -> R) -> R {
+static NEXT_STREAM_HANDLE: AtomicI64 = AtomicI64::new(1);
+static STREAMS: Mutex<Option<HashMap<i64, HeldStream>>> = Mutex::new(None);
+
+fn with_streams<R>(f: impl FnOnce(&mut HashMap<i64, HeldStream>) -> R) -> R {
     let mut guard = STREAMS
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -143,10 +148,30 @@ fn with_streams<R>(f: impl FnOnce(&mut HashMap<i64, MacStream>) -> R) -> R {
 }
 
 /// Inserts a `MacStream` into the global runtime table, returning a handle.
+/// The new handle has one holder.
 pub fn insert_mac_stream(stream: MacStream) -> i64 {
     let handle = NEXT_STREAM_HANDLE.fetch_add(1, Ordering::Relaxed);
-    with_streams(|t| t.insert(handle, stream));
+    with_streams(|t| {
+        t.insert(handle, HeldStream { stream, holders: 1 });
+    });
     handle
+}
+
+/// One more binding holds `handle`. Handle 0 holds nothing.
+///
+/// # Errors
+/// Returns `CryptoFailure::Algorithm` if the handle is invalid or was released.
+pub fn retain_mac_stream(handle: i64) -> Result<(), CryptoFailure> {
+    if handle == 0 {
+        return Ok(());
+    }
+    with_streams(|t| match t.get_mut(&handle) {
+        Some(held) => {
+            held.holders = held.holders.saturating_add(1);
+            Ok(())
+        }
+        None => Err(CryptoFailure::Algorithm(0)),
+    })
 }
 
 /// Updates an existing `MacStream` identified by `handle`.
@@ -155,8 +180,8 @@ pub fn insert_mac_stream(stream: MacStream) -> i64 {
 /// Returns `CryptoFailure::Algorithm` if the handle is invalid or was released.
 pub fn update_mac_stream(handle: i64, data: &[u8]) -> Result<(), CryptoFailure> {
     with_streams(|t| match t.get_mut(&handle) {
-        Some(s) => {
-            s.update(data);
+        Some(held) => {
+            held.stream.update(data);
             Ok(())
         }
         None => Err(CryptoFailure::Algorithm(0)),
@@ -164,31 +189,45 @@ pub fn update_mac_stream(handle: i64, data: &[u8]) -> Result<(), CryptoFailure> 
 }
 
 /// Finalizes and removes a `MacStream` identified by `handle`, returning its tag.
+/// Finish consumes the stream for every holder.
 ///
 /// # Errors
 /// Returns `CryptoFailure::Algorithm` if the handle is invalid or was released.
 pub fn finish_mac_stream(handle: i64) -> Result<Vec<u8>, CryptoFailure> {
     with_streams(|t| match t.remove(&handle) {
-        Some(s) => Ok(s.finish()),
+        Some(held) => Ok(held.stream.finish()),
         None => Err(CryptoFailure::Algorithm(0)),
     })
 }
 
 /// Verifies a `MacStream` against `tag` in constant time, removing the stream.
+/// Verify consumes the stream for every holder.
 pub fn verify_mac_stream(handle: i64, tag: &[u8]) -> bool {
     with_streams(|t| match t.remove(&handle) {
-        Some(s) => s.verify(tag),
+        Some(held) => held.stream.verify(tag),
         None => false,
     })
 }
 
-/// Releases a `MacStream` handle without computing its tag.
+/// Drops one holder of `handle`. The stream is removed at zero holders.
+/// Returns whether the entry is gone. Handle 0 holds nothing.
 ///
 /// # Errors
 /// Returns `CryptoFailure::Algorithm` if the handle was not found.
-pub fn release_mac_stream(handle: i64) -> Result<(), CryptoFailure> {
-    with_streams(|t| match t.remove(&handle) {
-        Some(_) => Ok(()),
+pub fn release_mac_stream(handle: i64) -> Result<bool, CryptoFailure> {
+    if handle == 0 {
+        return Ok(false);
+    }
+    with_streams(|t| match t.get_mut(&handle) {
+        Some(held) => {
+            held.holders = held.holders.saturating_sub(1);
+            if held.holders == 0 {
+                t.remove(&handle);
+                Ok(true)
+            } else {
+                Ok(false)
+            }
+        }
         None => Err(CryptoFailure::Algorithm(0)),
     })
 }
@@ -385,12 +424,23 @@ pub extern "C" fn bn_rt_crypto_mac_stream_verify(stream_handle: i64, tag_handle:
     i32::from(verify_mac_stream(stream_handle, &tag_bytes))
 }
 
-/// C ABI: releases a `MacStream` handle.
+/// C ABI: one more binding holds the stream. Handle 0 holds nothing.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_mac_stream_retain(stream_handle: i64) -> i32 {
+    match retain_mac_stream(stream_handle) {
+        Ok(()) => BN_CRYPTO_OK,
+        Err(err) => failed(&err),
+    }
+}
+
+/// C ABI: releases one holder of a `MacStream`. Handle 0 holds nothing.
+/// A missing handle was finished or verified.
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_mac_stream_release(stream_handle: i64) -> i32 {
     match release_mac_stream(stream_handle) {
-        Ok(()) => BN_CRYPTO_OK,
+        Ok(_) => BN_CRYPTO_OK,
         Err(err) => failed(&err),
     }
 }

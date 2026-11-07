@@ -1,0 +1,29 @@
+// A copy taken out of a KeyPair keeps its count after the record's binding
+// ends. The record's own count is released with the binding. Explicit
+// RELEASE of that copy, then the end of the copy's binding, releases once.
+IMPORT BNCrypto AS Crypto
+
+FUNCTION FreshPublic() AS Crypto.PublicKey
+    LET kp AS Crypto.KeyPair OR Error = Crypto.NewKeyPair()
+    IF kp IS Error THEN
+        STOP 1
+    END IF
+    RETURN kp.PublicKey
+END FUNCTION
+
+FUNCTION FreshPrivate() AS Crypto.PrivateKey
+    LET kp AS Crypto.KeyPair OR Error = Crypto.NewKeyPair()
+    IF kp IS Error THEN
+        STOP 1
+    END IF
+    RETURN kp.PrivateKey
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET pub AS Crypto.PublicKey = FreshPublic()
+    PRINT pub.Algorithm()
+    RELEASE pub
+    LET priv AS Crypto.PrivateKey = FreshPrivate()
+    PRINT priv.Algorithm()
+    RELEASE priv
+END FUNCTION

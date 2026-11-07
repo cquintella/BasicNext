@@ -50,6 +50,16 @@ impl Builder<'_> {
             {
                 true
             }
+            // A counted `BNCrypto` handle, and the `KeyPair` record of two
+            // keys: a copy retains one count and the end of the last binding
+            // releases one (bncrypto.md, "Zeroized on drop or `RELEASE`").
+            Type::ImportedNamed { module, name }
+                if self.model.bncrypto_modules.contains(module)
+                    && (bn_ir::names::is_bncrypto_counted_handle(name)
+                        || bn_ir::names::is_bncrypto_counted_record(name)) =>
+            {
+                true
+            }
             // Any other type of a natively implemented library (`BNJson`,
             // `BNData`, …) is a library handle the IR does not count yet
             // (the same gap a logger had before its handles were released).

@@ -1,5 +1,6 @@
 // RELEASE of each BNCrypto handle type ends the handle on both backends.
-// A KeyPair is a STRUCT: releasing it ends the record, not the keys in it.
+// A KeyPair is a STRUCT: releasing it drops the record's own count of each
+// key. A copy taken first keeps a count, so the key stays usable.
 IMPORT BNCrypto AS Crypto
 
 FUNCTION Start() AS VOID

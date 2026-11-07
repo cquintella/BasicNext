@@ -165,10 +165,15 @@ pub fn bn_hash_file(fs: &crate::FsPolicy, path: &Path, alg: i32) -> Result<Vec<u
     Ok(hasher.finish())
 }
 
-static NEXT_HASHER_HANDLE: AtomicI64 = AtomicI64::new(1);
-static HASHERS: Mutex<Option<HashMap<i64, Hasher>>> = Mutex::new(None);
+struct HeldHasher {
+    hasher: Hasher,
+    holders: u32,
+}
 
-fn with_hashers<R>(f: impl FnOnce(&mut HashMap<i64, Hasher>) -> R) -> R {
+static NEXT_HASHER_HANDLE: AtomicI64 = AtomicI64::new(1);
+static HASHERS: Mutex<Option<HashMap<i64, HeldHasher>>> = Mutex::new(None);
+
+fn with_hashers<R>(f: impl FnOnce(&mut HashMap<i64, HeldHasher>) -> R) -> R {
     let mut guard = HASHERS
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -177,10 +182,30 @@ fn with_hashers<R>(f: impl FnOnce(&mut HashMap<i64, Hasher>) -> R) -> R {
 }
 
 /// Inserts a `Hasher` into the global runtime table, returning a handle.
+/// The new handle has one holder.
 pub fn insert_hasher(hasher: Hasher) -> i64 {
     let handle = NEXT_HASHER_HANDLE.fetch_add(1, Ordering::Relaxed);
-    with_hashers(|t| t.insert(handle, hasher));
+    with_hashers(|t| {
+        t.insert(handle, HeldHasher { hasher, holders: 1 });
+    });
     handle
+}
+
+/// One more binding holds `handle`. Handle 0 holds nothing.
+///
+/// # Errors
+/// Returns `CryptoFailure::Algorithm` if the handle is invalid or was released.
+pub fn retain_hasher(handle: i64) -> Result<(), CryptoFailure> {
+    if handle == 0 {
+        return Ok(());
+    }
+    with_hashers(|t| match t.get_mut(&handle) {
+        Some(held) => {
+            held.holders = held.holders.saturating_add(1);
+            Ok(())
+        }
+        None => Err(CryptoFailure::Algorithm(0)),
+    })
 }
 
 /// Updates an existing `Hasher` identified by `handle`.
@@ -189,8 +214,8 @@ pub fn insert_hasher(hasher: Hasher) -> i64 {
 /// Returns `CryptoFailure::Algorithm` if the handle is invalid or was released.
 pub fn update_hasher(handle: i64, data: &[u8]) -> Result<(), CryptoFailure> {
     with_hashers(|t| match t.get_mut(&handle) {
-        Some(h) => {
-            h.update(data);
+        Some(held) => {
+            held.hasher.update(data);
             Ok(())
         }
         None => Err(CryptoFailure::Algorithm(0)),
@@ -198,23 +223,36 @@ pub fn update_hasher(handle: i64, data: &[u8]) -> Result<(), CryptoFailure> {
 }
 
 /// Finalizes and removes a `Hasher` identified by `handle`, returning its digest.
+/// Finish consumes the hasher for every holder.
 ///
 /// # Errors
 /// Returns `CryptoFailure::Algorithm` if the handle is invalid or was released.
 pub fn finish_hasher(handle: i64) -> Result<Vec<u8>, CryptoFailure> {
     with_hashers(|t| match t.remove(&handle) {
-        Some(h) => Ok(h.finish()),
+        Some(held) => Ok(held.hasher.finish()),
         None => Err(CryptoFailure::Algorithm(0)),
     })
 }
 
-/// Releases a `Hasher` handle without computing its digest.
+/// Drops one holder of `handle`. The hasher is removed at zero holders.
+/// Returns whether the entry is gone. Handle 0 holds nothing.
 ///
 /// # Errors
 /// Returns `CryptoFailure::Algorithm` if the handle was not found.
-pub fn release_hasher(handle: i64) -> Result<(), CryptoFailure> {
-    with_hashers(|t| match t.remove(&handle) {
-        Some(_) => Ok(()),
+pub fn release_hasher(handle: i64) -> Result<bool, CryptoFailure> {
+    if handle == 0 {
+        return Ok(false);
+    }
+    with_hashers(|t| match t.get_mut(&handle) {
+        Some(held) => {
+            held.holders = held.holders.saturating_sub(1);
+            if held.holders == 0 {
+                t.remove(&handle);
+                Ok(true)
+            } else {
+                Ok(false)
+            }
+        }
         None => Err(CryptoFailure::Algorithm(0)),
     })
 }
@@ -414,7 +452,18 @@ pub extern "C" fn bn_rt_crypto_hasher_finish(hasher_handle: i64, out_handle: *mu
     }
 }
 
-/// C ABI: releases a hasher handle.
+/// C ABI: one more binding holds the hasher. Handle 0 holds nothing.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_hasher_retain(hasher_handle: i64) -> i32 {
+    match retain_hasher(hasher_handle) {
+        Ok(()) => BN_CRYPTO_OK,
+        Err(err) => failed(&err),
+    }
+}
+
+/// C ABI: releases one holder of a hasher. A missing handle or handle 0 is
+/// not a hasher (it was finished, or the binding was already taken).
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_hasher_release(hasher_handle: i64) -> i32 {

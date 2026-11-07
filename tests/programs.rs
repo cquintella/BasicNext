@@ -29,6 +29,8 @@ mod compress_module;
 mod compress_policy;
 #[path = "programs/conformance.rs"]
 mod conformance;
+#[path = "programs/crypto_handle_release.rs"]
+mod crypto_handle_release;
 #[path = "programs/crypto_limits.rs"]
 mod crypto_limits;
 #[path = "programs/crypto_tour.rs"]

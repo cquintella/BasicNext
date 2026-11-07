@@ -109,6 +109,9 @@ pub struct SemanticModel {
     /// The `BNLog` modules this module imports: their `Logger` is a counted
     /// handle (ARC), released when its last binding ends.
     pub bnlog_modules: HashSet<ModuleId>,
+    /// The `BNCrypto` modules this module imports: their handles and the
+    /// `KeyPair` record are counted, released when the last binding ends.
+    pub bncrypto_modules: HashSet<ModuleId>,
     /// The standard (`modules/bn/`) modules this module imports.
     pub standard_modules: HashSet<ModuleId>,
     pub module_constants: HashMap<(ModuleId, String), ConstantValue>,
@@ -531,6 +534,14 @@ fn analyze_modules_with_warnings_mode(
             .iter()
             .filter_map(|loaded| {
                 (loaded.standard_module == Some(crate::module_graph::StandardModule::BNLog))
+                    .then_some(loaded.id)
+            })
+            .collect();
+        model.bncrypto_modules = graph
+            .modules
+            .iter()
+            .filter_map(|loaded| {
+                (loaded.standard_module == Some(crate::module_graph::StandardModule::BNCrypto))
                     .then_some(loaded.id)
             })
             .collect();
