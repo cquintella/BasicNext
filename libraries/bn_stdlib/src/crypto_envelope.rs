@@ -27,7 +27,7 @@ pub const ENVELOPE_MIN_LEN: usize = ENVELOPE_HEADER_LEN + ENVELOPE_TAG_LEN;
 
 /// Flags bit 0: the body is a file stream of segments (`EncryptFile`).
 pub const ENVELOPE_FLAG_STREAM: u8 = 0b001;
-/// Flags bit 1: the 32-byte KeyId of the key follows the flags.
+/// Flags bit 1: the 32-byte `KeyId` of the key follows the flags.
 pub const ENVELOPE_FLAG_KEYID: u8 = 0b010;
 /// Flags bit 2: the Argon2id cost and salt follow (`EncryptFileWithPassword`).
 pub const ENVELOPE_FLAG_PASSWORD: u8 = 0b100;
