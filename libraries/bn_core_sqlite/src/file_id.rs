@@ -72,9 +72,7 @@ impl FileIdentity {
             let mut info = ByHandleFileInformation::default();
             // SAFETY: Calling Win32 GetFileInformationByHandle with valid raw handle
             // and pointer to ByHandleFileInformation struct.
-            let ret = unsafe {
-                GetFileInformationByHandle(file.as_raw_handle() as *mut std::ffi::c_void, &mut info)
-            };
+            let ret = unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) };
             if ret == 0 {
                 return None;
             }

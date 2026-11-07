@@ -41,8 +41,10 @@ unsafe fn vmin_i32_avx2(values: &[i32]) -> i32 {
     let mut min_vec = _mm256_set1_epi32(i32::MAX);
 
     while i + 8 <= len {
-        // SAFETY: pointer offset is inbounds (i + 8 <= len) and cast is aligned for loadu.
-        let chunk = unsafe { _mm256_loadu_si256(values.as_ptr().add(i).cast()) };
+        // SAFETY: `i + 8 <= len`, so the offset stays inside `values`.
+        let lane = unsafe { values.as_ptr().add(i) };
+        // SAFETY: eight readable `i32` at `lane`; `loadu` needs no alignment.
+        let chunk = unsafe { _mm256_loadu_si256(lane.cast()) };
         min_vec = _mm256_min_epi32(min_vec, chunk);
         i += 8;
     }
@@ -74,8 +76,10 @@ unsafe fn vmax_i32_avx2(values: &[i32]) -> i32 {
     let mut max_vec = _mm256_set1_epi32(i32::MIN);
 
     while i + 8 <= len {
-        // SAFETY: pointer offset is inbounds (i + 8 <= len) and cast is aligned for loadu.
-        let chunk = unsafe { _mm256_loadu_si256(values.as_ptr().add(i).cast()) };
+        // SAFETY: `i + 8 <= len`, so the offset stays inside `values`.
+        let lane = unsafe { values.as_ptr().add(i) };
+        // SAFETY: eight readable `i32` at `lane`; `loadu` needs no alignment.
+        let chunk = unsafe { _mm256_loadu_si256(lane.cast()) };
         max_vec = _mm256_max_epi32(max_vec, chunk);
         i += 8;
     }

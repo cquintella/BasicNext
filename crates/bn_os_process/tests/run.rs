@@ -7,11 +7,13 @@
 //! and argument rules, capture, ceilings, timeouts and pipes held open by
 //! descendants.
 
-use bn_host_exec::{
-    CAPTURE_LIMIT, INVALID_ARGUMENT, Output, POLICY_DENIED, PROGRAM_NOT_FOUND, Policy, TIMEOUT,
-};
+#[cfg(unix)]
+use bn_host_exec::{CAPTURE_LIMIT, TIMEOUT};
+use bn_host_exec::{INVALID_ARGUMENT, Output, POLICY_DENIED, PROGRAM_NOT_FOUND, Policy};
 use bn_os_process::OsProcessControl;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+#[cfg(unix)]
+use std::time::Instant;
 
 fn run(program: &str, args: &[&str], policy: &Policy) -> Result<Output, bn_host_exec::Failure> {
     bn_host_exec::run(program, args, policy, &OsProcessControl)

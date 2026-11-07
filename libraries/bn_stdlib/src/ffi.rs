@@ -549,6 +549,10 @@ fn prepare_non_integer_arg(rec: &Record) -> Result<PreparedArg, FfiError> {
     clippy::multiple_unsafe_ops_per_block,
     reason = "one foreign call per match arm; the arms are exclusive and share one precondition"
 )]
+#[allow(
+    clippy::cast_lossless,
+    reason = "c_long and c_ulong are 64-bit on Unix and 32-bit on Windows; `as` widens both"
+)]
 fn invoke_cif(
     cif: &Cif,
     code_ptr: CodePtr,
