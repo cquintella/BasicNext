@@ -95,6 +95,8 @@
     "bn::test/gates::test_support::every_ignored_child_fixture_is_selected_exactly_once",
     "bn::test/gates::test_support::successful_child_fixture_runs",
     "bn::test/gates::text_literals::direct_expect_and_panic_messages_are_internal_invariants",
+    "bn::test/gates::text_literals::the_scan_reaches_library_sources",
+    "bn::test/gates::text_literals::crypto_failures_hold_no_text_literal",
     "bn::test/frontend::migrated_frontend_tests_match_the_ledger",
     "bn::test/frontend::module_graph::rooted_overlay_paths_resolve_entry_and_import_by_components",
     "bn::test/codegen::migrated_codegen_tests_match_the_ledger",

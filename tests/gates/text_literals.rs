@@ -13,7 +13,7 @@
 //!   to a data file);
 //! - a listed literal that no longer exists fails (remove its line).
 //!
-//! What is scanned: `crates/*/src/**/*.rs`, minus test code (`#[cfg(test)]`
+//! What is scanned: `crates/*/src/**/*.rs` and `libraries/*/src/**/*.rs`, minus test code (`#[cfg(test)]`
 //! items and the files they name, `tests.rs`, `*_tests.rs`,
 //! `test_support.rs`) and `build.rs`. What counts:
 //!
@@ -34,6 +34,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 const LIST: &str = "tests/text_literals.list";
+
+/// Workspace folders whose `*/src` trees are production code.
+const SCAN_ROOTS: [&str; 2] = ["crates", "libraries"];
 
 /// Words that start an LLVM IR line or instruction.
 const LLVM_KEYWORDS: &[&str] = &[
@@ -455,10 +458,12 @@ fn module_files(file: &Path, name: &str) -> [PathBuf; 2] {
 /// number of occurrences.
 fn production_literals() -> BTreeMap<(String, Kind, String), usize> {
     let mut files = Vec::new();
-    for crate_dir in fs::read_dir("crates").expect("crates directory") {
-        let source = crate_dir.expect("crate entry").path().join("src");
-        if source.is_dir() {
-            rust_sources(&source, &mut files);
+    for root in SCAN_ROOTS {
+        for crate_dir in fs::read_dir(root).expect("source root directory") {
+            let source = crate_dir.expect("crate entry").path().join("src");
+            if source.is_dir() {
+                rust_sources(&source, &mut files);
+            }
         }
     }
     let scans: Vec<(PathBuf, Scan)> = files
@@ -634,4 +639,29 @@ fn h() { let _ = "{name}: {error}"; let _ = "MODULE_NOT_FOUND"; }
         ),
         Some(Kind::Prose)
     );
+}
+
+/// Library sources are production code too: the scan reaches
+/// `libraries/*/src` as it reaches `crates/*/src`.
+#[test]
+fn the_scan_reaches_library_sources() {
+    let found = production_literals();
+    assert!(
+        found
+            .keys()
+            .any(|(path, _, _)| path.starts_with("libraries/")),
+        "no literal of libraries/*/src was scanned"
+    );
+}
+
+/// `CryptoFailure` reads every message and cause from `share/bn/catalog/crypto.txt`.
+#[test]
+fn crypto_failures_hold_no_text_literal() {
+    let found = production_literals();
+    let left: Vec<&String> = found
+        .keys()
+        .filter(|(path, _, _)| path == "libraries/bn_stdlib/src/crypto_error.rs")
+        .map(|(_, _, text)| text)
+        .collect();
+    assert!(left.is_empty(), "{left:#?}");
 }

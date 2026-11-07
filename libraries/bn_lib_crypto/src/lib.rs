@@ -2146,8 +2146,8 @@ impl CryptoProvider {
         require_arity(member, arguments, 2, span)?;
         let Some(Value::CryptoKey(handle)) = arguments.first() else {
             return Err(type_mismatch(
-                "BNCrypto.PublicKey",
-                "non-PublicKey value",
+                bn_catalog::text("crypto", "type.public_key.expected"),
+                bn_catalog::text("crypto", "type.public_key.found"),
                 member,
                 span,
             ));
@@ -2160,7 +2160,12 @@ impl CryptoProvider {
             ));
         };
         let Value::Integer(alg, _) = &arguments[1] else {
-            return Err(type_mismatch("INTEGER", "non-INTEGER value", member, span));
+            return Err(type_mismatch(
+                bn_catalog::text("crypto", "type.integer.expected"),
+                bn_catalog::text("crypto", "type.integer.found"),
+                member,
+                span,
+            ));
         };
         // The type checker bounds the argument to INT32; an id that still does not
         // fit names no algorithm and takes the same failure as an unknown id.
