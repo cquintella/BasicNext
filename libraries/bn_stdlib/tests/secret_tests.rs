@@ -94,6 +94,7 @@ fn test_secret_lifecycle_and_operations_abi() {
     let b1_zero = bn_rt_crypto_secret_to_bytes(s1);
     let hex_ptr = bn_rt_crypto_bytes_to_hex(b1_zero);
     assert!(!hex_ptr.is_null());
+    // SAFETY: the runtime returned this NUL-terminated STRING, alive until it is released.
     let hex_str = unsafe { std::ffi::CStr::from_ptr(hex_ptr) }
         .to_str()
         .unwrap();

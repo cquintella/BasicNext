@@ -80,7 +80,6 @@ crates/bn_core_net/src/icmp.rs	prose	ICMP Echo operation unavailable on this hos
 crates/bn_core_net/src/icmp.rs	prose	ICMP Echo permission denied
 crates/bn_core_net/src/icmp.rs	prose	ping destination unreachable
 crates/bn_core_net/src/icmp.rs	prose	ping timeout
-crates/bn_core_net/src/lib.rs	prose	resolver worker stopped
 crates/bn_core_net/src/lookup.rs	identifier	HOST.Net.Addresses.Get
 crates/bn_core_net/src/lookup.rs	identifier	HOST.Net.Neighbor
 crates/bn_core_net/src/lookup.rs	identifier	HOST.Net.Ping
@@ -98,7 +97,6 @@ crates/bn_core_net/src/lookup.rs	prose	{address} reported the destination unreac
 crates/bn_core_net/src/neighbor.rs	prose	direct-neighbor entry not found
 crates/bn_core_net/src/neighbor.rs	prose	direct-neighbor lookup unsupported on this host
 crates/bn_core_net/src/reverse.rs	prose	reverse name not found
-crates/bn_core_net/src/reverse.rs	prose	reverse resolver stopped
 crates/bn_core_net/src/reverse.rs	prose	reverse timeout
 crates/bn_core_net/src/socket.rs	prose	backlog overflow
 crates/bn_core_net/src/socket.rs	prose	multicast and broadcast datagrams are denied
@@ -239,8 +237,6 @@ crates/bn_diag/src/lib.rs	identifier	INVALID_DATE
 crates/bn_diag/src/lib.rs	identifier	INVALID_DATE
 crates/bn_diag/src/lib.rs	identifier	INVALID_DESTRUCTOR
 crates/bn_diag/src/lib.rs	identifier	INVALID_DESTRUCTOR
-crates/bn_diag/src/lib.rs	identifier	INVALID_EGRESS_POLICY
-crates/bn_diag/src/lib.rs	identifier	INVALID_EGRESS_POLICY
 crates/bn_diag/src/lib.rs	identifier	INVALID_EXIT_CODE
 crates/bn_diag/src/lib.rs	identifier	INVALID_EXIT_CODE
 crates/bn_diag/src/lib.rs	identifier	INVALID_EXPONENT
@@ -516,7 +512,6 @@ crates/bn_frontend/src/lexer.rs	prose	a Basic Next token
 crates/bn_frontend/src/lexer.rs	prose	a number cannot start with '.'
 crates/bn_frontend/src/lexer.rs	prose	bare carriage return; use LF or CRLF
 crates/bn_frontend/src/lexer.rs	prose	bare carriage return; use LF or CRLF
-crates/bn_frontend/src/lexer.rs	prose	lexical error
 crates/bn_frontend/src/lexer.rs	prose	malformed numeric literal '{text}'
 crates/bn_frontend/src/lexer.rs	prose	nested block comments are not allowed
 crates/bn_frontend/src/lexer.rs	prose	string literals cannot contain a line break
@@ -640,7 +635,6 @@ crates/bn_frontend/src/module_graph.rs	prose	module graph error
 crates/bn_frontend/src/module_graph.rs	prose	module graph exceeds the portable module limit
 crates/bn_frontend/src/parser.rs	prose	an expression
 crates/bn_frontend/src/parser.rs	prose	host capability names after HOST. must start with a capital letter
-crates/bn_frontend/src/parser.rs	prose	parser error
 crates/bn_frontend/src/parser.rs	prose	the current declaration or statement
 crates/bn_frontend/src/parser.rs	prose	unexpected token after expression
 crates/bn_frontend/src/parser/expressions.rs	identifier	HOST
@@ -1811,8 +1805,6 @@ crates/bn_llvm/src/llvm/runtime.rs	identifier	HOST.Env.Get
 crates/bn_llvm/src/llvm/runtime.rs	identifier	HOST.Env.Get
 crates/bn_llvm/src/llvm/runtime.rs	identifier	HOST.Env.Has
 crates/bn_llvm/src/llvm/runtime.rs	identifier	HOST.Env.Has
-crates/bn_llvm/src/llvm/runtime.rs	identifier	HOST.Exec.Result.Close
-crates/bn_llvm/src/llvm/runtime.rs	identifier	HOST.Exec.Result.Close
 crates/bn_llvm/src/llvm/runtime.rs	identifier	HOST.Exec.Result.ReturnCode
 crates/bn_llvm/src/llvm/runtime.rs	identifier	HOST.Exec.Result.ReturnCode
 crates/bn_llvm/src/llvm/runtime.rs	identifier	HOST.Exec.Result.Stderr
@@ -1964,10 +1956,8 @@ crates/bn_llvm/src/llvm/runtime_process.rs	identifier	HOST.Console.NumRows
 crates/bn_llvm/src/llvm/runtime_process.rs	identifier	HOST.Console.PrintAt
 crates/bn_llvm/src/llvm/runtime_process.rs	identifier	HOST.Env.Get
 crates/bn_llvm/src/llvm/runtime_process.rs	identifier	HOST.Env.Has
-crates/bn_llvm/src/llvm/runtime_process.rs	identifier	HOST.Exec.Result.Close
 crates/bn_llvm/src/llvm/runtime_process.rs	identifier	HOST.Exec.Result.ReturnCode
 crates/bn_llvm/src/llvm/runtime_process.rs	identifier	HOST.Exec.Result.ReturnCode
-crates/bn_llvm/src/llvm/runtime_process.rs	identifier	HOST.Exec.Result.Stderr
 crates/bn_llvm/src/llvm/runtime_process.rs	identifier	HOST.Exec.Result.Stderr
 crates/bn_llvm/src/llvm/runtime_process.rs	identifier	HOST.Exec.Result.Stdout
 crates/bn_llvm/src/llvm/runtime_process.rs	identifier	HOST.Exec.Result.Stdout

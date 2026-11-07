@@ -36,6 +36,10 @@ pub(crate) struct LayoutField {
     pub ty: Type,
 }
 
+#[expect(
+    clippy::unwrap_in_result,
+    reason = "target validation accepted every member field type; None here means only a field that is not in the class"
+)]
 pub(crate) fn field_byte_offset(module: &Module, field: &FieldRef) -> Option<u32> {
     let mut offset = OBJECT_HEADER_BYTES;
     for candidate in class_layout_fields(module, &field.owner) {

@@ -68,6 +68,10 @@ pub(crate) fn run(source_text: &str, input: &str) -> Result<(u8, String), bn_dia
     run_with_host(source_text, input, &fixed(vec!["runtime.bn".into()], 0, 0))
 }
 
+#[expect(
+    clippy::unwrap_in_result,
+    reason = "test helper: a failed set-up is a failed test"
+)]
 pub(crate) fn run_with_host(
     source_text: &str,
     input: &str,
@@ -103,6 +107,10 @@ pub(crate) fn bn_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "\\\\")
 }
 
+#[expect(
+    clippy::unwrap_in_result,
+    reason = "test helper: a failed set-up is a failed test"
+)]
 pub(crate) fn run_loaded(
     path: &str,
     input: &str,
@@ -286,6 +294,10 @@ END FUNCTION
 
 /// Sends `count` concurrent requests to `/slow`; the time they took and the
 /// program's output, or `None` when this host forbids binding.
+#[expect(
+    clippy::unwrap_in_result,
+    reason = "test helper: a failed set-up is a failed test"
+)]
 pub(crate) fn slow_requests(
     arguments: &[&str],
     count: usize,
@@ -310,7 +322,10 @@ pub(crate) fn slow_requests(
     for client in clients {
         let answer = client.join().expect("client thread");
         assert!(answer.0.starts_with("HTTP/1.1 200"), "{answer:?}");
-        assert_eq!(answer.2, "waited");
+        assert_eq!(
+            answer.2, "waited",
+            "the served program answers after waiting"
+        );
     }
     let elapsed = started.elapsed();
     let (code, output) = served.stop();

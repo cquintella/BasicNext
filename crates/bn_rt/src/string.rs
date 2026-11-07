@@ -58,6 +58,7 @@ fn header_mut<'a>(ptr: *mut c_char) -> Option<&'a StringHeader> {
     }
     // SAFETY: Every non-null STRING payload has this header.
     let header_ptr = unsafe { ptr.cast::<u8>().sub(HEADER_SIZE).cast::<StringHeader>() };
+    // SAFETY: `header_ptr` is the aligned header of a live STRING, read only.
     let header = unsafe { &*header_ptr };
     let rc = header.ref_count.load(Ordering::Relaxed);
     if rc > MAX_STRING_REF_COUNT && rc != IMMORTAL_REF_COUNT {
@@ -70,6 +71,10 @@ fn header_mut<'a>(ptr: *mut c_char) -> Option<&'a StringHeader> {
 }
 
 /// Ends the program. The sentence comes from the string catalog.
+#[expect(
+    clippy::exit,
+    reason = "a runtime trap ends the program: the language's defined outcome of this failure"
+)]
 fn trap_count(key: &'static str) -> ! {
     let message = bn_catalog::text("string", key);
     let _ = writeln!(std::io::stderr(), "{message}");
@@ -165,17 +170,26 @@ pub fn c_string_from_bytes(bytes: &[u8]) -> *mut c_char {
             bn_catalog::text("string", "msg.string_length_fits_u64")
         )
     });
+    // The block is `HEADER_SIZE + len + 1` bytes from `malloc`, aligned for any
+    // type: the header, then the payload, then a NUL.
+    // SAFETY: the header fits at the start of the block, which is aligned.
     unsafe {
         base.cast::<StringHeader>().write(StringHeader {
             ref_count: AtomicU64::new(INITIAL_REF_COUNT),
             len,
         });
-        let data_ptr = base.add(HEADER_SIZE);
-        std::ptr::copy_nonoverlapping(bytes.as_ptr(), data_ptr, bytes.len());
-        data_ptr.add(bytes.len()).write(0);
-        LIVE_STRINGS.fetch_add(1, Ordering::Release);
-        data_ptr.cast::<c_char>()
     }
+    // SAFETY: `HEADER_SIZE` is inside the block.
+    let data_ptr = unsafe { base.add(HEADER_SIZE) };
+    // SAFETY: the payload region holds `bytes.len()` bytes and does not overlap
+    // the caller's `bytes`, which the block was just allocated apart from.
+    unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), data_ptr, bytes.len()) };
+    // SAFETY: the NUL byte is the last byte of the block.
+    let terminator = unsafe { data_ptr.add(bytes.len()) };
+    // SAFETY: `terminator` is inside the block.
+    unsafe { terminator.write(0) };
+    LIVE_STRINGS.fetch_add(1, Ordering::Release);
+    data_ptr.cast::<c_char>()
 }
 
 /// Copies an operating-system C string (`argv`) into a STRING. The source is
@@ -359,6 +373,10 @@ pub extern "C" fn bn_rt_str_char_utf8(code: i64) -> u64 {
 /// Returns `STRING[index]` as one NUL-terminated UTF-8 scalar packed in native byte order.
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
+#[expect(
+    clippy::exit,
+    reason = "a runtime trap ends the program: the language's defined outcome of this failure"
+)]
 pub extern "C" fn bn_rt_str_index_utf8(
     text: *const c_char,
     index: i32,

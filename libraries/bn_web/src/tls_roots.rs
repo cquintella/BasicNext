@@ -322,6 +322,10 @@ mod tests {
     /// A TLS handshake with a local server whose certificate the test CA
     /// signed, from a client over `roots`. `Ok` when the client accepts the
     /// server's chain.
+    #[expect(
+        clippy::unwrap_in_result,
+        reason = "test set-up: a failed set-up is a failed test"
+    )]
     fn handshake(roots: rustls::RootCertStore) -> Result<(), String> {
         use rustls::pki_types::pem::PemObject;
         use rustls::pki_types::{PrivateKeyDer, ServerName};

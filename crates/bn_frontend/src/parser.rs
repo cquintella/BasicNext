@@ -57,23 +57,14 @@ pub fn parse_expression(tokens: &[Token]) -> Result<Expression, Diagnostic> {
             line: 1,
             column: 1,
         };
-        return Err(Diagnostic::parse_facts(
+        return Err(Diagnostic::parse_error(
             "an expression",
             "the current declaration or statement",
             Span {
                 start: unknown,
                 end: unknown,
             },
-        )
-        .unwrap_or_else(|_| Diagnostic {
-            code: "E0100",
-            message: "parser error".into(),
-            span: Span {
-                start: unknown,
-                end: unknown,
-            },
-            structured: None,
-        }));
+        ));
     }
     let mut parser = ExpressionParser { tokens, index: 0 };
     let expression = parser.expression(0)?;

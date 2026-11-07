@@ -609,6 +609,10 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    #[expect(
+        clippy::verbose_file_reads,
+        reason = "the file comes from the policy-checked opener; std::fs::read would bypass the filesystem policy and is a disallowed method"
+    )]
     fn concurrent_intermediate_symlink_swap_never_reads_outside() {
         use std::sync::Arc;
         use std::sync::atomic::{AtomicBool, Ordering};

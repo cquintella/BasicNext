@@ -507,6 +507,10 @@ fn arithmetic_operator_rules_are_checked() {
     );
 }
 
+#[expect(
+    clippy::unwrap_in_result,
+    reason = "test helper: a failed set-up is a failed test"
+)]
 fn analyze_text(text: &str) -> Result<bn_frontend::semantic::SemanticModel, bn_diag::Diagnostic> {
     let source = SourceFile::new("semantic-test.bn", text);
     let tokens = lex(&source).expect("lex source");

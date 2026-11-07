@@ -30,9 +30,29 @@ pub(crate) struct ConnectionInner {
     connection: Option<Connection>,
 }
 
+/// The message of the connection's last failure; empty when SQLite has none.
+///
+/// # Safety
+///
+/// `db` is the live handle of a connection the caller holds locked.
+#[allow(unsafe_code)]
+unsafe fn last_error_message(db: *mut libsqlite3_sys::sqlite3) -> String {
+    // SAFETY: `db` is live (the caller's contract).
+    let message = unsafe { libsqlite3_sys::sqlite3_errmsg(db) };
+    if message.is_null() {
+        return String::new();
+    }
+    // SAFETY: non-null and NUL-terminated; SQLite keeps it until the next call
+    // on `db`, and nothing calls `db` before this copy.
+    unsafe { CStr::from_ptr(message) }
+        .to_string_lossy()
+        .into_owned()
+}
+
 fn is_in_transaction(conn: &Connection) -> bool {
     // SAFETY: Obtaining raw SQLite handle from active Connection to query autocommit state.
     let db_handle = unsafe { conn.handle() };
+    // SAFETY: `db_handle` belongs to `conn`, alive for this call.
     unsafe { libsqlite3_sys::sqlite3_get_autocommit(db_handle) == 0 }
 }
 
@@ -308,6 +328,8 @@ pub fn exec(handle: u64, sql_str: &str) -> Result<(), SqliteFailure> {
     let mut raw_stmt: *mut libsqlite3_sys::sqlite3_stmt = std::ptr::null_mut();
     let mut raw_tail: *const c_char = std::ptr::null();
 
+    // SAFETY: `db_handle` is the locked connection's; `sql_c_str` is NUL-terminated
+    // and outlives the statement; the out pointers are live locals.
     let rc = unsafe {
         libsqlite3_sys::sqlite3_prepare_v2(
             db_handle,
@@ -319,10 +341,8 @@ pub fn exec(handle: u64, sql_str: &str) -> Result<(), SqliteFailure> {
     };
 
     if rc != libsqlite3_sys::SQLITE_OK {
-        // SAFETY: sqlite3_errmsg is valid when sqlite3_prepare_v2 returns non-OK.
-        let err_msg = unsafe { CStr::from_ptr(libsqlite3_sys::sqlite3_errmsg(db_handle)) }
-            .to_string_lossy()
-            .into_owned();
+        // SAFETY: `db_handle` is the locked connection's, alive for this call.
+        let err_msg = unsafe { last_error_message(db_handle) };
         return Err(SqliteFailure::from(rusqlite::Error::SqliteFailure(
             rusqlite::ffi::Error::new(rc),
             Some(err_msg),
@@ -333,10 +353,12 @@ pub fn exec(handle: u64, sql_str: &str) -> Result<(), SqliteFailure> {
         return Ok(());
     }
 
-    // SAFETY: Checking trailing statement tokens.
     if !raw_tail.is_null() {
+        // SAFETY: `sqlite3_prepare_v2` set `raw_tail` inside `sql_c_str`, which is
+        // alive and NUL-terminated.
         let tail_str = unsafe { CStr::from_ptr(raw_tail) }.to_string_lossy();
         if !is_trailing_sql_empty(&tail_str) {
+            // SAFETY: `raw_stmt` is the statement prepared above, finalized once here.
             unsafe { libsqlite3_sys::sqlite3_finalize(raw_stmt) };
             return Err(SqliteFailure::Misuse(sqlite_text(
                 "error.multiple_statements",
@@ -347,6 +369,7 @@ pub fn exec(handle: u64, sql_str: &str) -> Result<(), SqliteFailure> {
     // SAFETY: Verify statement is not row-producing.
     let col_count = unsafe { libsqlite3_sys::sqlite3_column_count(raw_stmt) };
     if col_count > 0 {
+        // SAFETY: `raw_stmt` is the statement prepared above, finalized once here.
         unsafe { libsqlite3_sys::sqlite3_finalize(raw_stmt) };
         return Err(SqliteFailure::Misuse(sqlite_text(
             "error.exec_returns_rows",
@@ -356,6 +379,7 @@ pub fn exec(handle: u64, sql_str: &str) -> Result<(), SqliteFailure> {
     // SAFETY: Verify read-only constraint.
     let is_stmt_readonly = unsafe { libsqlite3_sys::sqlite3_stmt_readonly(raw_stmt) } != 0;
     if state.read_only && !is_stmt_readonly {
+        // SAFETY: `raw_stmt` is the statement prepared above, finalized once here.
         unsafe { libsqlite3_sys::sqlite3_finalize(raw_stmt) };
         return Err(SqliteFailure::ReadOnly(sqlite_text(
             "error.read_only_mutation",
@@ -364,12 +388,12 @@ pub fn exec(handle: u64, sql_str: &str) -> Result<(), SqliteFailure> {
 
     // SAFETY: Stepping statement and finalizing.
     let step_rc = unsafe { libsqlite3_sys::sqlite3_step(raw_stmt) };
+    // SAFETY: `raw_stmt` is the statement prepared above, finalized once here.
     unsafe { libsqlite3_sys::sqlite3_finalize(raw_stmt) };
 
     if step_rc != libsqlite3_sys::SQLITE_DONE && step_rc != libsqlite3_sys::SQLITE_ROW {
-        let err_msg = unsafe { CStr::from_ptr(libsqlite3_sys::sqlite3_errmsg(db_handle)) }
-            .to_string_lossy()
-            .into_owned();
+        // SAFETY: `db_handle` is the locked connection's, alive for this call.
+        let err_msg = unsafe { last_error_message(db_handle) };
         return Err(SqliteFailure::from(rusqlite::Error::SqliteFailure(
             rusqlite::ffi::Error::new(step_rc),
             Some(err_msg),
@@ -392,6 +416,8 @@ pub fn query(handle: u64, sql_str: &str) -> Result<SqliteQueryResult, SqliteFail
     let mut raw_stmt: *mut libsqlite3_sys::sqlite3_stmt = std::ptr::null_mut();
     let mut raw_tail: *const c_char = std::ptr::null();
 
+    // SAFETY: `db_handle` is the locked connection's; `sql_c_str` is NUL-terminated
+    // and outlives the statement; the out pointers are live locals.
     let rc = unsafe {
         libsqlite3_sys::sqlite3_prepare_v2(
             db_handle,
@@ -403,10 +429,8 @@ pub fn query(handle: u64, sql_str: &str) -> Result<SqliteQueryResult, SqliteFail
     };
 
     if rc != libsqlite3_sys::SQLITE_OK {
-        // SAFETY: the pointer is non-null and NUL-terminated for this read.
-        let err_msg = unsafe { CStr::from_ptr(libsqlite3_sys::sqlite3_errmsg(db_handle)) }
-            .to_string_lossy()
-            .into_owned();
+        // SAFETY: `db_handle` is the locked connection's, alive for this call.
+        let err_msg = unsafe { last_error_message(db_handle) };
         return Err(SqliteFailure::from(rusqlite::Error::SqliteFailure(
             rusqlite::ffi::Error::new(rc),
             Some(err_msg),
@@ -417,10 +441,12 @@ pub fn query(handle: u64, sql_str: &str) -> Result<SqliteQueryResult, SqliteFail
         return Err(SqliteFailure::Misuse(sqlite_text("error.query_empty")));
     }
 
-    // SAFETY: Checking trailing statement tokens.
     if !raw_tail.is_null() {
+        // SAFETY: `sqlite3_prepare_v2` set `raw_tail` inside `sql_c_str`, which is
+        // alive and NUL-terminated.
         let tail_str = unsafe { CStr::from_ptr(raw_tail) }.to_string_lossy();
         if !is_trailing_sql_empty(&tail_str) {
+            // SAFETY: `raw_stmt` is the statement prepared above, finalized once here.
             unsafe { libsqlite3_sys::sqlite3_finalize(raw_stmt) };
             return Err(SqliteFailure::Misuse(sqlite_text(
                 "error.multiple_statements",
@@ -431,6 +457,7 @@ pub fn query(handle: u64, sql_str: &str) -> Result<SqliteQueryResult, SqliteFail
     // SAFETY: Verify query produces rows.
     let col_count = unsafe { libsqlite3_sys::sqlite3_column_count(raw_stmt) };
     if col_count <= 0 {
+        // SAFETY: `raw_stmt` is the statement prepared above, finalized once here.
         unsafe { libsqlite3_sys::sqlite3_finalize(raw_stmt) };
         return Err(SqliteFailure::Misuse(sqlite_text("error.query_not_rows")));
     }
@@ -443,6 +470,8 @@ pub fn query(handle: u64, sql_str: &str) -> Result<SqliteQueryResult, SqliteFail
         let col_name = if name_ptr.is_null() {
             format!("col_{i}")
         } else {
+            // SAFETY: SQLite returned a non-null, NUL-terminated name it owns until
+            // the statement is finalized.
             unsafe { CStr::from_ptr(name_ptr) }
                 .to_string_lossy()
                 .into_owned()
@@ -467,6 +496,7 @@ pub fn query(handle: u64, sql_str: &str) -> Result<SqliteQueryResult, SqliteFail
                 let val = match val_type {
                     libsqlite3_sys::SQLITE_INTEGER => {
                         let num =
+                            // SAFETY: `raw_stmt` is live until `sqlite3_finalize`, and `col_idx` is in range.
                             unsafe { libsqlite3_sys::sqlite3_column_int64(raw_stmt, col_idx) };
                         SqliteValue::Integer(num)
                     }
@@ -524,11 +554,10 @@ pub fn query(handle: u64, sql_str: &str) -> Result<SqliteQueryResult, SqliteFail
                 col.values.push(val);
             }
         } else {
-            // SAFETY: the pointer is non-null and NUL-terminated for this read.
-            let err_msg = unsafe { CStr::from_ptr(libsqlite3_sys::sqlite3_errmsg(db_handle)) }
-                .to_string_lossy()
-                .into_owned();
+            // SAFETY: `db_handle` is the locked connection's, alive for this call.
+            let err_msg = unsafe { last_error_message(db_handle) };
             // SAFETY: `raw_stmt` is the statement this function prepared and has not finalized yet.
+            // SAFETY: `raw_stmt` is the statement prepared above, finalized once here.
             unsafe { libsqlite3_sys::sqlite3_finalize(raw_stmt) };
             return Err(SqliteFailure::from(rusqlite::Error::SqliteFailure(
                 rusqlite::ffi::Error::new(step_rc),
@@ -538,6 +567,7 @@ pub fn query(handle: u64, sql_str: &str) -> Result<SqliteQueryResult, SqliteFail
     }
 
     // SAFETY: Finalizing statement.
+    // SAFETY: `raw_stmt` is the statement prepared above, finalized once here.
     unsafe { libsqlite3_sys::sqlite3_finalize(raw_stmt) };
     Ok(SqliteQueryResult { columns })
 }
@@ -588,6 +618,7 @@ pub fn changes(handle: u64) -> Result<i64, SqliteFailure> {
 
     // SAFETY: Reading changes count from SQLite handle.
     let db_handle = unsafe { conn.handle() };
+    // SAFETY: `db_handle` is the locked connection's, alive for this call.
     let count = unsafe { libsqlite3_sys::sqlite3_changes64(db_handle) };
     Ok(count)
 }
@@ -599,6 +630,7 @@ pub fn last_insert_rowid(handle: u64) -> Result<i64, SqliteFailure> {
 
     // SAFETY: Reading last insert rowid from SQLite handle.
     let db_handle = unsafe { conn.handle() };
+    // SAFETY: `db_handle` is the locked connection's, alive for this call.
     let rowid = unsafe { libsqlite3_sys::sqlite3_last_insert_rowid(db_handle) };
     Ok(rowid)
 }

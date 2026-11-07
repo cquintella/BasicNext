@@ -406,13 +406,17 @@ pub extern "C" fn bn_rt_dispatch_await(
         .error
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    #[allow(unsafe_code)]
-    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
-    unsafe {
-        if !out_result.is_null() {
+    if !out_result.is_null() {
+        // SAFETY: `out_result` is non-null (just checked) and the caller's writable slot.
+        #[allow(unsafe_code)]
+        unsafe {
             *out_result = result;
         }
-        if !out_error.is_null() {
+    }
+    if !out_error.is_null() {
+        // SAFETY: `out_error` is non-null (just checked) and the caller's writable slot.
+        #[allow(unsafe_code)]
+        unsafe {
             *out_error = error;
         }
     }
@@ -621,13 +625,17 @@ pub extern "C" fn bn_rt_dispatch_ticket_error(
             DispatchFailure::Cancelled.cause(),
         );
         let record = crate::error_abi::bn_rt_error_take(1, std::ptr::null());
-        #[allow(unsafe_code)]
-        // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
-        unsafe {
-            if !out_msg.is_null() {
+        if !out_msg.is_null() {
+            // SAFETY: `out_msg` is non-null (just checked) and the caller's writable slot.
+            #[allow(unsafe_code)]
+            unsafe {
                 *out_msg = record;
             }
-            if !out_code.is_null() {
+        }
+        if !out_code.is_null() {
+            // SAFETY: `out_code` is non-null (just checked) and the caller's writable slot.
+            #[allow(unsafe_code)]
+            unsafe {
                 *out_code = crate::error_abi::bn_rt_error_code(record);
             }
         }
@@ -649,13 +657,17 @@ pub extern "C" fn bn_rt_dispatch_ticket_error(
             failure.cause(),
         );
         let record = crate::error_abi::bn_rt_error_take(1, std::ptr::null());
-        #[allow(unsafe_code)]
-        // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
-        unsafe {
-            if !out_msg.is_null() {
+        if !out_msg.is_null() {
+            // SAFETY: `out_msg` is non-null (just checked) and the caller's writable slot.
+            #[allow(unsafe_code)]
+            unsafe {
                 *out_msg = record;
             }
-            if !out_code.is_null() {
+        }
+        if !out_code.is_null() {
+            // SAFETY: `out_code` is non-null (just checked) and the caller's writable slot.
+            #[allow(unsafe_code)]
+            unsafe {
                 *out_code = crate::error_abi::bn_rt_error_code(record);
             }
         }

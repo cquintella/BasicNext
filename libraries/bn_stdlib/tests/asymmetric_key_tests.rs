@@ -61,11 +61,13 @@ fn test_asymmetric_key_c_abi() {
 
     let pub_id_ptr = bn_rt_crypto_public_key_id(pub_handle);
     assert!(!pub_id_ptr.is_null());
+    // SAFETY: the runtime returned this NUL-terminated STRING, alive until it is released.
     let pub_id = unsafe { CStr::from_ptr(pub_id_ptr) }.to_str().unwrap();
     assert_eq!(pub_id.len(), 64);
 
     let priv_id_ptr = bn_rt_crypto_private_key_id(priv_handle);
     assert!(!priv_id_ptr.is_null());
+    // SAFETY: the runtime returned this NUL-terminated STRING, alive until it is released.
     let priv_id = unsafe { CStr::from_ptr(priv_id_ptr) }.to_str().unwrap();
     assert_eq!(priv_id, pub_id);
 
@@ -76,6 +78,7 @@ fn test_asymmetric_key_c_abi() {
     assert_ne!(derived_pub, 0);
     let derived_id_ptr = bn_rt_crypto_public_key_id(derived_pub);
     assert!(!derived_id_ptr.is_null());
+    // SAFETY: the runtime returned this NUL-terminated STRING, alive until it is released.
     let derived_id = unsafe { CStr::from_ptr(derived_id_ptr) }.to_str().unwrap();
     assert_eq!(derived_id, pub_id);
 
@@ -167,10 +170,22 @@ fn test_unsupported_algorithm_keypair_generation() {
 const PASSWORD: &str = "s3cret-phrase";
 
 fn assert_password_absent(err: &bn_stdlib::crypto_error::CryptoFailure) {
-    assert!(!err.message().contains(PASSWORD));
-    assert!(!err.cause().contains(PASSWORD));
-    assert!(!err.message().contains("not-the-password"));
-    assert!(!err.cause().contains("not-the-password"));
+    assert!(
+        !err.message().contains(PASSWORD),
+        "the error message never repeats the password"
+    );
+    assert!(
+        !err.cause().contains(PASSWORD),
+        "the error cause never repeats the password"
+    );
+    assert!(
+        !err.message().contains("not-the-password"),
+        "the error message never repeats the wrong password"
+    );
+    assert!(
+        !err.cause().contains("not-the-password"),
+        "the error cause never repeats the wrong password"
+    );
 }
 
 #[test]

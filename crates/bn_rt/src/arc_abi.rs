@@ -231,6 +231,10 @@ pub fn is_object_alive(id: u64) -> bool {
 
 /// Reports a `USE_AFTER_RELEASE` failure and terminates the process when a native
 /// wrapper attempts to access a region whose last strong reference was released.
+#[expect(
+    clippy::exit,
+    reason = "a runtime trap ends the program: the language's defined outcome of this failure"
+)]
 pub fn abort_use_after_release() -> ! {
     record_failure(RuntimeFailure {
         code: "USE_AFTER_RELEASE",

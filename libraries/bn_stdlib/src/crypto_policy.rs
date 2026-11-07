@@ -92,12 +92,38 @@ pub(crate) unsafe fn read_policy(opts: *const u8, policy_offset: usize) -> Crypt
     if opts.is_null() {
         return CryptoPolicy::default();
     }
-    // SAFETY: the caller guarantees the record layout; both bytes are inside
-    // the inline `Policy` STRUCT.
-    unsafe {
-        CryptoPolicy {
-            allow_legacy: *opts.add(policy_offset + POLICY_ALLOW_LEGACY_OFFSET) != 0,
-            fips_only: *opts.add(policy_offset + POLICY_FIPS_ONLY_OFFSET) != 0,
-        }
+    CryptoPolicy {
+        // SAFETY: the caller guarantees the record layout; the byte is inside the
+        // inline `Policy` STRUCT.
+        allow_legacy: unsafe { read_option_byte(opts, policy_offset + POLICY_ALLOW_LEGACY_OFFSET) }
+            != 0,
+        // SAFETY: as above.
+        fips_only: unsafe { read_option_byte(opts, policy_offset + POLICY_FIPS_ONLY_OFFSET) } != 0,
     }
+}
+
+/// One byte of a native options record.
+///
+/// # Safety
+/// `opts` points to an options record with a readable byte at `offset`.
+#[allow(unsafe_code)]
+pub(crate) unsafe fn read_option_byte(opts: *const u8, offset: usize) -> u8 {
+    // SAFETY: `offset` is inside the record (the caller's contract).
+    let field = unsafe { opts.add(offset) };
+    // SAFETY: one readable byte at `field`.
+    unsafe { field.read() }
+}
+
+/// An `INT32` field of a native options record, in the host's byte order (the
+/// backend stores it natively).
+///
+/// # Safety
+/// `opts` is non-null and points to an options record with four readable bytes
+/// at `offset`, as the backend lays it out.
+#[allow(unsafe_code)]
+pub(crate) unsafe fn read_option_i32(opts: *const u8, offset: usize) -> i32 {
+    // SAFETY: `offset` is inside the record (the caller's contract).
+    let field = unsafe { opts.add(offset) };
+    // SAFETY: four readable bytes at `field`; `read_unaligned` needs no alignment.
+    unsafe { field.cast::<i32>().read_unaligned() }
 }

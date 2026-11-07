@@ -283,15 +283,9 @@ pub extern "C" fn bn_rt_crypto_mac_with(
     let alg = if opts_ptr.is_null() {
         MAC_HMAC_SHA256
     } else {
-        let mut alg_bytes = [0u8; 4];
-        unsafe {
-            std::ptr::copy_nonoverlapping(
-                opts_ptr.add(MAC_OPTS_ALG_OFFSET),
-                alg_bytes.as_mut_ptr(),
-                4,
-            );
-        }
-        i32::from_le_bytes(alg_bytes)
+        // SAFETY: `opts_ptr` is the non-null `MacOptions` record the backend laid
+        // out; `alg` is its `INT32` at `MAC_OPTS_ALG_OFFSET`.
+        unsafe { crate::crypto_policy::read_option_i32(opts_ptr, MAC_OPTS_ALG_OFFSET) }
     };
     // SAFETY: `opts_ptr` is null or the `MacOptions` record the backend laid out.
     let policy = unsafe {
@@ -304,6 +298,7 @@ pub extern "C" fn bn_rt_crypto_mac_with(
         Ok(tag) => {
             let handle = store(tag);
             let handle_i64 = i64::try_from(handle).unwrap_or(i64::MAX);
+            // SAFETY: `out_handle` was checked non-null at entry; it is the caller's slot.
             unsafe { *out_handle = handle_i64 };
             BN_CRYPTO_OK
         }
@@ -322,15 +317,9 @@ pub extern "C" fn bn_rt_crypto_mac_stream_new_with(
     let alg = if opts_ptr.is_null() {
         MAC_HMAC_SHA256
     } else {
-        let mut alg_bytes = [0u8; 4];
-        unsafe {
-            std::ptr::copy_nonoverlapping(
-                opts_ptr.add(MAC_OPTS_ALG_OFFSET),
-                alg_bytes.as_mut_ptr(),
-                4,
-            );
-        }
-        i32::from_le_bytes(alg_bytes)
+        // SAFETY: `opts_ptr` is the non-null `MacOptions` record the backend laid
+        // out; `alg` is its `INT32` at `MAC_OPTS_ALG_OFFSET`.
+        unsafe { crate::crypto_policy::read_option_i32(opts_ptr, MAC_OPTS_ALG_OFFSET) }
     };
     // SAFETY: `opts_ptr` is null or the `MacOptions` record the backend laid out.
     let policy = unsafe {
@@ -359,6 +348,7 @@ pub extern "C" fn bn_rt_crypto_mac_stream_new(
     match MacStream::new(&key_bytes, alg) {
         Ok(stream) => {
             let handle = insert_mac_stream(stream);
+            // SAFETY: `out_handle` was checked non-null at entry; it is the caller's slot.
             unsafe { *out_handle = handle };
             BN_CRYPTO_OK
         }
@@ -397,6 +387,7 @@ pub extern "C" fn bn_rt_crypto_mac_stream_finish(stream_handle: i64, out_handle:
         Ok(tag) => {
             let handle = store(tag);
             let handle_i64 = i64::try_from(handle).unwrap_or(i64::MAX);
+            // SAFETY: `out_handle` was checked non-null at entry; it is the caller's slot.
             unsafe { *out_handle = handle_i64 };
             BN_CRYPTO_OK
         }

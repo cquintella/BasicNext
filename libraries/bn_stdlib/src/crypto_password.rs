@@ -210,6 +210,7 @@ pub extern "C" fn bn_rt_crypto_hkdf(
                 zeroized: false,
             });
             let handle_i64 = i64::try_from(handle).unwrap_or(i64::MAX);
+            // SAFETY: `out_handle` was checked non-null at entry; it is the caller's slot.
             unsafe { *out_handle = handle_i64 };
             BN_CRYPTO_OK
         }

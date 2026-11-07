@@ -111,7 +111,7 @@ mod tests {
         let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
         std::thread::scope(|s| {
             for i in 0..8 {
-                let b = barrier.clone();
+                let b = std::sync::Arc::clone(&barrier);
                 s.spawn(move || {
                     b.wait();
                     let paths = if i % 2 == 0 {

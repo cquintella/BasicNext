@@ -350,14 +350,17 @@ fn rust_environment_literal(source: &str, quote: usize) -> bool {
     prefix.ends_with("env!(") || prefix.ends_with("option_env!(")
 }
 
-/// Only the first literal argument of a direct `expect` or `panic!` call.
-/// A later string argument can still be a user-visible value.
+/// Only the first literal argument of a direct `expect` or `panic!` call,
+/// and the `reason = "..."` of a lint attribute (`#[expect(..., reason)]`):
+/// texts for the reader of the code, never shown to a user. A later string
+/// argument of a call can still be a user-visible value.
 fn internal_invariant_literal(source: &str, quote: usize) -> bool {
-    source[..quote]
-        .trim_end()
-        .strip_suffix('(')
-        .map(str::trim_end)
-        .is_some_and(|prefix| prefix.ends_with(".expect") || prefix.ends_with("panic!"))
+    let prefix = source[..quote].trim_end();
+    prefix.ends_with("reason =")
+        || prefix
+            .strip_suffix('(')
+            .map(str::trim_end)
+            .is_some_and(|prefix| prefix.ends_with(".expect") || prefix.ends_with("panic!"))
 }
 
 #[test]
@@ -366,6 +369,7 @@ fn direct_expect_and_panic_messages_are_internal_invariants() {
         let _ = value.expect("internal invariant failed");
         panic!("internal state is invalid: {}", value);
         panic!("{}", "not the panic format string");
+        #[expect(clippy::exit, reason = "a lint reason is for the reader of the code")]
         let _ = format!("user visible diagnostic text");
         let _ = "MODULE_NOT_FOUND";
     "#;

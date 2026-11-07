@@ -372,10 +372,9 @@ pub extern "C" fn bn_rt_crypto_keypair_generate(
         Ok((pub_h, priv_h)) => {
             // SAFETY: both out pointers were checked non-null above; the caller
             // (emitted code) passes slots of a live `KeyPair` record.
-            unsafe {
-                *out_pub = pub_h;
-                *out_priv = priv_h;
-            }
+            unsafe { *out_pub = pub_h };
+            // SAFETY: as above, for the private-key slot.
+            unsafe { *out_priv = priv_h };
             0
         }
         Err(failure) => crate::crypto_abi::failed(&failure),
@@ -501,17 +500,9 @@ pub extern "C" fn bn_rt_crypto_keypair_generate_with(
             operation: "BNCrypto.NewKeyPairWith",
         });
     }
-    let mut alg_bytes = [0u8; 4];
     // SAFETY: `opts_ptr` was checked non-null and is the `KeyPairOptions`
-    // record the backend laid out; `alg` is an INT32 at its offset.
-    unsafe {
-        std::ptr::copy_nonoverlapping(
-            opts_ptr.add(KEY_PAIR_OPTS_ALG_OFFSET),
-            alg_bytes.as_mut_ptr(),
-            4,
-        );
-    }
-    let alg = i32::from_ne_bytes(alg_bytes);
+    // record the backend laid out; `alg` is its `INT32` at its offset.
+    let alg = unsafe { crate::crypto_policy::read_option_i32(opts_ptr, KEY_PAIR_OPTS_ALG_OFFSET) };
     // SAFETY: as above; `policy` is at `KEY_PAIR_OPTS_POLICY_OFFSET`.
     let policy = unsafe {
         crate::crypto_policy::read_policy(

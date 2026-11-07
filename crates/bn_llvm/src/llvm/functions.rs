@@ -335,7 +335,7 @@ pub(crate) fn emit_function(
                     // Fixed storage of a STRUCT binding: every Store copies into
                     // it (`emission1.rs`), so the value lives until the return.
                     let bytes = usize::try_from(class_instance_bytes(module, &owner))
-                        .expect("struct size fits usize");
+                        .map_err(|error| error.to_string())?;
                     let slot_name = format!("structslot{}", symbol_names[symbol]);
                     text.assign(
                         slot_name.clone(),

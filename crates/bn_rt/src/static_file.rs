@@ -139,11 +139,11 @@ pub extern "C" fn bn_rt_static_file_read(
         block
     };
     // SAFETY: the three out pointers were checked non-null; the caller owns them.
-    unsafe {
-        out_data.write(data);
-        out_len.write(u64::try_from(file.bytes.len()).unwrap_or(u64::MAX));
-        out_mtime.write(file.mtime_secs);
-    }
+    unsafe { out_data.write(data) };
+    // SAFETY: as above.
+    unsafe { out_len.write(u64::try_from(file.bytes.len()).unwrap_or(u64::MAX)) };
+    // SAFETY: as above.
+    unsafe { out_mtime.write(file.mtime_secs) };
     STATIC_FILE_OK
 }
 
@@ -209,6 +209,10 @@ mod tests {
 
     /// Runs `read` on another thread; a read still running after
     /// `BLOCKED_AFTER` fails the test instead of hanging it.
+    #[expect(
+        clippy::unwrap_in_result,
+        reason = "a read that blocks is the failure this test helper reports"
+    )]
     fn read_bounded(policy: FsPolicy, path: &Path, max: usize) -> Result<Vec<u8>, StaticReadError> {
         let (sender, receiver) = mpsc::channel();
         let path = path.to_path_buf();

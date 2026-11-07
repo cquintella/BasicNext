@@ -338,6 +338,7 @@ pub extern "C" fn bn_rt_file_read_bytes(
     let buffer = unsafe { std::slice::from_raw_parts_mut(buffer, len) };
     match with_file(handle, |file| file.read_bytes(buffer)) {
         Ok(Some(count)) => {
+            // SAFETY: `out` was checked non-null at entry and is a writable `i64` slot.
             unsafe { out.write(i64::try_from(count).unwrap_or(i64::MAX)) };
             BN_FILE_OK
         }

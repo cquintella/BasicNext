@@ -486,7 +486,8 @@ fn bnr_all_transcript_fixtures() {
 #[test]
 fn bnr_history_retains_last_error_and_subsequent_successes() {
     use bnr::history::BnrHistory;
-    use rustyline::history::{History as _, SearchDirection};
+    use rustyline::history::History as _;
+    use rustyline::history::SearchDirection;
 
     let mut history = BnrHistory::new();
     assert!(history.record_success("LET a = 10").unwrap());

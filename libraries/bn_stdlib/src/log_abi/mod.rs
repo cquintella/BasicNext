@@ -53,7 +53,7 @@ impl bn_core_log::LogSink for RuntimeSink {
     }
     fn open_append(&self, path: &std::path::Path) -> std::io::Result<Box<dyn std::io::Write>> {
         super::policy::open_path(path, super::secure_fs::OpenMode::Append)
-            .map(|file| Box::new(file) as Box<dyn std::io::Write>)
+            .map(|file| -> Box<dyn std::io::Write> { Box::new(file) })
     }
 }
 

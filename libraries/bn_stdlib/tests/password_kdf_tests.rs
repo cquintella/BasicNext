@@ -23,7 +23,7 @@ fn buffer(bytes: &[u8]) -> u64 {
     let mut handle = 0_u64;
     let rc = bn_stdlib::crypto_abi::bn_rt_crypto_bytes_from_hex(hex, &raw mut handle);
     bn_stdlib::string::bn_rt_str_release(hex);
-    assert_eq!(rc, 0);
+    assert_eq!(rc, 0, "the call succeeds");
     handle
 }
 
@@ -66,6 +66,8 @@ fn test_c_abi_password_and_hkdf() {
     let pw_str = bn_stdlib::string::c_string_from_bytes(b"test-c-abi-password");
     let phc_ptr = bn_rt_crypto_hash_password(pw_str);
     assert!(!phc_ptr.is_null());
+
+    // SAFETY: the runtime returned this NUL-terminated STRING, alive until it is released.
 
     let phc_str = unsafe { CStr::from_ptr(phc_ptr) };
     let phc_slice = phc_str.to_str().expect("valid utf-8 phc");

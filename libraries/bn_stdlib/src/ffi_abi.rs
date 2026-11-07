@@ -129,9 +129,13 @@ pub extern "C" fn bn_rt_ffi_set_array(
     let region_arc_id = if data_ptr.is_null() {
         None
     } else {
-        // SAFETY: Every native region allocated by `bnc` stores its 64-bit ARC ObjectId
-        // at offset -8 (`REGION_HEADER_BYTES - ID_OFFSET`) immediately before `data_ptr`.
-        let arc_id = unsafe { data_ptr.byte_sub(8).cast::<u64>().read_unaligned() };
+        // SAFETY: every native region allocated by `bnc` stores its 64-bit ARC
+        // ObjectId at offset -8 (`REGION_HEADER_BYTES - ID_OFFSET`), immediately
+        // before `data_ptr`, inside the same allocation.
+        let id_slot = unsafe { data_ptr.byte_sub(8) };
+        // SAFETY: eight readable bytes at `id_slot`; `read_unaligned` needs no
+        // alignment.
+        let arc_id = unsafe { id_slot.cast::<u64>().read_unaligned() };
         if !crate::arc_abi::is_object_alive(arc_id) {
             crate::arc_abi::abort_use_after_release();
         }

@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! A `HOST.Exec.Run` timeout ends the whole process tree and leaves no
-//! capture thread behind (audit finding 5, D-1: group kill). One test per
+//! capture thread behind (the whole process group is killed). One test per
 //! process, so the thread count is not disturbed by another test.
 
 #![cfg(unix)]

@@ -3,8 +3,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! The workers behind `HOST.Net.Resolve` and `HOST.Net.Reverse` (audit
-//! finding 2). `getaddrinfo` cannot be interrupted, so a timeout is a logical
+//! The workers behind `HOST.Net.Resolve` and `HOST.Net.Reverse`.
+//! `getaddrinfo` cannot be interrupted, so a timeout is a logical
 //! cancellation: the caller stops waiting, a lookup that has not started is
 //! never started, and one that has started finishes and is dropped.
 //!

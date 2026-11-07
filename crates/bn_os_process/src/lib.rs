@@ -48,7 +48,7 @@ impl ProcessControl for OsProcessControl {
 
 impl ContainedTree for ProcessTree {
     fn kill(&self) -> io::Result<()> {
-        ProcessTree::kill(self)
+        self.kill_tree()
     }
 }
 
@@ -161,7 +161,7 @@ mod unix {
         /// The operating-system error, except that an empty group (`ESRCH`)
         /// is success.
         #[allow(unsafe_code)]
-        pub fn kill(&self) -> KillResult {
+        pub fn kill_tree(&self) -> KillResult {
             // SAFETY: `killpg` takes two integers and touches no memory of
             // ours. `group` is the id of a group this call created, which
             // the kernel does not reuse while a member lives.
@@ -235,7 +235,7 @@ mod windows {
         ///
         /// The operating-system error.
         #[allow(unsafe_code)]
-        pub fn kill(&self) -> KillResult {
+        pub fn kill_tree(&self) -> KillResult {
             // SAFETY: `job` is a live job handle owned by `self`.
             if unsafe { TerminateJobObject(self.job, TERMINATED_EXIT_CODE) } == 0 {
                 Err(io::Error::last_os_error())

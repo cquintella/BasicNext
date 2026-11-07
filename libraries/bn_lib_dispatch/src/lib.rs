@@ -327,7 +327,7 @@ impl DispatchProvider {
                 require_arity(name, arguments, 0, span)?;
                 Ok(match bn_stdlib::dispatch_sync::auto_worker_count() {
                     Ok(workers) => {
-                        self.dispatch_queue(name, i128::try_from(workers).expect("usize fits i128"))
+                        self.dispatch_queue(name, i128::try_from(workers).unwrap_or(i128::MAX))
                     }
                     Err(failure) => failed(name, &failure),
                 })
@@ -355,7 +355,7 @@ impl DispatchProvider {
                         runtime_error(bn_diag::DiagId::STALE_HANDLE, "queue is invalid", span)
                     })?
                 };
-                let task_name = task.clone();
+                let task_name = std::sync::Arc::clone(task);
                 let task_arguments = arguments[2..].to_vec();
                 let worker_module = core.module().clone();
                 let worker_host = core.host().fork_for_task();
@@ -572,7 +572,8 @@ impl DispatchProvider {
             Err(failure) => return failed(name, &failure),
         };
         debug_assert!(
-            (1..=bn_limits::dispatch_limits().worker_count_max).contains(&queue.workers())
+            (1..=bn_limits::dispatch_limits().worker_count_max).contains(&queue.workers()),
+            "a queue keeps its worker count within the configured bounds"
         );
         let mut state = shared_dispatch()
             .lock()

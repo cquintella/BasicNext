@@ -5,7 +5,7 @@
 
 //! `Server.Stop` waits on a condition: a drain that has nothing to do uses
 //! almost no CPU, and it still ends as soon as the last connection is
-//! released (audit finding 6).
+//! released.
 
 #![cfg(unix)]
 
@@ -15,7 +15,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 const DRAIN_TIMEOUT_MS: i128 = 1000;
-/// 5% of the drain timeout (acceptance of WEB-DRAIN-1).
+/// 5% of the drain timeout: a drain that waits on a condition, not a busy loop.
 const CPU_CEILING: Duration = Duration::from_millis(50);
 const RELEASE_AFTER: Duration = Duration::from_millis(200);
 /// The drain must notice a release well before the timeout.

@@ -87,17 +87,24 @@ pub(crate) fn c_string_from_bytes(bytes: &[u8]) -> *mut c_char {
     if base.is_null() {
         return std::ptr::null_mut();
     }
-    // SAFETY: a non-null STRING is preceded by its header; the allocation is the header, the payload and a trailing NUL, and a null allocation is not read.
+    // The block is `HEADER_SIZE + len + 1` bytes from `malloc`, aligned for any
+    // type: the header, then the payload, then a NUL.
+    // SAFETY: the header fits at the start of the block, which is aligned.
     unsafe {
         base.cast::<StringHeader>().write(StringHeader {
             ref_count: std::sync::atomic::AtomicU64::new(1),
             len: len as u64,
         });
-        let data_ptr = base.add(HEADER_SIZE);
-        std::ptr::copy_nonoverlapping(bytes.as_ptr(), data_ptr, bytes.len());
-        data_ptr.add(bytes.len()).write(0);
-        data_ptr.cast::<c_char>()
     }
+    // SAFETY: `HEADER_SIZE` is inside the block.
+    let data_ptr = unsafe { base.add(HEADER_SIZE) };
+    // SAFETY: the payload region holds `bytes.len()` bytes, apart from `bytes`.
+    unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), data_ptr, bytes.len()) };
+    // SAFETY: the NUL byte is the last byte of the block.
+    let terminator = unsafe { data_ptr.add(bytes.len()) };
+    // SAFETY: `terminator` is inside the block.
+    unsafe { terminator.write(0) };
+    data_ptr.cast::<c_char>()
 }
 
 pub(crate) fn c_string(text: &str) -> *mut c_char {
@@ -858,7 +865,7 @@ pub extern "C" fn bn_web_server_dispatch(handle: u64, req_handle: u64, resp_hand
         (
             entry.filters.clone(),
             entry.routes.clone(),
-            entry.state.clone(),
+            std::sync::Arc::clone(&entry.state),
         )
     };
 
@@ -957,7 +964,7 @@ pub extern "C" fn bn_web_server_stop(handle: u64, timeout_ms: i64) -> i32 {
         let Some(entry) = guard.servers.get(&handle) else {
             return record_failure("Server.Stop", &WebFailure::Closed("server closed".into()));
         };
-        entry.state.clone()
+        std::sync::Arc::clone(&entry.state)
     };
     match crate::web::drain_server(&state_arc, i128::from(timeout_ms), false) {
         Ok(()) => BN_WEB_OK,
@@ -973,7 +980,7 @@ pub extern "C" fn bn_web_server_close(handle: u64, timeout_ms: i64) -> i32 {
         let Some(entry) = guard.servers.get(&handle) else {
             return record_failure("Server.Close", &WebFailure::Closed("server closed".into()));
         };
-        entry.state.clone()
+        std::sync::Arc::clone(&entry.state)
     };
     match crate::web::drain_server(&state_arc, i128::from(timeout_ms), true) {
         Ok(()) => BN_WEB_OK,
@@ -1293,7 +1300,7 @@ pub extern "C" fn bn_web_session_store_get(
 pub extern "C" fn bn_web_scraper_create(html: *const c_char) -> u64 {
     let html_str = string_text(html).unwrap_or_default();
     let scraper = crate::web_state::Scraper::parse(&html_str)
-        .unwrap_or_else(|_| crate::web_state::Scraper::parse("").unwrap());
+        .unwrap_or_else(|_| crate::web_state::Scraper::empty());
     let handle = alloc_handle();
     let wrapper = table();
     let mut guard = wrapper.lock_table();

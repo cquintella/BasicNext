@@ -668,6 +668,10 @@ pub extern "C" fn bn_rt_policy_init(version: u32, ceiling: u64) -> i32 {
 /// status ends the process with exit status 2 before any user code runs
 /// (D-P-04: malformed policy is fail-closed on both backends).
 #[unsafe(no_mangle)]
+#[expect(
+    clippy::exit,
+    reason = "an invalid execution policy ends the compiled program before Start"
+)]
 pub extern "C" fn bn_rt_policy_check(status: i32) {
     if status != POLICY_OK {
         std::process::exit(2);

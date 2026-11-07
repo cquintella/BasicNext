@@ -34,7 +34,10 @@ pub fn render(value: &Value) -> String {
         Value::CompressBytes(_) => bn_catalog::text("modules", "type.compress_bytes").into(),
         Value::CompressZip(_) => bn_catalog::text("modules", "type.compress_zip_archive").into(),
         Value::DispatchQueue(id) => {
-            debug_assert_ne!(*id, 0);
+            #[cfg(debug_assertions)]
+            if *id == 0 {
+                panic!("a dispatch queue id is never 0");
+            }
             "BNDispatch.Queue".into()
         }
         Value::DispatchTicket(id) => format!("BNDispatch.Ticket#{id}"),

@@ -38,6 +38,10 @@ impl Drop for BnString {
     }
 }
 
+#[expect(
+    clippy::unwrap_used,
+    reason = "test helper: a failed set-up is a failed test"
+)]
 fn temp_file_path(name: &str) -> std::path::PathBuf {
     let mut dir = std::env::temp_dir();
     let nonce = std::time::SystemTime::now()

@@ -251,6 +251,10 @@ impl OpenFile {
             .map_err(|failure| self.error(FsOperation::ReadAll, failure))
     }
 
+    #[expect(
+        clippy::verbose_file_reads,
+        reason = "the file comes from the policy-checked opener; std::fs::read would bypass the filesystem policy and is a disallowed method"
+    )]
     fn read_all_text(&mut self) -> Result<String, Failure> {
         self.file_for(Family::Text, false)?;
         let mut bytes = Vec::new();

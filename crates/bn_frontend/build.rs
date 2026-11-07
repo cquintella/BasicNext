@@ -22,8 +22,14 @@ fn main() {
     let ebnf_special =
         keyword_registry::parse_ebnf_quoted_production(&ebnf, "special-float-literal")
             .unwrap_or_else(|error| panic!("{SPEC_EBNF} special-float-literal: {error}"));
-    assert_eq!(parsed.reserved, ebnf_reserved);
-    assert_eq!(parsed.special_literals, ebnf_special);
+    assert_eq!(
+        parsed.reserved, ebnf_reserved,
+        "the keyword registry and the EBNF list the same reserved words"
+    );
+    assert_eq!(
+        parsed.special_literals, ebnf_special,
+        "the keyword registry and the EBNF list the same special float literals"
+    );
     let mut generated = String::from("const RESERVED_WORDS: &[&str] = &[\n");
     for word in &parsed.reserved {
         writeln!(generated, "    {word:?},").expect("write keyword");

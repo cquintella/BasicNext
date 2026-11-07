@@ -50,7 +50,7 @@ impl Executor<'_, '_> {
         if let Some((library, member)) = self.library_callee(name)
             && !self.function_index.contains_key(name)
         {
-            return self.library_call(library, member, arguments, span);
+            return self.call_library(library, member, arguments, span);
         }
         if is_temporal_builtin(name) {
             return temporal_call(name, &arguments, span);
@@ -103,7 +103,7 @@ impl Executor<'_, '_> {
         Some((library, member))
     }
 
-    pub(crate) fn library_call(
+    pub(crate) fn call_library(
         &mut self,
         library: &'static str,
         member: &str,
@@ -195,7 +195,7 @@ impl Executor<'_, '_> {
     }
 
     /// `NEW #N.Class()` served by a seam library, if `type_name` names one.
-    pub(crate) fn library_allocate(
+    pub(crate) fn allocate_from_library(
         &mut self,
         type_name: &str,
         span: Span,
@@ -219,7 +219,7 @@ impl Executor<'_, '_> {
     }
 
     /// `RELEASE` of a handle owned by a seam library, if any claims it.
-    pub(crate) fn library_release(
+    pub(crate) fn release_from_library(
         &mut self,
         value: &Value,
         span: Span,
@@ -299,7 +299,7 @@ impl crate::provider::CoreContext for Executor<'_, '_> {
         arguments: Vec<Value>,
         span: Span,
     ) -> Result<Value, Diagnostic> {
-        Executor::library_call(self, library, member, arguments, span)
+        self.call_library(library, member, arguments, span)
     }
 
     fn output(&mut self) -> &mut dyn std::io::Write {
@@ -315,7 +315,7 @@ impl crate::provider::CoreContext for Executor<'_, '_> {
     }
 
     fn allocate_object(&mut self, class: &str, span: Span) -> Result<Value, Diagnostic> {
-        Executor::allocate_object(self, class, span)
+        self.allocate_heap_object(class, span)
     }
 
     fn library_allocate(
@@ -328,7 +328,7 @@ impl crate::provider::CoreContext for Executor<'_, '_> {
     }
 
     fn library_release(&mut self, value: &Value, span: Span) -> Option<Result<(), Diagnostic>> {
-        Executor::library_release(self, value, span)
+        self.release_from_library(value, span)
     }
 
     fn library_take(&mut self, library: &'static str) -> Option<Box<dyn provider::Provider>> {

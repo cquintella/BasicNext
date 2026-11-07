@@ -436,7 +436,7 @@ impl NetProvider {
                         span,
                     ));
                 };
-                Ok(Value::String(value.clone()))
+                Ok(Value::String(std::sync::Arc::clone(value)))
             }
             "HOST.Net.Address.IsIPv4"
             | "HOST.Net.Address.IsIPv6"
@@ -618,7 +618,7 @@ impl NetProvider {
                     Ok(Value::Record {
                         record: RecordValue::new(
                             "HOST.Net.Address",
-                            vec![Value::String(network.clone())],
+                            vec![Value::String(std::sync::Arc::clone(network))],
                         ),
                     })
                 } else {

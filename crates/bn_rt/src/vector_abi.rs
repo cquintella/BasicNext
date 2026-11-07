@@ -61,17 +61,20 @@ fn link(rows: *mut Row, leaves: *mut u8, shape: &Shape<'_>) {
         let length = shape.dimensions[level + 1];
         for index in 0..count {
             let child = index * length as usize;
-            // SAFETY: `rows` holds the rows of every level (`bnc` sizes the
-            // storage from the same dimensions) and `leaves` every element;
-            // `level_start + index` and `next_start + child` stay inside the
-            // rows, `child * element_bytes` inside the elements.
+            // `rows` holds the rows of every level (`bnc` sizes the storage
+            // from the same dimensions) and `leaves` every element.
+            let elements = if level + 1 == levels {
+                // SAFETY: `child * element_bytes` stays inside the elements.
+                unsafe { leaves.add(child * shape.element_bytes) }
+            } else {
+                // SAFETY: `next_start + child` stays inside the rows.
+                unsafe { rows.add(next_start + child) }.cast::<u8>()
+            };
+            // SAFETY: `level_start + index` stays inside the rows.
+            let slot = unsafe { rows.add(level_start + index) };
+            // SAFETY: `slot` is a row of the caller's storage, aligned for `Row`.
             unsafe {
-                let elements = if level + 1 == levels {
-                    leaves.add(child * shape.element_bytes)
-                } else {
-                    rows.add(next_start + child).cast::<u8>()
-                };
-                rows.add(level_start + index).write(Row {
+                slot.write(Row {
                     elements,
                     length: i32::try_from(length).unwrap_or(i32::MAX),
                 });
@@ -87,22 +90,26 @@ fn link(rows: *mut Row, leaves: *mut u8, shape: &Shape<'_>) {
 fn copy_leaves(source: *const Row, level: usize, cursor: *mut u8, shape: &Shape<'_>) -> *mut u8 {
     let mut cursor = cursor;
     for index in 0..shape.dimensions[level] as usize {
-        // SAFETY: `source` is a vector of the same fixed shape (the IR is
-        // validated), so it has `dimensions[level]` rows at this level and
-        // each innermost row `leaf_row_bytes` of elements; `ptr::copy`
-        // allows the regions to overlap.
-        unsafe {
-            let row = source.add(index).read();
-            if level + 2 == shape.dimensions.len() {
-                std::ptr::copy(row.elements, cursor, shape.leaf_row_bytes());
-                cursor = cursor.add(shape.leaf_row_bytes());
-            } else {
-                // An outer row points at the next row level, which `link` laid out
-                // as `Row`s: the cast keeps their alignment.
-                #[allow(clippy::cast_ptr_alignment)]
-                let inner = row.elements.cast::<Row>();
-                cursor = copy_leaves(inner, level + 1, cursor, shape);
-            }
+        // `source` is a vector of the same fixed shape (the IR is validated),
+        // so it has `dimensions[level]` rows at this level and each innermost
+        // row `leaf_row_bytes` of elements.
+        // SAFETY: `index` is below `dimensions[level]`, inside the rows.
+        let row_ptr = unsafe { source.add(index) };
+        // SAFETY: `row_ptr` is a live, aligned `Row` of `source`.
+        let row = unsafe { row_ptr.read() };
+        if level + 2 == shape.dimensions.len() {
+            // SAFETY: the row has `leaf_row_bytes` of elements and `cursor` room
+            // for them; `ptr::copy` allows the regions to overlap.
+            unsafe { std::ptr::copy(row.elements, cursor, shape.leaf_row_bytes()) };
+            // SAFETY: the destination holds every leaf row, so `cursor` stays
+            // inside it (or one past its end after the last row).
+            cursor = unsafe { cursor.add(shape.leaf_row_bytes()) };
+        } else {
+            // An outer row points at the next row level, which `link` laid out
+            // as `Row`s: the cast keeps their alignment.
+            #[allow(clippy::cast_ptr_alignment)]
+            let inner = row.elements.cast::<Row>();
+            cursor = copy_leaves(inner, level + 1, cursor, shape);
         }
     }
     cursor

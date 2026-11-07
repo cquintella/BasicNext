@@ -13,7 +13,7 @@ impl Executor<'_, '_> {
             Value::Pointer { .. } | Value::Vector(_) | Value::Record { .. } => false,
             _ => true,
         };
-        if native && let Some(released) = self.library_release(&target, span) {
+        if native && let Some(released) = self.release_from_library(&target, span) {
             return released;
         }
         self.release_owned_value(target, span)
@@ -88,7 +88,9 @@ impl Executor<'_, '_> {
             (Value::Error { code, .. }, "Code") => {
                 Ok(Value::Integer(i128::from(*code), IntegerType::Int32))
             }
-            (Value::Error { message, .. }, "Message") => Ok(Value::String(message.clone())),
+            (Value::Error { message, .. }, "Message") => {
+                Ok(Value::String(std::sync::Arc::clone(message)))
+            }
             (Value::Error { detail, .. }, "Operation" | "Cause") => Ok(Value::String(
                 bn_value::error_detail_field(detail.as_deref(), name == "Cause"),
             )),

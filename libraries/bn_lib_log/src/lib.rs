@@ -318,7 +318,7 @@ impl bn_core_log::LogSink for CoreSink<'_> {
             .host()
             .filesystem()
             .open(path, bn_rt::secure_fs::OpenMode::Append)
-            .map(|file| Box::new(file) as Box<dyn std::io::Write>)
+            .map(|file| -> Box<dyn std::io::Write> { Box::new(file) })
     }
 }
 

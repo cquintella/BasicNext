@@ -214,7 +214,7 @@ mod tests {
             server.start().unwrap();
             server.admit_connection().unwrap();
         }
-        let worker_release = release.clone();
+        let worker_release = std::sync::Arc::clone(&release);
         let worker = std::thread::spawn(move || {
             while !worker_release.load(Ordering::Acquire) {
                 std::thread::yield_now();
@@ -250,7 +250,7 @@ mod tests {
     fn drain_server_bounds_listener_join_at_the_minimum_timeout() {
         let state = Arc::new(Mutex::new(ServerState::new()));
         let release = Arc::new(AtomicBool::new(false));
-        let listener_release = release.clone();
+        let listener_release = std::sync::Arc::clone(&release);
         let listener = std::thread::spawn(move || {
             while !listener_release.load(Ordering::Acquire) {
                 std::thread::yield_now();

@@ -356,8 +356,7 @@ pub extern "C" fn bn_rt_dataframe_get_string(
         return failed("BNData.DataFrame.GetString", &DataFailure::InvalidHandle);
     }
     match cell(frame, row, name) {
-        // SAFETY: `out` and `out_na` were checked non-null and point at writable caller slots.
-        Ok(StoredValue::String(value) | StoredValue::Bytes(value)) => unsafe {
+        Ok(StoredValue::String(value) | StoredValue::Bytes(value)) => {
             let value = super::text_abi::owned_c_string(&value);
             if value.is_null() {
                 return failed(
@@ -365,16 +364,19 @@ pub extern "C" fn bn_rt_dataframe_get_string(
                     &DataFailure::InvalidFormat("out of memory".into()),
                 );
             }
-            out.write(value);
-            out_na.write(0);
+            // SAFETY: `out` and `out_na` were checked non-null and point at writable caller slots.
+            unsafe { out.write(value) };
+            // SAFETY: as above.
+            unsafe { out_na.write(0) };
             BN_DATAFRAME_OK
-        },
-        // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
-        Ok(StoredValue::NotAvailable | StoredValue::Null) => unsafe {
-            out.write(std::ptr::null_mut());
-            out_na.write(1);
+        }
+        Ok(StoredValue::NotAvailable | StoredValue::Null) => {
+            // SAFETY: `out` and `out_na` were checked non-null and point at writable caller slots.
+            unsafe { out.write(std::ptr::null_mut()) };
+            // SAFETY: as above.
+            unsafe { out_na.write(1) };
             BN_DATAFRAME_OK
-        },
+        }
         Ok(_) => {
             let col_name = input_string(name).unwrap_or_default();
             failed(
@@ -430,12 +432,13 @@ pub extern "C" fn bn_rt_dataframe_reduce(
         })
     });
     match result {
-        // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
-        Ok(super::stats::Reduction::Float(value)) => unsafe {
-            out.write(value);
-            out_na.write(0);
+        Ok(super::stats::Reduction::Float(value)) => {
+            // SAFETY: `out` and `out_na` were checked non-null and point at writable caller slots.
+            unsafe { out.write(value) };
+            // SAFETY: as above.
+            unsafe { out_na.write(0) };
             BN_DATAFRAME_OK
-        },
+        }
         // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
         Ok(super::stats::Reduction::Na) => unsafe {
             out_na.write(1);

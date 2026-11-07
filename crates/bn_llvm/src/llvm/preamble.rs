@@ -219,8 +219,10 @@ pub(crate) fn emit_preamble(
     {
         write_declarations(text, &[&runtime_abi::EXIT]);
     }
-    let intrinsics: Vec<&dyn crate::ir::Declaration> =
-        intrinsics.iter().map(|intrinsic| intrinsic as _).collect();
+    let intrinsics: Vec<&dyn crate::ir::Declaration> = intrinsics
+        .iter()
+        .map(|intrinsic| -> &dyn crate::ir::Declaration { intrinsic })
+        .collect();
     write_declarations(text, &intrinsics);
     let mut trampolines = BTreeSet::new();
     for (_, analysis) in functions {

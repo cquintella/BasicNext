@@ -17,6 +17,10 @@ use std::fs;
 const FIXTURE: &str = "tests/host/fs_directories.bn";
 const TYPE_MISMATCH: &str = "TYPE_MISMATCH";
 
+#[expect(
+    clippy::unwrap_in_result,
+    reason = "test helper: a failed set-up is a failed test"
+)]
 fn analysis(text: String) -> Result<(), String> {
     let source = SourceFile::new("fs.bn", text);
     let tokens = lex(&source).expect("lex source");

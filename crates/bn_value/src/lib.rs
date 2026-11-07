@@ -216,9 +216,9 @@ pub fn error_detail_field(detail: Option<&ErrorDetail>, cause: bool) -> SharedSt
         || SharedString::from(""),
         |detail| {
             if cause {
-                detail.cause.clone()
+                std::sync::Arc::clone(&detail.cause)
             } else {
-                detail.operation.clone()
+                std::sync::Arc::clone(&detail.operation)
             }
         },
     )

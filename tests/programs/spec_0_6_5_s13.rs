@@ -43,6 +43,10 @@ fn diagnostic_of(source: &str) -> Diagnostic {
     }
 }
 
+#[expect(
+    clippy::unwrap_in_result,
+    reason = "test helper: a failed set-up is a failed test"
+)]
 fn interpret_file(path: &Path) -> Result<(u8, String), Diagnostic> {
     let graph = load(path).map_err(|error| *error.diagnostic)?;
     let models =
@@ -55,6 +59,10 @@ fn interpret_file(path: &Path) -> Result<(u8, String), Diagnostic> {
     Ok((code, String::from_utf8(output).expect("UTF-8 output")))
 }
 
+#[expect(
+    clippy::unwrap_in_result,
+    reason = "test helper: a failed set-up is a failed test"
+)]
 fn interpret(source: &str) -> Result<(u8, String), Diagnostic> {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let path = std::env::temp_dir().join(format!(
@@ -81,7 +89,10 @@ fn write_program(directory: &TestDir, source: &str) -> PathBuf {
 fn both(source: &str, expected: &str) {
     let (code, stdout) = interpret(source).expect("interpret");
     assert_eq!(code, 0, "{stdout}");
-    assert_eq!(stdout, expected);
+    assert_eq!(
+        stdout, expected,
+        "the interpreter prints the expected output"
+    );
     let directory = TestDir::new("s13").expect("create directory");
     let path = write_program(&directory, source);
     let artifact = compile_native(&path, &directory);
@@ -91,7 +102,11 @@ fn both(source: &str, expected: &str) {
         "native run failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(output.stdout, expected.as_bytes());
+    assert_eq!(
+        output.stdout,
+        expected.as_bytes(),
+        "the compiled program prints the expected output"
+    );
 }
 
 fn reject(source: &str, code: &str) {

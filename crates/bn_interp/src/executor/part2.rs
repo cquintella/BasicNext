@@ -298,7 +298,7 @@ impl Executor<'_, '_> {
                 {
                     result?
                 } else {
-                    let name = name.clone();
+                    let name = std::sync::Arc::clone(name);
                     let arguments = arguments
                         .iter()
                         .map(|argument| value(values, *argument, *span).cloned())
@@ -655,9 +655,9 @@ impl Executor<'_, '_> {
                     _ if is_host_file_type(type_name) => {
                         self.host_allocate("FileSystem", "File", *span)?
                     }
-                    _ => match self.library_allocate(type_name, *span) {
+                    _ => match self.allocate_from_library(type_name, *span) {
                         Some(allocated) => allocated?,
-                        None => self.allocate_object(type_name, *span)?,
+                        None => self.allocate_heap_object(type_name, *span)?,
                     },
                 };
                 set(values, *destination, allocated);

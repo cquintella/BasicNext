@@ -402,23 +402,20 @@ pub extern "C" fn bn_rt_crypto_random_password(opts_ptr: *const u8, out: *mut *m
     if opts_ptr.is_null() {
         return BN_CRYPTO_INVALID_ARGUMENT;
     }
-    // SAFETY: opts_ptr points to a Basic Next PasswordGenOptions struct whose ABI
-    // layout has a 16-byte object header followed by 4-byte length and 4 single-byte booleans.
-    // Reading length via copy_nonoverlapping prevents unaligned pointer dereference.
-    let (length, upper, lower, digits, symbols) = unsafe {
-        let mut len_bytes = [0u8; 4];
-        std::ptr::copy_nonoverlapping(
-            opts_ptr.add(PASSWORD_OPTS_LENGTH_OFFSET),
-            len_bytes.as_mut_ptr(),
-            4,
-        );
-        let length = i32::from_ne_bytes(len_bytes);
-        let upper = *opts_ptr.add(PASSWORD_OPTS_UPPER_OFFSET) != 0;
-        let lower = *opts_ptr.add(PASSWORD_OPTS_LOWER_OFFSET) != 0;
-        let digits = *opts_ptr.add(PASSWORD_OPTS_DIGITS_OFFSET) != 0;
-        let symbols = *opts_ptr.add(PASSWORD_OPTS_SYMBOLS_OFFSET) != 0;
-        (length, upper, lower, digits, symbols)
+    // `opts_ptr` was checked non-null and is the `PasswordGenOptions` record the
+    // backend laid out: a 16-byte header, the `INT32` length, four boolean bytes.
+    let flag = |offset| {
+        // SAFETY: the record has a byte at each `PASSWORD_OPTS_*_OFFSET`.
+        let byte = unsafe { crate::crypto_policy::read_option_byte(opts_ptr, offset) };
+        byte != 0
     };
+    // SAFETY: as above; the length is the `INT32` at `PASSWORD_OPTS_LENGTH_OFFSET`.
+    let length =
+        unsafe { crate::crypto_policy::read_option_i32(opts_ptr, PASSWORD_OPTS_LENGTH_OFFSET) };
+    let upper = flag(PASSWORD_OPTS_UPPER_OFFSET);
+    let lower = flag(PASSWORD_OPTS_LOWER_OFFSET);
+    let digits = flag(PASSWORD_OPTS_DIGITS_OFFSET);
+    let symbols = flag(PASSWORD_OPTS_SYMBOLS_OFFSET);
     let opts = PasswordGenOptions {
         length: usize::try_from(length).unwrap_or(0),
         include_uppercase: upper,

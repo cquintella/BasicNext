@@ -47,7 +47,7 @@ fn buffer(bytes: &[u8]) -> u64 {
     let mut handle = 0_u64;
     let rc = bn_stdlib::crypto_abi::bn_rt_crypto_bytes_from_hex(hex, &raw mut handle);
     bn_stdlib::string::bn_rt_str_release(hex);
-    assert_eq!(rc, 0);
+    assert_eq!(rc, 0, "the call succeeds");
     handle
 }
 
@@ -184,6 +184,7 @@ fn test_c_abi_encoding_and_checksums() {
     // ToBase64
     let b64_ptr = bn_rt_crypto_bytes_to_base64(handle);
     assert!(!b64_ptr.is_null());
+    // SAFETY: the runtime returned this NUL-terminated STRING, alive until it is released.
     let b64_str = unsafe { CStr::from_ptr(b64_ptr) }
         .to_str()
         .expect("valid utf-8");
@@ -202,6 +203,7 @@ fn test_c_abi_encoding_and_checksums() {
     // ToBase64Url
     let b64url_ptr = bn_rt_crypto_bytes_to_base64url(handle);
     assert!(!b64url_ptr.is_null());
+    // SAFETY: the runtime returned this NUL-terminated STRING, alive until it is released.
     let b64url_str = unsafe { CStr::from_ptr(b64url_ptr) }
         .to_str()
         .expect("valid utf-8");
@@ -218,6 +220,7 @@ fn test_c_abi_encoding_and_checksums() {
     let rc_to_text = bn_rt_crypto_bytes_to_text(handle, &raw mut text_out_ptr);
     assert_eq!(rc_to_text, 0);
     assert!(!text_out_ptr.is_null());
+    // SAFETY: the runtime returned this NUL-terminated STRING, alive until it is released.
     let text_str = unsafe { CStr::from_ptr(text_out_ptr) }
         .to_str()
         .expect("valid utf-8");

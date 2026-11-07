@@ -40,15 +40,12 @@ pub extern "C" fn bn_rt_stack_check(frame: *const u8) -> i32 {
 #[cfg(target_os = "macos")]
 #[allow(unsafe_code)] // Operating-system calls on the current thread.
 fn stack_low() -> Option<usize> {
-    // SAFETY: both calls only read the attributes of the calling thread,
-    // which is alive for their whole duration.
-    let (top, size) = unsafe {
-        let thread = libc::pthread_self();
-        (
-            libc::pthread_get_stackaddr_np(thread) as usize,
-            libc::pthread_get_stacksize_np(thread),
-        )
-    };
+    // SAFETY: returns the calling thread's id and touches no memory.
+    let thread = unsafe { libc::pthread_self() };
+    // SAFETY: reads an attribute of the calling thread, alive for this call.
+    let top = unsafe { libc::pthread_get_stackaddr_np(thread) } as usize;
+    // SAFETY: as above.
+    let size = unsafe { libc::pthread_get_stacksize_np(thread) };
     top.checked_sub(size)
 }
 

@@ -27,7 +27,10 @@ impl FakeResolver {
         hostname: &str,
         maximum: usize,
     ) -> Result<Vec<Address>, &'static str> {
-        let answers = self.answers.lock().expect("fake resolver lock");
+        let answers = self
+            .answers
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let addresses = answers.get(hostname).ok_or("fake resolver has no answer")?;
         Ok(addresses.iter().copied().take(maximum).collect())
     }

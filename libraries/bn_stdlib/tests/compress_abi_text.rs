@@ -45,7 +45,10 @@ fn assert_invalid_text(code: i32, operation: &str) {
     assert_eq!(code, CODE_INVALID_ARGUMENT, "{operation}");
     let (reported, reported_operation, message, _) = take_error_report();
     assert_eq!(reported, CODE_INVALID_ARGUMENT, "{operation}");
-    assert_eq!(reported_operation, operation);
+    assert_eq!(
+        reported_operation, operation,
+        "the error names the operation that failed"
+    );
     assert!(!message.is_empty(), "{operation}");
 }
 

@@ -106,7 +106,9 @@ struct HeldAddresses {
 /// never read or freed twice. No ceiling of its own: each list is freed when
 /// its last binding ends.
 /// The id travels as a pointer, so pointers must hold 64 bits.
-const _: () = assert!(std::mem::size_of::<*mut std::ffi::c_void>() >= std::mem::size_of::<i64>());
+const _: () = if std::mem::size_of::<*mut std::ffi::c_void>() < std::mem::size_of::<i64>() {
+    panic!("an address-list id travels as a pointer, which must hold 64 bits");
+};
 static ADDRESS_LISTS: std::sync::Mutex<crate::handle_table_abi::GenerationTable<HeldAddresses>> =
     std::sync::Mutex::new(crate::handle_table_abi::GenerationTable::new());
 
@@ -206,7 +208,11 @@ pub extern "C" fn bn_rt_net_addresses_get(
             write_out(out, c_string(&address.to_string()));
             0
         }
-        Ok(None) => failed(&crate::net::address_index(0, i128::from(index)).unwrap_err()),
+        // The index was checked against the list, so a missing address means
+        // no list (a null handle): an empty list's error, which `address_index`
+        // always returns for a count of 0.
+        Ok(None) => crate::net::address_index(0, i128::from(index))
+            .map_or_else(|error| failed(&error), |_| -1),
         Err(error) => failed(&error),
     }
 }

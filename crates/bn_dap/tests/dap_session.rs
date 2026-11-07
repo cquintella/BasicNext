@@ -4,6 +4,10 @@ use std::io::{BufRead, Cursor, Write};
 
 use serde_json::json;
 
+#[expect(
+    clippy::unwrap_used,
+    reason = "test helper: a failed set-up is a failed test"
+)]
 fn write_frame(buf: &mut Vec<u8>, msg: &serde_json::Value) {
     let payload = serde_json::to_vec(msg).unwrap();
     write!(buf, "Content-Length: {}\r\n\r\n", payload.len()).unwrap();

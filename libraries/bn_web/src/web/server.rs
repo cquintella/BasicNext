@@ -436,7 +436,7 @@ impl ServerState {
         let receiver = std::sync::Arc::new(std::sync::Mutex::new(receiver));
         let mut workers = Vec::with_capacity(self.options.worker_count);
         for index in 0..self.options.worker_count {
-            let worker_receiver = receiver.clone();
+            let worker_receiver = std::sync::Arc::clone(&receiver);
             let exit_notice = self.drain_signal.notify_on_drop();
             let worker = std::thread::Builder::new()
                 .name(format!("bnweb-worker-{index}"))

@@ -40,9 +40,21 @@ fn assert_aligned(rendered: &str, line: usize) {
     let width = line.to_string().len();
     let gutter = " ".repeat(width);
     let lines: Vec<&str> = rendered.lines().collect();
-    assert_eq!(lines[1], format!("{gutter}--> arquivo.bn:{line}:7"));
-    assert_eq!(lines[2], format!("{gutter} |"));
-    assert_eq!(lines[3], format!("{line} | LET x = y"));
+    assert_eq!(
+        lines[1],
+        format!("{gutter}--> arquivo.bn:{line}:7"),
+        "the location line names the file, line and column"
+    );
+    assert_eq!(
+        lines[2],
+        format!("{gutter} |"),
+        "the gutter line follows the location"
+    );
+    assert_eq!(
+        lines[3],
+        format!("{line} | LET x = y"),
+        "the excerpt shows the source line"
+    );
     assert!(
         lines[4].starts_with(&format!("{gutter} |       ^")),
         "{}",
@@ -50,8 +62,16 @@ fn assert_aligned(rendered: &str, line: usize) {
     );
     // Column 7 of `LET x = y` is the `=`, after the `<line> | ` prefix.
     let caret = width + " | ".len() + 6;
-    assert_eq!(lines[3].as_bytes()[caret], b'=');
-    assert_eq!(lines[4].find('^'), Some(caret));
+    assert_eq!(
+        lines[3].as_bytes()[caret],
+        b'=',
+        "the caret column points at the equals sign"
+    );
+    assert_eq!(
+        lines[4].find('^'),
+        Some(caret),
+        "the caret sits under the column it marks"
+    );
     for excerpt_line in &lines[2..5] {
         assert_eq!(excerpt_line.find('|'), Some(width + 1), "{excerpt_line}");
     }

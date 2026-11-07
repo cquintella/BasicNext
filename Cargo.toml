@@ -28,6 +28,8 @@ missing_debug_implementations = "warn"
 unsafe_op_in_unsafe_fn = "deny"
 # Lifetimes stay visible in paths (`Formatter<'_>`), so borrowing is readable.
 elided_lifetimes_in_paths = "warn"
+# A cast that changes nothing is noise that hides the casts that matter.
+trivial_casts = "deny"
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
@@ -52,6 +54,19 @@ rest_pat_in_fully_bound_structs = "warn"
 empty_structs_with_brackets = "warn"
 try_err = "warn"
 redundant_type_annotations = "warn"
+# Safety lints, second tier. An `unsafe` block says why it is sound and does one
+# thing; failure is a value, not a panic; only the CLI entry points exit.
+undocumented_unsafe_blocks = "deny"
+multiple_unsafe_ops_per_block = "deny"
+unwrap_used = "deny"
+unwrap_in_result = "deny"
+exit = "deny"
+mem_forget = "deny"
+clone_on_ref_ptr = "deny"
+missing_assert_message = "deny"
+same_name_method = "deny"
+verbose_file_reads = "deny"
+unneeded_field_pattern = "deny"
 
 [lints]
 workspace = true
@@ -96,3 +111,10 @@ split-debuginfo = "unpacked"
 
 [profile.dev.package."*"]
 opt-level = 2
+
+# Release builds keep Rust's integer-overflow checks: an
+# arithmetic slip in the toolchain or the runtime stops at once instead of
+# wrapping into a wrong value. Code that wraps on purpose says so
+# (`wrapping_*`).
+[profile.release]
+overflow-checks = true

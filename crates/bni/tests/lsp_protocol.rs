@@ -125,7 +125,10 @@ impl LspClient {
             "method": "shutdown",
             "params": null
         }));
-        assert!(self.receive_id(request_id)["result"].is_null());
+        assert!(
+            self.receive_id(request_id)["result"].is_null(),
+            "the request answers with a null result"
+        );
         self.send(&json!({"jsonrpc": "2.0", "method": "exit", "params": null}));
         self.stdin.take();
         let deadline = Instant::now() + Duration::from_secs(1);

@@ -12,6 +12,7 @@ use std::sync::OnceLock;
 
 use bn_source::{Position, Revision, SourceFile, SourceId, Span};
 
+mod fixed_facts;
 pub mod trap_texts;
 
 /// Stable diagnostic identity: a validated handle into the single

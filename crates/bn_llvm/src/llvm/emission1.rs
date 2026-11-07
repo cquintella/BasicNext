@@ -360,7 +360,7 @@ pub(crate) fn lower_scalar_instruction(
                 format!("vecdefaultfat{dest}"),
                 I::insert(fat.clone(), O::undef(), T::Ptr, pointer, 0),
             );
-            let length = O::int(i64::try_from(len).expect("vector length fits i64"));
+            let length = O::int(i64::try_from(len).map_err(|error| error.to_string())?);
             text.assign(
                 format!("v{dest}"),
                 I::insert(
@@ -406,7 +406,7 @@ pub(crate) fn lower_scalar_instruction(
                         .as_deref()
                         .expect("validated default constructor owner");
                     let bytes = i64::try_from(class_instance_bytes(module, owner))
-                        .expect("object size fits i64");
+                        .map_err(|error| error.to_string())?;
                     I::call(
                         T::Ptr,
                         "calloc",

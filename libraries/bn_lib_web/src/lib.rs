@@ -813,9 +813,9 @@ impl WebProvider {
                         core.host().clone(),
                         self.handlers.get(handle).cloned().unwrap_or_default(),
                         self.filters.get(handle).cloned().unwrap_or_default(),
-                        state.clone(),
+                        std::sync::Arc::clone(&state),
                     );
-                    let accept_state = state.clone();
+                    let accept_state = std::sync::Arc::clone(&state);
                     let exit_notice = accept_state
                         .lock()
                         .ok()
@@ -851,15 +851,15 @@ impl WebProvider {
                                             }
                                             continue;
                                         };
-                                        let connection_state = accept_state.clone();
-                                        let connection_handler = request_handler.clone();
+                                        let connection_state = std::sync::Arc::clone(&accept_state);
+                                        let connection_handler = std::sync::Arc::clone(&request_handler);
                                         let work: crate::web::ConnectionWork = Box::new(move || {
                                             crate::web::ServerState::run_connection_worker(
                                                 &connection_state,
                                                 || {
                                                     if let Err(error) = crate::http::serve_connection_with_runtime(
                                                         stream,
-                                                        connection_state.clone(),
+                                                        std::sync::Arc::clone(&connection_state),
                                                         Some(connection_handler),
                                                         &http_runtime,
                                                     ) && let Ok(mut server) = connection_state.lock() {
@@ -981,9 +981,9 @@ impl WebProvider {
                         core.host().clone(),
                         self.handlers.get(handle).cloned().unwrap_or_default(),
                         self.filters.get(handle).cloned().unwrap_or_default(),
-                        state.clone(),
+                        std::sync::Arc::clone(&state),
                     );
-                    let accept_state = state.clone();
+                    let accept_state = std::sync::Arc::clone(&state);
                     let exit_notice = accept_state
                         .lock()
                         .ok()
@@ -1019,16 +1019,16 @@ impl WebProvider {
                                             }
                                             continue;
                                         };
-                                        let connection_state = accept_state.clone();
-                                        let tls_config = config.clone();
-                                        let connection_handler = request_handler.clone();
+                                        let connection_state = std::sync::Arc::clone(&accept_state);
+                                        let tls_config = std::sync::Arc::clone(&config);
+                                        let connection_handler = std::sync::Arc::clone(&request_handler);
                                         let work: crate::web::ConnectionWork = Box::new(move || {
                                             crate::web::ServerState::run_connection_worker(
                                                 &connection_state,
                                                 || {
                                                     if let Err(error) = crate::http::serve_tls_connection_with_runtime(
                                                         stream,
-                                                        connection_state.clone(),
+                                                        std::sync::Arc::clone(&connection_state),
                                                         tls_config,
                                                         Some(connection_handler),
                                                         &http_runtime,

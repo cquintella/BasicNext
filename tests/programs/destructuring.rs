@@ -41,6 +41,10 @@ fn diagnostic_of(source: &str) -> Diagnostic {
     }
 }
 
+#[expect(
+    clippy::unwrap_in_result,
+    reason = "test helper: a failed set-up is a failed test"
+)]
 fn interpret(source: &str) -> Result<(u8, String), Diagnostic> {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let path = std::env::temp_dir().join(format!(
@@ -82,13 +86,20 @@ fn native_stdout(source: &str) -> Vec<u8> {
 fn assert_both(source: &str, expected: &str) {
     let (code, output) = interpret(source).expect("interpret");
     assert_eq!(code, 0, "{output}");
-    assert_eq!(output, expected);
-    assert_eq!(native_stdout(source), expected.as_bytes());
+    assert_eq!(
+        output, expected,
+        "the interpreter prints the expected output"
+    );
+    assert_eq!(
+        native_stdout(source),
+        expected.as_bytes(),
+        "the compiled program prints the expected output"
+    );
 }
 
 fn assert_both_fail(source: &str, code: &str) {
     let error = interpret(source).expect_err("interpreter rejects");
-    assert_eq!(error.code, code);
+    assert_eq!(error.code, code, "the error has the expected code");
     let directory = TestDir::new("destructure-fail").expect("create directory");
     let path = directory.join("program.bn");
     fs::write(&path, source).expect("write source");

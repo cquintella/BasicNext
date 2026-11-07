@@ -37,48 +37,28 @@ impl Drop for BnString {
     }
 }
 
-unsafe extern "C" {
-    fn bn_rt_crypto_secret_key_generate(
-        bits: i64,
-        purpose: *const c_char,
-        alg: *const c_char,
-    ) -> u64;
-    fn bn_rt_crypto_secret_key_from_bytes(
-        bytes: u64,
-        purpose: *const c_char,
-        alg: *const c_char,
-    ) -> u64;
-    fn bn_rt_crypto_secret_key_id(key: u64) -> *mut c_char;
-    fn bn_rt_crypto_secret_key_bits(key: u64) -> i64;
-    fn bn_rt_crypto_secret_key_length(key: u64) -> i64;
-    fn bn_rt_crypto_secret_key_purpose(key: u64) -> *mut c_char;
-    fn bn_rt_crypto_secret_key_algorithm(key: u64) -> *mut c_char;
-    fn bn_rt_crypto_secret_key_export(key: u64, format: *const c_char) -> u64;
-    fn bn_rt_crypto_secret_key_wrap(kek: u64, key: u64) -> u64;
-    fn bn_rt_crypto_secret_key_unwrap(
-        kek: u64,
-        wrapped: u64,
-        bits: i64,
-        purpose: *const c_char,
-        alg: *const c_char,
-    ) -> u64;
-    fn bn_rt_crypto_secret_key_zeroize(key: u64) -> i32;
-    fn bn_rt_crypto_secret_key_retain(key: u64) -> i32;
-    fn bn_rt_crypto_secret_key_release(key: u64) -> i32;
-}
+use bn_stdlib::crypto_secret_abi::{
+    bn_rt_crypto_secret_key_algorithm, bn_rt_crypto_secret_key_bits,
+    bn_rt_crypto_secret_key_export, bn_rt_crypto_secret_key_from_bytes,
+    bn_rt_crypto_secret_key_generate, bn_rt_crypto_secret_key_id, bn_rt_crypto_secret_key_length,
+    bn_rt_crypto_secret_key_purpose, bn_rt_crypto_secret_key_release,
+    bn_rt_crypto_secret_key_retain, bn_rt_crypto_secret_key_unwrap, bn_rt_crypto_secret_key_wrap,
+    bn_rt_crypto_secret_key_zeroize,
+};
 
 #[test]
 fn test_secret_key_lifecycle_and_wrap_abi() {
     let purpose = BnString::new(b"AEAD");
     let alg = BnString::new(b"AES256");
 
-    let k1 = unsafe { bn_rt_crypto_secret_key_generate(256, purpose.as_ptr(), alg.as_ptr()) };
+    let k1 = bn_rt_crypto_secret_key_generate(256, purpose.as_ptr(), alg.as_ptr());
     assert_ne!(k1, 0, "secret key handle valid");
-    assert_eq!(unsafe { bn_rt_crypto_secret_key_bits(k1) }, 256);
-    assert_eq!(unsafe { bn_rt_crypto_secret_key_length(k1) }, 32);
+    assert_eq!(bn_rt_crypto_secret_key_bits(k1), 256);
+    assert_eq!(bn_rt_crypto_secret_key_length(k1), 32);
 
-    let id_ptr = unsafe { bn_rt_crypto_secret_key_id(k1) };
+    let id_ptr = bn_rt_crypto_secret_key_id(k1);
     assert!(!id_ptr.is_null());
+    // SAFETY: the runtime returned this NUL-terminated STRING; it lives until the release below.
     let id_str = unsafe { CStr::from_ptr(id_ptr) }
         .to_str()
         .unwrap()
@@ -86,50 +66,52 @@ fn test_secret_key_lifecycle_and_wrap_abi() {
     assert_eq!(id_str.len(), 64);
     bn_rt_str_release(id_ptr);
 
-    let purpose_ptr = unsafe { bn_rt_crypto_secret_key_purpose(k1) };
+    let purpose_ptr = bn_rt_crypto_secret_key_purpose(k1);
     assert_eq!(
+        // SAFETY: the runtime returned this NUL-terminated STRING; it lives until the release below.
         unsafe { CStr::from_ptr(purpose_ptr) }.to_str().unwrap(),
         "AEAD"
     );
     bn_rt_str_release(purpose_ptr);
 
-    let alg_ptr = unsafe { bn_rt_crypto_secret_key_algorithm(k1) };
+    let alg_ptr = bn_rt_crypto_secret_key_algorithm(k1);
     assert_eq!(
+        // SAFETY: the runtime returned this NUL-terminated STRING; it lives until the release below.
         unsafe { CStr::from_ptr(alg_ptr) }.to_str().unwrap(),
         "AES256"
     );
     bn_rt_str_release(alg_ptr);
 
-    assert_eq!(unsafe { bn_rt_crypto_secret_key_retain(k1) }, 0);
-    assert_eq!(unsafe { bn_rt_crypto_secret_key_release(k1) }, 0);
+    assert_eq!(bn_rt_crypto_secret_key_retain(k1), 0);
+    assert_eq!(bn_rt_crypto_secret_key_release(k1), 0);
 
     let format = BnString::new(b"RAW");
-    let raw_bytes = unsafe { bn_rt_crypto_secret_key_export(k1, format.as_ptr()) };
+    let raw_bytes = bn_rt_crypto_secret_key_export(k1, format.as_ptr());
     assert_ne!(raw_bytes, 0);
     assert_eq!(bn_rt_crypto_bytes_length(raw_bytes), 32);
 
     // Reconstruct key from raw bytes
-    let k1_imported =
-        unsafe { bn_rt_crypto_secret_key_from_bytes(raw_bytes, purpose.as_ptr(), alg.as_ptr()) };
+    let k1_imported = bn_rt_crypto_secret_key_from_bytes(raw_bytes, purpose.as_ptr(), alg.as_ptr());
     assert_ne!(k1_imported, 0);
-    let id2_ptr = unsafe { bn_rt_crypto_secret_key_id(k1_imported) };
+    let id2_ptr = bn_rt_crypto_secret_key_id(k1_imported);
+    // SAFETY: the runtime returned this NUL-terminated STRING; it lives until the release below.
     assert_eq!(unsafe { CStr::from_ptr(id2_ptr) }.to_str().unwrap(), id_str);
     bn_rt_str_release(id2_ptr);
 
     // KEK generation and wrapping
-    let kek = unsafe { bn_rt_crypto_secret_key_generate(256, purpose.as_ptr(), alg.as_ptr()) };
+    let kek = bn_rt_crypto_secret_key_generate(256, purpose.as_ptr(), alg.as_ptr());
     assert_ne!(kek, 0);
 
-    let wrapped = unsafe { bn_rt_crypto_secret_key_wrap(kek, k1) };
+    let wrapped = bn_rt_crypto_secret_key_wrap(kek, k1);
     assert_ne!(wrapped, 0, "wrapped bytes valid");
     assert_eq!(bn_rt_crypto_bytes_length(wrapped), 40);
 
-    let unwrapped = unsafe {
-        bn_rt_crypto_secret_key_unwrap(kek, wrapped, 256, purpose.as_ptr(), alg.as_ptr())
-    };
+    let unwrapped =
+        bn_rt_crypto_secret_key_unwrap(kek, wrapped, 256, purpose.as_ptr(), alg.as_ptr());
     assert_ne!(unwrapped, 0, "unwrapped handle valid");
-    let id_unwrapped_ptr = unsafe { bn_rt_crypto_secret_key_id(unwrapped) };
+    let id_unwrapped_ptr = bn_rt_crypto_secret_key_id(unwrapped);
     assert_eq!(
+        // SAFETY: the runtime returned this NUL-terminated STRING; it lives until the release below.
         unsafe { CStr::from_ptr(id_unwrapped_ptr) }
             .to_str()
             .unwrap(),
@@ -138,17 +120,15 @@ fn test_secret_key_lifecycle_and_wrap_abi() {
     bn_rt_str_release(id_unwrapped_ptr);
 
     // Zeroize key
-    assert_eq!(unsafe { bn_rt_crypto_secret_key_zeroize(k1) }, 0);
-    assert_eq!(unsafe { bn_rt_crypto_secret_key_bits(k1) }, 0);
+    assert_eq!(bn_rt_crypto_secret_key_zeroize(k1), 0);
+    assert_eq!(bn_rt_crypto_secret_key_bits(k1), 0);
 
     bn_rt_crypto_bytes_release(raw_bytes);
     bn_rt_crypto_bytes_release(wrapped);
-    unsafe {
-        bn_rt_crypto_secret_key_release(k1);
-        bn_rt_crypto_secret_key_release(k1_imported);
-        bn_rt_crypto_secret_key_release(kek);
-        bn_rt_crypto_secret_key_release(unwrapped);
-    }
+    bn_rt_crypto_secret_key_release(k1);
+    bn_rt_crypto_secret_key_release(k1_imported);
+    bn_rt_crypto_secret_key_release(kek);
+    bn_rt_crypto_secret_key_release(unwrapped);
 }
 
 #[test]
@@ -161,23 +141,16 @@ fn test_rfc3394_vectors() {
 
     let mut b_kek = 0u64;
     let mut b_key = 0u64;
-    assert_eq!(
-        unsafe { bn_rt_crypto_bytes_from_hex(hex_kek.as_ptr(), &mut b_kek) },
-        0
-    );
-    assert_eq!(
-        unsafe { bn_rt_crypto_bytes_from_hex(hex_key.as_ptr(), &mut b_key) },
-        0
-    );
+    assert_eq!(bn_rt_crypto_bytes_from_hex(hex_kek.as_ptr(), &mut b_kek), 0);
+    assert_eq!(bn_rt_crypto_bytes_from_hex(hex_key.as_ptr(), &mut b_key), 0);
 
-    let k_kek =
-        unsafe { bn_rt_crypto_secret_key_from_bytes(b_kek, purpose.as_ptr(), alg.as_ptr()) };
-    let k_key =
-        unsafe { bn_rt_crypto_secret_key_from_bytes(b_key, purpose.as_ptr(), alg.as_ptr()) };
+    let k_kek = bn_rt_crypto_secret_key_from_bytes(b_kek, purpose.as_ptr(), alg.as_ptr());
+    let k_key = bn_rt_crypto_secret_key_from_bytes(b_key, purpose.as_ptr(), alg.as_ptr());
 
-    let wrapped = unsafe { bn_rt_crypto_secret_key_wrap(k_kek, k_key) };
+    let wrapped = bn_rt_crypto_secret_key_wrap(k_kek, k_key);
     assert_ne!(wrapped, 0);
-    let hex_ptr = unsafe { bn_rt_crypto_bytes_to_hex(wrapped) };
+    let hex_ptr = bn_rt_crypto_bytes_to_hex(wrapped);
+    // SAFETY: the runtime returned this NUL-terminated STRING; it lives until the release below.
     let hex_str = unsafe { CStr::from_ptr(hex_ptr) }
         .to_str()
         .unwrap()
@@ -185,18 +158,15 @@ fn test_rfc3394_vectors() {
     assert_eq!(hex_str, "1FA68B0A8112B447AEF34BD8FB5A7B829D3E862371D2CFE5");
     bn_rt_str_release(hex_ptr);
 
-    let unwrapped = unsafe {
-        bn_rt_crypto_secret_key_unwrap(k_kek, wrapped, 128, purpose.as_ptr(), alg.as_ptr())
-    };
+    let unwrapped =
+        bn_rt_crypto_secret_key_unwrap(k_kek, wrapped, 128, purpose.as_ptr(), alg.as_ptr());
     assert_ne!(unwrapped, 0);
-    assert_eq!(unsafe { bn_rt_crypto_secret_key_bits(unwrapped) }, 128);
+    assert_eq!(bn_rt_crypto_secret_key_bits(unwrapped), 128);
 
     bn_rt_crypto_bytes_release(b_kek);
     bn_rt_crypto_bytes_release(b_key);
     bn_rt_crypto_bytes_release(wrapped);
-    unsafe {
-        bn_rt_crypto_secret_key_release(k_kek);
-        bn_rt_crypto_secret_key_release(k_key);
-        bn_rt_crypto_secret_key_release(unwrapped);
-    }
+    bn_rt_crypto_secret_key_release(k_kek);
+    bn_rt_crypto_secret_key_release(k_key);
+    bn_rt_crypto_secret_key_release(unwrapped);
 }

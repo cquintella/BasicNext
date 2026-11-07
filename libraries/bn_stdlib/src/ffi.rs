@@ -143,6 +143,8 @@ pub enum CValuePayload {
 // managed by the Basic Next caller or the foreign library.
 #[allow(unsafe_code)]
 unsafe impl Send for CValuePayload {}
+// SAFETY: as for `Send`: the payload holds plain values and pointers it never
+// dereferences itself; sharing it gives no access the owner does not grant.
 #[allow(unsafe_code)]
 unsafe impl Sync for CValuePayload {}
 
@@ -543,6 +545,10 @@ fn prepare_non_integer_arg(rec: &Record) -> Result<PreparedArg, FfiError> {
 }
 
 #[allow(unsafe_code)]
+#[expect(
+    clippy::multiple_unsafe_ops_per_block,
+    reason = "one foreign call per match arm; the arms are exclusive and share one precondition"
+)]
 fn invoke_cif(
     cif: &Cif,
     code_ptr: CodePtr,

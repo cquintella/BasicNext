@@ -89,6 +89,10 @@ pub fn bn_verify(raw_public: &[u8], algorithm: i32, message: &[u8], signature: &
     }
 }
 
+#[expect(
+    clippy::verbose_file_reads,
+    reason = "the file comes from the policy-checked opener; std::fs::read would bypass the filesystem policy and is a disallowed method"
+)]
 fn read_file(
     fs: &crate::FsPolicy,
     path: &str,

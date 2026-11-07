@@ -227,8 +227,6 @@ pub(crate) fn lower_ownership_emission(
         Instruction::SetMember {
             object,
             field,
-            name: _,
-            owner: _,
             value,
             previous,
             ty,
@@ -262,7 +260,6 @@ pub(crate) fn lower_ownership_emission(
         }
         Instruction::SetField {
             symbol,
-            path: _,
             fields,
             value,
             previous,
@@ -331,7 +328,6 @@ pub(crate) fn lower_ownership_emission(
         }
         Instruction::SetFieldIndex {
             symbol,
-            path: _,
             fields,
             indices,
             value,

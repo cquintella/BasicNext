@@ -274,10 +274,9 @@ pub fn bn_xxhash64(data: &[u8]) -> u64 {
 
         let (chunks, _) = data[..len - (len % 32)].as_chunks::<32>();
         for chunk in chunks {
-            let k1 = u64::from_le_bytes(chunk[0..8].try_into().unwrap());
-            let k2 = u64::from_le_bytes(chunk[8..16].try_into().unwrap());
-            let k3 = u64::from_le_bytes(chunk[16..24].try_into().unwrap());
-            let k4 = u64::from_le_bytes(chunk[24..32].try_into().unwrap());
+            // Four 8-byte lanes; the sizes are in the types, so nothing can fail.
+            let (lanes, _) = chunk.as_chunks::<8>();
+            let [k1, k2, k3, k4] = [lanes[0], lanes[1], lanes[2], lanes[3]].map(u64::from_le_bytes);
 
             v1 = v1
                 .wrapping_add(k1.wrapping_mul(PRIME64_2))
@@ -321,8 +320,8 @@ pub fn bn_xxhash64(data: &[u8]) -> u64 {
     h64 = h64.wrapping_add(len as u64);
 
     let mut rem = &data[len - (len % 32)..];
-    while rem.len() >= 8 {
-        let k1 = u64::from_le_bytes(rem[0..8].try_into().unwrap());
+    while let Some((word, tail)) = rem.split_first_chunk::<8>() {
+        let k1 = u64::from_le_bytes(*word);
         h64 ^= k1
             .wrapping_mul(PRIME64_2)
             .rotate_left(31)
@@ -331,7 +330,7 @@ pub fn bn_xxhash64(data: &[u8]) -> u64 {
             .rotate_left(27)
             .wrapping_mul(PRIME64_1)
             .wrapping_add(PRIME64_4);
-        rem = &rem[8..];
+        rem = tail;
     }
     if rem.len() >= 4 {
         let k1 = u64::from_le_bytes([rem[0], rem[1], rem[2], rem[3], 0, 0, 0, 0]);

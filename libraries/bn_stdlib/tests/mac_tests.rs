@@ -27,7 +27,7 @@ fn buffer(bytes: &[u8]) -> u64 {
     let mut handle = 0_u64;
     let rc = bn_stdlib::crypto_abi::bn_rt_crypto_bytes_from_hex(hex, &raw mut handle);
     bn_stdlib::string::bn_rt_str_release(hex);
-    assert_eq!(rc, 0);
+    assert_eq!(rc, 0, "the call succeeds");
     handle
 }
 
