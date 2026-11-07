@@ -118,6 +118,17 @@ pub(super) fn try_lower_asymmetric_call(
             );
             true
         }
+        "Fingerprint" => {
+            emit_handle_index(text, analysis, &format!("cryk{dest}"), arguments[0]);
+            let alg = i32_argument(text, analysis, &format!("cryalg{dest}"), arguments[1]);
+            emit_string_status(
+                text,
+                destination,
+                "bn_rt_crypto_public_fingerprint",
+                vec![(T::I64, O::reg(format!("cryk{dest}"))), (T::I32, alg)],
+            );
+            true
+        }
         "LoadPrivateKey" => {
             lower_status_call(
                 text,

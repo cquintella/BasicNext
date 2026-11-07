@@ -2137,6 +2137,40 @@ impl CryptoProvider {
         }
     }
 
+    fn op_fingerprint(
+        &self,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        require_arity(member, arguments, 2, span)?;
+        let Some(Value::CryptoKey(handle)) = arguments.first() else {
+            return Err(type_mismatch(
+                "BNCrypto.PublicKey",
+                "non-PublicKey value",
+                member,
+                span,
+            ));
+        };
+        let Some(entry) = self.public_keys.get(handle) else {
+            return Err(runtime_error(
+                bn_diag::DiagId::USE_AFTER_RELEASE,
+                bn_catalog::text("crypto", "msg.bncrypto_key_was_already_released"),
+                span,
+            ));
+        };
+        let Value::Integer(alg, _) = &arguments[1] else {
+            return Err(type_mismatch("INTEGER", "non-INTEGER value", member, span));
+        };
+        // The type checker bounds the argument to INT32; an id that still does not
+        // fit names no algorithm and takes the same failure as an unknown id.
+        let alg = i32::try_from(*alg).unwrap_or(i32::MIN);
+        match bn_stdlib::crypto_asymmetric::bn_spki_fingerprint(&entry.spki, alg) {
+            Ok(text) => Ok(Value::String(shared_string(text.as_str()))),
+            Err(err) => failure(&err),
+        }
+    }
+
     fn op_export_pem_plain(
         &self,
         member: &str,
@@ -2225,6 +2259,7 @@ impl CryptoProvider {
             "VerifyFile" => self.op_verify_file(fs, member, arguments, span),
             "ExportPem" => self.op_export_pem(member, arguments, span),
             "ExportPemUnencrypted" => self.op_export_pem_plain(member, arguments, span),
+            "Fingerprint" => self.op_fingerprint(member, arguments, span),
             "LoadPrivateKey" => self.op_load_private(member, arguments, span),
             "LoadPublicKey" => self.op_load_public(member, arguments, span),
             "Id" => self.op_key_id(member, arguments, span),
@@ -2305,6 +2340,7 @@ impl Provider for CryptoProvider {
             | "VerifyFile"
             | "ExportPem"
             | "ExportPemUnencrypted"
+            | "Fingerprint"
             | "LoadPrivateKey"
             | "LoadPublicKey" => {
                 self.asymmetric_op(core.host().filesystem(), method, member, &arguments, span)

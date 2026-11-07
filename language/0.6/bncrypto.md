@@ -107,6 +107,10 @@ Every key carries a KeyId (`key.Id() AS STRING`):
 * For asymmetric keys (`PublicKey`, `PrivateKey`): SHA-256 digest of the canonical SPKI (SubjectPublicKeyInfo) DER encoding, represented as a 64-character lowercase hexadecimal string.
 * For symmetric keys (`SecretKey`): SHA-256 digest of `("BNC-KEYID\0" || raw_bytes)`, represented as a 64-character lowercase hexadecimal string.
 
+### Public key fingerprint
+
+`PublicKey.Fingerprint(hashAlg AS INTEGER) AS STRING OR Error` returns `<ALG>:<base64>` as `ssh-keygen -l` prints it: the label of `hashAlg` (`SHA256`, `SHA384`, `SHA512`, `SHA512_256`, `SHA3_256`, `SHA3_512`, `BLAKE2B`, `BLAKE3`), a colon, and the standard base64 of the hash of the SPKI DER with the `=` padding removed (BDFL decision, 2026-11-07). It differs from `Id()`, which is lowercase hex. `Alg.MD5` and `Alg.SHA1` fail with `LEGACY_DISABLED`; any other id, such as an HMAC or keyed id, fails with `UNSUPPORTED_ALGORITHM`. The signature carries `OR Error` because the algorithm is a caller choice that can fail (BDFL decision, 2026-11-07).
+
 ---
 
 ## Randomness and CSPRNG

@@ -380,6 +380,15 @@ pub(crate) fn call_instruction_supported(
                             matches!(ty, Type::Integer(_) | Type::IntegerLiteral(_))
                         })
                 }
+                "Fingerprint" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_public_key(module, ty))
+                        && values.get(&arguments[1]).is_some_and(|ty| {
+                            matches!(ty, Type::Integer(_) | Type::IntegerLiteral(_))
+                        })
+                }
                 "LoadPrivateKey" => {
                     arguments.len() == 2 && values.get(&arguments[0]) == Some(&Type::String)
                 }

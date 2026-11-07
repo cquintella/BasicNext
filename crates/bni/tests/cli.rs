@@ -1571,6 +1571,25 @@ fn bncrypto_asymmetric_interprets() {
     );
 }
 
+/// `PublicKey.Fingerprint`: OpenSSH-style `<ALG>:<unpadded base64>` known answers
+/// computed with `openssl`; MD5/SHA-1 and keyed ids are refused with their codes.
+#[test]
+fn bncrypto_fingerprint_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-fingerprint/main.bn"])
+        .output()
+        .expect("run the BNCrypto fingerprint fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "sha256-ok\nsha512-ok\nlegacy-rejected\nkeyed-rejected\n"
+    );
+}
+
 /// The `BNJson` DOM slice: build an object, write and read a member, and reject
 /// a missing key instead of yielding an empty STRING. The compiled twin is in
 /// the `bnc` suite; the two must print the same.

@@ -16,6 +16,10 @@ use crate::c_string;
 use crate::counted::{Counted, Release};
 use crate::crypto_abi::{BN_CRYPTO_INVALID_HANDLE, BN_CRYPTO_OK, next_handle};
 use crate::crypto_error::CryptoFailure;
+use crate::crypto_hash::{
+    HASH_BLAKE2B, HASH_BLAKE3, HASH_MD5, HASH_SHA1, HASH_SHA3_256, HASH_SHA3_512, HASH_SHA256,
+    HASH_SHA384, HASH_SHA512, HASH_SHA512_256, bn_hash,
+};
 
 /// Ed25519 SPKI DER header (12 bytes) per RFC 8410.
 pub const ED25519_SPKI_HEADER: [u8; 12] = [
@@ -321,6 +325,45 @@ fn spki_from_seed(seed: &[u8], algorithm: i32) -> Result<(Vec<u8>, Vec<u8>), Cry
 
 pub fn bn_public_key_id(handle: u64) -> Option<String> {
     with_public_keys(|keys| keys.get(&handle).map(|e| e.key_id.clone()))
+}
+
+/// Operation named by every `PublicKey.Fingerprint` failure.
+pub const FINGERPRINT: &str = "BNCrypto.PublicKey.Fingerprint";
+
+/// Label written before the colon of a fingerprint, per hash algorithm id.
+/// Only the digests of `Alg` are listed: MAC and keyed ids have none.
+const FINGERPRINT_LABELS: [(i32, &str); 8] = [
+    (HASH_SHA256, "SHA256"),
+    (HASH_SHA384, "SHA384"),
+    (HASH_SHA512, "SHA512"),
+    (HASH_SHA512_256, "SHA512_256"),
+    (HASH_SHA3_256, "SHA3_256"),
+    (HASH_SHA3_512, "SHA3_512"),
+    (HASH_BLAKE2B, "BLAKE2B"),
+    (HASH_BLAKE3, "BLAKE3"),
+];
+
+/// OpenSSH-style fingerprint of an SPKI DER: `<ALG>:<base64 of the hash, no padding>`
+/// as `bncrypto.md` specifies; it differs from the hex `Id`.
+///
+/// # Errors
+/// `LegacyDisabled` for MD5 and SHA-1, `UnsupportedAlgorithm` for any other id that is
+/// not a digest of `Alg`.
+pub fn bn_spki_fingerprint(spki: &[u8], alg: i32) -> Result<String, CryptoFailure> {
+    let Some((_, label)) = FINGERPRINT_LABELS.iter().find(|(id, _)| *id == alg) else {
+        return Err(if alg == HASH_MD5 || alg == HASH_SHA1 {
+            CryptoFailure::LegacyDisabled {
+                operation: FINGERPRINT,
+            }
+        } else {
+            CryptoFailure::UnsupportedAlgorithm {
+                operation: FINGERPRINT,
+            }
+        });
+    };
+    let digest = bn_hash(spki, alg)?;
+    let encoded = crate::crypto_encoding::bn_base64_encode(&digest);
+    Ok(format!("{label}:{}", encoded.trim_end_matches('=')))
 }
 
 pub fn bn_public_key_algorithm(handle: u64) -> Option<i32> {

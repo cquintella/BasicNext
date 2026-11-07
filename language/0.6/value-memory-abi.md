@@ -690,6 +690,7 @@ bn_rt_crypto_private_key_retain
 bn_rt_crypto_private_key_zeroize
 bn_rt_crypto_private_sign
 bn_rt_crypto_public_export_pem
+bn_rt_crypto_public_fingerprint
 bn_rt_crypto_public_key
 bn_rt_crypto_public_key_algorithm
 bn_rt_crypto_public_key_id

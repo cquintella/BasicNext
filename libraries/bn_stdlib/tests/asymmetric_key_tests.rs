@@ -353,3 +353,56 @@ fn private_key_entry_debug_redacts_the_seed() {
     assert!(!shown.contains("171"), "{shown}");
     assert!(!shown.to_lowercase().contains("abab"), "{shown}");
 }
+
+/// Ed25519 public key generated outside BN; the expected strings come from
+/// `openssl pkey -pubin -outform DER | openssl dgst -<alg> -binary | base64`.
+const OPENSSL_PUBLIC_PEM: &str = "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAk+xWWxvNZSixctwFqhD5ShMD7ODc71kn6ZHIVjh4eoY=\n-----END PUBLIC KEY-----\n";
+
+#[test]
+fn test_fingerprint_known_answers_and_refusals() {
+    use bn_stdlib::crypto_asymmetric::bn_spki_fingerprint;
+    use bn_stdlib::crypto_error::CryptoFailure;
+    use bn_stdlib::crypto_hash::{HASH_MD5, HASH_SHA1, HASH_SHA256, HASH_SHA512};
+
+    let entry = bn_load_public_pem(OPENSSL_PUBLIC_PEM).expect("load the openssl public key");
+    assert_eq!(
+        bn_spki_fingerprint(&entry.spki, HASH_SHA256).expect("sha256"),
+        "SHA256:4fyOdzq5wz64hRbUcAvXZ2kqm4hTC2K9fYNEvUXClMg"
+    );
+    assert_eq!(
+        bn_spki_fingerprint(&entry.spki, HASH_SHA512).expect("sha512"),
+        "SHA512:rB+QpjB88c7ZhmBLWuCIEHP5cLK9UiZWREQtLTHqSrwPDtf8GwNHuo1heF6VA6l1OPtIwCT4hWXiJJsq02RcAw"
+    );
+    for legacy in [HASH_MD5, HASH_SHA1] {
+        assert!(matches!(
+            bn_spki_fingerprint(&entry.spki, legacy),
+            Err(CryptoFailure::LegacyDisabled { .. })
+        ));
+    }
+    // 11 is HMAC_SHA256, 0 and a negative id name no algorithm at all.
+    for unsupported in [11, 0, -1, i32::MIN, i32::MAX] {
+        assert!(
+            matches!(
+                bn_spki_fingerprint(&entry.spki, unsupported),
+                Err(CryptoFailure::UnsupportedAlgorithm { .. })
+            ),
+            "{unsupported}"
+        );
+    }
+}
+
+#[test]
+fn test_fingerprint_abi_refuses_unknown_handle_and_null_slot() {
+    use bn_stdlib::crypto_sign::bn_rt_crypto_public_fingerprint;
+    let mut out: *mut std::ffi::c_char = std::ptr::null_mut();
+    assert_ne!(
+        bn_rt_crypto_public_fingerprint(u64::MAX, 1, std::ptr::addr_of_mut!(out)),
+        0
+    );
+    assert!(out.is_null());
+    let (pub_handle, _) = bn_ed25519_keypair_generate().expect("generate ed25519 keypair");
+    assert_ne!(
+        bn_rt_crypto_public_fingerprint(pub_handle, 1, std::ptr::null_mut()),
+        0
+    );
+}

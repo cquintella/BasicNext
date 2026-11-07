@@ -381,6 +381,7 @@ pub(crate) fn bncrypto_method<'a>(module: &Module, name: &'a str) -> Option<&'a 
                 | "VerifyFile"
                 | "ExportPem"
                 | "ExportPemUnencrypted"
+                | "Fingerprint"
                 | "LoadPrivateKey"
                 | "LoadPublicKey"
                 | "NewSecretKey"

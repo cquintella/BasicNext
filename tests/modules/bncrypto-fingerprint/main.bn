@@ -1,0 +1,54 @@
+IMPORT BNCrypto AS Crypto
+
+// Known answers computed outside BN with
+//   openssl pkey -pubin -outform DER | openssl dgst -<alg> -binary | base64
+// for the Ed25519 public key below (OpenSSH style: label, colon, unpadded base64).
+// A BN string literal has no newline escape, so the line feed is decoded from base64.
+FUNCTION Start() AS VOID
+    LET lineFeed AS Crypto.Bytes OR Error = Crypto.FromBase64("Cg==")
+    IF lineFeed IS Error THEN
+        PRINT "line-feed-failed"
+        RETURN
+    END IF
+    LET lf AS STRING OR Error = lineFeed.ToText()
+    IF lf IS Error THEN
+        PRINT "line-feed-failed"
+        RETURN
+    END IF
+    LET pem AS STRING = "-----BEGIN PUBLIC KEY-----" + lf + "MCowBQYDK2VwAyEAk+xWWxvNZSixctwFqhD5ShMD7ODc71kn6ZHIVjh4eoY=" + lf + "-----END PUBLIC KEY-----" + lf
+    LET loaded AS Crypto.PublicKey OR Error = Crypto.LoadPublicKey(pem)
+    IF loaded IS Error THEN
+        PRINT "load-failed"
+        RETURN
+    END IF
+
+    IF loaded IS Crypto.PublicKey THEN
+        LET sha256 AS STRING OR Error = loaded.Fingerprint(Crypto.Alg.SHA256)
+        IF sha256 IS STRING THEN
+            IF sha256 = "SHA256:4fyOdzq5wz64hRbUcAvXZ2kqm4hTC2K9fYNEvUXClMg" THEN
+                PRINT "sha256-ok"
+            END IF
+        END IF
+
+        LET sha512 AS STRING OR Error = loaded.Fingerprint(Crypto.Alg.SHA512)
+        IF sha512 IS STRING THEN
+            IF sha512 = "SHA512:rB+QpjB88c7ZhmBLWuCIEHP5cLK9UiZWREQtLTHqSrwPDtf8GwNHuo1heF6VA6l1OPtIwCT4hWXiJJsq02RcAw" THEN
+                PRINT "sha512-ok"
+            END IF
+        END IF
+
+        LET legacy AS STRING OR Error = loaded.Fingerprint(Crypto.Alg.SHA1)
+        IF legacy IS Error THEN
+            IF legacy.Code = Crypto.LEGACY_DISABLED THEN
+                PRINT "legacy-rejected"
+            END IF
+        END IF
+
+        LET keyed AS STRING OR Error = loaded.Fingerprint(Crypto.Alg.HMAC_SHA256)
+        IF keyed IS Error THEN
+            IF keyed.Code = Crypto.UNSUPPORTED_ALGORITHM THEN
+                PRINT "keyed-rejected"
+            END IF
+        END IF
+    END IF
+END FUNCTION

@@ -511,6 +511,22 @@ pub extern "C" fn bn_rt_crypto_public_export_pem(key: u64, out: *mut *mut c_char
 
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_public_fingerprint(
+    key: u64,
+    alg: i32,
+    out: *mut *mut c_char,
+) -> i32 {
+    let Some(spki) = with_public_keys(|keys| keys.get(&key).map(|entry| entry.spki.clone())) else {
+        return failed(&CryptoFailure::Key(crate::crypto_asymmetric::FINGERPRINT));
+    };
+    match crate::crypto_asymmetric::bn_spki_fingerprint(&spki, alg) {
+        Ok(text) => write_string(out, &text),
+        Err(failure) => failed(&failure),
+    }
+}
+
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_load_private_key(
     pem: *const c_char,
     password: *const c_char,
