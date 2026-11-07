@@ -35,6 +35,31 @@ pub(crate) struct StringHeader {
 
 pub(crate) const HEADER_SIZE: usize = std::mem::size_of::<StringHeader>();
 
+/// A static empty STRING: an immortal header followed by its NUL.
+#[repr(C, align(8))]
+struct StaticString {
+    header: StringHeader,
+    nul: [u8; std::mem::align_of::<StringHeader>()],
+}
+
+static EMPTY_STRING: StaticString = StaticString {
+    header: StringHeader {
+        ref_count: AtomicU64::new(IMMORTAL_REF_COUNT),
+        len: 0,
+    },
+    nul: [0; std::mem::align_of::<StringHeader>()],
+};
+
+/// The payload of the static empty STRING. It is never freed: retain and
+/// release leave an immortal count unchanged.
+#[must_use]
+pub fn empty_string() -> *const c_char {
+    // The pointer keeps the provenance of the whole static, header included.
+    std::ptr::addr_of!(EMPTY_STRING)
+        .cast::<c_char>()
+        .wrapping_add(HEADER_SIZE)
+}
+
 /// Heap strings currently alive. Tests read it; it is not a HOST surface.
 static LIVE_STRINGS: AtomicU64 = AtomicU64::new(0);
 

@@ -15,7 +15,7 @@
 //! are recorded for `bn_rt_error_take` via `bn_rt_error_set_report`.
 
 use std::collections::HashMap;
-use std::ffi::{CStr, c_char};
+use std::ffi::c_char;
 use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
 
@@ -42,69 +42,15 @@ unsafe extern "C" {
 
 // ---- Native String Marshalling -------------------------------------------
 
-#[repr(C, align(8))]
-pub(crate) struct StringHeader {
-    pub ref_count: std::sync::atomic::AtomicU64,
-    pub len: u64,
-}
-pub(crate) const HEADER_SIZE: usize = std::mem::size_of::<StringHeader>();
+// One STRING layout for the whole runtime: `bn_rt::string` owns the header,
+// the reader's checks and the allocator; this module does not copy them.
 
-#[allow(clippy::cast_ptr_alignment)] // the alignment check above the cast accepts only a StringHeader
-pub(crate) fn slice_from_raw<'a>(ptr: *const c_char) -> Option<&'a [u8]> {
-    if ptr.is_null() || !(ptr as usize).is_multiple_of(std::mem::align_of::<StringHeader>()) {
-        return None;
-    }
-    // SAFETY: A non-null, aligned STRING payload is preceded by its header.
-    let header_ptr = unsafe { ptr.cast::<u8>().sub(HEADER_SIZE).cast::<StringHeader>() };
-    // SAFETY: `header_ptr` is that header, and it stays live for this read.
-    let header = unsafe { &*header_ptr };
-    let count = usize::try_from(header.len).ok()?;
-    // SAFETY: `header.len` is the number of payload bytes at `ptr`.
-    Some(unsafe { std::slice::from_raw_parts(ptr.cast::<u8>(), count) })
-}
+pub(crate) use bn_rt::string::c_string_from_bytes;
 
+/// A STRING payload as owned text. Null, any other pointer and invalid UTF-8
+/// are `None`: the reader never guesses a C string.
 pub(crate) fn string_text(ptr: *const c_char) -> Option<String> {
-    if ptr.is_null() {
-        return None;
-    }
-    if let Some(bytes) = slice_from_raw(ptr) {
-        String::from_utf8(bytes.to_vec()).ok()
-    } else {
-        // SAFETY: the pointer is non-null and NUL-terminated for this read.
-        unsafe { CStr::from_ptr(ptr) }
-            .to_str()
-            .ok()
-            .map(String::from)
-    }
-}
-
-#[allow(clippy::cast_ptr_alignment)] // malloc is aligned for StringHeader
-pub(crate) fn c_string_from_bytes(bytes: &[u8]) -> *mut c_char {
-    let len = bytes.len();
-    let total_alloc = HEADER_SIZE + len + 1;
-    // SAFETY: a non-null STRING is preceded by its header; the allocation is the header, the payload and a trailing NUL, and a null allocation is not read.
-    let base = unsafe { libc::malloc(total_alloc) }.cast::<u8>();
-    if base.is_null() {
-        return std::ptr::null_mut();
-    }
-    // The block is `HEADER_SIZE + len + 1` bytes from `malloc`, aligned for any
-    // type: the header, then the payload, then a NUL.
-    // SAFETY: the header fits at the start of the block, which is aligned.
-    unsafe {
-        base.cast::<StringHeader>().write(StringHeader {
-            ref_count: std::sync::atomic::AtomicU64::new(1),
-            len: len as u64,
-        });
-    }
-    // SAFETY: `HEADER_SIZE` is inside the block.
-    let data_ptr = unsafe { base.add(HEADER_SIZE) };
-    // SAFETY: the payload region holds `bytes.len()` bytes, apart from `bytes`.
-    unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), data_ptr, bytes.len()) };
-    // SAFETY: the NUL byte is the last byte of the block.
-    let terminator = unsafe { data_ptr.add(bytes.len()) };
-    // SAFETY: `terminator` is inside the block.
-    unsafe { terminator.write(0) };
-    data_ptr.cast::<c_char>()
+    bn_rt::string::string_text(ptr)
 }
 
 pub(crate) fn c_string(text: &str) -> *mut c_char {
@@ -1610,4 +1556,25 @@ pub extern "C" fn bn_web_client_request_with_policy(
 pub extern "C" fn bn_web_client_close(handle: u64) -> i32 {
     table().lock_table().clients.remove(&handle);
     BN_WEB_OK
+}
+
+#[cfg(test)]
+mod string_contract_tests {
+    /// A NUL-terminated text after 16 bytes that are no STRING header.
+    #[repr(C, align(8))]
+    struct ForeignText([u8; 32]);
+
+    /// A web argument is a STRING payload; any other pointer is refused,
+    /// never guessed to be a C string.
+    #[test]
+    fn a_web_argument_that_is_not_a_string_is_refused_not_guessed() {
+        let mut bytes = [0_u8; 32];
+        bytes[..16].fill(0xFE);
+        bytes[16..22].copy_from_slice(b"plain\0");
+        let foreign = ForeignText(bytes);
+        let pointer = foreign.0[16..].as_ptr().cast::<std::ffi::c_char>();
+        assert_eq!(super::string_text(pointer), None);
+        let real = super::c_string("plain");
+        assert_eq!(super::string_text(real).as_deref(), Some("plain"));
+    }
 }

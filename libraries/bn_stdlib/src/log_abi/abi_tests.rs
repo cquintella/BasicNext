@@ -190,3 +190,19 @@ fn the_last_release_destroys_a_logger() {
     assert_eq!(bn_rt_log_logger_retain(0), BN_LOG_OK);
     assert_eq!(bn_rt_log_logger_delete(0), BN_LOG_OK);
 }
+
+/// A NUL-terminated text after 16 bytes that are no STRING header.
+#[repr(C, align(8))]
+struct ForeignText([u8; 32]);
+
+/// One contract: a log field is a STRING payload; any other pointer reads as
+/// empty and is never guessed to be a C string.
+#[test]
+fn a_log_field_that_is_not_a_string_is_refused_not_guessed() {
+    let mut bytes = [0_u8; 32];
+    bytes[..16].fill(0xFE);
+    bytes[16..22].copy_from_slice(b"plain\0");
+    let foreign = ForeignText(bytes);
+    let pointer = foreign.0[16..].as_ptr().cast::<std::ffi::c_char>();
+    assert_eq!(super::text(pointer), "");
+}
