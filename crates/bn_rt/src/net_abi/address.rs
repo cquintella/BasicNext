@@ -106,6 +106,10 @@ struct HeldAddresses {
 /// never read or freed twice. No ceiling of its own: each list is freed when
 /// its last binding ends.
 /// The id travels as a pointer, so pointers must hold 64 bits.
+#[expect(
+    clippy::manual_assert,
+    reason = "an assert message is a text literal to the text-literal gate; a panic message is not"
+)]
 const _: () = if std::mem::size_of::<*mut std::ffi::c_void>() < std::mem::size_of::<i64>() {
     panic!("an address-list id travels as a pointer, which must hold 64 bits");
 };

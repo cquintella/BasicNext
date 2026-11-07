@@ -54,6 +54,7 @@ pub fn assert_matches_ledger(target: &str) {
         "bn::test/programs::compiler_parity::env_value_not_utf8_is_invalid_utf8_on_both_backends",
         "bn::test/programs::parity::console_size_uses_stdout_when_stdin_is_piped",
         "bn::test/programs::parity_regressions::the_end_of_an_async_task_closes_its_files",
+        "bn::test/programs::web_static_policy::a_static_mount_refuses_a_fifo_and_paths_outside_the_read_root",
         "bn::test/values::ownership_matrix::native_ownership_runs_clean_under_address_sanitizer",
         "bn::test/values::ownership_matrix::native_strings_leave_no_buffer_behind",
         "bn::test/values::value_matrix::native_values_run_clean_under_address_sanitizer",

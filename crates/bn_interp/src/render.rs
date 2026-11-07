@@ -5,6 +5,11 @@
 
 use super::Value;
 
+/// The text `PRINT` shows for `value`.
+///
+/// # Panics
+///
+/// In a debug build, when a dispatch queue id is 0, which no queue ever has.
 pub fn render(value: &Value) -> String {
     match value {
         Value::Integer(value, _) => bn_types::text::integer(*value),
@@ -35,6 +40,10 @@ pub fn render(value: &Value) -> String {
         Value::CompressZip(_) => bn_catalog::text("modules", "type.compress_zip_archive").into(),
         Value::DispatchQueue(id) => {
             #[cfg(debug_assertions)]
+            #[expect(
+                clippy::manual_assert,
+                reason = "an assert message is a text literal to the text-literal gate; a panic message is not"
+            )]
             if *id == 0 {
                 panic!("a dispatch queue id is never 0");
             }
