@@ -47,6 +47,8 @@ pub fn render(value: &Value) -> String {
             if *id == 0 {
                 panic!("a dispatch queue id is never 0");
             }
+            #[cfg(not(debug_assertions))]
+            let _ = id;
             "BNDispatch.Queue".into()
         }
         Value::DispatchTicket(id) => format!("BNDispatch.Ticket#{id}"),
