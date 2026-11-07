@@ -11,6 +11,7 @@
 
 #![cfg(unix)]
 
+use super::resident::peak_resident_bytes;
 use super::support::{TestDir, bni, compile_native, run, workspace_root};
 use std::fs;
 use std::process::Command;
@@ -67,28 +68,6 @@ fn exec_results_and_address_lists_keep_their_counts_on_both_backends() {
         String::from_utf8_lossy(&compiled.stderr)
     );
     assert_eq!(String::from_utf8_lossy(&compiled.stdout), OWNERSHIP_OUTPUT);
-}
-
-/// Peak resident memory of one child, from `wait4`.
-#[allow(
-    unsafe_code,
-    // `ru_maxrss` is `c_long`: `i64` on 64-bit targets, `i32` on 32-bit ones.
-    clippy::useless_conversion,
-    // `wait4` below reaps the child; clippy only recognises `Child::wait`.
-    clippy::zombie_processes
-)]
-fn peak_resident_bytes(command: &mut Command) -> (i32, i64) {
-    let child = command.spawn().expect("start the program");
-    let pid = libc::pid_t::try_from(child.id()).expect("pid");
-    let mut status = 0;
-    // SAFETY: an all-zero `rusage` is a valid value for `wait4` to overwrite.
-    let mut usage: libc::rusage = unsafe { std::mem::zeroed() };
-    // SAFETY: `pid` is our child, not yet waited for; the out pointers are live.
-    let waited = unsafe { libc::wait4(pid, &raw mut status, 0, &raw mut usage) };
-    assert_eq!(waited, pid, "wait4");
-    // `ru_maxrss` is bytes on macOS and kilobytes on Linux.
-    let scale = if cfg!(target_os = "macos") { 1 } else { 1024 };
-    (status, i64::from(usage.ru_maxrss) * scale)
 }
 
 #[test]

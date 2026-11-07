@@ -4,6 +4,9 @@
 
 #[path = "support/migration_target.rs"]
 mod migration_target;
+#[cfg(unix)]
+#[path = "support/resident.rs"]
+mod resident;
 #[path = "support/mod.rs"]
 pub(crate) mod support;
 
