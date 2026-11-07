@@ -14,10 +14,10 @@ use bn_stdlib::crypto::{
     bn_mac_verify,
 };
 use bn_stdlib::crypto_abi::{
-    bn_rt_crypto_bytes_length, bn_rt_crypto_bytes_release, bn_rt_crypto_mac_handle,
-    bn_rt_crypto_mac_stream_finish, bn_rt_crypto_mac_stream_new, bn_rt_crypto_mac_stream_new_with,
-    bn_rt_crypto_mac_stream_release, bn_rt_crypto_mac_stream_update_handle,
-    bn_rt_crypto_mac_stream_verify, bn_rt_crypto_mac_verify_handle, bn_rt_crypto_mac_with,
+    bn_rt_crypto_bytes_length, bn_rt_crypto_bytes_release, bn_rt_crypto_mac_stream_finish,
+    bn_rt_crypto_mac_stream_new, bn_rt_crypto_mac_stream_new_with, bn_rt_crypto_mac_stream_release,
+    bn_rt_crypto_mac_stream_update_handle, bn_rt_crypto_mac_stream_verify,
+    bn_rt_crypto_mac_verify_handle, bn_rt_crypto_mac_with,
 };
 
 /// A live `Bytes` handle holding `bytes`, made through the reachable C ABI.
@@ -113,8 +113,17 @@ fn test_c_abi_mac_stream() {
 
     assert_eq!(bn_rt_crypto_bytes_length(tag_handle.cast_unsigned()), 32);
 
-    // One-shot MAC C ABI
-    let oneshot_handle = bn_rt_crypto_mac_handle(key_handle, data_handle);
+    // One-shot MAC C ABI: `MacWith` with no options record is `Mac`.
+    let mut oneshot_handle: i64 = 0;
+    assert_eq!(
+        bn_rt_crypto_mac_with(
+            key_handle,
+            data_handle,
+            std::ptr::null(),
+            &raw mut oneshot_handle
+        ),
+        0
+    );
     assert_ne!(oneshot_handle, 0);
 
     // Verify C ABI

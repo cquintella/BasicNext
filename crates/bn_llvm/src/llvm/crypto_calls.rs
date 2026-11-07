@@ -6,6 +6,8 @@
 // Calls to `BNCrypto` members. `Bytes` and keys travel as `bn_rt` table
 // indices (`i64`), as BNLog resources do.
 #![allow(clippy::wildcard_imports)]
+#[path = "crypto_aead_calls.rs"]
+mod crypto_aead_calls;
 #[path = "crypto_asymmetric_calls.rs"]
 mod crypto_asymmetric_calls;
 #[path = "crypto_csprng_calls.rs"]
@@ -42,11 +44,22 @@ fn carries_type(ty: &Type, target: &str) -> bool {
 
 pub(super) fn lower_bncrypto_call(
     text: &mut crate::ir::LlvmModule,
+    module: &Module,
     analysis: &LoweringAnalysis<'_>,
     destination: ValueId,
     member: &str,
     arguments: &[ValueId],
 ) {
+    if crypto_aead_calls::try_lower_aead_call(
+        text,
+        module,
+        analysis,
+        destination,
+        member,
+        arguments,
+    ) {
+        return;
+    }
     if crypto_encoding_calls::try_lower_encoding_call(
         text,
         analysis,
@@ -452,60 +465,6 @@ pub(super) fn lower_bncrypto_call(
             );
             return;
         }
-        "Encrypt" => {
-            emit_handle_index(text, analysis, &format!("crya{dest}"), arguments[0]);
-            emit_handle_index(text, analysis, &format!("cryb{dest}"), arguments[1]);
-            let args = vec![
-                (T::I64, O::reg(format!("crya{dest}"))),
-                (T::I64, O::reg(format!("cryb{dest}"))),
-            ];
-            let call = I::call(T::I64, "bn_rt_crypto_encrypt", args);
-            text.assign(format!("cryenc{dest}"), call);
-            text.assign(
-                format!("v{dest}"),
-                I::cast(
-                    CastOp::IntToPtr,
-                    T::I64,
-                    O::reg(format!("cryenc{dest}")),
-                    T::Ptr,
-                ),
-            );
-            return;
-        }
-        "Decrypt" => {
-            emit_handle_index(text, analysis, &format!("crya{dest}"), arguments[0]);
-            emit_handle_index(text, analysis, &format!("cryb{dest}"), arguments[1]);
-            let args = vec![
-                (T::I64, O::reg(format!("crya{dest}"))),
-                (T::I64, O::reg(format!("cryb{dest}"))),
-            ];
-            let call = I::call(T::I64, "bn_rt_crypto_decrypt", args);
-            text.assign(format!("crydec{dest}"), call);
-            text.assign(
-                format!("v{dest}"),
-                I::cast(
-                    CastOp::IntToPtr,
-                    T::I64,
-                    O::reg(format!("crydec{dest}")),
-                    T::Ptr,
-                ),
-            );
-            return;
-        }
-        "EncryptText" => {
-            emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
-            let args = vec![(T::I64, cryh()), (T::Ptr, v(arguments[1]))];
-            let call = I::call(T::Ptr, "bn_rt_crypto_encrypt_text", args);
-            text.assign(format!("v{dest}"), call);
-            return;
-        }
-        "DecryptText" => {
-            emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
-            let args = vec![(T::I64, cryh()), (T::Ptr, v(arguments[1]))];
-            let call = I::call(T::Ptr, "bn_rt_crypto_decrypt_text", args);
-            text.assign(format!("v{dest}"), call);
-            return;
-        }
         "EncryptFile" | "DecryptFile" => {
             emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
             let symbol = if member == "EncryptFile" {
@@ -564,26 +523,6 @@ pub(super) fn lower_bncrypto_call(
                 "bn_rt_crypto_hash_with",
                 args,
                 Out::Handle,
-            );
-            return;
-        }
-        "Mac" => {
-            emit_handle_index(text, analysis, &format!("cryk{dest}"), arguments[0]);
-            emit_handle_index(text, analysis, &format!("cryd{dest}"), arguments[1]);
-            let args = vec![
-                (T::I64, O::reg(format!("cryk{dest}"))),
-                (T::I64, O::reg(format!("cryd{dest}"))),
-            ];
-            let call = I::call(T::I64, "bn_rt_crypto_mac_handle", args);
-            text.assign(format!("crym{dest}"), call);
-            text.assign(
-                format!("v{dest}"),
-                I::cast(
-                    CastOp::IntToPtr,
-                    T::I64,
-                    O::reg(format!("crym{dest}")),
-                    T::Ptr,
-                ),
             );
             return;
         }

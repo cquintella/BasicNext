@@ -188,116 +188,171 @@ pub fn bn_decrypt_envelope_with(
         .map_err(|_| CryptoFailure::EnvelopeAuth)
 }
 
-#[allow(unsafe_code)]
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_crypto_encrypt(key_handle: u64, plaintext_handle: u64) -> u64 {
-    let key_mat = with_secret_keys(|keys| {
-        let entry = keys.get(&key_handle)?;
-        if entry.zeroized {
-            return None;
-        }
-        Some(entry.material.clone())
-    });
-    let Some(key) = key_mat else {
-        return 0;
-    };
-    let pt = with_buffers(|b| b.get(&plaintext_handle).cloned());
-    let Some(plaintext) = pt else {
-        return 0;
-    };
-    match bn_encrypt_envelope(&key, &plaintext) {
-        Ok(sealed) => store(sealed),
-        Err(err) => {
-            failed(&err);
-            0
-        }
+/// `Alg.XCHACHA20_POLY1305` in `modules/bn/BNCrypto.bn`: the only algorithm
+/// `AeadOptions.alg` accepts in this version.
+pub const AEAD_ALG_XCHACHA20_POLY1305: i32 = 22;
+
+/// The material of the `SecretKey` `handle`: a zeroized key is
+/// `ZeroizedKey`, a handle with no key is a key failure of `operation`.
+fn secret_material(
+    handle: u64,
+    operation: &'static str,
+) -> Result<zeroize::Zeroizing<Vec<u8>>, CryptoFailure> {
+    with_secret_keys(|keys| match keys.get(&handle) {
+        Some(entry) if entry.zeroized => Err(CryptoFailure::ZeroizedKey),
+        Some(entry) => Ok(entry.material.clone()),
+        None => Err(CryptoFailure::Key(operation)),
+    })
+}
+
+/// The bytes of the `Bytes` `handle`, or a key failure of `operation`.
+fn buffer(handle: u64, operation: &'static str) -> Result<Vec<u8>, CryptoFailure> {
+    with_buffers(|buffers| buffers.get(&handle).map(|bytes| bytes.to_vec()))
+        .ok_or(CryptoFailure::Key(operation))
+}
+
+/// `AeadOptions.alg`: XChaCha20-Poly1305, or `UNSUPPORTED_ALGORITHM`.
+fn admit_aead(alg: i32, operation: &'static str) -> Result<(), CryptoFailure> {
+    if alg == AEAD_ALG_XCHACHA20_POLY1305 {
+        Ok(())
+    } else {
+        Err(CryptoFailure::UnsupportedAlgorithm { operation })
     }
 }
 
-#[allow(unsafe_code)]
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_crypto_decrypt(key_handle: u64, sealed_handle: u64) -> u64 {
-    let key_mat = with_secret_keys(|keys| {
-        let entry = keys.get(&key_handle)?;
-        if entry.zeroized {
-            return None;
+/// Writes a new `Bytes` handle through `out`, or records `failure`.
+#[allow(unsafe_code)] // C ABI: writes the caller's out slot.
+fn handle_status(out: *mut i64, result: Result<Vec<u8>, CryptoFailure>) -> i32 {
+    if out.is_null() {
+        return crate::crypto_abi::BN_CRYPTO_INVALID_ARGUMENT;
+    }
+    match result {
+        Ok(bytes) => {
+            let handle = i64::try_from(store(bytes)).unwrap_or(i64::MAX);
+            // SAFETY: `out` was checked non-null; it is the caller's slot.
+            unsafe { *out = handle };
+            crate::crypto_abi::BN_CRYPTO_OK
         }
-        Some(entry.material.clone())
-    });
-    let Some(key) = key_mat else {
-        return 0;
-    };
-    let ct = with_buffers(|b| b.get(&sealed_handle).cloned());
-    let Some(sealed) = ct else {
-        return 0;
-    };
-    match bn_decrypt_envelope(&key, &sealed) {
-        Ok(plain) => store(plain),
-        Err(err) => {
-            failed(&err);
-            0
-        }
+        Err(failure) => failed(&failure),
     }
 }
 
-#[allow(unsafe_code)]
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_crypto_encrypt_text(key_handle: u64, text: *const c_char) -> *mut c_char {
-    let key_mat = with_secret_keys(|keys| {
-        let entry = keys.get(&key_handle)?;
-        if entry.zeroized {
-            return None;
+/// Writes a new STRING through `out`, or records `failure`.
+#[allow(unsafe_code)] // C ABI: writes the caller's out slot.
+fn string_status(out: *mut *mut c_char, result: Result<String, CryptoFailure>) -> i32 {
+    if out.is_null() {
+        return crate::crypto_abi::BN_CRYPTO_INVALID_ARGUMENT;
+    }
+    match result {
+        Ok(text) => {
+            // SAFETY: `out` was checked non-null; it is the caller's slot.
+            unsafe { *out = c_string(&text) };
+            crate::crypto_abi::BN_CRYPTO_OK
         }
-        Some(entry.material.clone())
-    });
-    let Some(key) = key_mat else {
-        return std::ptr::null_mut();
-    };
-    let Some(input_str) = c_str(text) else {
-        return std::ptr::null_mut();
-    };
-    match bn_encrypt_envelope(&key, input_str.as_bytes()) {
-        Ok(sealed) => {
-            let token = encode_base64url_unpadded(&sealed);
-            c_string(&token)
-        }
-        Err(err) => {
-            failed(&err);
-            std::ptr::null_mut()
-        }
+        Err(failure) => failed(&failure),
     }
 }
 
+/// C ABI: `Encrypt(key, plaintext) AS Bytes OR Error`.
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_crypto_decrypt_text(
-    key_handle: u64,
-    sealed_text: *const c_char,
-) -> *mut c_char {
-    let key_mat = with_secret_keys(|keys| {
-        let entry = keys.get(&key_handle)?;
-        if entry.zeroized {
-            return None;
-        }
-        Some(entry.material.clone())
+pub extern "C" fn bn_rt_crypto_encrypt_status(key: u64, plaintext: u64, out: *mut i64) -> i32 {
+    let operation = bn_catalog::text("crypto", "op.encrypt");
+    let result = secret_material(key, operation)
+        .and_then(|material| bn_encrypt_envelope(&material, &buffer(plaintext, operation)?));
+    handle_status(out, result)
+}
+
+/// C ABI: `Decrypt(key, sealed) AS Bytes OR Error`.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_decrypt_status(key: u64, sealed: u64, out: *mut i64) -> i32 {
+    let operation = bn_catalog::text("crypto", "op.decrypt");
+    let result = secret_material(key, operation)
+        .and_then(|material| bn_decrypt_envelope(&material, &buffer(sealed, operation)?));
+    handle_status(out, result)
+}
+
+/// C ABI: `EncryptWith(key, plaintext, opts)`; emitted code passes the fields
+/// of `AeadOptions` (`alg`, the `aad` handle, `includeKeyId` as 0 or 1).
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_encrypt_with(
+    key: u64,
+    plaintext: u64,
+    alg: i32,
+    aad: u64,
+    include_key_id: i32,
+    out: *mut i64,
+) -> i32 {
+    let operation = bn_catalog::text("crypto", "op.encrypt_with");
+    let result = admit_aead(alg, operation)
+        .and_then(|()| secret_material(key, operation))
+        .and_then(|material| {
+            let aad = buffer(aad, operation)?;
+            let options = EnvelopeOptions {
+                aad: &aad,
+                include_key_id: include_key_id != 0,
+            };
+            bn_encrypt_envelope_with(&material, &buffer(plaintext, operation)?, &options)
+        });
+    handle_status(out, result)
+}
+
+/// C ABI: `DecryptWith(key, sealed, opts)`; emitted code passes `alg` and the
+/// `aad` handle of `AeadOptions`.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_decrypt_with(
+    key: u64,
+    sealed: u64,
+    alg: i32,
+    aad: u64,
+    out: *mut i64,
+) -> i32 {
+    let operation = bn_catalog::text("crypto", "op.decrypt_with");
+    let result = admit_aead(alg, operation)
+        .and_then(|()| secret_material(key, operation))
+        .and_then(|material| {
+            let aad = buffer(aad, operation)?;
+            bn_decrypt_envelope_with(&material, &buffer(sealed, operation)?, &aad)
+        });
+    handle_status(out, result)
+}
+
+/// C ABI: `EncryptText(key, text) AS STRING OR Error`: the envelope as unpadded base64url.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_encrypt_text_status(
+    key: u64,
+    text: *const c_char,
+    out: *mut *mut c_char,
+) -> i32 {
+    let operation = bn_catalog::text("crypto", "op.encrypt");
+    let result = secret_material(key, operation).and_then(|material| {
+        let plain = c_str(text).ok_or(CryptoFailure::Utf8)?;
+        bn_encrypt_envelope(&material, plain.as_bytes())
+            .map(|sealed| encode_base64url_unpadded(&sealed))
     });
-    let Some(key) = key_mat else {
-        return std::ptr::null_mut();
-    };
-    let Some(token_str) = c_str(sealed_text) else {
-        return std::ptr::null_mut();
-    };
-    let Some(sealed_bytes) = decode_base64url(token_str) else {
-        return std::ptr::null_mut();
-    };
-    match bn_decrypt_envelope(&key, &sealed_bytes) {
-        Ok(plain) => match String::from_utf8(plain) {
-            Ok(utf8_str) => c_string(&utf8_str),
-            Err(_) => std::ptr::null_mut(),
-        },
-        Err(err) => {
-            failed(&err);
-            std::ptr::null_mut()
-        }
-    }
+    string_status(out, result)
+}
+
+/// C ABI: `DecryptText(key, token) AS STRING OR Error`. A token that is not
+/// base64url is a format failure; a plaintext that is not UTF-8, `Utf8`.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_decrypt_text_status(
+    key: u64,
+    token: *const c_char,
+    out: *mut *mut c_char,
+) -> i32 {
+    let operation = bn_catalog::text("crypto", "op.decrypt");
+    let result = secret_material(key, operation).and_then(|material| {
+        let sealed = c_str(token)
+            .and_then(decode_base64url)
+            .ok_or(CryptoFailure::EnvelopeFormat)?;
+        let plain = bn_decrypt_envelope(&material, &sealed)?;
+        String::from_utf8(plain).map_err(|_| CryptoFailure::Utf8)
+    });
+    string_status(out, result)
 }

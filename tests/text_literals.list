@@ -2914,7 +2914,6 @@ libraries/bn_stdlib/src/crypto_csprng.rs	identifier	BNCrypto.RandomInt
 libraries/bn_stdlib/src/crypto_csprng.rs	identifier	BNCrypto.RandomInt
 libraries/bn_stdlib/src/crypto_csprng.rs	identifier	BNCrypto.RandomPassword
 libraries/bn_stdlib/src/crypto_csprng.rs	identifier	BNCrypto.RandomToken
-libraries/bn_stdlib/src/crypto_envelope.rs	identifier	BNCrypto.Encrypt
 libraries/bn_stdlib/src/crypto_file.rs	identifier	BNCrypto.DecryptFile
 libraries/bn_stdlib/src/crypto_file.rs	identifier	BNCrypto.EncryptFile
 libraries/bn_stdlib/src/crypto_file.rs	identifier	BNCrypto.EncryptFile

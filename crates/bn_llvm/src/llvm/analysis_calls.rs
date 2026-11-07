@@ -474,6 +474,19 @@ pub(crate) fn call_instruction_supported(
                             .get(&arguments[1])
                             .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
                 }
+                // The third operand is the `AeadOptions` record the lowering reads.
+                "EncryptWith" | "DecryptWith" => {
+                    arguments.len() == 3
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_secret_key(module, ty))
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                        && values
+                            .get(&arguments[2])
+                            .is_some_and(|ty| crate::layout::struct_owner(module, ty).is_some())
+                }
                 "EncryptText" => {
                     arguments.len() == 2
                         && values

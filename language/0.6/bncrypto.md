@@ -155,31 +155,41 @@ Default algorithm: **XChaCha20-Poly1305** (24-byte random nonce, safe against no
 ### Envelope Format (`BNC1`)
 
 ```
-+---------------+---------+--------+------------------+----------+------------+----------+
-| Magic "BNC1"  | Version | Alg ID | KeyId (optional) |  Nonce   | Ciphertext |   Tag    |
-|   (4 bytes)   | (1 byte)|(1 byte)|   (32 bytes)     | (N bytes)| (L bytes)  |(16 bytes)|
-+---------------+---------+--------+------------------+----------+------------+----------+
++--------------+---------+---------+---------+------------------+-------------------+----------+------------+----------+
+| Magic "BNC1" | Version | Alg ID  |  Flags  | KeyId (if KEYID) | KDF (if PASSWORD) |  Nonce   | Ciphertext |   Tag    |
+|  (4 bytes)   | (1 byte)| (1 byte)| (1 byte)|    (32 bytes)    |    (28 bytes)     |(24 bytes)| (L bytes)  |(16 bytes)|
++--------------+---------+---------+---------+------------------+-------------------+----------+------------+----------+
 ```
-The header bytes preceding the ciphertext are included in the authenticated additional data (AAD).
+Version is 1 and Alg ID 1 (XChaCha20-Poly1305). The flags byte says which optional sections follow it, in bit order (BDFL decision, 2026-11-07):
+
+| Bit | Name | Meaning |
+| --- | --- | --- |
+| 0 | `STREAM` | The body is a file stream of 64 KiB segments (`EncryptFile`, `EncryptFileWithPassword`). |
+| 1 | `KEYID` | The 32 bytes of the key's KeyId (its `Id()` as bytes) follow the flags. |
+| 2 | `PASSWORD` | The Argon2id cost (`m`, `t`, `p`, each a little-endian 32-bit unsigned integer) and a 16-byte salt follow; the key is that Argon2id output (`EncryptFileWithPassword`). |
+
+A set bit outside these three, or a section the input is too short to hold, is `INVALID_ARGUMENT`. Every header byte preceding the ciphertext, and then the caller's `aad`, are the authenticated additional data (AAD). `Decrypt` reads every flag combination a single envelope can carry; a KeyId that is not the key's fails as a wrong key does, with `AUTHENTICATION_FAILED`.
 
 ### Options & Streaming (Layer B)
 
 ```basic
 EXPORT STRUCT AeadOptions
-    alg AS INTEGER = 4           // Crypto.Alg.XCHACHA20_POLY1305
-    aad AS Bytes                 // Additional authenticated data (default empty)
-    includeKeyId AS BOOLEAN = 0  // Whether to embed 32-byte KeyId in envelope
+    alg AS INTEGER = Alg.XCHACHA20_POLY1305
+    aad AS Bytes = FromText("")      // Additional authenticated data (default empty)
+    includeKeyId AS BOOLEAN = FALSE  // Whether to embed the 32-byte KeyId in the envelope
 END STRUCT
 ```
 
 * `EncryptWith(key AS SecretKey, plaintext AS Bytes, opts AS AeadOptions) AS Bytes OR Error`
 * `DecryptWith(key AS SecretKey, sealed AS Bytes, opts AS AeadOptions) AS Bytes OR Error`
+
+`opts.alg` accepts `Alg.XCHACHA20_POLY1305` only in this version; any other id is `UNSUPPORTED_ALGORITHM` (BDFL decision, 2026-11-07). `DecryptWith` needs the `aad` that sealed the envelope; a different one fails with `AUTHENTICATION_FAILED`. `EncryptWith` with the default options produces what `Encrypt` produces.
 * `EncryptFile(key AS SecretKey, inPath, outPath AS STRING) AS VOID OR Error`
 * `DecryptFile(key AS SecretKey, inPath, outPath AS STRING) AS VOID OR Error`
 * `EncryptFileWithPassword(inPath, outPath, password AS STRING) AS VOID OR Error`
 * `DecryptFileWithPassword(inPath, outPath, password AS STRING) AS VOID OR Error`
 
-File encryption streams in 64 KiB authenticated chunks. New target files use atomic creation (`FS.OpenNew`). Decryption failure deletes partial output and fails closed.
+File encryption streams in 64 KiB authenticated chunks. New target files use atomic creation (`FS.OpenNew`). Decryption failure deletes partial output and fails closed. `EncryptFileWithPassword` draws a 16-byte random salt, derives the key as `DeriveKey` does and writes the `STREAM` and `PASSWORD` sections; `DecryptFileWithPassword` derives the key from the recorded cost and salt, and a first segment that does not authenticate is `WRONG_PASSWORD` (BDFL decision, 2026-11-07). `EncryptFileWithPassword` takes no options, so it always records the floor cost of `HashPassword`; a file that records any other cost is `INVALID_ARGUMENT`, which bounds the memory a hostile header can demand.
 
 ### Raw AEAD (Legacy / Expert)
 
@@ -224,10 +234,13 @@ Streaming hash updates are provided via `Hasher.New(alg)` and `Hasher.NewWith(op
 | --- | --- | --- |
 | `HashPassword` | `HashPassword(password AS STRING) AS STRING` | Produces an Argon2id PHC string with OWASP recommended floor (m=19456 KiB, t=2, p=1, 16-byte random salt) (BDFL decision, 2026-11-01). |
 | `VerifyPassword` | `VerifyPassword(password AS STRING, phc AS STRING) AS BOOLEAN` | Constant-time verification against an Argon2id PHC string. |
-| `NeedsRehash` | `NeedsRehash(phc AS STRING, opts AS PasswordOptions) AS BOOLEAN` | Checks if a PHC string is below target cost parameters. |
-| `DeriveKey` | `DeriveKey(password AS STRING, salt AS Bytes) AS SecretKey OR Error` | Password-based key derivation using Argon2id. |
+| `HashPasswordWith` | `HashPasswordWith(password AS STRING, opts AS PasswordOptions) AS STRING OR Error` | An Argon2id PHC string at the cost of `opts`, with a 16-byte random salt. A cost below the floor of `HashPassword` is `INVALID_ARGUMENT`. |
+| `NeedsRehash` | `NeedsRehash(phc AS STRING, opts AS PasswordOptions) AS BOOLEAN` | `TRUE` when `phc` is not Argon2id version 19, has a memory, iteration or parallelism cost below `opts`, or is malformed. |
+| `DeriveKey` | `DeriveKey(password AS STRING, salt AS Bytes) AS SecretKey OR Error` | The 32-byte Argon2id output at the floor of `HashPassword` (m=19456 KiB, t=2, p=1), as a `SecretKey`. A salt under 16 bytes is `INVALID_ARGUMENT`. |
 | `Hkdf` | `Hkdf(ikm AS SecretKey, salt, info AS Bytes, length AS INTEGER) AS SecretKey OR Error` | RFC 5869 extract-and-expand key derivation returning a typed `SecretKey`. |
-| `DeriveSubkey` | `DeriveSubkey(master AS SecretKey, context AS STRING) AS SecretKey OR Error` | Domain-separated subkey derivation. |
+| `DeriveSubkey` | `DeriveSubkey(master AS SecretKey, context AS STRING) AS SecretKey OR Error` | HKDF-SHA256 of `master` with an empty salt and the info `"BNC-SUBKEY\0" || UTF-8(context)`, 32 bytes. An empty `context` or a zeroized `master` is `INVALID_ARGUMENT`. |
+
+`PasswordOptions` is `{ memoryKiB AS INTEGER = 19456, iterations AS INTEGER = 2, parallelism AS INTEGER = 1 }`: Argon2id only in this version; no other password algorithm and no policy field (BDFL decision, 2026-11-07). `DeriveKey` and `DeriveSubkey` are deterministic: the same inputs give the same key (BDFL decision, 2026-11-07).
 
 ---
 

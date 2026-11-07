@@ -395,6 +395,8 @@ pub(crate) fn bncrypto_method<'a>(module: &Module, name: &'a str) -> Option<&'a 
                 | "Purpose"
                 | "ExportSecret"
                 | "Encrypt"
+                | "EncryptWith"
+                | "DecryptWith"
                 | "Decrypt"
                 | "EncryptText"
                 | "DecryptText"

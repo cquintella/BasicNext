@@ -817,6 +817,79 @@ impl CryptoProvider {
         }
     }
 
+    /// `EncryptWith(key, data, opts)` and `DecryptWith(key, sealed, opts)`:
+    /// `opts` is an `AeadOptions` record (`alg`, `aad`, `includeKeyId`).
+    fn aead_with_op(
+        &mut self,
+        method: &str,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        require_arity(member, arguments, 3, span)?;
+        let Value::CryptoSecretKey(key_handle) = &arguments[0] else {
+            return Err(type_mismatch(
+                bn_catalog::text("crypto", "type.secret_key.expected"),
+                bn_catalog::text("crypto", "type.secret_key.found"),
+                member,
+                span,
+            ));
+        };
+        let data = self.bytes_at(arguments, 1, member, span)?;
+        let record = options_record(
+            arguments,
+            2,
+            bn_catalog::text("crypto", "type.aead_options.expected"),
+            member,
+            span,
+        )?;
+        let alg = options_alg(record, member, span)?;
+        let Some(Value::CryptoBytes(aad_handle)) = record.get(AEAD_OPTS_AAD_FIELD) else {
+            return Err(type_mismatch(
+                bn_catalog::text("crypto", "type.bytes.expected"),
+                bn_catalog::text("crypto", "type.bytes.found"),
+                member,
+                span,
+            ));
+        };
+        let aad = self.buffer(*aad_handle, span)?.to_vec();
+        let include_key_id = matches!(
+            record.get(AEAD_OPTS_INCLUDE_KEY_ID_FIELD),
+            Some(Value::Boolean(true))
+        );
+        let entry = self.secret_keys.get(key_handle).ok_or_else(|| {
+            runtime_error(
+                bn_diag::DiagId::USE_AFTER_RELEASE,
+                bn_catalog::text("crypto", "msg.bncrypto_key_was_already_released"),
+                span,
+            )
+        })?;
+        if entry.zeroized {
+            return failure(&CryptoFailure::ZeroizedKey);
+        }
+        let operation = if method == "EncryptWith" {
+            bn_catalog::text("crypto", "op.encrypt_with")
+        } else {
+            bn_catalog::text("crypto", "op.decrypt_with")
+        };
+        if alg != bn_stdlib::crypto_envelope::AEAD_ALG_XCHACHA20_POLY1305 {
+            return failure(&CryptoFailure::UnsupportedAlgorithm { operation });
+        }
+        let result = if method == "EncryptWith" {
+            let options = bn_stdlib::crypto_envelope::EnvelopeOptions {
+                aad: &aad,
+                include_key_id,
+            };
+            bn_stdlib::crypto_envelope::bn_encrypt_envelope_with(&entry.material, &data, &options)
+        } else {
+            bn_stdlib::crypto_envelope::bn_decrypt_envelope_with(&entry.material, &data, &aad)
+        };
+        match result {
+            Ok(bytes) => Ok(self.insert(bytes)),
+            Err(err) => failure(&err),
+        }
+    }
+
     fn buffer(&self, handle: u64, span: Span) -> Result<&[u8], Diagnostic> {
         self.buffers
             .get(&handle)
@@ -2388,6 +2461,7 @@ impl Provider for CryptoProvider {
             | "Decrypt" | "EncryptText" | "DecryptText" | "EncryptFile" | "DecryptFile" => {
                 self.secret_key_op(core.host().filesystem(), method, member, &arguments, span)
             }
+            "EncryptWith" | "DecryptWith" => self.aead_with_op(method, member, &arguments, span),
             "Hash" | "HashText" | "HashFile" | "HashWith" | "Update" | "Finish" | "Verify" => {
                 self.hash_op(core, method, member, &arguments, span)
             }
@@ -2688,6 +2762,9 @@ fn csprng_dispatch(
 const HASH_OPTS_POLICY_FIELD: usize = 1;
 const MAC_OPTS_POLICY_FIELD: usize = 1;
 const KEY_PAIR_OPTS_POLICY_FIELD: usize = 1;
+/// `AeadOptions` fields after `alg` (index 0), in declaration order.
+const AEAD_OPTS_AAD_FIELD: usize = 1;
+const AEAD_OPTS_INCLUDE_KEY_ID_FIELD: usize = 2;
 
 /// The options record at `index`, or a type mismatch naming `expected`.
 fn options_record<'a>(

@@ -173,7 +173,7 @@ fn i32_argument(
     }
 }
 
-fn emit_string_status(
+pub(super) fn emit_string_status(
     text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     symbol: &str,

@@ -212,26 +212,6 @@ fn get_any_key(handle: u64) -> Option<zeroize::Zeroizing<Vec<u8>>> {
     crate::crypto_abi::with_buffers(|bufs| bufs.get(&handle).cloned())
 }
 
-/// C ABI: `Mac(key, data)` handle helper.
-#[allow(unsafe_code)]
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_crypto_mac_handle(key_handle: u64, data_handle: u64) -> i64 {
-    let Some(key_bytes) = get_any_key(key_handle) else {
-        return 0;
-    };
-    let Some(data_bytes) = crate::crypto_abi::with_buffers(|bufs| bufs.get(&data_handle).cloned())
-    else {
-        return 0;
-    };
-    match bn_mac(&key_bytes, &data_bytes, MAC_HMAC_SHA256) {
-        Ok(tag) => {
-            let handle = store(tag);
-            i64::try_from(handle).unwrap_or(0)
-        }
-        Err(_) => 0,
-    }
-}
-
 /// C ABI: `VerifyMac(key, data, tag)` handle helper.
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]

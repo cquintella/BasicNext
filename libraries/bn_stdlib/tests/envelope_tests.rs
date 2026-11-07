@@ -8,8 +8,11 @@
 use bn_stdlib::crypto::{bn_decrypt_envelope, bn_encrypt_envelope};
 use bn_stdlib::crypto_abi::{
     bn_rt_crypto_bytes_from_text, bn_rt_crypto_bytes_length, bn_rt_crypto_bytes_release,
-    bn_rt_crypto_decrypt, bn_rt_crypto_decrypt_text, bn_rt_crypto_encrypt,
-    bn_rt_crypto_encrypt_text, bn_rt_crypto_secret_key_generate, bn_rt_crypto_secret_key_release,
+    bn_rt_crypto_secret_key_generate, bn_rt_crypto_secret_key_release,
+};
+use bn_stdlib::crypto_envelope::{
+    bn_rt_crypto_decrypt_status, bn_rt_crypto_decrypt_text_status, bn_rt_crypto_encrypt_status,
+    bn_rt_crypto_encrypt_text_status,
 };
 use bn_stdlib::string::{bn_rt_str_release, c_string_from_bytes, slice_from_raw};
 use std::ffi::c_char;
@@ -81,21 +84,46 @@ fn test_envelope_c_abi() {
     let text_handle = bn_rt_crypto_bytes_from_text(text.as_ptr());
     assert!(text_handle > 0);
 
-    let sealed_handle = bn_rt_crypto_encrypt(key_handle, text_handle);
+    let mut sealed: i64 = 0;
+    assert_eq!(
+        bn_rt_crypto_encrypt_status(key_handle, text_handle, &raw mut sealed),
+        0
+    );
+    let sealed_handle = u64::try_from(sealed).expect("handle");
     assert!(sealed_handle > 0);
     let sealed_len = bn_rt_crypto_bytes_length(sealed_handle);
     assert_eq!(sealed_len, 31 + 22 + 16);
 
-    let decrypted_handle = bn_rt_crypto_decrypt(key_handle, sealed_handle);
-    assert!(decrypted_handle > 0);
+    let mut decrypted: i64 = 0;
+    assert_eq!(
+        bn_rt_crypto_decrypt_status(key_handle, sealed_handle, &raw mut decrypted),
+        0
+    );
+    let decrypted_handle = u64::try_from(decrypted).expect("handle");
     assert_eq!(bn_rt_crypto_bytes_length(decrypted_handle), 22);
 
+    // A wrong key is a failure the status reports, never a handle.
+    let other_key = bn_rt_crypto_secret_key_generate(256, std::ptr::null(), std::ptr::null());
+    let mut refused: i64 = 0;
+    assert_ne!(
+        bn_rt_crypto_decrypt_status(other_key, sealed_handle, &raw mut refused),
+        0
+    );
+    assert_eq!(refused, 0);
+
     // Text helper C ABI
-    let token_ptr = bn_rt_crypto_encrypt_text(key_handle, text.as_ptr());
+    let mut token_ptr: *mut c_char = std::ptr::null_mut();
+    assert_eq!(
+        bn_rt_crypto_encrypt_text_status(key_handle, text.as_ptr(), &raw mut token_ptr),
+        0
+    );
     assert!(!token_ptr.is_null());
 
-    let recovered_ptr = bn_rt_crypto_decrypt_text(key_handle, token_ptr);
-    assert!(!recovered_ptr.is_null());
+    let mut recovered_ptr: *mut c_char = std::ptr::null_mut();
+    assert_eq!(
+        bn_rt_crypto_decrypt_text_status(key_handle, token_ptr, &raw mut recovered_ptr),
+        0
+    );
     let recovered_bytes = slice_from_raw(recovered_ptr).expect("slice from raw STRING");
     let unwrapped_text = std::str::from_utf8(recovered_bytes).unwrap();
     assert_eq!(unwrapped_text, "Sensitive payload data");
@@ -107,4 +135,5 @@ fn test_envelope_c_abi() {
     bn_rt_crypto_bytes_release(sealed_handle);
     bn_rt_crypto_bytes_release(decrypted_handle);
     bn_rt_crypto_secret_key_release(key_handle);
+    bn_rt_crypto_secret_key_release(other_key);
 }

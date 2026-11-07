@@ -3,7 +3,11 @@ IMPORT BNCrypto AS Crypto
 FUNCTION Start() AS VOID
     LET key AS Crypto.SecretKey = Crypto.NewSecretKey()
     LET data AS Crypto.Bytes = Crypto.FromText("Hello Basic Next MAC!")
-    LET tag AS Crypto.Bytes = Crypto.Mac(key, data)
+    LET tag AS Crypto.Bytes OR Error = Crypto.Mac(key, data)
+    IF tag IS Error THEN
+        PRINT "mac-failed"
+        RETURN
+    END IF
     IF Crypto.VerifyMac(key, data, tag) = TRUE THEN
         PRINT "mac-verify-ok"
     END IF

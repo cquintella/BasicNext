@@ -1728,6 +1728,24 @@ fn unknown_member_names_the_member_and_its_owner() {
 /// `UNSUPPORTED_ALGORITHM`, 5 is `LEGACY_DISABLED`.
 const BNCRYPTO_POLICY_OUTPUT: &str = "hash-blake3 ok\nhash-blake3-fips 4\nhash-sha3-fips ok\nhasher-blake2b-fips 4\nhash-md5-allow-legacy 5\nhash-blake3-next-call ok\nmac-blake3-fips 4\nmac-stream-blake3-fips 4\nmac-hmac384-fips ok\nkeypair-x25519 ok\nkeypair-x25519-fips 4\nkeypair-ed25519-fips ok\n";
 
+/// EncryptWith and DecryptWith: the AAD is bound, the KEYID names the key, an unsupported algorithm and a wrong key are Errors.
+#[test]
+fn bncrypto_aead_options_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-aead-options/main.bn"])
+        .output()
+        .expect("run the fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "order 17\naad-bound\nwrong-key-is-error\ndefaults-open-with-decrypt\nalg-refused\n"
+    );
+}
+
 /// A BNCrypto handle widened into T OR Error keeps its value; a program class named SecretKey stays an object.
 #[test]
 fn bncrypto_widened_handles_interprets() {

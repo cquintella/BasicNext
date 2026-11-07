@@ -390,16 +390,30 @@ END FUNCTION
 EXPORT FUNCTION UnwrapKeyWith(kek AS SecretKey, wrapped AS Bytes, opts AS KeyOptions) AS SecretKey
 END FUNCTION
 
-EXPORT FUNCTION Encrypt(key AS SecretKey, plaintext AS Bytes) AS Bytes
+EXPORT FUNCTION Encrypt(key AS SecretKey, plaintext AS Bytes) AS Bytes OR Error
 END FUNCTION
 
-EXPORT FUNCTION Decrypt(key AS SecretKey, sealed AS Bytes) AS Bytes
+EXPORT FUNCTION Decrypt(key AS SecretKey, sealed AS Bytes) AS Bytes OR Error
 END FUNCTION
 
-EXPORT FUNCTION EncryptText(key AS SecretKey, text AS STRING) AS STRING
+// Layer B of the sealed envelope: `alg` accepts XCHACHA20_POLY1305 only in this
+// version; `aad` is authenticated, not stored, and DecryptWith needs the same one.
+EXPORT STRUCT AeadOptions
+    alg AS INTEGER = 22
+    aad AS Bytes = FromText("")
+    includeKeyId AS BOOLEAN = FALSE
+END STRUCT
+
+EXPORT FUNCTION EncryptWith(key AS SecretKey, plaintext AS Bytes, opts AS AeadOptions) AS Bytes OR Error
 END FUNCTION
 
-EXPORT FUNCTION DecryptText(key AS SecretKey, sealedText AS STRING) AS STRING
+EXPORT FUNCTION DecryptWith(key AS SecretKey, sealed AS Bytes, opts AS AeadOptions) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION EncryptText(key AS SecretKey, text AS STRING) AS STRING OR Error
+END FUNCTION
+
+EXPORT FUNCTION DecryptText(key AS SecretKey, sealedText AS STRING) AS STRING OR Error
 END FUNCTION
 
 EXPORT FUNCTION EncryptFile(key AS SecretKey, inPath AS STRING, outPath AS STRING) AS VOID OR Error
@@ -448,7 +462,7 @@ END FUNCTION
 EXPORT FUNCTION VerifyHmacSha256(key AS Key, data AS Bytes, tag AS Bytes) AS BOOLEAN
 END FUNCTION
 
-EXPORT FUNCTION Mac(key AS SecretKey, data AS Bytes) AS Bytes
+EXPORT FUNCTION Mac(key AS SecretKey, data AS Bytes) AS Bytes OR Error
 END FUNCTION
 
 EXPORT FUNCTION VerifyMac(key AS SecretKey, data AS Bytes, tag AS Bytes) AS BOOLEAN

@@ -315,13 +315,42 @@ END FUNCTION
 FUNCTION Envelopes() AS VOID
     LET key AS Crypto.SecretKey = Crypto.NewSecretKey()
     LET plain AS Crypto.Bytes = Crypto.FromText("meet at noon")
-    LET sealed AS Crypto.Bytes = Crypto.Encrypt(key, plain)
+    // Every envelope call is `T OR Error`: a wrong key or a changed byte is an Error.
+    LET sealed AS Crypto.Bytes OR Error = Crypto.Encrypt(key, plain)
+    LET again AS Crypto.Bytes OR Error = Crypto.Encrypt(key, plain)
+    IF sealed IS Error OR again IS Error THEN
+        Check("Encrypt adds the envelope", FALSE)
+        RETURN
+    END IF
     Check("Encrypt adds the envelope", sealed.Length() > plain.Length())
-    Check("Decrypt returns the plaintext", Crypto.ConstantTimeEquals(Crypto.Decrypt(key, sealed), plain))
-    LET again AS Crypto.Bytes = Crypto.Encrypt(key, plain)
+    LET opened AS Crypto.Bytes OR Error = Crypto.Decrypt(key, sealed)
+    IF opened IS Crypto.Bytes THEN
+        Check("Decrypt returns the plaintext", Crypto.ConstantTimeEquals(opened, plain))
+    ELSE
+        Check("Decrypt returns the plaintext", FALSE)
+    END IF
+    LET stranger AS Crypto.SecretKey = Crypto.NewSecretKey()
+    LET refused AS Crypto.Bytes OR Error = Crypto.Decrypt(stranger, sealed)
+    Check("Decrypt with another key is an Error", refused IS Error)
     Check("Each Encrypt uses a fresh nonce", NOT Crypto.ConstantTimeEquals(sealed, again))
-    LET token AS STRING = Crypto.EncryptText(key, "secret note")
-    Check("EncryptText and DecryptText", Crypto.DecryptText(key, token) = "secret note")
+    LET token AS STRING OR Error = Crypto.EncryptText(key, "secret note")
+    IF token IS STRING THEN
+        LET note AS STRING OR Error = Crypto.DecryptText(key, token)
+        Check("EncryptText and DecryptText", note IS STRING AND note = "secret note")
+    ELSE
+        Check("EncryptText and DecryptText", FALSE)
+    END IF
+
+    LET opts AS Crypto.AeadOptions
+    opts.aad = Crypto.FromText("order 17")
+    LET bound AS Crypto.Bytes OR Error = Crypto.EncryptWith(key, plain, opts)
+    IF bound IS Crypto.Bytes THEN
+        LET withAad AS Crypto.Bytes OR Error = Crypto.DecryptWith(key, bound, opts)
+        LET withoutAad AS Crypto.Bytes OR Error = Crypto.Decrypt(key, bound)
+        Check("EncryptWith binds the AAD", withAad IS Crypto.Bytes AND withoutAad IS Error)
+    ELSE
+        Check("EncryptWith binds the AAD", FALSE)
+    END IF
 
     IF WriteFile("bncrypto-tour-plain.txt", "file contents") THEN
         LET enc AS VOID OR Error = Crypto.EncryptFile(key, "bncrypto-tour-plain.txt", "bncrypto-tour-sealed.bin")
@@ -394,7 +423,11 @@ FUNCTION Macs() AS VOID
     LET data AS Crypto.Bytes = Crypto.FromText("message")
     LET raw AS Crypto.Bytes = Crypto.FromText("0123456789abcdef0123456789abcdef")
     LET key AS Crypto.SecretKey = Crypto.SecretKeyFromBytes(raw, "MAC")
-    LET tag AS Crypto.Bytes = Crypto.Mac(key, data)
+    LET tag AS Crypto.Bytes OR Error = Crypto.Mac(key, data)
+    IF tag IS Error THEN
+        Check("Mac is HMAC-SHA256 (32 bytes)", FALSE)
+        RETURN
+    END IF
     Check("Mac is HMAC-SHA256 (32 bytes)", tag.Length() = 32)
     Check("VerifyMac accepts the tag", Crypto.VerifyMac(key, data, tag))
     Check("VerifyMac refuses other data", NOT Crypto.VerifyMac(key, Crypto.FromText("massage"), tag))
