@@ -23,10 +23,17 @@ use crate::{c_str, c_string};
 /// `KeyId` for `SecretKey`: SHA-256 of `("BNC-KEYID\0" || raw_bytes)` formatted as 64-character lowercase hex.
 #[must_use]
 pub fn compute_secret_key_id(material: &[u8]) -> String {
+    crate::crypto::encode_hex(&secret_key_id_bytes(material))
+}
+
+/// The 32 bytes of a `SecretKey`'s `KeyId` (the digest `Id()` writes as hex):
+/// what the KEYID section of a `BNC1` envelope holds.
+#[must_use]
+pub fn secret_key_id_bytes(material: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(b"BNC-KEYID\0");
     hasher.update(material);
-    crate::crypto::encode_hex(&hasher.finalize())
+    hasher.finalize().into()
 }
 
 const RFC3394_IV: [u8; 8] = [0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6];
