@@ -327,20 +327,26 @@ pub fn bn_public_key_id(handle: u64) -> Option<String> {
     with_public_keys(|keys| keys.get(&handle).map(|e| e.key_id.clone()))
 }
 
-/// Operation named by every `PublicKey.Fingerprint` failure.
-pub const FINGERPRINT: &str = "BNCrypto.PublicKey.Fingerprint";
+/// Catalog domain of the fingerprint texts.
+const CATALOG: &str = "crypto";
 
-/// Label written before the colon of a fingerprint, per hash algorithm id.
+/// Operation named by every `PublicKey.Fingerprint` failure.
+#[must_use]
+pub fn fingerprint_operation() -> &'static str {
+    bn_catalog::text(CATALOG, "fingerprint.operation")
+}
+
+/// Catalog key of the label written before the colon, per hash algorithm id.
 /// Only the digests of `Alg` are listed: MAC and keyed ids have none.
 const FINGERPRINT_LABELS: [(i32, &str); 8] = [
-    (HASH_SHA256, "SHA256"),
-    (HASH_SHA384, "SHA384"),
-    (HASH_SHA512, "SHA512"),
-    (HASH_SHA512_256, "SHA512_256"),
-    (HASH_SHA3_256, "SHA3_256"),
-    (HASH_SHA3_512, "SHA3_512"),
-    (HASH_BLAKE2B, "BLAKE2B"),
-    (HASH_BLAKE3, "BLAKE3"),
+    (HASH_SHA256, "fingerprint.label.sha256"),
+    (HASH_SHA384, "fingerprint.label.sha384"),
+    (HASH_SHA512, "fingerprint.label.sha512"),
+    (HASH_SHA512_256, "fingerprint.label.sha512_256"),
+    (HASH_SHA3_256, "fingerprint.label.sha3_256"),
+    (HASH_SHA3_512, "fingerprint.label.sha3_512"),
+    (HASH_BLAKE2B, "fingerprint.label.blake2b"),
+    (HASH_BLAKE3, "fingerprint.label.blake3"),
 ];
 
 /// OpenSSH-style fingerprint of an SPKI DER: `<ALG>:<base64 of the hash, no padding>`
@@ -350,19 +356,17 @@ const FINGERPRINT_LABELS: [(i32, &str); 8] = [
 /// `LegacyDisabled` for MD5 and SHA-1, `UnsupportedAlgorithm` for any other id that is
 /// not a digest of `Alg`.
 pub fn bn_spki_fingerprint(spki: &[u8], alg: i32) -> Result<String, CryptoFailure> {
-    let Some((_, label)) = FINGERPRINT_LABELS.iter().find(|(id, _)| *id == alg) else {
+    let operation = fingerprint_operation();
+    let Some((_, label_key)) = FINGERPRINT_LABELS.iter().find(|(id, _)| *id == alg) else {
         return Err(if alg == HASH_MD5 || alg == HASH_SHA1 {
-            CryptoFailure::LegacyDisabled {
-                operation: FINGERPRINT,
-            }
+            CryptoFailure::LegacyDisabled { operation }
         } else {
-            CryptoFailure::UnsupportedAlgorithm {
-                operation: FINGERPRINT,
-            }
+            CryptoFailure::UnsupportedAlgorithm { operation }
         });
     };
     let digest = bn_hash(spki, alg)?;
     let encoded = crate::crypto_encoding::bn_base64_encode(&digest);
+    let label = bn_catalog::text(CATALOG, label_key);
     Ok(format!("{label}:{}", encoded.trim_end_matches('=')))
 }
 

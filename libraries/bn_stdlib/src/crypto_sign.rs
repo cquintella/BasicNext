@@ -517,7 +517,9 @@ pub extern "C" fn bn_rt_crypto_public_fingerprint(
     out: *mut *mut c_char,
 ) -> i32 {
     let Some(spki) = with_public_keys(|keys| keys.get(&key).map(|entry| entry.spki.clone())) else {
-        return failed(&CryptoFailure::Key(crate::crypto_asymmetric::FINGERPRINT));
+        return failed(&CryptoFailure::Key(
+            crate::crypto_asymmetric::fingerprint_operation(),
+        ));
     };
     match crate::crypto_asymmetric::bn_spki_fingerprint(&spki, alg) {
         Ok(text) => write_string(out, &text),
