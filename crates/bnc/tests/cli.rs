@@ -2441,3 +2441,39 @@ fn compiled_bncrypto_kdf_options_matches_the_interpreter() {
     );
     let _ = fs::remove_dir_all(&directory);
 }
+
+/// EncryptFileWithPassword and DecryptFileWithPassword: round trip, WRONG_PASSWORD without partial output, and no opening by key.
+#[test]
+fn compiled_bncrypto_password_file_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_password_file_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-password-file/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .current_dir(&directory)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "encrypted\nopened-with-password\nwrong-password\nno-partial-output\nnot-a-key-file\n"
+    );
+    let _ = fs::remove_dir_all(&directory);
+}

@@ -422,6 +422,14 @@ END FUNCTION
 EXPORT FUNCTION DecryptFile(key AS SecretKey, inPath AS STRING, outPath AS STRING) AS VOID OR Error
 END FUNCTION
 
+// The key is DeriveKey of the password and a random 16-byte salt; the stream records
+// the floor Argon2id cost and the salt. A wrong password is WRONG_PASSWORD.
+EXPORT FUNCTION EncryptFileWithPassword(inPath AS STRING, outPath AS STRING, password AS STRING) AS VOID OR Error
+END FUNCTION
+
+EXPORT FUNCTION DecryptFileWithPassword(inPath AS STRING, outPath AS STRING, password AS STRING) AS VOID OR Error
+END FUNCTION
+
 EXPORT FUNCTION ConstantTimeEquals(a AS Bytes, b AS Bytes) AS BOOLEAN
 END FUNCTION
 

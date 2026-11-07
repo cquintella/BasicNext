@@ -2569,6 +2569,9 @@ impl Provider for CryptoProvider {
                 self.secret_key_op(core.host().filesystem(), method, member, &arguments, span)
             }
             "EncryptWith" | "DecryptWith" => self.aead_with_op(method, member, &arguments, span),
+            "EncryptFileWithPassword" | "DecryptFileWithPassword" => {
+                password_file_op(core.host().filesystem(), method, member, &arguments, span)
+            }
             "HashPasswordWith" | "NeedsRehash" | "DeriveKey" | "DeriveSubkey" => {
                 self.kdf_options_op(method, member, &arguments, span)
             }
@@ -2950,6 +2953,38 @@ fn mac_alg_and_policy(
 
 /// A private key's seed (wiped when dropped) and its `Alg` selector.
 type PrivateMaterial = (zeroize::Zeroizing<Vec<u8>>, i32);
+
+/// `EncryptFileWithPassword(inPath, outPath, password)` and
+/// `DecryptFileWithPassword(...)`: `VOID OR Error`, under the file policy.
+fn password_file_op(
+    fs: &bn_stdlib::FsPolicy,
+    method: &str,
+    member: &str,
+    arguments: &[Value],
+    span: Span,
+) -> Result<Value, Diagnostic> {
+    require_arity(member, arguments, 3, span)?;
+    let text_at = |index: usize| match arguments.get(index) {
+        Some(Value::String(text)) => Ok(text.to_string()),
+        _ => Err(type_mismatch(
+            bn_catalog::text("crypto", "type.string.expected"),
+            bn_catalog::text("crypto", "type.string.found"),
+            member,
+            span,
+        )),
+    };
+    let (input, output, password) = (text_at(0)?, text_at(1)?, text_at(2)?);
+    let (input, output) = (std::path::Path::new(&input), std::path::Path::new(&output));
+    let result = if method == "EncryptFileWithPassword" {
+        bn_stdlib::crypto_file::bn_encrypt_file_with_password(fs, &password, input, output)
+    } else {
+        bn_stdlib::crypto_file::bn_decrypt_file_with_password(fs, &password, input, output)
+    };
+    match result {
+        Ok(()) => Ok(Value::Null),
+        Err(err) => failure(&err),
+    }
+}
 
 #[cfg(test)]
 mod tests {

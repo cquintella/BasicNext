@@ -527,6 +527,12 @@ pub(crate) fn call_instruction_supported(
                             .get(&arguments[1])
                             .is_some_and(|ty| *ty == Type::String)
                 }
+                "EncryptFileWithPassword" | "DecryptFileWithPassword" => {
+                    arguments.len() == 3
+                        && arguments
+                            .iter()
+                            .all(|argument| values.get(argument) == Some(&Type::String))
+                }
                 "EncryptFile" | "DecryptFile" => {
                     arguments.len() == 3
                         && values

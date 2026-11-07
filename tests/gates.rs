@@ -8,6 +8,8 @@ mod support;
 mod bni_performance;
 #[path = "gates/catalog_keys.rs"]
 mod catalog_keys;
+#[path = "gates/crypto_surface.rs"]
+mod crypto_surface;
 #[path = "gates/dependency_gate.rs"]
 mod dependency_gate;
 #[path = "gates/migration_ledger.rs"]

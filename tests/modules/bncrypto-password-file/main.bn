@@ -1,0 +1,64 @@
+IMPORT BNCrypto AS Crypto
+IMPORT HOST.FileSystem AS FS
+
+// EncryptFileWithPassword / DecryptFileWithPassword on both backends: the file
+// opens with its password, a wrong password is WRONG_PASSWORD and leaves no
+// output, and a password file does not open with DecryptFile.
+FUNCTION Start() AS VOID
+    LET plainPath AS STRING = "pwfile_plain.tmp"
+    LET sealedPath AS STRING = "pwfile_sealed.tmp"
+    LET openedPath AS STRING = "pwfile_opened.tmp"
+    LET wrongPath AS STRING = "pwfile_wrong.tmp"
+    LET keyPath AS STRING = "pwfile_by_key.tmp"
+
+    LET f AS FS.File OR Error = FS.OpenNew(plainPath)
+    IF f IS FS.File THEN
+        LET w AS VOID OR Error = f.Write("notes under a password")
+        LET c AS VOID OR Error = f.Close()
+        IF w IS Error OR c IS Error THEN
+            PRINT "write-failed"
+        END IF
+    END IF
+
+    LET sealed AS VOID OR Error = Crypto.EncryptFileWithPassword(plainPath, sealedPath, "correct horse")
+    IF sealed IS Error THEN
+        PRINT "encrypt-failed"
+        RETURN
+    END IF
+    PRINT "encrypted"
+
+    LET opened AS VOID OR Error = Crypto.DecryptFileWithPassword(sealedPath, openedPath, "correct horse")
+    IF NOT (opened IS Error) THEN
+        IF Crypto.Checksum.VerifyFileChecksum(openedPath, "sha256:" + Crypto.SHA256("notes under a password")) THEN
+            PRINT "opened-with-password"
+        END IF
+    END IF
+
+    LET wrong AS VOID OR Error = Crypto.DecryptFileWithPassword(sealedPath, wrongPath, "battery staple")
+    IF wrong IS Error THEN
+        IF wrong.Code = Crypto.WRONG_PASSWORD THEN
+            PRINT "wrong-password"
+        END IF
+    END IF
+    LET leftOver AS BOOLEAN OR Error = FS.Exists(wrongPath)
+    IF leftOver IS BOOLEAN THEN
+        IF NOT leftOver THEN
+            PRINT "no-partial-output"
+        END IF
+    END IF
+
+    LET key AS Crypto.SecretKey = Crypto.NewSecretKey()
+    LET byKey AS VOID OR Error = Crypto.DecryptFile(key, sealedPath, keyPath)
+    IF byKey IS Error THEN
+        IF byKey.Code = Crypto.INVALID_ARGUMENT THEN
+            PRINT "not-a-key-file"
+        END IF
+    END IF
+
+    LET d1 AS VOID OR Error = FS.DeleteFile(plainPath)
+    LET d2 AS VOID OR Error = FS.DeleteFile(sealedPath)
+    LET d3 AS VOID OR Error = FS.DeleteFile(openedPath)
+    IF d1 IS Error OR d2 IS Error OR d3 IS Error THEN
+        PRINT "cleanup-failed"
+    END IF
+END FUNCTION

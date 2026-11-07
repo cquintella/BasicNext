@@ -400,6 +400,8 @@ pub(crate) fn bncrypto_method<'a>(module: &Module, name: &'a str) -> Option<&'a 
                 | "NeedsRehash"
                 | "DeriveKey"
                 | "DeriveSubkey"
+                | "EncryptFileWithPassword"
+                | "DecryptFileWithPassword"
                 | "DecryptWith"
                 | "Decrypt"
                 | "EncryptText"

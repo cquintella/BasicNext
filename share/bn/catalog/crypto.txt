@@ -147,3 +147,7 @@ key.alg.hkdf = HKDF
 type.string.expected = STRING
 type.string.found = non-STRING value
 type.password_options.expected = BNCrypto.PasswordOptions
+op.encrypt_file = BNCrypto.EncryptFile
+op.encrypt_file_with_password = BNCrypto.EncryptFileWithPassword
+op.decrypt_file_with_password = BNCrypto.DecryptFileWithPassword
+file.argument.not_string = a path or password argument is not a STRING

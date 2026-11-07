@@ -481,6 +481,21 @@ pub(super) fn lower_bncrypto_call(
             emit_void_result(text, destination, &O::reg(format!("cryrc{dest}")));
             return;
         }
+        "EncryptFileWithPassword" | "DecryptFileWithPassword" => {
+            let symbol = if member == "EncryptFileWithPassword" {
+                "bn_rt_crypto_encrypt_file_with_password"
+            } else {
+                "bn_rt_crypto_decrypt_file_with_password"
+            };
+            let args = vec![
+                (T::Ptr, v(arguments[0])),
+                (T::Ptr, v(arguments[1])),
+                (T::Ptr, v(arguments[2])),
+            ];
+            text.assign(format!("cryrc{dest}"), I::call(T::I32, symbol, args));
+            emit_void_result(text, destination, &O::reg(format!("cryrc{dest}")));
+            return;
+        }
         "Hash" => {
             emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
             let args = vec![(T::I64, cryh()), (T::I32, O::int(1))];

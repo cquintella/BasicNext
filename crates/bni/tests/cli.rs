@@ -1781,3 +1781,21 @@ fn bncrypto_kdf_options_interprets() {
         "cost-recorded\nverifies\nfloor-is-reached\nstronger-target-needs-rehash\nmalformed-needs-rehash\nbelow-floor-refused\nderive-key-deterministic\n256\nDERIVED\nARGON2ID\nsubkey-labelled\nHKDF\nempty-context-refused\nzeroized-master-refused\nshort-salt-refused\n"
     );
 }
+
+/// EncryptFileWithPassword and DecryptFileWithPassword: round trip, WRONG_PASSWORD without partial output, and no opening by key.
+#[test]
+fn bncrypto_password_file_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-password-file/main.bn"])
+        .output()
+        .expect("run the fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "encrypted\nopened-with-password\nwrong-password\nno-partial-output\nnot-a-key-file\n"
+    );
+}

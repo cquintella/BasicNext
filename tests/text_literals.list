@@ -2915,8 +2915,6 @@ libraries/bn_stdlib/src/crypto_csprng.rs	identifier	BNCrypto.RandomInt
 libraries/bn_stdlib/src/crypto_csprng.rs	identifier	BNCrypto.RandomPassword
 libraries/bn_stdlib/src/crypto_csprng.rs	identifier	BNCrypto.RandomToken
 libraries/bn_stdlib/src/crypto_file.rs	identifier	BNCrypto.DecryptFile
-libraries/bn_stdlib/src/crypto_file.rs	identifier	BNCrypto.EncryptFile
-libraries/bn_stdlib/src/crypto_file.rs	identifier	BNCrypto.EncryptFile
 libraries/bn_stdlib/src/crypto_file.rs	prose	invalid inPath
 libraries/bn_stdlib/src/crypto_file.rs	prose	invalid inPath
 libraries/bn_stdlib/src/crypto_file.rs	prose	invalid outPath
@@ -3583,3 +3581,4 @@ libraries/bn_web/src/web/static_files.rs	prose	static path is not a directory
 libraries/bn_web/src/web/static_files.rs	prose	text/css; charset=utf-8
 libraries/bn_web/src/web/static_files.rs	prose	text/html; charset=utf-8
 libraries/bn_web/src/web/static_files.rs	prose	text/plain; charset=utf-8
+libraries/bn_stdlib/src/crypto_file.rs	identifier	BNCrypto.EncryptFile

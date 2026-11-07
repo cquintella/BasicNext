@@ -633,6 +633,7 @@ bn_rt_crypto_bytes_zeroize
 bn_rt_crypto_crc32
 bn_rt_crypto_crc32c
 bn_rt_crypto_decrypt_file
+bn_rt_crypto_decrypt_file_with_password
 bn_rt_crypto_decrypt_status
 bn_rt_crypto_decrypt_text_status
 bn_rt_crypto_decrypt_with
@@ -642,6 +643,7 @@ bn_rt_crypto_dsa_keypair
 bn_rt_crypto_dsa_sign
 bn_rt_crypto_dsa_verify
 bn_rt_crypto_encrypt_file
+bn_rt_crypto_encrypt_file_with_password
 bn_rt_crypto_encrypt_status
 bn_rt_crypto_encrypt_text_status
 bn_rt_crypto_encrypt_with
