@@ -2406,3 +2406,38 @@ fn compiled_bncrypto_widened_handles_matches_the_interpreter() {
     );
     let _ = fs::remove_dir_all(&directory);
 }
+
+/// HashPasswordWith, NeedsRehash, DeriveKey and DeriveSubkey: cost floor, fail-safe rehash, deterministic derived keys, refusals as Errors.
+#[test]
+fn compiled_bncrypto_kdf_options_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_kdf_options_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-kdf-options/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "cost-recorded\nverifies\nfloor-is-reached\nstronger-target-needs-rehash\nmalformed-needs-rehash\nbelow-floor-refused\nderive-key-deterministic\n256\nDERIVED\nARGON2ID\nsubkey-labelled\nHKDF\nempty-context-refused\nzeroized-master-refused\nshort-salt-refused\n"
+    );
+    let _ = fs::remove_dir_all(&directory);
+}

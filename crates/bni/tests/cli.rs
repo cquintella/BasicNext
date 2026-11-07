@@ -1763,3 +1763,21 @@ fn bncrypto_widened_handles_interprets() {
         "64\nsealed\npublic-kept\nuser\n"
     );
 }
+
+/// HashPasswordWith, NeedsRehash, DeriveKey and DeriveSubkey: cost floor, fail-safe rehash, deterministic derived keys, refusals as Errors.
+#[test]
+fn bncrypto_kdf_options_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-kdf-options/main.bn"])
+        .output()
+        .expect("run the fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "cost-recorded\nverifies\nfloor-is-reached\nstronger-target-needs-rehash\nmalformed-needs-rehash\nbelow-floor-refused\nderive-key-deterministic\n256\nDERIVED\nARGON2ID\nsubkey-labelled\nHKDF\nempty-context-refused\nzeroized-master-refused\nshort-salt-refused\n"
+    );
+}

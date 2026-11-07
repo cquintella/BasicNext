@@ -480,7 +480,29 @@ END FUNCTION
 EXPORT FUNCTION VerifyPassword(password AS STRING, phc AS STRING) AS BOOLEAN
 END FUNCTION
 
+// Argon2id cost of HashPasswordWith and the target of NeedsRehash. A cost below
+// the floor of HashPassword (m=19456 KiB, t=2, p=1) is INVALID_ARGUMENT.
+EXPORT STRUCT PasswordOptions
+    memoryKiB AS INTEGER = 19456
+    iterations AS INTEGER = 2
+    parallelism AS INTEGER = 1
+END STRUCT
+
+EXPORT FUNCTION HashPasswordWith(password AS STRING, opts AS PasswordOptions) AS STRING OR Error
+END FUNCTION
+
+EXPORT FUNCTION NeedsRehash(phc AS STRING, opts AS PasswordOptions) AS BOOLEAN
+END FUNCTION
+
+// Deterministic: Argon2id at the floor cost, 32 bytes; the salt holds 16 bytes or more.
+EXPORT FUNCTION DeriveKey(password AS STRING, salt AS Bytes) AS SecretKey OR Error
+END FUNCTION
+
 EXPORT FUNCTION Hkdf(ikm AS SecretKey, salt AS Bytes, info AS Bytes, len AS INTEGER) AS SecretKey OR Error
+END FUNCTION
+
+// Deterministic: HKDF-SHA256, empty salt, info "BNC-SUBKEY\0" + context, 32 bytes.
+EXPORT FUNCTION DeriveSubkey(master AS SecretKey, context AS STRING) AS SecretKey OR Error
 END FUNCTION
 
 EXPORT FUNCTION NewKeyPair() AS KeyPair OR Error

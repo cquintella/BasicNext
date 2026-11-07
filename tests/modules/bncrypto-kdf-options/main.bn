@@ -1,0 +1,78 @@
+IMPORT BNCrypto AS Crypto
+
+// HashPasswordWith, NeedsRehash, DeriveKey and DeriveSubkey on both backends.
+FUNCTION Start() AS VOID
+    LET stronger AS Crypto.PasswordOptions
+    stronger.iterations = 3
+    LET phc AS STRING OR Error = Crypto.HashPasswordWith("hunter2", stronger)
+    IF phc IS STRING THEN
+        IF NOT Crypto.NeedsRehash(phc, stronger) THEN
+            PRINT "cost-recorded"
+        END IF
+        IF Crypto.VerifyPassword("hunter2", phc) THEN
+            PRINT "verifies"
+        END IF
+        LET floor AS Crypto.PasswordOptions
+        IF NOT Crypto.NeedsRehash(phc, floor) THEN
+            PRINT "floor-is-reached"
+        END IF
+        LET target AS Crypto.PasswordOptions
+        target.iterations = 4
+        IF Crypto.NeedsRehash(phc, target) THEN
+            PRINT "stronger-target-needs-rehash"
+        END IF
+    END IF
+    IF Crypto.NeedsRehash("not a phc", stronger) THEN
+        PRINT "malformed-needs-rehash"
+    END IF
+
+    LET weaker AS Crypto.PasswordOptions
+    weaker.memoryKiB = 1024
+    LET refused AS STRING OR Error = Crypto.HashPasswordWith("pw", weaker)
+    IF refused IS Error THEN
+        IF refused.Code = Crypto.INVALID_ARGUMENT THEN
+            PRINT "below-floor-refused"
+        END IF
+    END IF
+
+    LET salt AS Crypto.Bytes = Crypto.FromText("sixteen byte salt")
+    LET first AS Crypto.SecretKey OR Error = Crypto.DeriveKey("correct horse", salt)
+    LET second AS Crypto.SecretKey OR Error = Crypto.DeriveKey("correct horse", salt)
+    IF first IS Crypto.SecretKey AND second IS Crypto.SecretKey THEN
+        IF first.Id() = second.Id() THEN
+            PRINT "derive-key-deterministic"
+        END IF
+        PRINT first.Bits()
+        PRINT first.Purpose()
+        PRINT first.Algorithm()
+
+        LET sub AS Crypto.SecretKey OR Error = Crypto.DeriveSubkey(first, "session")
+        LET again AS Crypto.SecretKey OR Error = Crypto.DeriveSubkey(first, "session")
+        LET other AS Crypto.SecretKey OR Error = Crypto.DeriveSubkey(first, "other")
+        IF sub IS Crypto.SecretKey AND again IS Crypto.SecretKey AND other IS Crypto.SecretKey THEN
+            IF sub.Id() = again.Id() AND sub.Id() <> other.Id() THEN
+                PRINT "subkey-labelled"
+            END IF
+            PRINT sub.Algorithm()
+        END IF
+        LET empty AS Crypto.SecretKey OR Error = Crypto.DeriveSubkey(first, "")
+        IF empty IS Error THEN
+            IF empty.Code = Crypto.INVALID_ARGUMENT THEN
+                PRINT "empty-context-refused"
+            END IF
+        END IF
+        second.Zeroize()
+        LET fromZeroized AS Crypto.SecretKey OR Error = Crypto.DeriveSubkey(second, "session")
+        IF fromZeroized IS Error THEN
+            IF fromZeroized.Code = Crypto.INVALID_ARGUMENT THEN
+                PRINT "zeroized-master-refused"
+            END IF
+        END IF
+    END IF
+    LET shortSalt AS Crypto.SecretKey OR Error = Crypto.DeriveKey("pw", Crypto.FromText("short"))
+    IF shortSalt IS Error THEN
+        IF shortSalt.Code = Crypto.INVALID_ARGUMENT THEN
+            PRINT "short-salt-refused"
+        END IF
+    END IF
+END FUNCTION

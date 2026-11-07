@@ -94,6 +94,13 @@ pub enum CryptoFailure {
     WrongPassword { operation: &'static str },
     /// Export format other than `PKCS8` (`INVALID_ARGUMENT`).
     Format { operation: &'static str },
+    /// An Argon2id cost below the floor of `HashPassword`, or outside Argon2id's
+    /// bounds (`INVALID_ARGUMENT`).
+    PasswordCost { operation: &'static str },
+    /// A `DeriveKey` salt shorter than 16 bytes (`INVALID_ARGUMENT`).
+    SaltLength { operation: &'static str },
+    /// A `DeriveSubkey` with an empty context (`INVALID_ARGUMENT`).
+    EmptyContext { operation: &'static str },
 }
 
 /// Catalog domain of every `BNCrypto` failure text.
@@ -139,7 +146,10 @@ impl CryptoFailure {
             | Self::WrongKeyType { operation }
             | Self::Io { operation }
             | Self::WrongPassword { operation }
-            | Self::Format { operation } => operation,
+            | Self::Format { operation }
+            | Self::PasswordCost { operation }
+            | Self::SaltLength { operation }
+            | Self::EmptyContext { operation } => operation,
             Self::Hex(_) => text("op.from_hex"),
             Self::Seal(Aead::Aes256Gcm) => text("op.seal_aes_gcm"),
             Self::Seal(Aead::ChaCha20Poly1305) => text("op.seal_chacha20"),
@@ -242,6 +252,9 @@ impl CryptoFailure {
             Self::Io { .. } => owned("io.file.message"),
             Self::WrongPassword { .. } => owned("password.wrong.message"),
             Self::Format { .. } => owned("format.rejected.message"),
+            Self::PasswordCost { .. } => owned("password.cost.message"),
+            Self::SaltLength { .. } => owned("derive.salt.message"),
+            Self::EmptyContext { .. } => owned("derive.context.message"),
         }
     }
 
@@ -307,6 +320,9 @@ impl CryptoFailure {
             Self::Io { .. } => owned("io.file.cause"),
             Self::WrongPassword { .. } => owned("password.wrong.cause"),
             Self::Format { .. } => owned("format.rejected.cause"),
+            Self::PasswordCost { .. } => owned("password.cost.cause"),
+            Self::SaltLength { .. } => owned("derive.salt.cause"),
+            Self::EmptyContext { .. } => owned("derive.context.cause"),
         }
     }
 }

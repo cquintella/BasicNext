@@ -25,25 +25,173 @@ const ARGON2ID_T_COST: u32 = 2;
 const ARGON2ID_P_COST: u32 = 1;
 const ARGON2ID_OUTPUT_LEN: usize = 32;
 
+/// Bytes a `DeriveKey` salt holds at least (RFC 9106 recommends 16).
+pub const DERIVE_KEY_MIN_SALT: usize = 16;
+/// The domain label `DeriveSubkey` puts before the context in the HKDF info.
+const SUBKEY_LABEL: &[u8] = b"BNC-SUBKEY\0";
+/// Catalog domain of the derived-key texts.
+const CATALOG: &str = "crypto";
+
+/// An Argon2id cost: the fields of `PasswordOptions`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PasswordCost {
+    pub memory_kib: u32,
+    pub iterations: u32,
+    pub parallelism: u32,
+}
+
+impl PasswordCost {
+    /// The cost of `HashPassword`: the floor every Argon2id call of this module keeps.
+    pub const FLOOR: Self = Self {
+        memory_kib: ARGON2ID_M_COST,
+        iterations: ARGON2ID_T_COST,
+        parallelism: ARGON2ID_P_COST,
+    };
+
+    /// The cost of a `PasswordOptions` record; a negative field is below the floor.
+    #[must_use]
+    pub fn from_options(memory_kib: i64, iterations: i64, parallelism: i64) -> Option<Self> {
+        Some(Self {
+            memory_kib: u32::try_from(memory_kib).ok()?,
+            iterations: u32::try_from(iterations).ok()?,
+            parallelism: u32::try_from(parallelism).ok()?,
+        })
+    }
+
+    /// The `NeedsRehash` target of a `PasswordOptions` record. No recorded cost
+    /// is below a negative field, so it reads as 0: that field asks for nothing.
+    #[must_use]
+    pub fn target(memory_kib: i64, iterations: i64, parallelism: i64) -> Self {
+        let field = |value: i64| u32::try_from(value.max(0)).unwrap_or(u32::MAX);
+        Self {
+            memory_kib: field(memory_kib),
+            iterations: field(iterations),
+            parallelism: field(parallelism),
+        }
+    }
+
+    fn reaches(self, target: Self) -> bool {
+        self.memory_kib >= target.memory_kib
+            && self.iterations >= target.iterations
+            && self.parallelism >= target.parallelism
+    }
+
+    fn argon2(self, operation: &'static str) -> Result<Argon2<'static>, CryptoFailure> {
+        if !self.reaches(Self::FLOOR) {
+            return Err(CryptoFailure::PasswordCost { operation });
+        }
+        let params = Params::new(
+            self.memory_kib,
+            self.iterations,
+            self.parallelism,
+            Some(ARGON2ID_OUTPUT_LEN),
+        )
+        .map_err(|_| CryptoFailure::PasswordCost { operation })?;
+        Ok(Argon2::new(Algorithm::Argon2id, Version::V0x13, params))
+    }
+}
+
 /// Hashes `password` into a standard Argon2id PHC string.
 ///
 /// # Errors
-/// Returns `CryptoFailure::Random` if salt generation fails, or
-/// `CryptoFailure::Algorithm` if hashing fails.
+/// As [`bn_hash_password_with`] at [`PasswordCost::FLOOR`].
 pub fn bn_hash_password(password: &str) -> Result<String, CryptoFailure> {
+    bn_hash_password_with(password, PasswordCost::FLOOR)
+}
+
+/// `HashPasswordWith`: an Argon2id PHC string at `cost`, with a 16-byte random salt.
+///
+/// # Errors
+/// `PasswordCost` when `cost` is below the floor or outside Argon2id's bounds.
+pub fn bn_hash_password_with(password: &str, cost: PasswordCost) -> Result<String, CryptoFailure> {
+    let operation = bn_catalog::text(CATALOG, "op.hash_password_with");
+    let argon2 = cost.argon2(operation)?;
     let salt = SaltString::generate(&mut OsRng);
-    let params = Params::new(
-        ARGON2ID_M_COST,
-        ARGON2ID_T_COST,
-        ARGON2ID_P_COST,
-        Some(ARGON2ID_OUTPUT_LEN),
-    )
-    .map_err(|e| CryptoFailure::Algorithm(i32::try_from(e.to_string().len()).unwrap_or(0)))?;
-    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
     let hash = argon2
         .hash_password(password.as_bytes(), &salt)
-        .map_err(|e| CryptoFailure::Algorithm(i32::try_from(e.to_string().len()).unwrap_or(0)))?;
+        .map_err(|_| CryptoFailure::PasswordCost { operation })?;
     Ok(hash.to_string())
+}
+
+/// `NeedsRehash`: `true` unless `phc` is an Argon2id version 19 hash whose
+/// cost reaches `target`. A malformed string needs a rehash (fail-safe).
+#[must_use]
+pub fn bn_needs_rehash(phc: &str, target: PasswordCost) -> bool {
+    let Ok(parsed) = PasswordHash::new(phc) else {
+        return true;
+    };
+    if parsed.algorithm != Algorithm::Argon2id.ident()
+        || parsed.version != Some(Version::V0x13.into())
+    {
+        return true;
+    }
+    let Ok(params) = Params::try_from(&parsed) else {
+        return true;
+    };
+    let recorded = PasswordCost {
+        memory_kib: params.m_cost(),
+        iterations: params.t_cost(),
+        parallelism: params.p_cost(),
+    };
+    !recorded.reaches(target)
+}
+
+/// `DeriveKey`: the 32-byte Argon2id output of `password` and `salt` at the
+/// floor cost. Deterministic.
+///
+/// # Errors
+/// `SaltLength` for a salt under [`DERIVE_KEY_MIN_SALT`] bytes.
+pub fn bn_derive_key(
+    password: &str,
+    salt: &[u8],
+) -> Result<zeroize::Zeroizing<Vec<u8>>, CryptoFailure> {
+    let operation = bn_catalog::text(CATALOG, "op.derive_key");
+    if salt.len() < DERIVE_KEY_MIN_SALT {
+        return Err(CryptoFailure::SaltLength { operation });
+    }
+    let argon2 = PasswordCost::FLOOR.argon2(operation)?;
+    let mut key = zeroize::Zeroizing::new(vec![0_u8; ARGON2ID_OUTPUT_LEN]);
+    argon2
+        .hash_password_into(password.as_bytes(), salt, &mut key)
+        .map_err(|_| CryptoFailure::PasswordCost { operation })?;
+    Ok(key)
+}
+
+/// `DeriveSubkey`: HKDF-SHA256 of `master` with an empty salt and the info
+/// `"BNC-SUBKEY\0" || UTF-8(context)`, 32 bytes. Deterministic.
+///
+/// # Errors
+/// `EmptyContext` for an empty `context`.
+pub fn bn_derive_subkey(
+    master: &[u8],
+    context: &str,
+) -> Result<zeroize::Zeroizing<Vec<u8>>, CryptoFailure> {
+    if context.is_empty() {
+        return Err(CryptoFailure::EmptyContext {
+            operation: bn_catalog::text(CATALOG, "op.derive_subkey"),
+        });
+    }
+    let mut info = Vec::with_capacity(SUBKEY_LABEL.len() + context.len());
+    info.extend_from_slice(SUBKEY_LABEL);
+    info.extend_from_slice(context.as_bytes());
+    bn_hkdf_sha256(master, &[], &info, ARGON2ID_OUTPUT_LEN).map(zeroize::Zeroizing::new)
+}
+
+/// The `SecretKey` entry of a derived key: purpose `DERIVED`, its algorithm
+/// the derivation (`ARGON2ID` or `HKDF`), as `Hkdf` records it.
+#[must_use]
+pub fn derived_key_entry(
+    material: zeroize::Zeroizing<Vec<u8>>,
+    algorithm_key: &str,
+) -> SecretKeyEntry {
+    let bits = material.len() * 8;
+    SecretKeyEntry {
+        material,
+        bits,
+        purpose: bn_catalog::text(CATALOG, "key.purpose.derived").to_string(),
+        alg: bn_catalog::text(CATALOG, algorithm_key).to_string(),
+        zeroized: false,
+    }
 }
 
 /// Verifies `password` against an Argon2id PHC string in constant time.
@@ -216,4 +364,117 @@ pub extern "C" fn bn_rt_crypto_hkdf(
         }
         Err(err) => failed(&err),
     }
+}
+
+/// Writes the derived key `result` as a new `SecretKey` handle through `out`.
+#[allow(unsafe_code)] // C ABI: writes the caller's out slot.
+fn derived_key_status(
+    out: *mut i64,
+    result: Result<zeroize::Zeroizing<Vec<u8>>, CryptoFailure>,
+    algorithm_key: &str,
+) -> i32 {
+    if out.is_null() {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    }
+    match result {
+        Ok(material) => {
+            let handle = store_secret_key(derived_key_entry(material, algorithm_key));
+            // SAFETY: `out` was checked non-null; it is the caller's slot.
+            unsafe { *out = i64::try_from(handle).unwrap_or(i64::MAX) };
+            BN_CRYPTO_OK
+        }
+        Err(failure) => failed(&failure),
+    }
+}
+
+/// C ABI: `HashPasswordWith(password, opts) AS STRING OR Error`; emitted code
+/// passes the three `PasswordOptions` fields.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_hash_password_with(
+    raw_pw: *const c_char,
+    memory_kib: i32,
+    iterations: i32,
+    parallelism: i32,
+    out: *mut *mut c_char,
+) -> i32 {
+    if out.is_null() {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    }
+    let operation = bn_catalog::text(CATALOG, "op.hash_password_with");
+    let result = str_from_ptr(raw_pw)
+        .ok_or(CryptoFailure::Utf8)
+        .and_then(|password| {
+            let cost = PasswordCost::from_options(
+                i64::from(memory_kib),
+                i64::from(iterations),
+                i64::from(parallelism),
+            )
+            .ok_or(CryptoFailure::PasswordCost { operation })?;
+            bn_hash_password_with(password, cost)
+        });
+    match result {
+        Ok(phc) => {
+            // SAFETY: `out` was checked non-null; it is the caller's slot.
+            unsafe { *out = c_string(&phc) };
+            BN_CRYPTO_OK
+        }
+        Err(failure) => failed(&failure),
+    }
+}
+
+/// C ABI: `NeedsRehash(phc, opts)`: 1 when a rehash is needed, else 0. A
+/// negative target field is below every recorded cost: no rehash for it.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_needs_rehash(
+    raw_phc: *const c_char,
+    memory_kib: i32,
+    iterations: i32,
+    parallelism: i32,
+) -> i32 {
+    let Some(phc) = str_from_ptr(raw_phc) else {
+        return 1;
+    };
+    let target = PasswordCost::target(
+        i64::from(memory_kib),
+        i64::from(iterations),
+        i64::from(parallelism),
+    );
+    i32::from(bn_needs_rehash(phc, target))
+}
+
+/// C ABI: `DeriveKey(password, salt) AS SecretKey OR Error`.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_derive_key(raw_pw: *const c_char, salt: u64, out: *mut i64) -> i32 {
+    let operation = bn_catalog::text(CATALOG, "op.derive_key");
+    let result = str_from_ptr(raw_pw)
+        .ok_or(CryptoFailure::Utf8)
+        .and_then(|password| {
+            let salt = crate::crypto_abi::with_buffers(|buffers| {
+                buffers.get(&salt).map(|bytes| bytes.to_vec())
+            })
+            .ok_or(CryptoFailure::Key(operation))?;
+            bn_derive_key(password, &salt)
+        });
+    derived_key_status(out, result, "key.alg.argon2id")
+}
+
+/// C ABI: `DeriveSubkey(master, context) AS SecretKey OR Error`. A zeroized
+/// master is `ZeroizedKey` (`INVALID_ARGUMENT`).
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_derive_subkey(
+    master: u64,
+    raw_context: *const c_char,
+    out: *mut i64,
+) -> i32 {
+    let result = get_any_key(master)
+        .ok_or(CryptoFailure::ZeroizedKey)
+        .and_then(|material| {
+            let context = str_from_ptr(raw_context).ok_or(CryptoFailure::Utf8)?;
+            bn_derive_subkey(&material, context)
+        });
+    derived_key_status(out, result, "key.alg.hkdf")
 }

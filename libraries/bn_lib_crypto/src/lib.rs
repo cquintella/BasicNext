@@ -817,6 +817,113 @@ impl CryptoProvider {
         }
     }
 
+    /// `HashPasswordWith`, `NeedsRehash`, `DeriveKey` and `DeriveSubkey`: the
+    /// password and key-derivation calls that take options or derive a key.
+    fn kdf_options_op(
+        &mut self,
+        method: &str,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        require_arity(member, arguments, 2, span)?;
+        let text_at = |index: usize| match arguments.get(index) {
+            Some(Value::String(text)) => Ok(text.to_string()),
+            _ => Err(type_mismatch(
+                bn_catalog::text("crypto", "type.string.expected"),
+                bn_catalog::text("crypto", "type.string.found"),
+                member,
+                span,
+            )),
+        };
+        match method {
+            "HashPasswordWith" | "NeedsRehash" => {
+                let record = options_record(
+                    arguments,
+                    1,
+                    bn_catalog::text("crypto", "type.password_options.expected"),
+                    member,
+                    span,
+                )?;
+                let field = |index: usize| match record.get(index) {
+                    Some(Value::Integer(value, _)) => Ok(i64::try_from(*value).unwrap_or(i64::MIN)),
+                    _ => Err(type_mismatch(
+                        bn_catalog::text("crypto", "type.integer.expected"),
+                        bn_catalog::text("crypto", "type.integer.found"),
+                        member,
+                        span,
+                    )),
+                };
+                let (memory, iterations, parallelism) = (
+                    field(PASSWORD_OPTS_MEMORY_FIELD)?,
+                    field(PASSWORD_OPTS_ITERATIONS_FIELD)?,
+                    field(PASSWORD_OPTS_PARALLELISM_FIELD)?,
+                );
+                let first = text_at(0)?;
+                if method == "NeedsRehash" {
+                    let target = bn_stdlib::crypto_password::PasswordCost::target(
+                        memory,
+                        iterations,
+                        parallelism,
+                    );
+                    return Ok(Value::Boolean(bn_stdlib::crypto_password::bn_needs_rehash(
+                        &first, target,
+                    )));
+                }
+                let operation = bn_catalog::text("crypto", "op.hash_password_with");
+                let Some(cost) = bn_stdlib::crypto_password::PasswordCost::from_options(
+                    memory,
+                    iterations,
+                    parallelism,
+                ) else {
+                    return failure(&CryptoFailure::PasswordCost { operation });
+                };
+                match bn_stdlib::crypto_password::bn_hash_password_with(&first, cost) {
+                    Ok(phc) => Ok(Value::String(shared_string(phc.as_str()))),
+                    Err(err) => failure(&err),
+                }
+            }
+            "DeriveKey" => {
+                let password = text_at(0)?;
+                let salt = self.bytes_at(arguments, 1, member, span)?;
+                match bn_stdlib::crypto_password::bn_derive_key(&password, &salt) {
+                    Ok(material) => Ok(self.insert_secret_key(
+                        bn_stdlib::crypto_password::derived_key_entry(material, "key.alg.argon2id"),
+                    )),
+                    Err(err) => failure(&err),
+                }
+            }
+            _ => {
+                let Value::CryptoSecretKey(handle) = &arguments[0] else {
+                    return Err(type_mismatch(
+                        bn_catalog::text("crypto", "type.secret_key.expected"),
+                        bn_catalog::text("crypto", "type.secret_key.found"),
+                        member,
+                        span,
+                    ));
+                };
+                let context = text_at(1)?;
+                let entry = self.secret_keys.get(handle).ok_or_else(|| {
+                    runtime_error(
+                        bn_diag::DiagId::USE_AFTER_RELEASE,
+                        bn_catalog::text("crypto", "msg.bncrypto_key_was_already_released"),
+                        span,
+                    )
+                })?;
+                // A zeroized master is the `INVALID_ARGUMENT` failure, as an `Error`.
+                if entry.zeroized {
+                    return failure(&CryptoFailure::ZeroizedKey);
+                }
+                match bn_stdlib::crypto_password::bn_derive_subkey(&entry.material, &context) {
+                    Ok(material) => Ok(self.insert_secret_key(
+                        bn_stdlib::crypto_password::derived_key_entry(material, "key.alg.hkdf"),
+                    )),
+                    Err(err) => failure(&err),
+                }
+            }
+        }
+    }
+
     /// `EncryptWith(key, data, opts)` and `DecryptWith(key, sealed, opts)`:
     /// `opts` is an `AeadOptions` record (`alg`, `aad`, `includeKeyId`).
     fn aead_with_op(
@@ -2462,6 +2569,9 @@ impl Provider for CryptoProvider {
                 self.secret_key_op(core.host().filesystem(), method, member, &arguments, span)
             }
             "EncryptWith" | "DecryptWith" => self.aead_with_op(method, member, &arguments, span),
+            "HashPasswordWith" | "NeedsRehash" | "DeriveKey" | "DeriveSubkey" => {
+                self.kdf_options_op(method, member, &arguments, span)
+            }
             "Hash" | "HashText" | "HashFile" | "HashWith" | "Update" | "Finish" | "Verify" => {
                 self.hash_op(core, method, member, &arguments, span)
             }
@@ -2765,6 +2875,10 @@ const KEY_PAIR_OPTS_POLICY_FIELD: usize = 1;
 /// `AeadOptions` fields after `alg` (index 0), in declaration order.
 const AEAD_OPTS_AAD_FIELD: usize = 1;
 const AEAD_OPTS_INCLUDE_KEY_ID_FIELD: usize = 2;
+/// `PasswordOptions` fields, in declaration order.
+const PASSWORD_OPTS_MEMORY_FIELD: usize = 0;
+const PASSWORD_OPTS_ITERATIONS_FIELD: usize = 1;
+const PASSWORD_OPTS_PARALLELISM_FIELD: usize = 2;
 
 /// The options record at `index`, or a type mismatch naming `expected`.
 fn options_record<'a>(

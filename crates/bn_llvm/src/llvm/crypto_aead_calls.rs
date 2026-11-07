@@ -80,7 +80,7 @@ pub(super) fn try_lower_aead_call(
                 handle(text, "crya", arguments[0]),
                 handle(text, "cryb", arguments[1]),
             ];
-            let fields = aead_options(text, module, analysis, dest, arguments[2]);
+            let fields = options_record_fields(text, module, analysis, dest, arguments[2]);
             args.push(fields[AEAD_OPTS_ALG].clone());
             args.push(fields[AEAD_OPTS_AAD].clone());
             let symbol = if member == "EncryptWith" {
@@ -92,14 +92,65 @@ pub(super) fn try_lower_aead_call(
             lower_status_call(text, destination, symbol, args, Out::Handle);
             true
         }
+        "HashPasswordWith" | "NeedsRehash" => {
+            let mut args = vec![(T::Ptr, O::reg(format!("v{}", arguments[0].0)))];
+            args.extend(options_record_fields(
+                text,
+                module,
+                analysis,
+                dest,
+                arguments[1],
+            ));
+            if member == "HashPasswordWith" {
+                emit_string_status(text, destination, "bn_rt_crypto_hash_password_with", args);
+            } else {
+                lower_status_call(
+                    text,
+                    destination,
+                    "bn_rt_crypto_needs_rehash",
+                    args,
+                    Out::Verify,
+                );
+            }
+            true
+        }
+        "DeriveKey" => {
+            let args = vec![
+                (T::Ptr, O::reg(format!("v{}", arguments[0].0))),
+                handle(text, "crys", arguments[1]),
+            ];
+            lower_status_call(
+                text,
+                destination,
+                "bn_rt_crypto_derive_key",
+                args,
+                Out::Handle,
+            );
+            true
+        }
+        "DeriveSubkey" => {
+            let args = vec![
+                handle(text, "crym", arguments[0]),
+                (T::Ptr, O::reg(format!("v{}", arguments[1].0))),
+            ];
+            lower_status_call(
+                text,
+                destination,
+                "bn_rt_crypto_derive_subkey",
+                args,
+                Out::Handle,
+            );
+            true
+        }
         _ => false,
     }
 }
 
-/// The fields of the `AeadOptions` record `value` as the C ABI takes them:
-/// `alg` as `i32`, the `aad` handle as `i64`, `includeKeyId` as `i32` 0 or 1.
-/// Offsets come from the backend's own layout, as `Log.Event` fields do.
-fn aead_options(
+/// The fields of the options record `value`, in declaration order, as the C
+/// ABI takes them: an `INTEGER` as `i32`, a `BOOLEAN` as `i32` 0 or 1, a
+/// `bn_rt` handle (`Bytes`) as `i64`. Offsets come from the backend's own
+/// layout, as `Log.Event` fields do.
+pub(super) fn options_record_fields(
     text: &mut crate::ir::LlvmModule,
     module: &Module,
     analysis: &LoweringAnalysis<'_>,
@@ -110,21 +161,22 @@ fn aead_options(
         .values
         .get(&value)
         .and_then(|ty| struct_owner(module, ty))
-        .expect("validated AeadOptions argument");
+        .expect("validated options record argument");
     let mut fields = Vec::new();
     for (index, field) in class_layout_fields(module, &owner).into_iter().enumerate() {
         let offset = field_byte_offset(module, &field.reference).expect("validated field");
         let at = vec![(T::I32, O::uint(u64::from(offset)))];
-        let pointer = format!("aeadptr{dest}_{index}");
-        let loaded = format!("aead{dest}_{index}");
+        let pointer = format!("optsptr{dest}_{index}");
+        let loaded = format!("opts{dest}_{index}");
+        let wide = format!("optswide{dest}_{index}");
         text.assign(&pointer, I::gep(T::I8, O::reg(format!("v{}", value.0)), at));
-        let wide = format!("aeadwide{dest}_{index}");
-        match index {
-            AEAD_OPTS_ALG => {
-                text.assign(&loaded, I::load(T::I32, O::reg(pointer)));
-                fields.push((T::I32, O::reg(loaded)));
+        match llvm_type(&field.ty).expect("validated options field type") {
+            T::I1 => {
+                text.assign(&loaded, I::load(T::I1, O::reg(pointer)));
+                text.assign(&wide, I::cast(CastOp::ZExt, T::I1, O::reg(loaded), T::I32));
+                fields.push((T::I32, O::reg(wide)));
             }
-            AEAD_OPTS_AAD => {
+            T::Ptr => {
                 text.assign(&loaded, I::load(T::Ptr, O::reg(pointer)));
                 text.assign(
                     &wide,
@@ -132,10 +184,9 @@ fn aead_options(
                 );
                 fields.push((T::I64, O::reg(wide)));
             }
-            _ => {
-                text.assign(&loaded, I::load(T::I1, O::reg(pointer)));
-                text.assign(&wide, I::cast(CastOp::ZExt, T::I1, O::reg(loaded), T::I32));
-                fields.push((T::I32, O::reg(wide)));
+            scalar => {
+                text.assign(&loaded, I::load(scalar.clone(), O::reg(pointer)));
+                fields.push((scalar, O::reg(loaded)));
             }
         }
     }

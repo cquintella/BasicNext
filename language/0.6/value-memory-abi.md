@@ -636,6 +636,8 @@ bn_rt_crypto_decrypt_file
 bn_rt_crypto_decrypt_status
 bn_rt_crypto_decrypt_text_status
 bn_rt_crypto_decrypt_with
+bn_rt_crypto_derive_key
+bn_rt_crypto_derive_subkey
 bn_rt_crypto_dsa_keypair
 bn_rt_crypto_dsa_sign
 bn_rt_crypto_dsa_verify
@@ -649,6 +651,7 @@ bn_rt_crypto_generate_nonce
 bn_rt_crypto_hash_file
 bn_rt_crypto_hash_handle
 bn_rt_crypto_hash_password
+bn_rt_crypto_hash_password_with
 bn_rt_crypto_hash_text
 bn_rt_crypto_hash_with
 bn_rt_crypto_hasher_finish
@@ -680,6 +683,7 @@ bn_rt_crypto_mac_stream_update_handle
 bn_rt_crypto_mac_stream_verify
 bn_rt_crypto_mac_verify_handle
 bn_rt_crypto_mac_with
+bn_rt_crypto_needs_rehash
 bn_rt_crypto_open
 bn_rt_crypto_private_export_pem
 bn_rt_crypto_private_export_pem_plain
