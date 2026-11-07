@@ -42,7 +42,7 @@ pub fn render(value: &Value) -> String {
             #[cfg(debug_assertions)]
             #[expect(
                 clippy::manual_assert,
-                reason = "an assert message is a text literal to the text-literal gate; a panic message is not"
+                reason = "the queue-id check panics with its message: as an assert message the text-literal gate would count it"
             )]
             if *id == 0 {
                 panic!("a dispatch queue id is never 0");
