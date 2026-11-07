@@ -90,7 +90,27 @@ pub(crate) fn region_element_label(element: &Type) -> String {
     }
 }
 
+/// `BNCrypto` key handles: `bn_rt` table indices, like `Bytes`. Only an
+/// imported or qualified name is one: a program's own `CLASS SecretKey` is an
+/// object.
+const BNCRYPTO_KEY_HANDLES: [&str; 5] = ["SecretKey", "PublicKey", "PrivateKey", "Key", "Secret"];
+
+fn is_bncrypto_key_handle(ty: &Type) -> bool {
+    match ty {
+        Type::Named(name) | Type::TypeName(name) => name
+            .rsplit_once('.')
+            .is_some_and(|(_, base)| BNCRYPTO_KEY_HANDLES.contains(&base)),
+        Type::ImportedNamed { name, .. } | Type::ImportedTypeName { name, .. } => {
+            BNCRYPTO_KEY_HANDLES.contains(&name.as_str())
+        }
+        _ => false,
+    }
+}
+
 pub(crate) fn is_integer_handle_type(ty: &Type) -> bool {
+    if is_bncrypto_key_handle(ty) {
+        return true;
+    }
     match ty {
         Type::Named(name) | Type::TypeName(name) => {
             let base = name.rsplit('.').next().unwrap_or(name);
