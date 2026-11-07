@@ -18,7 +18,9 @@ FUNCTION Kept() AS STRING
 END FUNCTION
 
 FUNCTION Lists() AS INTEGER
-    LET first AS Net.Addresses OR Error = Net.Resolve("localhost", 10)
+    // A generous timeout: this test counts handles, and a loaded machine can take
+    // more than a few milliseconds to resolve localhost.
+    LET first AS Net.Addresses OR Error = Net.Resolve("localhost", 5000)
     LET second AS Net.Addresses OR Error = first
     RELEASE first
     IF second IS Error THEN
