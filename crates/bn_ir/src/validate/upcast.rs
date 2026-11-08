@@ -362,6 +362,7 @@ mod tests {
                     instructions: Vec::new(),
                     terminator: Terminator::Return { value: None },
                 }],
+                symbol_names: std::collections::HashMap::new(),
                 span,
             });
         }
@@ -473,6 +474,7 @@ mod tests {
                 instructions: Vec::new(),
                 terminator: Terminator::Return { value: None },
             }],
+            symbol_names: std::collections::HashMap::new(),
             span,
         };
 
@@ -520,6 +522,7 @@ mod tests {
                 ],
                 terminator: Terminator::Return { value: None },
             }],
+            symbol_names: std::collections::HashMap::new(),
             span,
         };
 
@@ -577,6 +580,7 @@ mod tests {
                     value: Some(ValueId(0)),
                 },
             }],
+            symbol_names: std::collections::HashMap::new(),
             span,
         };
 

@@ -373,6 +373,7 @@ pub(crate) fn lower_static_init(
         return_type: Type::Named("VOID".into()),
         entry: BlockId(0),
         blocks: builder.finish()?,
+        symbol_names: HashMap::new(),
         span,
     }))
 }
@@ -414,6 +415,7 @@ pub(crate) fn lower_instance_fields(
         return_type: Type::Named("VOID".into()),
         entry: BlockId(0),
         blocks: builder.finish()?,
+        symbol_names: HashMap::from([(SYNTHETIC_SELF, "SELF".into())]),
         span,
     })
 }
@@ -510,6 +512,7 @@ pub(crate) fn lower_field_release(
         return_type: Type::Named("VOID".into()),
         entry: BlockId(0),
         blocks: builder.finish()?,
+        symbol_names: HashMap::from([(SYNTHETIC_SELF, "SELF".into())]),
         span,
     })
 }
@@ -557,6 +560,7 @@ pub(crate) fn lower_inherited_constructor(
         return_type: Type::Named("VOID".into()),
         entry: BlockId(0),
         blocks: builder.finish()?,
+        symbol_names: HashMap::from([(SYNTHETIC_SELF, "SELF".into())]),
         span,
     })
 }
@@ -616,6 +620,7 @@ pub(crate) fn lower_inherited_destructor(
         return_type: Type::Named("VOID".into()),
         entry: BlockId(0),
         blocks: builder.finish()?,
+        symbol_names: HashMap::from([(SYNTHETIC_SELF, "SELF".into())]),
         span,
     })
 }
@@ -661,6 +666,7 @@ pub(crate) fn lower_struct_default(
         return_type: storage_ty,
         entry: BlockId(0),
         blocks: builder.finish()?,
+        symbol_names: HashMap::new(),
         span,
     })
 }

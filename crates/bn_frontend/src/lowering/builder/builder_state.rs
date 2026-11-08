@@ -7,11 +7,14 @@
 use super::*;
 
 impl Builder<'_> {
-    pub(crate) fn symbol(&self, span: Span) -> Result<SymbolId, Diagnostic> {
-        self.model
+    pub(crate) fn symbol(&mut self, span: Span) -> Result<SymbolId, Diagnostic> {
+        let sym = self
+            .model
             .symbol_at(span)
-            .map(|symbol| super::super::ir_symbol_id(symbol.id))
-            .ok_or_else(|| ir_error("declaration has no resolved SymbolId", span))
+            .ok_or_else(|| ir_error("declaration has no resolved SymbolId", span))?;
+        let symbol_id = super::super::ir_symbol_id(sym.id);
+        self.symbol_names.insert(symbol_id, sym.name.clone());
+        Ok(symbol_id)
     }
 
     pub(crate) fn block(&mut self) -> BlockId {
@@ -90,6 +93,43 @@ impl Builder<'_> {
         }
     }
 
+    pub(crate) fn take_symbol_names(
+        &mut self,
+        parameters: &[SymbolId],
+    ) -> HashMap<SymbolId, String> {
+        if let Some((receiver, _)) = &self.receiver {
+            self.symbol_names.insert(*receiver, "SELF".into());
+        }
+        for parameter in parameters {
+            if let Some(sym) = self
+                .model
+                .symbols
+                .iter()
+                .find(|s| s.id.value() == parameter.value())
+            {
+                self.symbol_names
+                    .entry(*parameter)
+                    .or_insert_with(|| sym.name.clone());
+            }
+        }
+        for block in &self.blocks {
+            for instruction in &block.instructions {
+                if let Some(sym) = instruction_symbol(instruction)
+                    && let Some(sym_record) = self
+                        .model
+                        .symbols
+                        .iter()
+                        .find(|s| s.id.value() == sym.value())
+                {
+                    self.symbol_names
+                        .entry(sym)
+                        .or_insert_with(|| sym_record.name.clone());
+                }
+            }
+        }
+        std::mem::take(&mut self.symbol_names)
+    }
+
     pub(crate) fn finish(self) -> Result<Vec<BasicBlock>, Diagnostic> {
         self.blocks
             .into_iter()
@@ -104,5 +144,18 @@ impl Builder<'_> {
                 })
             })
             .collect()
+    }
+}
+
+fn instruction_symbol(instruction: &Instruction) -> Option<SymbolId> {
+    match instruction {
+        Instruction::Load { symbol, .. }
+        | Instruction::Take { symbol, .. }
+        | Instruction::EndBinding { symbol, .. }
+        | Instruction::Store { symbol, .. }
+        | Instruction::SetIndex { symbol, .. }
+        | Instruction::SetFieldIndex { symbol, .. }
+        | Instruction::SetField { symbol, .. } => Some(*symbol),
+        _ => None,
     }
 }

@@ -16,20 +16,23 @@ impl Executor<'_, '_> {
     /// The frame's bindings and values, and the core's live objects.
     pub(crate) fn debug_view(
         &self,
+        function: &Function,
         symbols: &IdMap<SymbolId, Value>,
-        values: &ValueSlots,
+        _values: &ValueSlots,
     ) -> DebugView {
         let frame = self.ownership_frames.last();
         let mut variables = symbols
             .iter()
             .map(|(symbol, value)| {
                 let is_weak = frame.is_some_and(|frame| frame.is_weak(*symbol));
-                self.debug_variable(format!("symbol#{}", symbol.value()), value, is_weak)
+                let name = function
+                    .symbol_names
+                    .get(symbol)
+                    .cloned()
+                    .unwrap_or_else(|| format!("symbol#{}", symbol.value()));
+                self.debug_variable(name, value, is_weak)
             })
             .collect::<Vec<_>>();
-        variables.extend(values.iter().map(|(value_id, value)| {
-            self.debug_variable(format!("value#{}", value_id.value()), value, false)
-        }));
         variables.sort_by(|left, right| left.name.cmp(&right.name));
         let arc = self
             .arc

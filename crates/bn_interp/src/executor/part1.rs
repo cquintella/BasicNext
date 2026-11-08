@@ -20,7 +20,14 @@ impl<'a> Executor<'a, '_> {
                 .parameters
                 .iter()
                 .zip(&arguments)
-                .map(|(param, val)| (format!("symbol#{}", param.value()), format!("{val:?}")))
+                .map(|(param, val)| {
+                    let name = function
+                        .symbol_names
+                        .get(param)
+                        .cloned()
+                        .unwrap_or_else(|| format!("symbol#{}", param.value()));
+                    (name, format!("{val:?}"))
+                })
                 .collect()
         } else {
             Vec::new()
@@ -70,7 +77,7 @@ impl<'a> Executor<'a, '_> {
                 let view = self
                     .debug_control
                     .is_some()
-                    .then(|| self.debug_view(&symbols, &values));
+                    .then(|| self.debug_view(function, &symbols, &values));
                 if let (Some(control), Some(view)) = (self.debug_control.as_deref_mut(), view)
                     && control(&function.name, self.call_depth, instruction.span(), &view)
                         == DebugDecision::Terminate

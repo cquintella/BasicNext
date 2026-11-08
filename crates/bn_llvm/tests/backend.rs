@@ -39,6 +39,7 @@ fn llvm_crate_emits_a_validated_start_function() {
                 terminator: Terminator::Stop { code: ValueId(0) },
             }],
             weak_symbols: std::collections::HashSet::default(),
+            symbol_names: std::collections::HashMap::default(),
             span,
         }],
         ..Module::default()

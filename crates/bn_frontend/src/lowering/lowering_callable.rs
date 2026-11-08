@@ -95,6 +95,7 @@ pub(crate) fn lower_callable(
     } else {
         Type::Named("VOID".into())
     };
+    let symbol_names = builder.take_symbol_names(&parameter_ids);
     Ok(Function {
         name: name.into(),
         kind,
@@ -105,6 +106,7 @@ pub(crate) fn lower_callable(
         return_type,
         entry: BlockId(0),
         blocks: builder.finish()?,
+        symbol_names,
         span,
     })
 }

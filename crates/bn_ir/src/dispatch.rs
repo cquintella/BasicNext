@@ -119,6 +119,7 @@ mod tests {
                 instructions: Vec::new(),
                 terminator: Terminator::Return { value: None },
             }],
+            symbol_names: std::collections::HashMap::new(),
             span: test_span(),
         });
     }

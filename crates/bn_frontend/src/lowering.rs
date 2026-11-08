@@ -290,6 +290,8 @@ struct Builder<'a> {
     parameters: HashSet<SymbolId>,
     /// The function named by each function constant emitted so far.
     function_names: HashMap<ValueId, String>,
+    /// Source names of local bindings and parameters by `SymbolId`.
+    symbol_names: HashMap<SymbolId, String>,
     /// The next hidden local (`builder/places.rs`), counted down from below
     /// the synthetic `SELF`.
     next_hidden_local: u32,

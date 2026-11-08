@@ -88,17 +88,18 @@ fn debug_view_inside_a_hot_loop_shows_the_iteration_values() {
     let mut paused = None;
     let mut control =
         |_function: &str, _depth: usize, span: bn_source::Span, view: &bn_interp::DebugView| {
-            // The view names bindings by symbol id, so the lock reads their values.
+            // The view names bindings by source name; SSA values are hidden.
             let mut bindings = view
                 .variables
                 .iter()
-                .filter(|variable| variable.name.starts_with("symbol#"))
                 .map(|variable| variable.value.clone())
                 .collect::<Vec<_>>();
             bindings.sort();
             if span.start.line == LOOP_BODY_LINE
                 && bindings.iter().any(|value| value == PAUSED_ITERATION)
             {
+                assert!(view.variables.iter().any(|v| v.name == "total"));
+                assert!(view.variables.iter().any(|v| v.name == "i"));
                 paused = Some(bindings);
                 return DebugDecision::Terminate;
             }

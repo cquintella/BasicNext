@@ -438,6 +438,7 @@ mod tests {
             return_type: Type::Named("VOID".into()),
             entry: BlockId(0),
             blocks,
+            symbol_names: std::collections::HashMap::new(),
             span: span(),
         }
     }

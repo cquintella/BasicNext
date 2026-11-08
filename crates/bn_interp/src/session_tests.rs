@@ -81,6 +81,7 @@ fn session_executes_simple_turn_and_updates_variables() {
             ],
             terminator: Terminator::Return { value: None },
         }],
+        symbol_names: HashMap::new(),
         span: dummy_span(),
     };
 
@@ -141,6 +142,7 @@ fn session_transactional_rollback_on_runtime_error() {
             ],
             terminator: Terminator::Return { value: None },
         }],
+        symbol_names: HashMap::new(),
         span: dummy_span(),
     };
     let val1 = build_validated_module(vec![start1]);
@@ -187,6 +189,7 @@ fn session_transactional_rollback_on_runtime_error() {
             ],
             terminator: Terminator::Return { value: None },
         }],
+        symbol_names: HashMap::new(),
         span: dummy_span(),
     };
     let val2 = build_validated_module(vec![start2]);
@@ -230,6 +233,7 @@ fn session_cancel_aborts_running_turn() {
             }],
             terminator: Terminator::Return { value: None },
         }],
+        symbol_names: HashMap::new(),
         span: dummy_span(),
     };
     let val = build_validated_module(vec![start]);

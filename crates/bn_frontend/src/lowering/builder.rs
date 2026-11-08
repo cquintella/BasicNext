@@ -80,6 +80,7 @@ impl<'a> Builder<'a> {
             weak_locals: HashSet::new(),
             parameters: HashSet::new(),
             function_names: HashMap::new(),
+            symbol_names: HashMap::new(),
             next_hidden_local: u32::MAX - 1,
         }
     }
@@ -221,13 +222,19 @@ impl<'a> Builder<'a> {
     }
 
     pub(super) fn expression_symbol(
-        &self,
+        &mut self,
         expression: &Expression,
     ) -> Result<SymbolId, Diagnostic> {
-        self.model
+        let sym_id = self
+            .model
             .expression(expression.span)
-            .and_then(|expression| expression.symbol_id.map(super::ir_symbol_id))
-            .ok_or_else(|| ir_error("expression has no resolved SymbolId", expression.span))
+            .and_then(|expression| expression.symbol_id)
+            .ok_or_else(|| ir_error("expression has no resolved SymbolId", expression.span))?;
+        let symbol_id = super::ir_symbol_id(sym_id);
+        if let Some(sym) = self.model.symbols.iter().find(|s| s.id == sym_id) {
+            self.symbol_names.insert(symbol_id, sym.name.clone());
+        }
+        Ok(symbol_id)
     }
 
     #[allow(clippy::too_many_lines)] // Keeps binding, record-path, and static stores explicit.

@@ -53,6 +53,7 @@ fn function(
             instructions: Vec::new(),
             terminator: Terminator::Return { value: None },
         }],
+        symbol_names: std::collections::HashMap::new(),
         span: span(),
     }
 }

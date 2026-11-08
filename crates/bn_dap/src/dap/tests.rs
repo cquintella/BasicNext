@@ -138,6 +138,7 @@ fn a_paused_session_shows_objects_from_the_arc_core() {
         .iter()
         .find(|variable| variable["value"].as_str().unwrap().contains("(strong 1)"))
         .expect("the object binding shows its strong count");
+    assert_eq!(object["name"], "b");
     assert!(
         object["value"].as_str().unwrap().starts_with("Box#"),
         "{object}"
@@ -146,6 +147,7 @@ fn a_paused_session_shows_objects_from_the_arc_core() {
         .iter()
         .find(|variable| variable["value"].as_str().unwrap().starts_with("→ Box#"))
         .expect("the weak binding shows its object");
+    assert_eq!(weak["name"], "w");
     assert!(
         weak["value"].as_str().unwrap().ends_with("(alive)"),
         "{weak}"
@@ -194,7 +196,6 @@ fn a_paused_session_shows_objects_from_the_arc_core() {
     let _ = worker.join();
     let _ = std::fs::remove_dir_all(&directory);
 }
-
 #[test]
 fn dap_stepping_next_step_in_step_out_and_pause() {
     let directory = std::env::temp_dir().join(format!("bn-dap-step-{}", std::process::id()));
@@ -287,5 +288,71 @@ fn dap_stepping_next_step_in_step_out_and_pause() {
     resume_session(&session, None);
     let exit_code = worker.join().unwrap().unwrap();
     assert_eq!(exit_code, 0);
+    let _ = std::fs::remove_dir_all(&directory);
+}
+#[test]
+fn variables_response_shows_bindings_by_source_name_and_hides_ssa() {
+    let directory = std::env::temp_dir().join(format!("bn-dap-vars-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("vars.bn");
+    std::fs::write(
+        &path,
+        "FUNCTION Add(alpha AS INTEGER, beta AS INTEGER) AS INTEGER\n    LET sum AS INTEGER = alpha + beta\n    RETURN sum\nEND FUNCTION\n\nFUNCTION Start() AS VOID\n    LET greeting AS STRING = \"hello\"\n    LET total AS INTEGER = Add(10, 20)\n    PRINT greeting\nEND FUNCTION\n",
+    )
+    .unwrap();
+    let program = path.to_string_lossy().into_owned();
+    let session = Arc::new((Mutex::new(SessionState::default()), Condvar::new()));
+    let breakpoints = Arc::new(Mutex::new(HashMap::from([(
+        program.clone(),
+        BTreeSet::from([9_u64]),
+    )])));
+    let worker_session = Arc::clone(&session);
+    let worker_breakpoints = Arc::clone(&breakpoints);
+    let worker_program = program.clone();
+    let worker = std::thread::spawn(move || {
+        execute_program(&worker_program, &worker_session, &worker_breakpoints)
+    });
+    let wait_line = |line: u64| {
+        let (lock, condvar) = &*session;
+        let mut state = lock.lock().unwrap();
+        while !(state.paused && state.frame.as_ref().is_some_and(|frame| frame.line == line)) {
+            if state.paused {
+                drop(state);
+                resume_session(&session, None);
+                state = lock.lock().unwrap();
+            }
+            state = condvar
+                .wait_timeout(state, std::time::Duration::from_millis(50))
+                .unwrap()
+                .0;
+        }
+    };
+    wait_line(9);
+    let locals = variables_response(&session, &json!({"arguments": {"variablesReference": 1}}));
+    let vars = locals["variables"].as_array().unwrap();
+    let names = vars
+        .iter()
+        .map(|v| v["name"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert!(
+        names.contains(&"greeting"),
+        "expected 'greeting' in locals, got {names:?}"
+    );
+    assert!(
+        names.contains(&"total"),
+        "expected 'total' in locals, got {names:?}"
+    );
+    assert!(
+        vars.iter()
+            .all(|v| !v["name"].as_str().unwrap().starts_with("symbol#")),
+        "symbol# must not appear in variables, got {names:?}"
+    );
+    assert!(
+        vars.iter()
+            .all(|v| !v["name"].as_str().unwrap().starts_with("value#")),
+        "value# must not appear in variables, got {names:?}"
+    );
+    terminate_session(&session);
+    let _ = worker.join();
     let _ = std::fs::remove_dir_all(&directory);
 }

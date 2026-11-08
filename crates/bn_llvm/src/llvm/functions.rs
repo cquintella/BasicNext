@@ -573,6 +573,7 @@ mod tests {
                 instructions: vec![constant(3), constant(41)],
                 terminator: Terminator::Return { value: None },
             }],
+            symbol_names: std::collections::HashMap::new(),
             span: crate::traps::unknown_span(),
         };
         assert_eq!(first_unused_value(&function, [ValueId(3)].into_iter()), 42);
