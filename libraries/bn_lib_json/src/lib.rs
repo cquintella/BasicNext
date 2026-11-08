@@ -340,19 +340,12 @@ impl Provider for JsonProvider {
         })
     }
 
-    fn release(&mut self, value: &Value, span: Span) -> Option<Result<(), Diagnostic>> {
+    fn release(&mut self, value: &Value, _span: Span) -> Option<Result<(), Diagnostic>> {
         let Value::Json(id) = value else {
             return None;
         };
-        Some(if bn_core_json::release(*id) {
-            Ok(())
-        } else {
-            Err(runtime_error(
-                bn_diag::DiagId::DOUBLE_RELEASE,
-                bn_catalog::text("json", "msg.bnjson_json_was_already_deleted"),
-                span,
-            ))
-        })
+        let _ = bn_core_json::release(*id);
+        Some(Ok(()))
     }
 }
 
