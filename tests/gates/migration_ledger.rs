@@ -87,3 +87,133 @@ fn migrated_gate_tests_and_grammar_fixtures_match_the_ledger() {
     fixture_paths(&root.join("tests/grammar"), &mut live_fixtures, root);
     assert_eq!(fixtures, live_fixtures, "grammar fixture identity drift");
 }
+
+fn scan_crate_tests_in_dir(
+    directory: &Path,
+    crate_name: &str,
+    found: &mut BTreeSet<(String, String)>,
+) {
+    let Ok(entries) = fs::read_dir(directory) else {
+        return;
+    };
+    for entry in entries {
+        let Ok(entry) = entry else {
+            continue;
+        };
+        let path = entry.path();
+        if path.is_dir() {
+            scan_crate_tests_in_dir(&path, crate_name, found);
+        } else if path.extension().is_some_and(|extension| extension == "rs") {
+            let Ok(content) = fs::read_to_string(&path) else {
+                continue;
+            };
+            let mut pending_test = false;
+            let mut paren_bracket_depth: usize = 0;
+            for line in content.lines() {
+                let mut trimmed = line.trim();
+                if let Some(after) = trimmed.strip_prefix("#[test]") {
+                    pending_test = true;
+                    trimmed = after.trim();
+                } else if trimmed.contains("#[test]") {
+                    pending_test = true;
+                }
+                if pending_test {
+                    for c in trimmed.chars() {
+                        if c == '[' || c == '(' {
+                            paren_bracket_depth += 1;
+                        } else if c == ']' || c == ')' {
+                            paren_bracket_depth = paren_bracket_depth.saturating_sub(1);
+                        }
+                    }
+                    if paren_bracket_depth > 0
+                        || trimmed.starts_with('#')
+                        || trimmed.starts_with(']')
+                        || trimmed.starts_with(')')
+                        || trimmed.ends_with(']')
+                    {
+                        continue;
+                    }
+                    if let Some(rest) = trimmed
+                        .strip_prefix("fn ")
+                        .or_else(|| trimmed.strip_prefix("async fn "))
+                        .or_else(|| trimmed.strip_prefix("pub fn "))
+                        .or_else(|| trimmed.strip_prefix("pub(crate) fn "))
+                    {
+                        let fn_name = rest
+                            .split(|c: char| !c.is_alphanumeric() && c != '_')
+                            .next()
+                            .unwrap_or_default();
+                        if !fn_name.is_empty() && fn_name != "refuse" {
+                            found.insert((crate_name.to_owned(), fn_name.to_owned()));
+                        }
+                        pending_test = false;
+                    } else if !trimmed.is_empty()
+                        && !trimmed.starts_with("//")
+                        && !trimmed.starts_with("/*")
+                        && !trimmed.starts_with('*')
+                    {
+                        pending_test = false;
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn crate_tests_match_the_ledger() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let ledger = fs::read_to_string(root.join(LEDGER)).expect("migration ledger");
+    let mut ledger_crate_tests = BTreeSet::new();
+    for line in ledger.lines().skip(1) {
+        let fields = line.split("\",\"").collect::<Vec<_>>();
+        assert!(fields.len() >= 7, "malformed ledger row: {line}");
+        let harness = fields[2];
+        if harness != "crate" {
+            continue;
+        }
+        let new_id = fields[5];
+        let parts = new_id.split("::").collect::<Vec<_>>();
+        assert!(parts.len() >= 2, "malformed crate test new_id: {new_id}");
+        let package = parts[0];
+        let fn_name = parts[parts.len() - 1].trim_end_matches('"');
+        ledger_crate_tests.insert((package.to_owned(), fn_name.to_owned()));
+    }
+
+    let mut source_crate_tests = BTreeSet::new();
+    for root_dir in ["crates", "libraries"] {
+        let Ok(entries) = fs::read_dir(root.join(root_dir)) else {
+            continue;
+        };
+        for entry in entries {
+            let Ok(entry) = entry else {
+                continue;
+            };
+            let path = entry.path();
+            if path.is_dir() {
+                let crate_name = path
+                    .file_name()
+                    .expect("crate directory name")
+                    .to_string_lossy()
+                    .to_string();
+                scan_crate_tests_in_dir(&path, &crate_name, &mut source_crate_tests);
+            }
+        }
+    }
+
+    let unmapped = source_crate_tests
+        .difference(&ledger_crate_tests)
+        .collect::<Vec<_>>();
+    assert!(
+        unmapped.is_empty(),
+        "unmapped crate tests found in source: {unmapped:?}"
+    );
+
+    let stale = ledger_crate_tests
+        .difference(&source_crate_tests)
+        .collect::<Vec<_>>();
+    assert!(
+        stale.is_empty(),
+        "stale crate test destinations in ledger not in source: {stale:?}"
+    );
+}
