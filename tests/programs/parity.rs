@@ -756,6 +756,8 @@ fn help_and_man_page_document_the_same_options() {
 
 #[test]
 fn help_and_man_page_point_to_the_book() {
+    const SITE_URL: &str = "https://basicnext.org";
+    const REPO_URL: &str = "https://github.com/cquintella/basicnext/";
     const BOOK_URL: &str = "https://github.com/cquintella/basicnext-book";
     for (mut command, page) in [(bni(), "man/bni.1"), (bnc(), "man/bnc.1")] {
         let help = command.arg("--help").output().expect("run --help");
@@ -764,8 +766,12 @@ fn help_and_man_page_point_to_the_book() {
             help.contains(&format!("More information: {BOOK_URL}")),
             "{page}: --help lacks the book link"
         );
+    }
+    for page in ["man/bni.1", "man/bnc.1", "man/bnr.1"] {
         let man = fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(page))
             .expect("read man page");
+        assert!(man.contains(SITE_URL), "{page} lacks the website link");
+        assert!(man.contains(REPO_URL), "{page} lacks the repository link");
         assert!(man.contains(BOOK_URL), "{page} lacks the book link");
     }
 }
