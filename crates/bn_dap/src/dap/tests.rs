@@ -196,6 +196,7 @@ fn a_paused_session_shows_objects_from_the_arc_core() {
     let _ = worker.join();
     let _ = std::fs::remove_dir_all(&directory);
 }
+
 #[test]
 fn dap_stepping_next_step_in_step_out_and_pause() {
     let directory = std::env::temp_dir().join(format!("bn-dap-step-{}", std::process::id()));
@@ -354,5 +355,58 @@ fn variables_response_shows_bindings_by_source_name_and_hides_ssa() {
     );
     terminate_session(&session);
     let _ = worker.join();
+    let _ = std::fs::remove_dir_all(&directory);
+}
+
+#[test]
+fn line_breakpoint_stops_once_per_iteration_in_a_loop() {
+    let directory = std::env::temp_dir().join(format!("bn-dap-loop-stop-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("loop.bn");
+    std::fs::write(
+        &path,
+        "FUNCTION Start() AS VOID\n    LET total AS INTEGER = 0\n    FOR i AS INTEGER = 1 TO 3\n        total = total + i\n    END FOR\n    PRINT total\nEND FUNCTION\n",
+    )
+    .unwrap();
+    let program = path.to_string_lossy().into_owned();
+    let session = Arc::new((Mutex::new(SessionState::default()), Condvar::new()));
+    let breakpoints = Arc::new(Mutex::new(HashMap::from([(
+        program.clone(),
+        BTreeSet::from([4_u64]),
+    )])));
+    let worker_session = Arc::clone(&session);
+    let worker_breakpoints = Arc::clone(&breakpoints);
+    let worker_program = program.clone();
+    let worker = std::thread::spawn(move || {
+        execute_program(&worker_program, &worker_session, &worker_breakpoints)
+    });
+
+    let mut stop_count = 0;
+    let (lock, condvar) = &*session;
+    loop {
+        let mut state = lock.lock().unwrap();
+        while !state.paused && !state.terminate {
+            let res = condvar
+                .wait_timeout(state, std::time::Duration::from_millis(50))
+                .unwrap();
+            state = res.0;
+            if res.1.timed_out() {
+                break;
+            }
+        }
+        if state.paused && state.frame.as_ref().is_some_and(|f| f.line == 4) {
+            stop_count += 1;
+            drop(state);
+            resume_session(&session, None);
+        } else {
+            break;
+        }
+    }
+    let exit_code = worker.join().unwrap().unwrap();
+    assert_eq!(exit_code, 0);
+    assert_eq!(
+        stop_count, 3,
+        "expected 3 stops on line 4 (one per iteration), but stopped {stop_count} times"
+    );
     let _ = std::fs::remove_dir_all(&directory);
 }

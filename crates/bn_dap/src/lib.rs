@@ -329,11 +329,12 @@ fn execute_program(
             line: cur_line,
             view: view.clone(),
         });
-        let at_breakpoint = breakpoints
-            .lock()
-            .ok()
-            .and_then(|registry| registry.get(path).cloned())
-            .is_some_and(|lines| lines.contains(&cur_line));
+        let at_breakpoint = line_changed
+            && breakpoints
+                .lock()
+                .ok()
+                .and_then(|registry| registry.get(path).cloned())
+                .is_some_and(|lines| lines.contains(&cur_line));
         let pause_requested = state.pause_requested;
         let step_pause = match state.step {
             Some(StepMode::Next(target)) => (depth < target) || (depth <= target && line_changed),
