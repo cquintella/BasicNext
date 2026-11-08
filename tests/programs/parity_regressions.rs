@@ -930,3 +930,102 @@ END FUNCTION
         );
     }
 }
+
+/// A STRUCT or CLASS field of a type without a default requires an
+/// initializer: `bni check` and `bnc` reject omitted initializers with
+/// `TYPE_MISMATCH`, and both backends execute initialized fields identically.
+#[test]
+fn struct_and_class_fields_without_default_require_initializers() {
+    let directory = TestDir::new("parity-field-initializers").expect("create directory");
+    let uninitialized_cases = [
+        (
+            "local-class-in-struct.bn",
+            r"CLASS Node
+END CLASS
+STRUCT S
+    node AS Node
+END STRUCT
+FUNCTION Start() AS VOID
+END FUNCTION
+",
+        ),
+        (
+            "imported-class-in-struct.bn",
+            r"IMPORT BNCrypto AS Crypto
+STRUCT S
+    aad AS Crypto.Bytes
+END STRUCT
+FUNCTION Start() AS VOID
+END FUNCTION
+",
+        ),
+        (
+            "local-class-in-class.bn",
+            r"CLASS Node
+END CLASS
+CLASS Container
+    PUBLIC node AS Node
+END CLASS
+FUNCTION Start() AS VOID
+END FUNCTION
+",
+        ),
+    ];
+
+    for (name, source) in uninitialized_cases {
+        let path = directory.join(name);
+        fs::write(&path, source).expect("write uninitialized source");
+        let checked = execute(bni().arg("check").arg(&path), None);
+        assert_eq!(checked.status.code(), Some(1), "bni check {name}");
+        let check_err = String::from_utf8_lossy(&checked.stderr);
+        assert!(
+            check_err.contains("TYPE_MISMATCH"),
+            "bni check {name}: {check_err}"
+        );
+
+        let compiled = execute(
+            bnc()
+                .arg(&path)
+                .arg("-o")
+                .arg(directory.join(format!("{name}.bin"))),
+            None,
+        );
+        assert_eq!(compiled.status.code(), Some(1), "bnc {name}");
+        let comp_err = String::from_utf8_lossy(&compiled.stderr);
+        assert!(comp_err.contains("TYPE_MISMATCH"), "bnc {name}: {comp_err}");
+    }
+
+    let initialized_path = directory.join("initialized.bn");
+    fs::write(
+        &initialized_path,
+        r#"IMPORT BNCrypto AS Crypto
+CLASS Node
+    PUBLIC value AS INTEGER = 42
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+STRUCT S
+    node AS Node = NEW Node()
+    aad AS Crypto.Bytes = Crypto.FromText("test")
+END STRUCT
+FUNCTION Start() AS VOID
+    LET s AS S
+    PRINT s.node.value, s.aad.Length()
+END FUNCTION
+"#,
+    )
+    .expect("write initialized source");
+
+    let artifact = compile_native(&initialized_path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&initialized_path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "42 4\n",
+            "{backend}"
+        );
+    }
+}

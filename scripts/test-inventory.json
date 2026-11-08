@@ -72,6 +72,7 @@
     "bn::test/gates::text_literals::direct_expect_and_panic_messages_are_internal_invariants",
     "bn::test/gates::text_literals::the_scan_reaches_library_sources",
     "bn::test/host::migrated_host_tests_match_the_ledger",
+    "bn::test/parity_regressions::struct_and_class_fields_without_default_require_initializers",
     "bn::test/programs::bnmath_angles::pi_and_angle_conversions_print_the_same_on_both_backends",
     "bn::test/programs::cli_snapshots::integer_literal_past_int32_is_named_by_its_type_in_diagnostics",
     "bn::test/programs::compound_assignment::compound_assignment_matches_the_spec_on_both_backends",
