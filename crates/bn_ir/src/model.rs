@@ -2,7 +2,7 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0.
 
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use bn_source::Span;
 use bn_types::{Type, class_model::ClassModel};
@@ -185,6 +185,7 @@ pub struct Function {
     pub return_type: Type,
     pub entry: BlockId,
     pub blocks: Vec<BasicBlock>,
+    pub symbol_names: HashMap<SymbolId, String>,
     pub span: Span,
 }
 

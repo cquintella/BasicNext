@@ -13,6 +13,16 @@
 //! R 4.5.1 `pt` / `qt` is recorded in comments: it is not correctly
 //! rounded, and `qt` is not antisymmetric.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 use bn_core_math::{student_t_cdf, student_t_pvalue, student_t_quantile};
 
 /// Conformance points stay inside this many units of the 28-digit series.

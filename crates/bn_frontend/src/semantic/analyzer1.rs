@@ -168,7 +168,11 @@ impl Analyzer {
                         }
                         for parameter in &signature.parameters {
                             let param_ty = self.resolve_reference(&parameter.type_ref);
-                            if !is_valid_async_parameter_type(&param_ty, &self.standard_modules) {
+                            if !is_valid_async_parameter_type(
+                                &param_ty,
+                                &self.standard_modules,
+                                self.is_standard_module,
+                            ) {
                                 return Err(type_mismatch(
                                     bn_catalog::text(
                                         "frontend",

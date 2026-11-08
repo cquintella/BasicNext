@@ -9,10 +9,17 @@
 //! copy-out writes into caller regions through [`CoreContext::memory_mut`].
 
 #![allow(
-    clippy::too_many_lines, // One arm per DataFrame member, as the library contract lists them.
+    clippy::too_many_lines,
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
-    clippy::cast_precision_loss // Numeric column conversions follow the BNData contract (was executor/part9,12,13).
+    clippy::cast_precision_loss,
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
 )]
 
 mod dataframe;

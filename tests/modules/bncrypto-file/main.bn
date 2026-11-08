@@ -1,0 +1,44 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT BNCrypto AS Crypto
+IMPORT HOST.FileSystem AS FS
+
+FUNCTION Start() AS VOID
+    LET key AS Crypto.SecretKey = Crypto.NewSecretKey()
+
+    LET inPath AS STRING = "test_file_plain.tmp"
+    LET encPath AS STRING = "test_file_enc.tmp"
+    LET outPath AS STRING = "test_file_dec.tmp"
+
+    // Prepare plain test file using HOST.FileSystem
+    LET f AS FS.File OR Error = FS.OpenNew(inPath)
+    IF f IS FS.File THEN
+        LET w AS VOID OR Error = f.Write("Hello streaming file encryption!")
+        LET c AS VOID OR Error = f.Close()
+    END IF
+
+    // 1. Encrypt file
+    LET encRes AS VOID OR Error = Crypto.EncryptFile(key, inPath, encPath)
+    IF encRes IS Error THEN
+        PRINT "encrypt-failed"
+        RETURN
+    END IF
+    PRINT "encrypt-file-ok"
+
+    // 2. Decrypt file
+    LET decRes AS VOID OR Error = Crypto.DecryptFile(key, encPath, outPath)
+    IF decRes IS Error THEN
+        PRINT "decrypt-failed"
+        RETURN
+    END IF
+    PRINT "decrypt-file-ok"
+
+    // Clean up temporary files
+    LET d1 AS VOID OR Error = FS.DeleteFile(inPath)
+    LET d2 AS VOID OR Error = FS.DeleteFile(encPath)
+    LET d3 AS VOID OR Error = FS.DeleteFile(outPath)
+    PRINT "cleanup-ok"
+END FUNCTION

@@ -3,6 +3,16 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 use std::sync::{Arc, Mutex};
 
 use bn_frontend::{frontend_session::FrontendSession, prepare::prepare};
@@ -15,6 +25,10 @@ struct RecordingConsumer {
 }
 
 impl EventConsumer for RecordingConsumer {
+    #[expect(
+        clippy::unwrap_used,
+        reason = "test helper: a failed set-up is a failed test"
+    )]
     fn on_event(&mut self, event: &Event, _ctx: &EventContext) {
         self.events.lock().unwrap().push(event.clone());
     }
@@ -23,6 +37,11 @@ impl EventConsumer for RecordingConsumer {
 struct BufferWriter(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
 
 impl std::io::Write for BufferWriter {
+    #[expect(
+        clippy::unwrap_in_result,
+        clippy::unwrap_used,
+        reason = "test helper: a failed set-up is a failed test"
+    )]
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         self.0.lock().unwrap().extend_from_slice(buf);
         Ok(buf.len())
@@ -32,6 +51,10 @@ impl std::io::Write for BufferWriter {
     }
 }
 
+#[expect(
+    clippy::unwrap_used,
+    reason = "test helper: a failed set-up is a failed test"
+)]
 fn run_program_with_events(source: &str) -> (Result<u8, bn_diag::Diagnostic>, Vec<Event>) {
     let mut session = FrontendSession::default();
     let mut overlays = std::collections::BTreeMap::new();

@@ -563,7 +563,7 @@ fn failed_connection_worker_is_reaped_without_leaking_admission() {
         server.start().unwrap();
         server.admit_connection().unwrap();
     }
-    let worker_state = state.clone();
+    let worker_state = std::sync::Arc::clone(&state);
     let (failed_sender, failed_receiver) = std::sync::mpsc::sync_channel(1);
     let worker = std::thread::spawn(move || {
         ServerState::run_connection_worker(&worker_state, || {
@@ -639,7 +639,7 @@ fn server_stop_drains_a_slow_http_worker() {
         server.admit_connection().unwrap();
         assert!(server.track_connection_socket(&accepted));
     }
-    let worker_state = state.clone();
+    let worker_state = std::sync::Arc::clone(&state);
     let (worker_done_sender, worker_done_receiver) = std::sync::mpsc::channel();
     let worker = std::thread::spawn(move || {
         let result = crate::http::serve_connection(accepted, worker_state)

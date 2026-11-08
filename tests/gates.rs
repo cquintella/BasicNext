@@ -1,5 +1,15 @@
 //! Repository gates and their in-process regression checks.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 #[path = "support/migration_target.rs"]
 mod migration_target;
 mod support;
@@ -8,6 +18,8 @@ mod support;
 mod bni_performance;
 #[path = "gates/catalog_keys.rs"]
 mod catalog_keys;
+#[path = "gates/crypto_surface.rs"]
+mod crypto_surface;
 #[path = "gates/dependency_gate.rs"]
 mod dependency_gate;
 #[path = "gates/migration_ledger.rs"]

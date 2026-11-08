@@ -63,8 +63,7 @@ fn text_argument<'a>(
 
 /// Stores a new socket or packet; `Net.LIMIT` past the quota.
 fn store(value: Handle, operation: &'static str, action: &str) -> Result<i64, NetError> {
-    let index = handles::insert(value).map_err(|_| net::quota_exceeded(operation, action))?;
-    Ok(i64::try_from(index).unwrap_or(i64::MAX))
+    handles::insert(value).map_err(|_| net::quota_exceeded(operation, action))
 }
 
 /// An endpoint argument from emitted code, after the policy re-check.

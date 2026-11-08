@@ -13,14 +13,36 @@
 //! (`BNCrypto`, `BNData`, `BNDispatch`, `BNFfi`, `BNJson`, `BNLog`, `BNMath`,
 //! `BNSqlite`), isolated from the language core (`crates/bn_rt`).
 
+#![allow(
+    unreachable_pub,
+    clippy::allow_attributes_without_reason,
+    clippy::let_underscore_must_use,
+    clippy::string_slice,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "DEC-55: native"
+)]
+
 use std::ffi::c_char;
 
 pub use bn_rt::*;
 
 pub mod compress_abi;
+pub(crate) mod counted;
 pub mod crypto;
-mod crypto_abi;
+pub mod crypto_abi;
+pub mod crypto_asymmetric;
+pub mod crypto_csprng;
+pub mod crypto_encoding;
+pub mod crypto_envelope;
 pub mod crypto_error;
+pub mod crypto_file;
+pub mod crypto_hash;
+pub mod crypto_mac;
+pub mod crypto_password;
+pub mod crypto_policy;
+pub mod crypto_secret_abi;
+pub mod crypto_sign;
 pub mod data_error;
 mod dataframe;
 mod dataframe_abi;

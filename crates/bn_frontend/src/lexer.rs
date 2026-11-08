@@ -86,12 +86,11 @@ impl<'a> Lexer<'a> {
         }
     }
     fn error(&self, message: impl Into<String>) -> Diagnostic {
-        Diagnostic::lexical_facts(
+        Diagnostic::lexical_error(
             message,
             "valid BN character sequence",
             self.span(self.position()),
         )
-        .unwrap_or_else(|_| Diagnostic::lexical("lexical error", self.span(self.position())))
     }
     fn peek(&self) -> Option<char> {
         self.source.text[self.offset..].chars().next()
@@ -299,21 +298,19 @@ impl<'a> Lexer<'a> {
                 Some('.') => (Symbol::Dot, 1),
                 Some('^') => {
                     self.advance();
-                    return Err(Diagnostic::lexical_facts(
+                    return Err(Diagnostic::lexical_error(
                         "^",
                         "** for exponentiation",
                         self.span(start),
-                    )
-                    .expect("lexical diagnostic schema"));
+                    ));
                 }
                 Some(value) => {
                     self.advance();
-                    return Err(Diagnostic::lexical_facts(
+                    return Err(Diagnostic::lexical_error(
                         value.to_string(),
                         "a Basic Next token",
                         self.span(start),
-                    )
-                    .expect("lexical diagnostic schema"));
+                    ));
                 }
                 None => unreachable!(),
             }

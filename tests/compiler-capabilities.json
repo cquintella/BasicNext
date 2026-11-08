@@ -460,7 +460,9 @@
         "Constant",
         "Load",
         "Print",
-        "Store"
+        "Release",
+        "Store",
+        "Take"
       ],
       "type_constraints": [
         "STRING",

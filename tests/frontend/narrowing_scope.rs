@@ -39,6 +39,10 @@ const NESTED_ASSIGNMENTS: [(&str, &str); 5] = [
     ),
 ];
 
+#[expect(
+    clippy::unwrap_in_result,
+    reason = "test helper: a failed set-up is a failed test"
+)]
 fn analysis_code(text: String) -> Result<(), String> {
     let source = SourceFile::new("narrowing.bn", text);
     let tokens = lex(&source).expect("lex source");

@@ -1,9 +1,23 @@
 //! Integration tests simulating DAP debug sessions over message framing.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 use std::io::{BufRead, Cursor, Write};
 
 use serde_json::json;
 
+#[expect(
+    clippy::unwrap_used,
+    reason = "test helper: a failed set-up is a failed test"
+)]
 fn write_frame(buf: &mut Vec<u8>, msg: &serde_json::Value) {
     let payload = serde_json::to_vec(msg).unwrap();
     write!(buf, "Content-Length: {}\r\n\r\n", payload.len()).unwrap();

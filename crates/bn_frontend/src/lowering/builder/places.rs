@@ -54,10 +54,11 @@ impl Builder<'_> {
     pub(crate) fn hidden_local(&mut self) -> SymbolId {
         let symbol = SymbolId::from_raw(self.next_hidden_local);
         self.next_hidden_local -= 1;
-        assert!(
-            usize::try_from(self.next_hidden_local)
-                .is_ok_and(|next| next > self.model.symbols.len())
-        );
+        if !usize::try_from(self.next_hidden_local)
+            .is_ok_and(|next| next > self.model.symbols.len())
+        {
+            panic!("hidden locals count down from above every declared symbol");
+        }
         symbol
     }
 

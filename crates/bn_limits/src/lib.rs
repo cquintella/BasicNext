@@ -73,6 +73,10 @@ pub struct DispatchLimits {
 #[must_use]
 pub fn web_limits() -> &'static WebLimits {
     static LIMITS: OnceLock<WebLimits> = OnceLock::new();
+    #[expect(
+        clippy::expect_used,
+        reason = "LIMITS_REGISTRY is a compile-time static string validated by unit tests"
+    )]
     LIMITS.get_or_init(|| parse_registry(LIMITS_REGISTRY).expect("invalid embedded 0.4 limits"))
 }
 
@@ -89,8 +93,8 @@ fn parse_registry(text: &str) -> Result<WebLimits, String> {
             if line.is_empty() {
                 continue;
             }
-            if line.starts_with('[') && line.ends_with(']') {
-                current = &line[1..line.len() - 1];
+            if let Some(inner) = line.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
+                current = inner;
                 continue;
             }
             let Some((name, value)) = line.split_once('=') else {

@@ -108,12 +108,11 @@ impl<'a> Parser<'a> {
             self.take();
             Ok(())
         } else {
-            Err(Diagnostic::parse_facts(
+            Err(Diagnostic::parse_error(
                 word,
                 "the current declaration or statement",
                 self.peek().span,
-            )
-            .expect("parser diagnostic schema"))
+            ))
         }
     }
     pub(crate) fn expect_symbol(&mut self, symbol: Symbol) -> Result<(), Diagnostic> {

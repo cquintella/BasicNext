@@ -56,18 +56,11 @@ pub extern "C" fn bn_rt_math_toweekday(milliseconds: i64) -> i32 {
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_math_val(text: *const c_char) -> f64 {
-    if text.is_null() {
-        return 0.0;
-    }
-    match crate::string::slice_from_raw(text) {
-        Some(bytes) => std::str::from_utf8(bytes).map_or(0.0, math::parse_val),
-        // SAFETY: the pointer is non-null and NUL-terminated for this read.
-        None => unsafe {
-            std::ffi::CStr::from_ptr(text)
-                .to_str()
-                .map_or(0.0, math::parse_val)
-        },
-    }
+    // One contract: a STRING payload. Null or any other pointer is 0, never
+    // a guessed C string.
+    crate::string::slice_from_raw(text)
+        .and_then(|bytes| std::str::from_utf8(bytes).ok())
+        .map_or(0.0, math::parse_val)
 }
 
 macro_rules! unary_f64 {
@@ -305,4 +298,25 @@ pub extern "C" fn bn_rt_math_totime(timestamp: i64, trap: *const c_char) -> i32 
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_math_totimestamp(days: i32, millis: i32) -> i64 {
     civil::totimestamp(days, millis)
+}
+
+#[cfg(test)]
+mod tests {
+    /// A NUL-terminated text after 16 bytes that are no STRING header.
+    #[repr(C, align(8))]
+    struct ForeignText([u8; 32]);
+
+    /// `VAL` reads a STRING payload; any other pointer is 0, never a guessed
+    /// C string.
+    #[test]
+    fn val_of_a_pointer_that_is_not_a_string_is_zero() {
+        let mut bytes = [0_u8; 32];
+        bytes[..16].fill(0xFE);
+        bytes[16..20].copy_from_slice(b"3.5\0");
+        let foreign = ForeignText(bytes);
+        let pointer = foreign.0[16..].as_ptr().cast::<std::ffi::c_char>();
+        assert!(super::bn_rt_math_val(pointer).abs() < f64::EPSILON);
+        let real = crate::c_string("3.5");
+        assert!((super::bn_rt_math_val(real) - 3.5).abs() < f64::EPSILON);
+    }
 }

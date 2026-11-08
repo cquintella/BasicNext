@@ -163,7 +163,7 @@ impl WebProvider {
             return Ok(failed(name, &WebFailure::SessionsNotEnabled));
         };
         let key = |index: usize| match arguments.get(index) {
-            Some(Value::String(text)) => Ok(text.clone()),
+            Some(Value::String(text)) => Ok(std::sync::Arc::clone(text)),
             _ => Err(type_mismatch(
                 "STRING",
                 "non-STRING value",

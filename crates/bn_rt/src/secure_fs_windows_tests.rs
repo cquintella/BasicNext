@@ -4,6 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use super::super::{OpenMode, RootedDir};
+use bn_core_fs::FsEntryPolicy as _;
 use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
 

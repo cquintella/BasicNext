@@ -1,0 +1,61 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Secret type, print masking, and constant-time equality parity fixture for bni and bnc:
+// Crypto.Secret, Crypto.NewSecret, Secret.ConstantTimeEquals, Crypto.ConstantTimeEquals,
+// Secret.ToBytes, Secret.Zeroize.
+
+IMPORT BNCrypto AS Crypto
+
+FUNCTION Start() AS VOID
+    // 1. Create two identical secrets and one different secret
+    LET s1 AS Crypto.Secret = Crypto.NewSecret("confidential-token-99")
+    LET s2 AS Crypto.Secret = Crypto.NewSecret("confidential-token-99")
+    LET s3 AS Crypto.Secret = Crypto.NewSecret("confidential-token-00")
+
+    // 2. Length check
+    IF s1.Length() = 21 THEN
+        PRINT "s1-len-ok"
+    END IF
+
+    // 3. ConstantTimeEquals method on Secret
+    IF s1.ConstantTimeEquals(s2) THEN
+        PRINT "s1-eq-s2-ok"
+    END IF
+    IF NOT s1.ConstantTimeEquals(s3) THEN
+        PRINT "s1-neq-s3-ok"
+    END IF
+
+    // 4. ConstantTimeEquals method and function on Bytes
+    LET b1 AS Crypto.Bytes = s1.ToBytes()
+    LET b2 AS Crypto.Bytes = s2.ToBytes()
+    LET b3 AS Crypto.Bytes = s3.ToBytes()
+
+    IF b1.ConstantTimeEquals(b2) THEN
+        PRINT "b1-eq-b2-ok"
+    END IF
+    IF NOT b1.ConstantTimeEquals(b3) THEN
+        PRINT "b1-neq-b3-ok"
+    END IF
+    IF Crypto.ConstantTimeEquals(b1, b2) THEN
+        PRINT "mod-b1-eq-b2-ok"
+    END IF
+    IF NOT Crypto.ConstantTimeEquals(b1, b3) THEN
+        PRINT "mod-b1-neq-b3-ok"
+    END IF
+
+    // 5. Masked print output for sensitive types (prints "***")
+    PRINT s1
+
+    // 6. Zeroize on Secret
+    s1.Zeroize()
+    IF NOT s1.ConstantTimeEquals(s2) THEN
+        PRINT "s1-zeroized-neq-s2-ok"
+    END IF
+    LET b1_zero AS Crypto.Bytes = s1.ToBytes()
+    IF b1_zero.ToHex() = "000000000000000000000000000000000000000000" THEN
+        PRINT "s1-zeroized-hex-ok"
+    END IF
+END FUNCTION

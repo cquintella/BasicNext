@@ -35,11 +35,11 @@ trait AddressResolver {
 
 struct SystemAddressResolver;
 
-struct HandlerTaskGuard(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+struct HandlerTaskGuard(std::sync::Arc<crate::web::HandlerTasks>);
 
 impl Drop for HandlerTaskGuard {
     fn drop(&mut self) {
-        self.0.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+        self.0.end();
     }
 }
 
@@ -336,6 +336,18 @@ fn client_request_once(
     };
     let (host, port) =
         parse_authority_with_default(authority, if scheme == "https" { 443 } else { 80 })?;
+    // The trust roots are settled before any name is resolved or any packet
+    // is sent: a bad CA file is a configuration error, not a network one.
+    let tls_config = if scheme == "https" {
+        Some(Arc::new(crate::tls::client_config()?))
+    } else {
+        None
+    };
+    // A literal private or loopback address is refused before any socket is
+    // opened, on both backends alike.
+    if let Ok(address) = host.parse::<std::net::IpAddr>() {
+        crate::web::validate_ssrf_destinations(&[address], false).map_err(str::to_owned)?;
+    }
     let addresses =
         resolve_validated_addresses_with_policy(host.as_str(), port, resolver, policy, scheme)?;
     if addresses.is_empty() {
@@ -378,9 +390,8 @@ fn client_request_once(
     runtime.block_on(async move {
         let stream =
             tokio::net::TcpStream::from_std(std_stream).map_err(|error| error.to_string())?;
-        if scheme == "https" {
-            let config = crate::tls::client_config()?;
-            let connector = TlsConnector::from(Arc::new(config));
+        if let Some(config) = tls_config {
+            let connector = TlsConnector::from(config);
             let server_name = rustls::pki_types::ServerName::try_from(host.clone())
                 .map_err(|_| "invalid TLS server name".to_string())?;
             let stream = connector
@@ -580,7 +591,7 @@ async fn route_response(
     options: crate::web::ServerOptions,
     deadline: tokio::time::Instant,
     serial_gate: std::sync::Arc<tokio::sync::Semaphore>,
-    active_handler_tasks: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    active_handler_tasks: std::sync::Arc<crate::web::HandlerTasks>,
 ) -> Response<Full<Bytes>> {
     let (parts, body) = request.into_parts();
     let header_bytes = parts
@@ -856,7 +867,7 @@ async fn run_serially(
     state: &Arc<Mutex<ServerState>>,
     deadline: tokio::time::Instant,
     serial_gate: &std::sync::Arc<tokio::sync::Semaphore>,
-    active_handler_tasks: &std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    active_handler_tasks: &std::sync::Arc<crate::web::HandlerTasks>,
 ) -> Response<Full<Bytes>> {
     let record = |timed_out: bool| {
         if let Ok(mut server) = state.lock() {
@@ -885,7 +896,7 @@ async fn run_serially(
                 return response(StatusCode::REQUEST_TIMEOUT, "handler timed out");
             }
         };
-    active_handler_tasks.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+    active_handler_tasks.begin();
     let task_guard = HandlerTaskGuard(std::sync::Arc::clone(active_handler_tasks));
     let task_request = request.clone();
     // The turn is held until the handler returns, even past the deadline.
@@ -924,12 +935,12 @@ async fn run_on_queue(
     request: crate::web::Request,
     state: &Arc<Mutex<ServerState>>,
     deadline: tokio::time::Instant,
-    active_handler_tasks: &std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    active_handler_tasks: &std::sync::Arc<crate::web::HandlerTasks>,
 ) -> Response<Full<Bytes>> {
     let (sender, receiver) = tokio::sync::oneshot::channel();
     let task_request = request.clone();
     // Counted until the task ends or is dropped unrun, so `Stop` waits for it.
-    active_handler_tasks.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+    active_handler_tasks.begin();
     let task_guard = HandlerTaskGuard(std::sync::Arc::clone(active_handler_tasks));
     let submitted = queue.submit_with("BNWeb handler".into(), move |_ticket| {
         let _task_guard = task_guard;

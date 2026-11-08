@@ -8,6 +8,8 @@ allow = [
     "BSD-3-Clause",
     "Unicode-3.0",
     "Unlicense",
+    # Permissive (BDFL decision, 2026-11-06): foldhash and zlib-rs.
+    "Zlib",
 ]
 confidence-threshold = 0.8
 
@@ -17,3 +19,35 @@ multiple-versions = "warn"
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
+
+# The workspace's own crates are MPL-2.0 and never published: the license
+# list is for the packages they depend on.
+[licenses.private]
+ignore = true
+
+# Every platform the toolchain ships for, so a package one platform alone
+# needs (the Windows console crates) is checked too.
+[graph]
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
+
+[advisories]
+version = 2
+ignore = [
+    # Multiple timing variability issues in constant-time operations in crypto-bigint 0.5.5,
+    # pulled in transitively by p256 0.13 via elliptic-curve 0.13. Upgrading p256 to 0.14
+    # requires pkcs8 0.11 which conflicts with ed25519-dalek.
+    "RUSTSEC-2026-0387",
+    # ZipArchive::extract() path traversal, symlink, and allocation abort issues in zip 2.6.1.
+    # Basic Next never calls ZipArchive::extract(); bn_core_compress implements its own secure,
+    # bounded, and zip-slip-protected entry-by-entry extraction (extract_all_within).
+    "RUSTSEC-2026-0367",
+    "RUSTSEC-2026-0368",
+    "RUSTSEC-2026-0369",
+    "RUSTSEC-2026-0429",
+]

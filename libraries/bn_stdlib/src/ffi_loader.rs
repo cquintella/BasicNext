@@ -45,6 +45,10 @@ fn symbols_map() -> &'static Mutex<HashMap<(usize, String), usize>> {
 /// concurrently inserted an entry for `key`, `loaded` is forgotten so that
 /// `dlclose` / `FreeLibrary` is never invoked (`bnffi.md` §2: libraries are
 /// loaded once per process and never unloaded).
+#[expect(
+    clippy::mem_forget,
+    reason = "bnffi.md, section 2: a loaded library is never unloaded, so a duplicate load must not run dlclose"
+)]
 fn cache_loaded_library(key: LibraryKey, loaded: Library) -> Arc<Library> {
     let mut cache = libraries_map()
         .lock()

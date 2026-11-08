@@ -221,6 +221,7 @@ pub(crate) fn emit_function(
         } else {
             function_return_llvm(&function.return_type).expect("validated return type")
         },
+        next_synthetic_value: first_unused_value(function, analysis.values.keys().copied()),
     };
     let reachable_blocks = reachable_block_ids(function);
     for block in &function.blocks {
@@ -334,7 +335,7 @@ pub(crate) fn emit_function(
                     // Fixed storage of a STRUCT binding: every Store copies into
                     // it (`emission1.rs`), so the value lives until the return.
                     let bytes = usize::try_from(class_instance_bytes(module, &owner))
-                        .expect("struct size fits usize");
+                        .map_err(|error| error.to_string())?;
                     let slot_name = format!("structslot{}", symbol_names[symbol]);
                     text.assign(
                         slot_name.clone(),
@@ -515,4 +516,70 @@ pub(crate) fn live_flag(symbol: SymbolId) -> crate::ir::LlvmOperand {
 fn emit_flag_slot(text: &mut crate::ir::LlvmModule, name: &str, ty: T, initial: O) {
     text.assign(name, I::alloca(ty.clone()));
     text.emit(I::store(ty, initial, O::reg(name)));
+}
+
+/// The first value id above every id `function` defines (an instruction's
+/// destination, the previous content a write yields) and every id the
+/// analysis typed: a value the lowering introduces starts here, so it never
+/// names a real value, whether or not the analysis recorded that value.
+fn first_unused_value(function: &Function, typed: impl Iterator<Item = ValueId>) -> u32 {
+    function
+        .blocks
+        .iter()
+        .flat_map(|block| &block.instructions)
+        .flat_map(|instruction| {
+            instruction_destination(instruction)
+                .into_iter()
+                .chain(bn_ir::instruction_result(instruction).map(|(value, _)| value))
+        })
+        .chain(typed)
+        .map(|value| value.0)
+        .max()
+        .map_or(0, |highest| highest + 1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::first_unused_value;
+    use bn_ir::{
+        BasicBlock, BlockId, Constant, Function, FunctionKind, Instruction, Terminator, Type,
+        ValueId,
+    };
+
+    fn constant(destination: u32) -> Instruction {
+        Instruction::Constant {
+            destination: ValueId(destination),
+            value: Constant::Integer("1".into()),
+            ty: Type::Integer(bn_types::IntegerType::Int32),
+            span: crate::traps::unknown_span(),
+        }
+    }
+
+    /// A value the analysis did not type still bounds the synthetic ids: the
+    /// first one is above every destination of the function.
+    #[test]
+    fn a_synthetic_value_is_above_every_defined_value() {
+        let function = Function {
+            name: "f".into(),
+            kind: FunctionKind::User,
+            owner: None,
+            asynchronous: false,
+            parameters: Vec::new(),
+            weak_symbols: std::collections::HashSet::new(),
+            return_type: Type::Null,
+            entry: BlockId(0),
+            blocks: vec![BasicBlock {
+                id: BlockId(0),
+                instructions: vec![constant(3), constant(41)],
+                terminator: Terminator::Return { value: None },
+            }],
+            symbol_names: std::collections::HashMap::new(),
+            span: crate::traps::unknown_span(),
+        };
+        assert_eq!(first_unused_value(&function, [ValueId(3)].into_iter()), 42);
+        assert_eq!(
+            first_unused_value(&function, [ValueId(99)].into_iter()),
+            100
+        );
+    }
 }

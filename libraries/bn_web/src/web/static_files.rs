@@ -41,37 +41,6 @@ pub trait StaticFileOpener: Send + Sync {
     ) -> Result<StaticFileContent, StaticFileError>;
 }
 
-/// Standard opener using `std::fs`.
-#[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct SystemFileOpener;
-
-impl StaticFileOpener for SystemFileOpener {
-    fn read_file(
-        &self,
-        path: &Path,
-        max_bytes: usize,
-    ) -> Result<StaticFileContent, StaticFileError> {
-        let meta = std::fs::metadata(path).map_err(|e| match e.kind() {
-            std::io::ErrorKind::NotFound => StaticFileError::NotFound,
-            std::io::ErrorKind::PermissionDenied => StaticFileError::Forbidden,
-            _ => StaticFileError::Io(e.to_string()),
-        })?;
-        if !meta.is_file() {
-            return Err(StaticFileError::NotFound);
-        }
-        if meta.len() > max_bytes as u64 {
-            return Err(StaticFileError::TooLarge);
-        }
-        let mtime_secs = meta
-            .modified()
-            .ok()
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map_or(0, |d| d.as_secs());
-        let bytes = std::fs::read(path).map_err(|e| StaticFileError::Io(e.to_string()))?;
-        Ok(StaticFileContent { bytes, mtime_secs })
-    }
-}
-
 /// A registered static mount point.
 #[derive(Clone, Debug)]
 pub struct StaticMount {

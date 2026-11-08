@@ -1,5 +1,9 @@
 use std::{collections::HashMap, net::IpAddr};
 
+/// Why `EgressPolicy::new` refused a redirect limit or deadline (both
+/// backends report it as `INVALID_ARGUMENT`).
+pub const EGRESS_POLICY_BOUNDS: &str = "egress policy value is outside the configured bounds";
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EgressPolicy {
     schemes: Option<Vec<String>>,
@@ -64,10 +68,10 @@ impl EgressPolicy {
         total_deadline_ms: u64,
     ) -> Result<Self, &'static str> {
         let limits = bn_limits::web_limits();
-        if !(1..=limits.redirects_max).contains(&max_redirects)
+        if !(0..=limits.redirects_max).contains(&max_redirects)
             || !(1..=limits.connection_total_max_ms).contains(&total_deadline_ms)
         {
-            return Err("egress policy value is outside the configured bounds");
+            return Err(EGRESS_POLICY_BOUNDS);
         }
         if schemes.as_ref().is_some_and(|values| {
             values.is_empty()
@@ -699,7 +703,8 @@ pub use routing::{Route, RouteOutcome};
 pub(crate) use routing::{allowed_methods, select_route};
 pub(crate) use routing::{dispatch_route, route_for_request, valid_method, valid_route_pattern};
 mod drain;
-pub use drain::drain_server;
+pub use drain::{DrainNotice, DrainSignal, HandlerTasks, drain_server};
+pub(crate) mod policy_opener;
 mod server;
 pub mod sessions;
 pub(crate) mod static_files;

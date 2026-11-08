@@ -114,24 +114,24 @@ The table below catalogs ownership and lifetime for all symbols declared in `BN_
 | **Execution Policy** | `bn_rt_policy_init(version, ceiling)`, `bn_rt_policy_check(status)` (emitted `Start` stops the process on a non-zero init status), `bn_rt_policy_filesystem_sandboxed()`, `bn_rt_policy_filesystem_root(write, path)` | `version`, `ceiling`, and `write` scalars copied; `path` is a NUL-terminated borrowed UTF-8 pointer for the call | Return code `i32` (0 = OK) | Process-wide policy can only narrow. Sandboxing clears prior roots; each accepted root is pinned by the runtime and remains owned until process exit. |
 | **DataFrame Lifecycle & Transforms** | `bn_rt_dataframe_create`, `bn_rt_dataframe_close`, `bn_rt_dataframe_row_count`, `bn_rt_dataframe_column_count`, `bn_rt_dataframe_add_*`, `bn_rt_dataframe_append_*`, `bn_rt_dataframe_convert_*`, `bn_rt_dataframe_count_na`, `bn_rt_dataframe_drop_na`, `bn_rt_dataframe_fill_na`, `bn_rt_dataframe_copy_*`, `bn_rt_dataframe_get_*`, `bn_rt_dataframe_join`, `bn_rt_dataframe_read_csv`, `bn_rt_dataframe_write_csv`, `bn_rt_dataframe_reduce`, `bn_rt_dataframe_retain`, `bn_rt_dataframe_select`, `bn_rt_dataframe_set_*`, `bn_rt_dataframe_slice`, `bn_rt_dataframe_transpose`, `bn_rt_dataframe_zscore`, `bn_rt_dataframe_column_name_owned` | Column names, string views, CSV paths borrowed `ptr` for duration of call; handle `u64` copied | Out pointer receives owned `u64` handle or count/value scalar; status `i32` (0 = OK) | `bn_rt_dataframe_close` destroys frame in registry; subsequent calls on closed handle fail with invalid handle status |
 | **Console & Clock** | `bn_rt_clock_now`, `bn_rt_clock_timer`, `bn_rt_console_cls`, `bn_rt_console_beep`, `bn_rt_console_print_at`, `bn_rt_console_num_cols`, `bn_rt_console_num_rows` | Scalars copied; string `ptr` in `print_at` borrowed | Timestamp `i64` or status `i32` | No retained state; ephemeral duration of call |
-| **Network Endpoints & Handles** | `bn_rt_net_address_parse`, `bn_rt_net_address_is_*`, `bn_rt_net_cidr_parse`, `bn_rt_net_cidr_contains`, `bn_rt_net_tcp_set_timeouts`, `bn_rt_net_tcp_shutdown_*`, `bn_rt_net_ping`, `bn_rt_net_reverse`, `bn_rt_net_neighbor`, `bn_rt_net_resolve`, `bn_rt_net_addresses_*`, `bn_rt_net_handle_close` | String `ptr` borrowed; out pointers caller-allocated | Out pointer populated; handles returned by value | Address lists freed by `bn_rt_net_addresses_free`; socket handles closed by `bn_rt_net_handle_close` |
+| **Network Endpoints & Handles** | `bn_rt_net_address_parse`, `bn_rt_net_address_is_*`, `bn_rt_net_cidr_parse`, `bn_rt_net_cidr_contains`, `bn_rt_net_tcp_set_timeouts`, `bn_rt_net_tcp_shutdown_*`, `bn_rt_net_ping`, `bn_rt_net_reverse`, `bn_rt_net_neighbor`, `bn_rt_net_resolve`, `bn_rt_net_addresses_*`, `bn_rt_net_handle_close` | String `ptr` borrowed; out pointers caller-allocated | Out pointer populated; handles returned by value | Address lists are counted handles: `bn_rt_net_addresses_retain` adds a holder per binding, `bn_rt_net_addresses_free` removes one and the last frees the list; socket handles closed by `bn_rt_net_handle_close` |
 | **TCP / UDP Streams** | `bn_rt_net_tcp_accept`, `bn_rt_net_tcp_connect`, `bn_rt_net_tcp_listen_with_backlog`, `bn_rt_net_tcp_listener_local_endpoint`, `bn_rt_net_tcp_read`, `bn_rt_net_tcp_stream_*_endpoint`, `bn_rt_net_tcp_write`, `bn_rt_net_udp_bind`, `bn_rt_net_udp_local_endpoint`, `bn_rt_net_udp_packet_*`, `bn_rt_net_udp_receive_handle`, `bn_rt_net_udp_send_to` | For write/send: buffer `ptr` borrowed read-only; for `tcp_read` and `udp_packet_copy_to`: buffer `ptr` is caller-allocated storage populated by callee; handles copied | Out pointer receives bytes transferred or new stream handle | Streams/listeners invalidated by `bn_rt_net_handle_close`; UDP packet views invalidated by next receive on same handle |
 | **Dispatch & Concurrency** | `bn_rt_dispatch_queue_*`, `bn_rt_dispatch_submit`, `bn_rt_dispatch_await`, `bn_rt_dispatch_cancel`, `bn_rt_dispatch_ticket_*`, `bn_rt_dispatch_group_*`, `bn_rt_dispatch_barrier_*`, `bn_rt_dispatch_semaphore_*`, `bn_rt_dispatch_mutex_*` | Function pointer and context `ptr` borrowed; queue/ticket handles copied | Ticket handle or completion status returned | Tickets closed by `bn_rt_dispatch_ticket_close`; synchronization primitives closed by matching `*_close`. Note: `bn_rt_dispatch_error_free` is exported by `bn_rt` for freeing error structs, pending emitted call generation |
 | **BNMath Scalars & Temporal** | `bn_rt_math_iabs`, `bn_rt_math_isign`, `bn_rt_math_imin`, `bn_rt_math_imax`, `bn_rt_math_fabs`, `bn_rt_math_fsign`, `bn_rt_math_floor`, `bn_rt_math_ceil`, `bn_rt_math_trunc`, `bn_rt_math_exp`, `bn_rt_math_log*`, `bn_rt_math_sin`, `bn_rt_math_cos`, `bn_rt_math_tan`, `bn_rt_math_asin`, `bn_rt_math_acos`, `bn_rt_math_atan*`, `bn_rt_math_sqrt`, `bn_rt_math_degree_to_rad`, `bn_rt_math_rad_to_degree`, `bn_rt_math_pow`, `bn_rt_math_hypot`, `bn_rt_math_gcd`, `bn_rt_math_fmin`, `bn_rt_math_fmax`, `bn_rt_math_round`, `bn_rt_math_fma`, `bn_rt_math_todate`, `bn_rt_math_totime`, `bn_rt_math_totimestamp`, `bn_rt_math_tohour`, `bn_rt_math_toweekday`, `bn_rt_math_val`, `bn_rt_math_vector_statistic`, `bn_rt_math_vector_quantile`, `bn_rt_math_vector_covariance`, `bn_rt_math_vector_correlation`, `bn_rt_math_vector_mode`, `bn_rt_math_vector_min_integer`, `bn_rt_math_vector_max_integer`, `bn_rt_math_vector_min_float`, `bn_rt_math_vector_max_float`, `bn_rt_math_student_t`, `bn_rt_math_student_t_pvalue`, `bn_rt_math_student_t_quantile`, `bn_rt_math_vector_sum`, `bn_rt_math_vector_product`, `bn_rt_math_vector_dot`, `bn_rt_temporal_date_parse`, `bn_rt_temporal_time_parse`, `bn_rt_temporal_timestamp_parse`, `bn_rt_temporal_timestamp_format`, `bn_rt_temporal_timezone_offset`, `bn_rt_temporal_timezone_is_dst`, `bn_rt_temporal_timestamp_at_zone`, `bn_rt_temporal_timestamp_from_local` | Scalars copied by value | Return value computed and returned by value | Pure mathematical and temporal functions; no heap or persistent lifetime |
 | **BNMath Vector Reductions** | `bn_rt_math_vmin_*`, `bn_rt_math_vmax_*`, `bn_rt_math_mean_*`, `bn_rt_math_median_*`, `bn_rt_math_quartile1_*`, `bn_rt_math_quartile3_*`, `bn_rt_math_range_*`, `bn_rt_math_stdev_*`, `bn_rt_math_variance_*`, `bn_rt_math_mode_*` | Array `ptr` borrowed for call; length `i32` copied | Scalar reduction value returned; mode writes into caller-owned buffer | Read-only slice access; callee neither mutates nor frees the buffer |
 | **String Operations** | `bn_rt_str_len`, `bn_rt_str_index_utf8`, `bn_rt_str_char_utf8`, `bn_rt_str_from_packed`, `bn_rt_str_asc`, `bn_rt_str_cmp`, `bn_rt_str_eq`, `bn_rt_str_concat`, `bn_rt_str_to_lower`, `bn_rt_str_to_upper`, `bn_rt_print_str`, `bn_rt_print_date`, `bn_rt_print_time`, `bn_rt_print_float`, `bn_rt_print_float32` | `ptr` borrowed for call duration | Scalar result; an indexed character is a fresh STRING built from the packed scalar (`bn_rt_str_from_packed`) | Operations on immutable string buffers. `PRINT` of a STRING uses the header length. `bn_rt_str_cmp` returns `-1`, `0` or `1` in UTF-8 byte order, which is Unicode scalar order |
 | **Scalar Text (`AS STRING`)** | `bn_rt_text_int(i64)`, `bn_rt_text_uint(i64)`, `bn_rt_text_float(double)`, `bn_rt_text_float32(double)` | Scalars copied; narrower integers sign- or zero-extended to 64 bits; `FLOAT32` widened to `double` | Owned STRING `ptr` (16-byte header with count 1 and length, payload, trailing NUL), same allocation as `bn_rt_str_to_upper` | Text is `bn_types::text`, shared with the interpreter and `PRINT`; `BOOLEAN` selects the `TRUE`/`FALSE` constants without a call |
-| **BNCrypto Operations** | `bn_rt_crypto_bytes_*`, `bn_rt_crypto_key_*`, `bn_rt_crypto_random_bytes`, `bn_rt_crypto_generate_nonce`, `bn_rt_crypto_generate_key`, `bn_rt_crypto_import_key`, `bn_rt_crypto_slice`, `bn_rt_crypto_sha256`, `bn_rt_crypto_sha512`, `bn_rt_crypto_hmac`, `bn_rt_crypto_hmac_verify`, `bn_rt_crypto_argon2id`, `bn_rt_crypto_seal`, `bn_rt_crypto_open`, `bn_rt_crypto_sign`, `bn_rt_crypto_verify`, `bn_rt_crypto_public_key`, `bn_rt_crypto_dsa_*`, `bn_rt_crypto_kem_*` | Buffer `ptr` borrowed with length for call duration; key/byte handles `u64` copied | Status `i32` (0 = OK); out-pointer receives newly allocated `u64` byte/key handle or string | Byte buffers and keys allocated in crypto handle registries; caller owns handle and must release via `bn_rt_crypto_bytes_release` / `bn_rt_crypto_key_release` |
+| **BNCrypto Operations** | `bn_rt_crypto_bytes_*`, `bn_rt_crypto_key_*`, `bn_rt_crypto_random_bytes`, `bn_rt_crypto_generate_nonce`, `bn_rt_crypto_generate_key`, `bn_rt_crypto_import_key`, `bn_rt_crypto_slice`, `bn_rt_crypto_sha256`, `bn_rt_crypto_sha512`, `bn_rt_crypto_hmac`, `bn_rt_crypto_hmac_verify`, `bn_rt_crypto_argon2id`, `bn_rt_crypto_seal`, `bn_rt_crypto_open`, `bn_rt_crypto_sign`, `bn_rt_crypto_verify`, `bn_rt_crypto_public_key`, `bn_rt_crypto_dsa_*`, `bn_rt_crypto_kem_*`, `bn_rt_crypto_to_pem`, `bn_rt_crypto_from_pem`, `bn_rt_crypto_crc32*`, `bn_rt_crypto_adler32`, `bn_rt_crypto_xxhash64`, `bn_rt_crypto_verify_file_checksum` | Buffer `ptr` borrowed with length for call duration; key/byte handles `u64` copied | Status `i32` (0 = OK); out-pointer receives newly allocated `u64` byte/key handle or string | Byte buffers and keys allocated in crypto handle registries; caller owns handle and must release via `bn_rt_crypto_bytes_release` / `bn_rt_crypto_key_release` |
 | **BNCompress Operations** | `bn_rt_compress_deflate`, `bn_rt_compress_inflate`, `bn_rt_compress_gzip`, `bn_rt_compress_gunzip`, `bn_rt_compress_deflate_text`, `bn_rt_compress_inflate_text`, `bn_rt_compress_gzip_text`, `bn_rt_compress_gunzip_text`, `bn_rt_compress_bytes_*`, `bn_rt_zip_*` | Buffer `ptr` borrowed; handles `u64` copied | Status `i32` (0 = OK); out-pointer receives newly allocated `u64` byte/zip handle or string | Byte buffers and ZipArchive handles allocated in compress registries; caller owns handle and must release via `bn_rt_compress_bytes_release` / `bn_rt_zip_release` |
 | **BNJson Document & DOM Operations** | `bn_rt_json_object`, `bn_rt_json_array`, `bn_rt_json_parse`, `bn_rt_json_stringify`, `bn_rt_json_release`, `bn_rt_json_retain`, `bn_rt_json_clone`, `bn_rt_json_get_*`, `bn_rt_json_set_*`, `bn_rt_json_append_*`, `bn_rt_json_has`, `bn_rt_json_kind`, `bn_rt_json_length` | Key and JSON text `ptr` borrowed with length; scalars copied; child handles passed to `set_json` / `append_json` are moved (ownership transferred) | Status `i32`; out-pointer receives new handle `u64` or scalar; `stringify` returns owned STRING `ptr` (16-byte header with count 1 and length) | Handlers registered in runtime registry; `bn_rt_json_release`, `bn_rt_json_retain` recursively destroys entire DOM tree and invalidates handle |
 | **BNLog Logging Operations** | `bn_rt_log_logger_new`, `bn_rt_log_logger_retain`, `bn_rt_log_logger_close`, `bn_rt_log_logger_delete`, `bn_rt_log_logger_write`, `bn_rt_log_logger_access`, `bn_rt_log_logger_flush`, `bn_rt_log_logger_set_level`, `bn_rt_log_logger_set_defaults`, `bn_rt_log_logger_set_access_defaults`, `bn_rt_log_client_access` | Logger target/name/message `ptr` borrowed for call duration; level and config scalars copied; handle `u64` copied. `bn_rt_log_client_access` borrows method, URL and `name\nvalue\n` header text for the call | Status `i32`; `logger_new` writes owned handle `u64` to out-pointer. `bn_rt_log_client_access` writes one access record and does not take the logger | Loggers managed via reference counting; `delete` removes logger from registry and releases underlying resources |
-| **HOST.Exec Process Execution** | `bn_rt_exec_run`, `bn_rt_exec_result_close`, `bn_rt_exec_result_return_code`, `bn_rt_exec_result_stdout`, `bn_rt_exec_result_stderr` | Command, args, and stdin string buffers borrowed for call duration; handle `u64` copied | Status `i32`; out-pointer receives owned result handle `u64`; `stdout`/`stderr` return owned STRING `ptr` (16-byte header with count 1 and length) | Result handle owns captured output buffers; invalidated when caller invokes `bn_rt_exec_result_close` |
+| **HOST.Exec Process Execution** | `bn_rt_exec_run`, `bn_rt_exec_result_retain`, `bn_rt_exec_result_close`, `bn_rt_exec_result_return_code`, `bn_rt_exec_result_stdout`, `bn_rt_exec_result_stderr` | Command, args, and stdin string buffers borrowed for call duration; handle `u64` copied | Status `i32`; out-pointer receives a result handle `u64` with one holder; `stdout`/`stderr` lend the STRING `ptr` the result owns (a binding that keeps it retains it) | A counted handle: `retain` adds a holder for each binding, `close` removes one and the last frees the result and its STRINGs; a released id is `USE_AFTER_RELEASE`, never another result |
 | **HOST Environment & Platform Query** | `bn_rt_env_get`, `bn_rt_env_has`, `bn_rt_host_num_procs`, `bn_rt_random_seed`, `bn_rt_random_next` | Environment key `ptr` borrowed for call; seed scalar `i64` copied | `env_get` writes owned STRING `ptr` (16-byte header with count 1 and length) or null sentinel; others return scalar `i32`/`i64` by value | Ephemeral queries; no retained state or persistent handles |
 | **File System** | `bn_rt_file_new` (`NEW FS.File()`, a never-opened file), `bn_rt_file_open`, `bn_rt_file_close`, `bn_rt_file_retain`, `bn_rt_file_release`, `bn_rt_file_read_all`, `bn_rt_file_read_line`, `bn_rt_file_write`, `bn_rt_file_write_line`, `bn_rt_file_read_bytes`, `bn_rt_file_write_bytes`, `bn_rt_fs_exists`, `bn_rt_fs_delete_file`, `bn_rt_fs_get_current_directory`, `bn_rt_fs_set_current_directory`, `bn_rt_fs_create_directory`, `bn_rt_fs_remove_directory`, `bn_rt_fs_is_directory`, `bn_rt_fs_open_new` (0.6.12: a handle of a new owner-only file), `bn_rt_fs_copy`, `bn_rt_fs_move` | Path/text `ptr` borrowed for the call; byte buffers borrowed with an explicit length; handles `u64` copied | Status `u32` (0 OK, 1 invalid, 2 error, 3 capability denied, 4 `EOF`); out pointers receive the handle, an owned string, a byte count, or a flag | Semantics are `bn_rt::file`, shared with the interpreter. `Close` keeps the handle as a closed file. The handle starts at one strong reference; `bn_rt_file_retain` adds one and `bn_rt_file_release` drops one, closing the file when the last reference goes. Note: `bn_rt_file_string_free` is exported by `bn_rt` for libc free of read strings, pending emitted call generation |
 | **Runtime diagnostics** | `bn_rt_trap_report`, `bn_rt_trap_report_failure` | Text `ptr` to a constant `bnc` rendered at compile time (`@.bn_trap_*` / `@.bn_trapset_*`), borrowed; runtime facts as two `i128`, each passed as `i64` low and high halves (`i128` has no portable C ABI) | None; they print to stderr and the emitted code then leaves through its trap exit | The program embeds no catalog: slots in the text take the runtime facts, or the named facts a runtime function recorded (`RuntimeFailure`) |
 | **Stack depth** (0.6.md, "Recursion depth") | `bn_rt_stack_check(frame)` | `frame` is the caller's frame address (`llvm.frameaddress`), borrowed | `1` when a BN call from `frame` would exhaust the running thread's stack, else `0`; the emitted code then reports `STACK_OVERFLOW` and leaves through its trap exit | The bounds come from the operating system, once per thread |
 | **Nested fixed vectors** | `bn_rt_vector_nest(rows, leaves, source, dimensions, rank, element_bytes)` | `rows`, `leaves`: the row and element areas of the target's storage block (`{ [rows x { ptr, i32 }], [elements x T], [rank x i32] }`); `source`: the outermost rows of a vector of the same shape, or null; `dimensions`: `rank` (≥ 2) `i32`s inside the block | None; it links every row of the target to its own storage, then copies the elements of `source` (nothing when `source` is null or the target itself) | A copy never shares a row: each binding, argument, return buffer and `STATIC` owns its block |
-| **`Error` records** | `bn_rt_error_take(failed, operation)`, `bn_rt_error_wrap(failed, value, operation)`, `bn_rt_error_field(error, field)`, `bn_rt_error_code`, `bn_rt_error_print`, `bn_rt_error_set_report` | Status/flag copied; `operation` and `value` borrowed | A native `Error` is `{ i1 true, ptr, i64 code }` whose pointer is a runtime record (`Message`, `Operation`, `Cause`): `take` builds it from the failing call's recorded message and cause, `wrap` from a message the emitted code holds (a record passes through), and `field` reads 0 `Message`, 1 `Operation`, 2 `Cause`, treating a non-record pointer as a plain message | Records live until exit; `bn_rt` keeps their addresses so a field read never misreads a plain string |
+| **`Error` records** | `bn_rt_error_take(failed, operation)`, `bn_rt_error_wrap(failed, value, operation)`, `bn_rt_error_field(error, field)`, `bn_rt_error_code`, `bn_rt_error_print`, `bn_rt_error_set_report` | Status/flag copied; `operation` and `value` borrowed; the three texts of `set_report` are plain NUL-terminated strings a library built, borrowed for the call, never STRING payloads | A native `Error` is `{ i1 true, ptr, i64 code }` whose pointer is a runtime record (`Message`, `Operation`, `Cause`): `take` builds it from the failing call's recorded message and cause, `wrap` from a message the emitted code holds (a record passes through), and `field` reads 0 `Message`, 1 `Operation`, 2 `Cause`, treating a non-record pointer as a plain message | Records live until exit; `bn_rt` keeps their addresses so a field read never misreads a plain string |
 | **ARC core** (emitted by `bnc`) | `bn_rt_arc_register(class, object, line, column)`, `bn_rt_arc_retain(id, line, column)`, `bn_rt_arc_release(id, line, column)`, `bn_rt_arc_finish_destroy(id)`, `bn_rt_arc_address(id)` | `class` is a borrowed NUL-terminated class-name constant; `object` is the object's address, kept as an opaque number; `line` and `column` (`u32`) are the source position of the operation, written only by `BN_ARC_TRACE`; an object id is one `u64` (slot index in the high 32 bits, generation in the low 32), copied | `register` returns the new id with one strong reference; `retain` returns `0`, `release` `1` when it dropped the last reference (the object is being destroyed: run its destruction, then `finish_destroy`) or `0`; while it is being destroyed, `retain` and `release` do nothing; `finish_destroy` returns `0`; these return `-1` after recording an `INVALID_IR` failure for a dead id; `address` returns the registered address while the object is alive, else null | One core per process (`bn_rt::arc::ArcCore`, the same type `bni` uses per interpreter). The core never reads or writes object memory. A weak binding stores only the id (8 bytes, as a pointer) and reads the object through `address`, so it reads `NULL` from the start of the destruction on; a slot reused by a later object gets a new generation, so an old id never reaches an object again. Note: `bn_rt_arc_dump` and `bn_rt_arc_info` are runtime diagnostic helpers, not emitted by `bnc` compiler passes |
 | **BNSqlite Database Operations** | `bn_rt_sqlite_open`, `bn_rt_sqlite_open_read_only`, `bn_rt_sqlite_open_existing`, `bn_rt_sqlite_close`, `bn_rt_sqlite_retain`, `bn_rt_sqlite_exec`, `bn_rt_sqlite_query`, `bn_rt_sqlite_begin`, `bn_rt_sqlite_commit`, `bn_rt_sqlite_rollback`, `bn_rt_sqlite_changes`, `bn_rt_sqlite_last_insert_rowid` | Path/SQL `ptr` borrowed NUL-terminated UTF-8; connection handle `u64` copied | Status code `i32` (0 = OK); out pointer receives `u64` connection handle or `u64` DataFrame handle; `changes`/`last_insert_rowid` return `i64` | `bn_rt_sqlite_close`, `bn_rt_sqlite_retain` closes SQLite connection and releases file locks; operations on closed handles fail with `Sqlite.CLOSED`; query returns registered `BNDataFrameHandle` owned by caller |
 | **BNFfi Foreign Function Interface** | `bn_rt_ffi_new_record`, `bn_rt_ffi_release`, `bn_rt_ffi_set_*`, `bn_rt_ffi_get_*`, `bn_rt_ffi_args_new`, `bn_rt_ffi_args_add`, `bn_rt_ffi_args_count`, `bn_rt_ffi_call`, `bn_rt_ffi_handle_result_value`, `bn_rt_ffi_handle_read_string`, `bn_rt_ffi_array_read_from`, `bn_rt_ffi_array_write_to` | Record handles `u64`, values scalar or string/array `ptr` | Status code `i32` (0 = OK) or scalar result; out pointers populated for strings | Zero leaks: records freed on `bn_rt_ffi_release`; dynamic calls executed via `libffi` without holding runtime locks |
@@ -311,6 +311,7 @@ bn_rt_dataframe_zscore
 bn_rt_env_get
 bn_rt_env_has
 bn_rt_exec_result_close
+bn_rt_exec_result_retain
 bn_rt_exec_result_return_code
 bn_rt_exec_result_stderr
 bn_rt_exec_result_stdout
@@ -531,6 +532,7 @@ bn_rt_net_cidr_contains
 bn_rt_net_addresses_count
 bn_rt_net_addresses_free
 bn_rt_net_addresses_get
+bn_rt_net_addresses_retain
 bn_rt_net_handle_close
 bn_rt_net_neighbor
 bn_rt_net_ping
@@ -612,18 +614,54 @@ bn_rt_json_set_null_at
 bn_rt_json_set_string
 bn_rt_json_set_string_at
 bn_rt_json_stringify
+bn_rt_crypto_adler32
 bn_rt_crypto_argon2id
+bn_rt_crypto_bytes_concat
+bn_rt_crypto_bytes_constant_time_equals
+bn_rt_crypto_bytes_from_base64
+bn_rt_crypto_bytes_from_base64url
 bn_rt_crypto_bytes_from_hex
 bn_rt_crypto_bytes_from_text
 bn_rt_crypto_bytes_length
 bn_rt_crypto_bytes_release
 bn_rt_crypto_bytes_retain
+bn_rt_crypto_bytes_to_base64
+bn_rt_crypto_bytes_to_base64url
 bn_rt_crypto_bytes_to_hex
+bn_rt_crypto_bytes_to_text
+bn_rt_crypto_bytes_zeroize
+bn_rt_crypto_crc32
+bn_rt_crypto_crc32c
+bn_rt_crypto_decrypt_file
+bn_rt_crypto_decrypt_file_with_password
+bn_rt_crypto_decrypt_status
+bn_rt_crypto_decrypt_text_status
+bn_rt_crypto_decrypt_with
+bn_rt_crypto_derive_key
+bn_rt_crypto_derive_subkey
 bn_rt_crypto_dsa_keypair
 bn_rt_crypto_dsa_sign
 bn_rt_crypto_dsa_verify
+bn_rt_crypto_encrypt_file
+bn_rt_crypto_encrypt_file_with_password
+bn_rt_crypto_encrypt_status
+bn_rt_crypto_encrypt_text_status
+bn_rt_crypto_encrypt_with
+bn_rt_crypto_from_pem
 bn_rt_crypto_generate_key
 bn_rt_crypto_generate_nonce
+bn_rt_crypto_hash_file
+bn_rt_crypto_hash_handle
+bn_rt_crypto_hash_password
+bn_rt_crypto_hash_password_with
+bn_rt_crypto_hash_text
+bn_rt_crypto_hash_with
+bn_rt_crypto_hasher_finish
+bn_rt_crypto_hasher_new
+bn_rt_crypto_hasher_new_with
+bn_rt_crypto_hasher_release
+bn_rt_crypto_hasher_update_handle
+bn_rt_crypto_hkdf
 bn_rt_crypto_hmac
 bn_rt_crypto_hmac_verify
 bn_rt_crypto_import_key
@@ -635,15 +673,75 @@ bn_rt_crypto_key_length
 bn_rt_crypto_key_release
 bn_rt_crypto_key_retain
 bn_rt_crypto_key_zeroize
+bn_rt_crypto_keypair_generate
+bn_rt_crypto_keypair_generate_with
+bn_rt_crypto_load_private_key
+bn_rt_crypto_load_public_key
+bn_rt_crypto_mac_stream_finish
+bn_rt_crypto_mac_stream_new
+bn_rt_crypto_mac_stream_new_with
+bn_rt_crypto_mac_stream_release
+bn_rt_crypto_mac_stream_update_handle
+bn_rt_crypto_mac_stream_verify
+bn_rt_crypto_mac_verify_handle
+bn_rt_crypto_mac_with
+bn_rt_crypto_needs_rehash
 bn_rt_crypto_open
+bn_rt_crypto_private_export_pem
+bn_rt_crypto_private_export_pem_plain
+bn_rt_crypto_private_key_algorithm
+bn_rt_crypto_private_key_id
+bn_rt_crypto_private_key_public_key
+bn_rt_crypto_private_key_release
+bn_rt_crypto_private_key_retain
+bn_rt_crypto_private_key_zeroize
+bn_rt_crypto_private_sign
+bn_rt_crypto_public_export_pem
+bn_rt_crypto_public_fingerprint
 bn_rt_crypto_public_key
+bn_rt_crypto_public_key_algorithm
+bn_rt_crypto_public_key_id
+bn_rt_crypto_public_key_release
+bn_rt_crypto_public_key_retain
+bn_rt_crypto_public_verify
 bn_rt_crypto_random_bytes
+bn_rt_crypto_random_int
+bn_rt_crypto_random_password
+bn_rt_crypto_random_token
+bn_rt_crypto_random_uuid_v4
 bn_rt_crypto_seal
+bn_rt_crypto_secret_constant_time_equals
+bn_rt_crypto_secret_from_text
+bn_rt_crypto_secret_key_algorithm
+bn_rt_crypto_secret_key_bits
+bn_rt_crypto_secret_key_export
+bn_rt_crypto_secret_key_from_bytes
+bn_rt_crypto_secret_key_generate
+bn_rt_crypto_secret_key_id
+bn_rt_crypto_secret_key_length
+bn_rt_crypto_secret_key_purpose
+bn_rt_crypto_secret_key_release
+bn_rt_crypto_secret_key_retain
+bn_rt_crypto_secret_key_unwrap
+bn_rt_crypto_secret_key_wrap
+bn_rt_crypto_secret_key_zeroize
+bn_rt_crypto_secret_length
+bn_rt_crypto_secret_release
+bn_rt_crypto_secret_retain
+bn_rt_crypto_secret_to_bytes
+bn_rt_crypto_secret_zeroize
 bn_rt_crypto_sha256
 bn_rt_crypto_sha512
 bn_rt_crypto_sign
+bn_rt_crypto_sign_file
 bn_rt_crypto_slice
+bn_rt_crypto_to_pem
+bn_rt_crypto_uuid_v7
 bn_rt_crypto_verify
+bn_rt_crypto_verify_file
+bn_rt_crypto_verify_file_checksum
+bn_rt_crypto_verify_password
+bn_rt_crypto_xxhash64
 bn_rt_error_field
 bn_rt_error_take
 bn_rt_error_wrap

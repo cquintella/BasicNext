@@ -9,6 +9,16 @@
 //! program output through [`CoreContext::output`]; a file goes through the
 //! host filesystem policy.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
+
 use std::collections::HashMap;
 
 use bn_core_log::{Apache, Event, FieldMap, Imports, Level, LogFailure, Operation};
@@ -318,7 +328,7 @@ impl bn_core_log::LogSink for CoreSink<'_> {
             .host()
             .filesystem()
             .open(path, bn_rt::secure_fs::OpenMode::Append)
-            .map(|file| Box::new(file) as Box<dyn std::io::Write>)
+            .map(|file| -> Box<dyn std::io::Write> { Box::new(file) })
     }
 }
 

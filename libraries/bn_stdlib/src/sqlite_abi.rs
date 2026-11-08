@@ -13,6 +13,7 @@
 use std::ffi::c_char;
 
 use bn_core_sqlite::{OpenMode, SqliteFailure, SqliteValue};
+use bn_rt::FsEntryPolicy as _;
 
 use super::dataframe::DataFrameColumn;
 use super::dataframe_abi::{BNDataFrameHandle, StoredValue, register_frame_columns};

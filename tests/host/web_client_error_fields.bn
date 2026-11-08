@@ -1,0 +1,20 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// A BNWeb.Client failure carries all four Error fields on both backends.
+IMPORT BNWeb AS Web
+
+FUNCTION Start() AS VOID
+    LET client AS Web.Client = NEW Web.Client()
+    LET response AS Web.Response OR Error = client.Request("GET", "http://127.0.0.1:9/", "")
+    IF response IS Error THEN
+        PRINT "code", response.Code = Web.EGRESS_DENIED
+        PRINT "operation", response.Operation
+        PRINT "message", response.Message
+        PRINT "cause", response.Cause
+    ELSE
+        PRINT "unexpected success"
+    END IF
+END FUNCTION

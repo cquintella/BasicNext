@@ -136,9 +136,9 @@ pub(crate) fn lower_terminator(
                     || (crate::layout::is_one_of(&state.return_llvm, &[crate::layout::status_endpoint_ty(), crate::layout::status_pointer_ty()])
                         && is_error_type(value_ty))
                 {
-                    coerce_to_type(text, *value, value_ty, &function.return_type)
+                    coerce_to_type(text, module, *value, value_ty, &function.return_type)
                 } else if union_return
-                    && let Some(operand) = union_success_operand(text, *value, value_ty)
+                    && let Some(operand) = union_success_operand(text, module, *value, value_ty)
                 {
                     operand
                 } else if state.return_llvm.is_integer()
@@ -147,6 +147,7 @@ pub(crate) fn lower_terminator(
                 {
                     coerce_to_type(
                         text,
+                        module,
                         *value,
                         value_ty,
                         match state.return_llvm {
@@ -269,6 +270,7 @@ fn union_ty() -> LlvmType {
 /// in the payload. `None` when `ty` is none of those.
 fn union_success_operand(
     text: &mut crate::ir::LlvmModule,
+    module: &Module,
     value: ValueId,
     ty: &Type,
 ) -> Option<crate::ir::LlvmOperand> {
@@ -277,10 +279,10 @@ fn union_success_operand(
     let (message, payload) = match ty {
         Type::Integer(_) | Type::IntegerLiteral(_) => (
             LlvmOperand::null(),
-            coerce_to_type(text, value, ty, &Type::Integer(IntegerType::Int64)),
+            coerce_to_type(text, module, value, ty, &Type::Integer(IntegerType::Int64)),
         ),
         Type::Float(_) | Type::FloatLiteral => {
-            let wide = coerce_to_type(text, value, ty, &Type::Float(FloatType::Float64));
+            let wide = coerce_to_type(text, module, value, ty, &Type::Float(FloatType::Float64));
             let bits = LlvmInst::cast(CastOp::BitCast, LlvmType::Double, wide, LlvmType::I64);
             text.assign(format!("retunionbits{v}"), bits);
             (
@@ -300,14 +302,18 @@ fn union_success_operand(
             )
         }
         _ if llvm_type(ty) == Some(LlvmType::Ptr) => {
-            text.assign(
-                format!("retunionbits{v}"),
-                LlvmInst::cast(CastOp::PtrToInt, LlvmType::Ptr, own, LlvmType::I64),
-            );
-            (
-                LlvmOperand::null(),
-                LlvmOperand::reg(format!("retunionbits{v}")),
-            )
+            if helpers::is_integer_handle_type(module, ty) {
+                text.assign(
+                    format!("retunionbits{v}"),
+                    LlvmInst::cast(CastOp::PtrToInt, LlvmType::Ptr, own, LlvmType::I64),
+                );
+                (
+                    LlvmOperand::null(),
+                    LlvmOperand::reg(format!("retunionbits{v}")),
+                )
+            } else {
+                (own, LlvmOperand::int(0))
+            }
         }
         _ => return None,
     };
@@ -592,7 +598,12 @@ pub(crate) fn lower_print_value(
         && llvm_type(ty) == Some(LlvmType::Ptr)
     {
         let short_name = name.rsplit('.').next().unwrap_or(name.as_str());
-        let name_sym = print_emission::type_name_global(short_name);
+        let display_name = if matches!(short_name, "Secret" | "SecretKey" | "PrivateKey") {
+            "***"
+        } else {
+            short_name
+        };
+        let name_sym = print_emission::type_name_global(display_name);
         let count = state.print_count;
         let args = vec![
             (LlvmType::Ptr, global(".bn_fmt_str")),
@@ -618,7 +629,12 @@ pub(crate) fn lower_print_value(
         && llvm_type(ty) == Some(LlvmType::Ptr)
     {
         let short_name = name.rsplit('.').next().unwrap_or(name.as_str());
-        let name_sym = print_emission::type_name_global(short_name);
+        let display_name = if matches!(short_name, "Secret" | "SecretKey" | "PrivateKey") {
+            "***"
+        } else {
+            short_name
+        };
+        let name_sym = print_emission::type_name_global(display_name);
         let count = state.print_count;
         let args = vec![
             (LlvmType::Ptr, global(".bn_fmt_str")),
@@ -782,6 +798,7 @@ fn lower_print_int32_vector(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn emit_checked_integer_op(
     text: &mut crate::ir::LlvmModule,
+    module: &Module,
     block_id: BlockId,
     destination: ValueId,
     operator: &str,
@@ -795,11 +812,14 @@ pub(crate) fn emit_checked_integer_op(
     let intrinsic = checked_intrinsic_name(ty, operator).expect("validated checked intrinsic");
     let llvm_ty = llvm_type(ty).expect("validated integer type");
     let (left_operand, right_operand) = if operator == "Minus" && right.is_none() {
-        (LlvmOperand::int(0), coerce_to_type(text, left, left_ty, ty))
+        (
+            LlvmOperand::int(0),
+            coerce_to_type(text, module, left, left_ty, ty),
+        )
     } else {
         (
-            coerce_to_type(text, left, left_ty, ty),
-            coerce_to_type(text, right.expect("binary op right"), right_ty, ty),
+            coerce_to_type(text, module, left, left_ty, ty),
+            coerce_to_type(text, module, right.expect("binary op right"), right_ty, ty),
         )
     };
     let dest = destination.0;

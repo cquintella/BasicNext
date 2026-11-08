@@ -1,0 +1,90 @@
+// Per-call policy (bncrypto.md, "Per-Call Cryptographic Policy"): fipsOnly
+// refuses the non-approved algorithm an options record selects, allowLegacy is
+// reserved, and a policy never reaches another call.
+IMPORT BNCrypto AS Crypto
+
+FUNCTION Report(label AS STRING, outcome AS INTEGER) AS VOID
+    IF outcome = 0 THEN
+        PRINT label, "ok"
+    ELSE
+        PRINT label, outcome
+    END IF
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET data AS Crypto.Bytes = Crypto.FromText("policy")
+
+    LET hashOpts AS Crypto.HashOptions
+    hashOpts.alg = Crypto.Alg.BLAKE3
+    LET plain AS Crypto.Bytes OR Error = Crypto.HashWith(data, hashOpts)
+    IF plain IS Error THEN
+        Report("hash-blake3", plain.Code)
+    ELSE
+        Report("hash-blake3", 0)
+    END IF
+    hashOpts.policy.fipsOnly = TRUE
+    LET refused AS Crypto.Bytes OR Error = Crypto.HashWith(data, hashOpts)
+    IF refused IS Error THEN
+        Report("hash-blake3-fips", refused.Code)
+    END IF
+    hashOpts.alg = Crypto.Alg.SHA3_256
+    LET approved AS Crypto.Bytes OR Error = Crypto.HashWith(data, hashOpts)
+    IF approved IS Crypto.Bytes THEN
+        Report("hash-sha3-fips", 0)
+    END IF
+    hashOpts.alg = Crypto.Alg.BLAKE2B
+    LET stream AS Crypto.Hasher OR Error = Crypto.Hasher.NewWith(hashOpts)
+    IF stream IS Error THEN
+        Report("hasher-blake2b-fips", stream.Code)
+    END IF
+
+    LET legacyOpts AS Crypto.HashOptions
+    legacyOpts.alg = Crypto.Alg.MD5
+    legacyOpts.policy.allowLegacy = TRUE
+    LET legacy AS Crypto.Bytes OR Error = Crypto.HashWith(data, legacyOpts)
+    IF legacy IS Error THEN
+        Report("hash-md5-allow-legacy", legacy.Code)
+    END IF
+
+    LET defaults AS Crypto.HashOptions
+    defaults.alg = Crypto.Alg.BLAKE3
+    LET again AS Crypto.Bytes OR Error = Crypto.HashWith(data, defaults)
+    IF again IS Crypto.Bytes THEN
+        Report("hash-blake3-next-call", 0)
+    END IF
+
+    LET key AS Crypto.SecretKey = Crypto.NewSecretKey()
+    LET macOpts AS Crypto.MacOptions
+    macOpts.alg = Crypto.Alg.BLAKE3_KEYED
+    macOpts.policy.fipsOnly = TRUE
+    LET tag AS Crypto.Bytes OR Error = Crypto.MacWith(key, data, macOpts)
+    IF tag IS Error THEN
+        Report("mac-blake3-fips", tag.Code)
+    END IF
+    LET macStream AS Crypto.MacStream OR Error = Crypto.MacStream.NewWith(key, macOpts)
+    IF macStream IS Error THEN
+        Report("mac-stream-blake3-fips", macStream.Code)
+    END IF
+    macOpts.alg = Crypto.Alg.HMAC_SHA384
+    LET hmac AS Crypto.Bytes OR Error = Crypto.MacWith(key, data, macOpts)
+    IF hmac IS Crypto.Bytes THEN
+        Report("mac-hmac384-fips", 0)
+    END IF
+
+    LET pairOpts AS Crypto.KeyPairOptions
+    pairOpts.alg = Crypto.Alg.X25519
+    LET x AS Crypto.KeyPair OR Error = Crypto.NewKeyPairWith(pairOpts)
+    IF x IS Crypto.KeyPair THEN
+        Report("keypair-x25519", 0)
+    END IF
+    pairOpts.policy.fipsOnly = TRUE
+    LET xFips AS Crypto.KeyPair OR Error = Crypto.NewKeyPairWith(pairOpts)
+    IF xFips IS Error THEN
+        Report("keypair-x25519-fips", xFips.Code)
+    END IF
+    pairOpts.alg = Crypto.Alg.ED25519
+    LET edFips AS Crypto.KeyPair OR Error = Crypto.NewKeyPairWith(pairOpts)
+    IF edFips IS Crypto.KeyPair THEN
+        Report("keypair-ed25519-fips", 0)
+    END IF
+END FUNCTION

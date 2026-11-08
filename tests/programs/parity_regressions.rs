@@ -930,3 +930,256 @@ END FUNCTION
         );
     }
 }
+
+/// A STRUCT or CLASS field of a type without a default requires an
+/// initializer: `bni check` and `bnc` reject omitted initializers with
+/// `TYPE_MISMATCH`, and both backends execute initialized fields identically.
+#[test]
+fn struct_and_class_fields_without_default_require_initializers() {
+    let directory = TestDir::new("parity-field-initializers").expect("create directory");
+    let uninitialized_cases = [
+        (
+            "local-class-in-struct.bn",
+            r"CLASS Node
+END CLASS
+STRUCT S
+    node AS Node
+END STRUCT
+FUNCTION Start() AS VOID
+END FUNCTION
+",
+        ),
+        (
+            "imported-class-in-struct.bn",
+            r"IMPORT BNCrypto AS Crypto
+STRUCT S
+    aad AS Crypto.Bytes
+END STRUCT
+FUNCTION Start() AS VOID
+END FUNCTION
+",
+        ),
+        (
+            "local-class-in-class.bn",
+            r"CLASS Node
+END CLASS
+CLASS Container
+    PUBLIC node AS Node
+END CLASS
+FUNCTION Start() AS VOID
+END FUNCTION
+",
+        ),
+    ];
+
+    for (name, source) in uninitialized_cases {
+        let path = directory.join(name);
+        fs::write(&path, source).expect("write uninitialized source");
+        let checked = execute(bni().arg("check").arg(&path), None);
+        assert_eq!(checked.status.code(), Some(1), "bni check {name}");
+        let check_err = String::from_utf8_lossy(&checked.stderr);
+        assert!(
+            check_err.contains("TYPE_MISMATCH"),
+            "bni check {name}: {check_err}"
+        );
+
+        let compiled = execute(
+            bnc()
+                .arg(&path)
+                .arg("-o")
+                .arg(directory.join(format!("{name}.bin"))),
+            None,
+        );
+        assert_eq!(compiled.status.code(), Some(1), "bnc {name}");
+        let comp_err = String::from_utf8_lossy(&compiled.stderr);
+        assert!(comp_err.contains("TYPE_MISMATCH"), "bnc {name}: {comp_err}");
+    }
+
+    let initialized_path = directory.join("initialized.bn");
+    fs::write(
+        &initialized_path,
+        r#"IMPORT BNCrypto AS Crypto
+CLASS Node
+    PUBLIC value AS INTEGER = 42
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+STRUCT S
+    node AS Node = NEW Node()
+    aad AS Crypto.Bytes = Crypto.FromText("test")
+END STRUCT
+FUNCTION Start() AS VOID
+    LET s AS S
+    PRINT s.node.value, s.aad.Length()
+END FUNCTION
+"#,
+    )
+    .expect("write initialized source");
+
+    let artifact = compile_native(&initialized_path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&initialized_path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "42 4\n",
+            "{backend}"
+        );
+    }
+}
+
+/// HKDF with an unsupported output key length returns `INVALID_ARGUMENT`
+/// with the `BNCrypto.Hkdf` operation and specific catalog message.
+#[test]
+fn hkdf_invalid_length_reports_operation_and_message_on_both_backends() {
+    let directory = TestDir::new("hkdf-invalid-len").expect("create directory");
+    let source_path = directory.join("main.bn");
+    fs::write(
+        &source_path,
+        r#"IMPORT BNCrypto AS Crypto
+FUNCTION Start() AS INTEGER
+    LET key AS Crypto.SecretKey = Crypto.NewSecretKey()
+    LET salt AS Crypto.Bytes = Crypto.FromText("salt")
+    LET info AS Crypto.Bytes = Crypto.FromText("info")
+    LET res AS Crypto.SecretKey OR Error = Crypto.Hkdf(key, salt, info, 13)
+    IF res IS Error THEN
+        PRINT res.Code = Crypto.INVALID_ARGUMENT, res.Operation, res.Message
+    END IF
+    RETURN 0
+END FUNCTION
+"#,
+    )
+    .expect("write hkdf source");
+
+    let artifact = compile_native(&source_path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&source_path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "TRUE BNCrypto.Hkdf derived key length must be 16, 24, 32, or 64 bytes\n",
+            "{backend}"
+        );
+    }
+}
+
+/// User classes named like runtime handles (`Result`, `Client`, `Group`, `Key`)
+/// and imported classes widened into `T OR Error` are object pointers in the
+/// alternative union on both backends, not integer handles or lost nulls.
+#[test]
+fn user_classes_and_imported_classes_in_alternatives_match_across_backends() {
+    let directory = TestDir::new("user-class-alternatives").expect("create directory");
+    let lib_dir = directory.join("Lib");
+    fs::create_dir_all(&lib_dir).expect("create Lib dir");
+    let lib_path = lib_dir.join("Things.bn");
+    fs::write(
+        &lib_path,
+        r#"EXPORT CLASS Thing
+    PUBLIC value AS INTEGER = 77
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS Result
+    PUBLIC code AS INTEGER = 88
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS Key
+    PUBLIC id AS INTEGER = 99
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+"#,
+    )
+    .expect("write Lib/Things.bn");
+
+    let main_path = directory.join("main.bn");
+    fs::write(
+        &main_path,
+        r#"IMPORT Lib.Things AS Lib
+
+CLASS Result
+    PUBLIC value AS INTEGER = 10
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+CLASS Client
+    PUBLIC value AS INTEGER = 20
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+CLASS Group
+    PUBLIC value AS INTEGER = 30
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+CLASS Key
+    PUBLIC value AS INTEGER = 40
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS INTEGER
+    LET r AS Result OR Error = NEW Result()
+    IF r IS Result THEN
+        PRINT r.value
+    END IF
+
+    LET c AS Client OR Error = NEW Client()
+    IF c IS Client THEN
+        PRINT c.value
+    END IF
+
+    LET g AS Group OR Error = NEW Group()
+    IF g IS Group THEN
+        PRINT g.value
+    END IF
+
+    LET k AS Key OR Error = NEW Key()
+    IF k IS Key THEN
+        PRINT k.value
+    END IF
+
+    LET t AS Lib.Thing OR Error = NEW Lib.Thing()
+    IF t IS Lib.Thing THEN
+        PRINT t.value
+    END IF
+
+    LET lr AS Lib.Result OR Error = NEW Lib.Result()
+    IF lr IS Lib.Result THEN
+        PRINT lr.code
+    END IF
+
+    LET lk AS Lib.Key OR Error = NEW Lib.Key()
+    IF lk IS Lib.Key THEN
+        PRINT lk.id
+    END IF
+
+    RETURN 0
+END FUNCTION
+"#,
+    )
+    .expect("write main.bn");
+
+    let artifact = compile_native(&main_path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&main_path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "10\n20\n30\n40\n77\n88\n99\n",
+            "{backend}"
+        );
+    }
+}

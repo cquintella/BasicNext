@@ -193,13 +193,14 @@ fn invalid_value_kind_is_rejected_safely() {
     // Construct properly aligned buffer matching BNValue layout with out-of-range kind (99)
     let mut uninit = std::mem::MaybeUninit::<BNValue>::uninit();
     let uninit_ptr = uninit.as_mut_ptr();
-    // SAFETY: the buffer is local to this test; only the bytes this write fills are read.
+    // SAFETY: the buffer is local to this test and `size_of::<BNValue>()` bytes long.
     unsafe {
         uninit_ptr
             .cast::<u8>()
             .write_bytes(0, std::mem::size_of::<BNValue>());
-        uninit_ptr.cast::<u32>().write(99);
     }
+    // SAFETY: the kind tag is the first, aligned `u32` of the zeroed buffer.
+    unsafe { uninit_ptr.cast::<u32>().write(99) };
     let bad_value_ptr = uninit.as_ptr();
 
     let view = BNDataFrameColumnView {

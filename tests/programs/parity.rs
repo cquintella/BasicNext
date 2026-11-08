@@ -978,6 +978,35 @@ fn udp_results_match_across_backends() {
     native_matches_interpreter(path);
 }
 
+/// `PRINT` of a general alternative many times in one function prints the same
+/// on both backends: each member extracted for printing has its own value id.
+#[test]
+fn general_alternative_prints_match_across_backends() {
+    let path = "tests/grammar/valid/build-print-general-alternatives.bn";
+    let output = bni().args(["run", path]).output().expect("run fixture");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "7\nseven\nTRUE\n7\nseven\nTRUE\nNULL\n8\n"
+    );
+    native_matches_interpreter(path);
+}
+
+/// A closed `HOST.Net` handle stays closed when a later socket or listener is
+/// opened: the old id answers `Net.CLOSED` on both backends and never reaches
+/// the new object (value-memory-abi.md, stale handles).
+#[test]
+fn stale_net_handles_stay_closed_across_backends() {
+    let path = "tests/host/net_stale_handles.bn";
+    let output = bni().args(["run", path]).output().expect("run fixture");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "udp TRUE\nudp live TRUE\nudp stale close keeps the live socket TRUE\ntcp listener TRUE\ntcp listener live TRUE\ntcp stream TRUE\ntcp stream live TRUE\ntcp stream stale close keeps the live stream TRUE\n"
+    );
+    native_matches_interpreter(path);
+}
+
 /// `BNCrypto` failures carry the shared `bn_rt::crypto_error` report (Code,
 /// Operation, Message, Cause) on both backends (bncrypto.md "Errors").
 #[test]

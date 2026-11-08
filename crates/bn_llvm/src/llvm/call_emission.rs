@@ -522,7 +522,14 @@ pub(crate) fn lower_call_instruction(
         }
         name if bncrypto_method(module, name).is_some() => {
             let member = bncrypto_method(module, name).expect("validated BNCrypto member");
-            crypto_calls::lower_bncrypto_call(text, analysis, *destination, member, arguments);
+            crypto_calls::lower_bncrypto_call(
+                text,
+                module,
+                analysis,
+                *destination,
+                member,
+                arguments,
+            );
         }
         name if bncompress_method(module, name).is_some() => {
             let member = bncompress_method(module, name).expect("validated BNCompress member");

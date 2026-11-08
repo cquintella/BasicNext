@@ -1,0 +1,48 @@
+IMPORT BNCrypto AS Crypto
+
+// A zeroized SecretKey is INVALID_ARGUMENT for every `T OR Error` call and
+// authenticates nothing (VerifyMac is FALSE), on both backends; the key check
+// comes before the options check.
+FUNCTION Report(label AS STRING, failure AS Error) AS VOID
+    IF failure.Code = Crypto.INVALID_ARGUMENT THEN
+        PRINT label + " invalid-argument " + failure.Operation
+    ELSE
+        PRINT label + " other code"
+    END IF
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET key AS Crypto.SecretKey = Crypto.NewSecretKey()
+    LET data AS Crypto.Bytes = Crypto.FromText("message")
+    LET tag AS Crypto.Bytes OR Error = Crypto.Mac(key, data)
+    key.Zeroize()
+
+    LET mac AS Crypto.Bytes OR Error = Crypto.Mac(key, data)
+    IF mac IS Error THEN
+        Report("Mac", mac)
+    END IF
+    LET opts AS Crypto.MacOptions
+    LET macWith AS Crypto.Bytes OR Error = Crypto.MacWith(key, data, opts)
+    IF macWith IS Error THEN
+        Report("MacWith", macWith)
+    END IF
+    LET stream AS Crypto.MacStream OR Error = Crypto.MacStream.New(key)
+    IF stream IS Error THEN
+        Report("MacStream.New", stream)
+    END IF
+    LET derived AS Crypto.SecretKey OR Error = Crypto.Hkdf(key, data, data, 32)
+    IF derived IS Error THEN
+        Report("Hkdf", derived)
+    END IF
+    IF tag IS Crypto.Bytes THEN
+        IF NOT Crypto.VerifyMac(key, data, tag) THEN
+            PRINT "VerifyMac false"
+        END IF
+    END IF
+    LET aead AS Crypto.AeadOptions
+    aead.alg = 99
+    LET sealed AS Crypto.Bytes OR Error = Crypto.EncryptWith(key, data, aead)
+    IF sealed IS Error THEN
+        Report("EncryptWith", sealed)
+    END IF
+END FUNCTION

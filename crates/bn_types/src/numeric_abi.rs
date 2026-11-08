@@ -48,6 +48,10 @@ const STATISTICS: [&str; 14] = [
     "PKurtosis",
 ];
 
+#[expect(
+    clippy::expect_used,
+    reason = "code tables have small fixed lengths fitting in i32"
+)]
 fn position_code(position: usize) -> i32 {
     i32::try_from(position).expect("the code tables are short")
 }
@@ -68,6 +72,10 @@ impl NumericElement {
     /// # Panics
     ///
     /// Never: every element type is in the code table.
+    #[expect(
+        clippy::expect_used,
+        reason = "every NumericElement variant is statically listed in ELEMENTS"
+    )]
     #[must_use]
     pub fn code(self) -> i32 {
         position_code(

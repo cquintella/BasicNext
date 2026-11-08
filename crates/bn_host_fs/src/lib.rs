@@ -371,6 +371,7 @@ impl FsProvider {
                 ))
             }
             "WriteBytes" => {
+                #[expect(clippy::expect_used, reason = "read before the file borrow")]
                 let bytes = bytes.expect("read before the file borrow");
                 Ok(method_result(file.write_bytes(&bytes), |()| Value::Null))
             }

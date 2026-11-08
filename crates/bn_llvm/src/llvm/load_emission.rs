@@ -15,6 +15,7 @@ use crate::ir::{BinaryOp, CastOp, InstSink as _, LlvmInst as I, LlvmOperand as O
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub(crate) fn lower_load(
     text: &mut crate::ir::LlvmModule,
+    module: &Module,
     block_id: BlockId,
     function: &Function,
     analysis: &LoweringAnalysis<'_>,
@@ -86,7 +87,14 @@ pub(crate) fn lower_load(
             text.assign(own, value);
         }
     } else if narrows(slot_ty, dest_ty) {
-        emit_narrowed_load(text, *destination, symbols[symbol], Some(slot_ty), dest_ty);
+        emit_narrowed_load(
+            text,
+            module,
+            *destination,
+            symbols[symbol],
+            Some(slot_ty),
+            dest_ty,
+        );
     } else if slot_llvm != dest_llvm && slot_llvm.is_integer() && dest_llvm.is_integer() {
         let width = |llvm: &crate::ir::LlvmType| llvm.integer_bits().unwrap_or(64);
         let (from, to) = (slot_llvm.clone(), dest_llvm.clone());

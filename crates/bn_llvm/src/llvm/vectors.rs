@@ -104,7 +104,7 @@ pub(crate) fn emit_vector(
             ));
             O::reg(&copy)
         } else {
-            coerce_to_type(text, *element_id, source_ty, &stored_type)
+            coerce_to_type(text, module, *element_id, source_ty, &stored_type)
         };
         text.emit(I::store(elem.clone(), operand, O::reg(slot)));
     }
@@ -245,7 +245,13 @@ pub(crate) fn emit_allocate(
                 .values
                 .get(&len_value)
                 .expect("validated allocate length type");
-            coerce_to_type(text, len_value, len_ty, &Type::Integer(IntegerType::Int32))
+            coerce_to_type(
+                text,
+                analysis.module,
+                len_value,
+                len_ty,
+                &Type::Integer(IntegerType::Int32),
+            )
         } else {
             O::int(1)
         };
@@ -381,7 +387,7 @@ pub(crate) fn emit_set_member(
     state: &mut EmissionState,
 ) {
     let llvm_ty = llvm_type(field_ty).expect("validated member type");
-    let mut value_op = coerce_to_type(text, value, value_ty, field_ty);
+    let mut value_op = coerce_to_type(text, module, value, value_ty, field_ty);
     let member = O::reg(format!("mbrptr{}", value.0));
     let offset = vec![(T::I32, O::uint(u64::from(field_offset)))];
     text.assign(

@@ -83,9 +83,37 @@ pub(crate) fn lower_ownership_emission(
                     dest: continuation.clone(),
                 });
                 state.control_flow.label(text, continuation);
+            } else if let Some(release) = bncrypto_alternative_release(module, ty) {
+                // A `BNCrypto` value in an `OR Error` status result: slot 2 is the
+                // handle only when the tag is clear (an error keeps its code there),
+                // so the release is guarded by the tag. Never the file release.
+                if let CryptoAlternativeRelease::Handle(slot, symbol) = release {
+                    let v = value.0;
+                    let union = T::struct_of([T::I1, T::Ptr, T::I64]);
+                    let tag = format!("{slot}altdelete{v}");
+                    let continuation = take_continuation(block_id, state);
+                    let own = O::reg(format!("v{v}"));
+                    text.assign(
+                        format!("{slot}altiserr{v}"),
+                        I::extract(union.clone(), own.clone(), 0),
+                    );
+                    text.emit(I::CondBr {
+                        cond: O::reg(format!("{slot}altiserr{v}")),
+                        true_dest: continuation.clone(),
+                        false_dest: tag.clone(),
+                    });
+                    state.control_flow.label(text, tag);
+                    text.assign(format!("{slot}althandle{v}"), I::extract(union, own, 2));
+                    let handle = vec![(T::I64, O::reg(format!("{slot}althandle{v}")))];
+                    text.assign(format!("{slot}altrc{v}"), I::call(T::I32, symbol, handle));
+                    text.emit(I::Br {
+                        dest: continuation.clone(),
+                    });
+                    state.control_flow.label(text, continuation);
+                }
             } else if let Some((slot, symbol, checked)) = release_call(module, ty) {
                 // A handle-backed value: a `bn_rt` table index behind a ptr,
-                // or slot 2 of the aggregate (`FS.File`, `HOST.Exec.Result`).
+                // or slot 2 of the aggregate (`FS.File`).
                 let v = value.0;
                 let own = O::reg(format!("v{v}"));
                 let handle = format!("{slot}delhandle{v}");
@@ -160,7 +188,7 @@ pub(crate) fn lower_ownership_emission(
                 .values
                 .get(value)
                 .expect("validated static value type");
-            let operand = coerce_to_type(text, *value, value_ty, ty);
+            let operand = coerce_to_type(text, module, *value, value_ty, ty);
             let global = static_global_name(class, field);
             let storage = global.replacen("@bn_st_", "@bn_sv_", 1);
             if previous.is_some() && arc_ops::holds_references(module, ty) {
@@ -199,8 +227,6 @@ pub(crate) fn lower_ownership_emission(
         Instruction::SetMember {
             object,
             field,
-            name: _,
-            owner: _,
             value,
             previous,
             ty,
@@ -234,7 +260,6 @@ pub(crate) fn lower_ownership_emission(
         }
         Instruction::SetField {
             symbol,
-            path: _,
             fields,
             value,
             previous,
@@ -258,7 +283,7 @@ pub(crate) fn lower_ownership_emission(
             );
             // Reuse SetMember emitter with a synthetic object value id name via temp.
             let llvm_ty = llvm_type(ty).expect("validated field type");
-            let value_op = coerce_to_type(text, *value, value_ty, ty);
+            let value_op = coerce_to_type(text, module, *value, value_ty, ty);
             let gep = I::gep(
                 T::I8,
                 O::reg(format!("fieldobj{}", value.0)),
@@ -303,7 +328,6 @@ pub(crate) fn lower_ownership_emission(
         }
         Instruction::SetFieldIndex {
             symbol,
-            path: _,
             fields,
             indices,
             value,
@@ -466,13 +490,8 @@ fn json_document_release(module: &Module, ty: &Type) -> Option<(&'static str, &'
 /// slot prefix of its registers.
 fn release_call(module: &Module, ty: &Type) -> Option<(&'static str, &'static str, Rc)> {
     let aggregate = llvm_type(ty) == Some(crate::layout::handle_result_ty());
-    let exec = matches!(ty, Type::Alternative(alternatives) if alternatives.iter().any(
-        |item| matches!(item, Type::Named(name) if name == "HOST.Exec.Result")
-    ));
     Some(if is_bndata_dataframe_type(module, ty) {
         ("df", "bn_rt_dataframe_close", Rc::Checked)
-    } else if aggregate && exec {
-        ("exec", "bn_rt_exec_result_close", Rc::Dropped)
     } else if aggregate {
         ("file", "bn_rt_file_release", Rc::Dropped)
     } else if let Some(release) = json_document_release(module, ty) {
@@ -481,6 +500,12 @@ fn release_call(module: &Module, ty: &Type) -> Option<(&'static str, &'static st
         ("cry", "bn_rt_crypto_bytes_release", Rc::Named)
     } else if is_bncrypto_key_type(module, ty) {
         ("cryk", "bn_rt_crypto_key_release", Rc::Named)
+    } else if is_bncrypto_secret_type(module, ty) {
+        ("crys", "bn_rt_crypto_secret_release", Rc::Named)
+    } else if is_bncrypto_secret_key_type(module, ty) {
+        ("crysk", "bn_rt_crypto_secret_key_release", Rc::Named)
+    } else if let Some((slot, symbol)) = bncrypto_handle_release(module, ty) {
+        (slot, symbol, Rc::Named)
     } else if is_bncompress_bytes_type(module, ty) {
         ("cmp", "bn_rt_compress_bytes_release", Rc::Named)
     } else if is_bncompress_zip_type(module, ty) {

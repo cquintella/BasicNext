@@ -1,0 +1,36 @@
+# Clippy configuration (parameters of the lints). Which lints run, and at what
+# level, is in [workspace.lints] of Cargo.toml; CI and the gate battery run
+# `cargo clippy --workspace --all-targets -- -D warnings`, so every warning
+# fails the build.
+
+# The minimum Rust version is `rust-version` in Cargo.toml (clippy reads it).
+
+# Tests may unwrap, expect, panic, print and use dbg!; production code may not
+# once the restriction lints for them are on.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-print-in-tests = true
+allow-dbg-in-tests = true
+
+# A `// SAFETY:` comment may sit above the statement or the attributes of an
+# unsafe block (undocumented_unsafe_blocks).
+accept-comment-above-statement = true
+accept-comment-above-attributes = true
+
+# Product names that are identifiers, not code, in documentation
+# (doc_markdown); ".." keeps clippy's own list.
+doc-valid-idents = [
+    "BNCompress", "BNCrypto", "BNData", "BNDispatch", "BNFfi", "BNJson",
+    "BNLog", "BNMath", "BNSqlite", "BNString", "BNWeb", "Basic", "Next",
+    "ML-KEM", "ML-DSA", "X25519", "Ed25519", "XChaCha20", "ChaCha20",
+    "SHA-256", "SHA-512", "SHA3-256", "BLAKE2b", "BLAKE3", "PKCS8",
+    "AddressSanitizer", "..",
+]
+
+# Calls that are unsound or that bypass the runtime's contracts.
+disallowed-methods = [
+    { path = "std::env::set_var", reason = "not thread-safe; the runtime reads the environment through HOST.Env and its policy" },
+    { path = "std::env::remove_var", reason = "not thread-safe; the runtime reads the environment through HOST.Env and its policy" },
+    { path = "std::fs::read", reason = "bypasses the filesystem policy; open through bn_rt::policy or the HOST.FileSystem provider", allow-invalid = true },
+]

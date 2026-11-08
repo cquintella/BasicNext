@@ -1,0 +1,40 @@
+// RELEASE of each BNCrypto handle type ends the handle on both backends.
+// A KeyPair is a STRUCT: releasing it drops the record's own count of each
+// key. A copy taken first keeps a count, so the key stays usable.
+IMPORT BNCrypto AS Crypto
+
+FUNCTION Start() AS VOID
+    LET h AS Crypto.Hasher OR Error = Crypto.Hasher.New(Crypto.Alg.SHA256)
+    IF h IS Crypto.Hasher THEN
+        RELEASE h
+        PRINT "hasher-released"
+    END IF
+
+    LET m AS Crypto.MacStream OR Error = Crypto.MacStream.New(Crypto.NewSecretKey())
+    IF m IS Crypto.MacStream THEN
+        RELEASE m
+        PRINT "mac-stream-released"
+    END IF
+
+    LET kp AS Crypto.KeyPair OR Error = Crypto.NewKeyPair()
+    IF kp IS Crypto.KeyPair THEN
+        LET pub AS Crypto.PublicKey = kp.PublicKey
+        LET priv AS Crypto.PrivateKey = kp.PrivateKey
+        RELEASE kp
+        PRINT pub.Algorithm()
+        RELEASE pub
+        PRINT "public-key-released"
+        RELEASE priv
+        PRINT "private-key-released"
+    END IF
+
+    // Unnarrowed `OR Error` bindings: the handle is released only when the
+    // value is not an Error (an Error keeps its code where the handle would be).
+    LET hAlt AS Crypto.Hasher OR Error = Crypto.Hasher.New(Crypto.Alg.SHA256)
+    RELEASE hAlt
+    LET bad AS Crypto.PublicKey OR Error = Crypto.LoadPublicKey("x")
+    RELEASE bad
+    LET kpAlt AS Crypto.KeyPair OR Error = Crypto.NewKeyPair()
+    RELEASE kpAlt
+    PRINT "alternatives-released"
+END FUNCTION

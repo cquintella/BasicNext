@@ -6,13 +6,22 @@
 // Calls to `BNCrypto` members. `Bytes` and keys travel as `bn_rt` table
 // indices (`i64`), as BNLog resources do.
 #![allow(clippy::wildcard_imports)]
+#[path = "crypto_aead_calls.rs"]
+mod crypto_aead_calls;
+#[path = "crypto_asymmetric_calls.rs"]
+mod crypto_asymmetric_calls;
+#[path = "crypto_csprng_calls.rs"]
+mod crypto_csprng_calls;
+#[path = "crypto_encoding_calls.rs"]
+mod crypto_encoding_calls;
+
 use super::json_calls::emit_handle_index;
 use super::*;
 use crate::ir::{CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
 
 /// How a member's `bn_rt` status becomes its result.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Out {
+pub(super) enum Out {
     /// `Bytes OR Error`: the status and the handle written through `ptr`.
     Handle,
     /// `BOOLEAN`: the status is 1 when the check holds.
@@ -21,13 +30,57 @@ enum Out {
     Bytes,
 }
 
+fn carries_type(ty: &Type, target: &str) -> bool {
+    match ty {
+        Type::Named(name)
+        | Type::ImportedNamed { name, .. }
+        | Type::ImportedTypeName { name, .. } => {
+            name == target || name.ends_with(&format!(".{target}"))
+        }
+        Type::Alternative(alternatives) => alternatives.iter().any(|a| carries_type(a, target)),
+        _ => false,
+    }
+}
+
 pub(super) fn lower_bncrypto_call(
     text: &mut crate::ir::LlvmModule,
+    module: &Module,
     analysis: &LoweringAnalysis<'_>,
     destination: ValueId,
     member: &str,
     arguments: &[ValueId],
 ) {
+    if crypto_aead_calls::try_lower_aead_call(
+        text,
+        module,
+        analysis,
+        destination,
+        member,
+        arguments,
+    ) {
+        return;
+    }
+    if crypto_encoding_calls::try_lower_encoding_call(
+        text,
+        analysis,
+        destination,
+        member,
+        arguments,
+    ) {
+        return;
+    }
+    if crypto_csprng_calls::try_lower_csprng_call(text, analysis, destination, member, arguments) {
+        return;
+    }
+    if crypto_asymmetric_calls::try_lower_asymmetric_call(
+        text,
+        analysis,
+        destination,
+        member,
+        arguments,
+    ) {
+        return;
+    }
     let dest = destination.0;
     let v = |id: ValueId| O::reg(format!("v{}", id.0));
     let cryh = || O::reg(format!("cryh{dest}"));
@@ -48,40 +101,146 @@ pub(super) fn lower_bncrypto_call(
             );
             return;
         }
-        "Length" | "ToHex" | "Algorithm" | "Zeroize" => {
+        "NewSecret" | "SecretFromText" => {
+            let args = vec![(T::Ptr, v(arguments[0]))];
+            let call = I::call(T::I64, "bn_rt_crypto_secret_from_text", args);
+            text.assign(format!("cryh{dest}"), call);
+            text.assign(
+                format!("v{dest}"),
+                I::cast(CastOp::IntToPtr, T::I64, cryh(), T::Ptr),
+            );
+            return;
+        }
+        "ToBytes" => {
             emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
             let args = vec![(T::I64, cryh())];
-            if member == "ToHex" {
-                let call = I::call(T::Ptr, "bn_rt_crypto_bytes_to_hex", args);
-                text.assign(format!("v{dest}"), call);
-            } else if member == "Algorithm" {
-                let call = I::call(T::I32, "bn_rt_crypto_key_algorithm", args);
-                text.assign(format!("v{dest}"), call);
-            } else if member == "Zeroize" {
-                let call = I::call(T::I32, "bn_rt_crypto_key_zeroize", args);
-                text.assign(format!("cryrc{dest}"), call);
+            let call = I::call(T::I64, "bn_rt_crypto_secret_to_bytes", args);
+            text.assign(format!("cryb{dest}"), call);
+            text.assign(
+                format!("v{dest}"),
+                I::cast(
+                    CastOp::IntToPtr,
+                    T::I64,
+                    O::reg(format!("cryb{dest}")),
+                    T::Ptr,
+                ),
+            );
+            return;
+        }
+        "ConstantTimeEquals" => {
+            emit_handle_index(text, analysis, &format!("crya{dest}"), arguments[0]);
+            emit_handle_index(text, analysis, &format!("cryb{dest}"), arguments[1]);
+            let is_secret = analysis
+                .values
+                .get(&arguments[0])
+                .is_some_and(|ty| match ty {
+                    Type::Named(name)
+                    | Type::ImportedNamed { name, .. }
+                    | Type::ImportedTypeName { name, .. } => {
+                        name == "Secret" || name.ends_with(".Secret")
+                    }
+                    _ => false,
+                });
+            let sym = if is_secret {
+                "bn_rt_crypto_secret_constant_time_equals"
             } else {
+                "bn_rt_crypto_bytes_constant_time_equals"
+            };
+            let args = vec![
+                (T::I64, O::reg(format!("crya{dest}"))),
+                (T::I64, O::reg(format!("cryb{dest}"))),
+            ];
+            let call = I::call(T::I32, sym, args);
+            text.assign(format!("cryrc{dest}"), call);
+            text.assign(
+                format!("v{dest}"),
+                I::icmp(
+                    ICmpCond::Eq,
+                    T::I32,
+                    O::reg(format!("cryrc{dest}")),
+                    O::int(1),
+                ),
+            );
+            return;
+        }
+        "Length" | "Algorithm" | "Zeroize" => {
+            emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
+            let args = vec![(T::I64, cryh())];
+            if member == "Algorithm" {
+                let is_secret_key = analysis
+                    .values
+                    .get(&arguments[0])
+                    .is_some_and(|ty| carries_type(ty, "SecretKey"));
+                let is_pub = analysis
+                    .values
+                    .get(&arguments[0])
+                    .is_some_and(|ty| carries_type(ty, "PublicKey"));
+                let is_priv = analysis
+                    .values
+                    .get(&arguments[0])
+                    .is_some_and(|ty| carries_type(ty, "PrivateKey"));
+                if is_secret_key {
+                    let call = I::call(T::Ptr, "bn_rt_crypto_secret_key_algorithm", args);
+                    text.assign(format!("v{dest}"), call);
+                } else if is_pub {
+                    let call = I::call(T::I32, "bn_rt_crypto_public_key_algorithm", args);
+                    text.assign(format!("v{dest}"), call);
+                } else if is_priv {
+                    let call = I::call(T::I32, "bn_rt_crypto_private_key_algorithm", args);
+                    text.assign(format!("v{dest}"), call);
+                } else {
+                    let call = I::call(T::I32, "bn_rt_crypto_key_algorithm", args);
+                    text.assign(format!("v{dest}"), call);
+                }
+            } else if member == "Zeroize" {
+                let is_secret_key = analysis
+                    .values
+                    .get(&arguments[0])
+                    .is_some_and(|ty| carries_type(ty, "SecretKey"));
+                let is_priv = analysis
+                    .values
+                    .get(&arguments[0])
+                    .is_some_and(|ty| carries_type(ty, "PrivateKey"));
                 let is_key = analysis
                     .values
                     .get(&arguments[0])
-                    .is_some_and(|ty| match ty {
-                        Type::Named(name)
-                        | Type::ImportedNamed { name, .. }
-                        | Type::ImportedTypeName { name, .. } => {
-                            name == "Key" || name.ends_with(".Key")
-                        }
-                        Type::Alternative(alternatives) => alternatives.iter().any(|a| match a {
-                            Type::Named(name)
-                            | Type::ImportedNamed { name, .. }
-                            | Type::ImportedTypeName { name, .. } => {
-                                name == "Key" || name.ends_with(".Key")
-                            }
-                            _ => false,
-                        }),
-                        _ => false,
-                    });
-                let sym = if is_key {
+                    .is_some_and(|ty| carries_type(ty, "Key"));
+                let is_secret = analysis
+                    .values
+                    .get(&arguments[0])
+                    .is_some_and(|ty| carries_type(ty, "Secret"));
+                let symbol = if is_priv {
+                    "bn_rt_crypto_private_key_zeroize"
+                } else if is_secret_key {
+                    "bn_rt_crypto_secret_key_zeroize"
+                } else if is_key {
+                    "bn_rt_crypto_key_zeroize"
+                } else if is_secret {
+                    "bn_rt_crypto_secret_zeroize"
+                } else {
+                    "bn_rt_crypto_bytes_zeroize"
+                };
+                let call = I::call(T::I32, symbol, args);
+                text.assign(format!("cryrc{dest}"), call);
+            } else {
+                let is_secret_key = analysis
+                    .values
+                    .get(&arguments[0])
+                    .is_some_and(|ty| carries_type(ty, "SecretKey"));
+                let is_key = analysis
+                    .values
+                    .get(&arguments[0])
+                    .is_some_and(|ty| carries_type(ty, "Key"));
+                let is_secret = analysis
+                    .values
+                    .get(&arguments[0])
+                    .is_some_and(|ty| carries_type(ty, "Secret"));
+                let sym = if is_secret_key {
+                    "bn_rt_crypto_secret_key_length"
+                } else if is_key {
                     "bn_rt_crypto_key_length"
+                } else if is_secret {
+                    "bn_rt_crypto_secret_length"
                 } else {
                     "bn_rt_crypto_bytes_length"
                 };
@@ -95,26 +254,503 @@ pub(super) fn lower_bncrypto_call(
             }
             return;
         }
-        "RandomBytes" => {
+        member if crate::helpers::KEYPAIR_CONSTRUCTORS.contains(&member) => {
+            text.assign(
+                format!("kpptr{dest}"),
+                I::call(
+                    T::Ptr,
+                    "calloc",
+                    vec![(T::I64, O::int(1)), (T::I64, O::int(32))],
+                ),
+            );
+            let kpptr = O::reg(format!("kpptr{dest}"));
+            text.assign(
+                format!("kppub_{dest}"),
+                I::gep(T::I8, kpptr.clone(), vec![(T::I32, O::int(16))]),
+            );
+            let pub_slot = O::reg(format!("kppub_{dest}"));
+            text.assign(
+                format!("kppriv_{dest}"),
+                I::gep(T::I8, kpptr.clone(), vec![(T::I32, O::int(24))]),
+            );
+            let priv_slot = O::reg(format!("kppriv_{dest}"));
+            // `NewKeyPairWith(opts)`: the runtime reads `alg` and `policy` from
+            // the `KeyPairOptions` record; the other two pass the selector.
+            let (symbol, first) = if member == "NewKeyPair" {
+                ("bn_rt_crypto_keypair_generate", (T::I32, O::int(30)))
+            } else if member == "NewKeyPairFor" {
+                let alg_val = arguments[0];
+                let alg_ty = analysis.values.get(&alg_val).expect("validated alg type");
+                let alg_llvm = llvm_type(alg_ty).expect("validated alg llvm type");
+                let alg_op = if alg_llvm == T::I32 {
+                    v(alg_val)
+                } else {
+                    text.assign(
+                        format!("cryalg{dest}"),
+                        I::cast(CastOp::Trunc, alg_llvm, v(alg_val), T::I32),
+                    );
+                    O::reg(format!("cryalg{dest}"))
+                };
+                ("bn_rt_crypto_keypair_generate", (T::I32, alg_op))
+            } else {
+                (
+                    "bn_rt_crypto_keypair_generate_with",
+                    (T::Ptr, v(arguments[0])),
+                )
+            };
+            let args = vec![first, (T::Ptr, pub_slot), (T::Ptr, priv_slot)];
+            text.assign(format!("kprc{dest}"), I::call(T::I32, symbol, args));
+            let rc = O::reg(format!("kprc{dest}"));
+            text.assign(
+                format!("kppayload{dest}"),
+                I::cast(CastOp::PtrToInt, T::Ptr, kpptr.clone(), T::I64),
+            );
+            let kppayload = O::reg(format!("kppayload{dest}"));
+            super::host_results::emit_status_result(
+                text,
+                destination,
+                &rc,
+                None,
+                &kpptr,
+                &kppayload,
+            );
+            return;
+        }
+        "PublicKey" => {
+            emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
+            let args = vec![(T::I64, cryh())];
+            let call = I::call(T::I64, "bn_rt_crypto_private_key_public_key", args);
+            text.assign(format!("crypub{dest}"), call);
+            text.assign(
+                format!("v{dest}"),
+                I::cast(
+                    CastOp::IntToPtr,
+                    T::I64,
+                    O::reg(format!("crypub{dest}")),
+                    T::Ptr,
+                ),
+            );
+            return;
+        }
+        "NewSecretKey" | "NewSecretKeyWith" => {
+            let args = vec![
+                (T::I64, O::int(256)),
+                (T::Ptr, O::null()),
+                (T::Ptr, O::null()),
+            ];
+            let call = I::call(T::I64, "bn_rt_crypto_secret_key_generate", args);
+            text.assign(format!("cryh{dest}"), call);
+            text.assign(
+                format!("v{dest}"),
+                I::cast(CastOp::IntToPtr, T::I64, cryh(), T::Ptr),
+            );
+            return;
+        }
+        "SecretKeyFromBytes" => {
+            emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
+            let args = vec![
+                (T::I64, cryh()),
+                (T::Ptr, v(arguments[1])),
+                (T::Ptr, O::null()),
+            ];
+            let call = I::call(T::I64, "bn_rt_crypto_secret_key_from_bytes", args);
+            text.assign(format!("crys{dest}"), call);
+            text.assign(
+                format!("v{dest}"),
+                I::cast(
+                    CastOp::IntToPtr,
+                    T::I64,
+                    O::reg(format!("crys{dest}")),
+                    T::Ptr,
+                ),
+            );
+            return;
+        }
+        "WrapKey" => {
+            emit_handle_index(text, analysis, &format!("crya{dest}"), arguments[0]);
+            emit_handle_index(text, analysis, &format!("cryb{dest}"), arguments[1]);
+            let args = vec![
+                (T::I64, O::reg(format!("crya{dest}"))),
+                (T::I64, O::reg(format!("cryb{dest}"))),
+            ];
+            let call = I::call(T::I64, "bn_rt_crypto_secret_key_wrap", args);
+            text.assign(format!("cryw{dest}"), call);
+            text.assign(
+                format!("v{dest}"),
+                I::cast(
+                    CastOp::IntToPtr,
+                    T::I64,
+                    O::reg(format!("cryw{dest}")),
+                    T::Ptr,
+                ),
+            );
+            return;
+        }
+        "UnwrapKey" | "UnwrapKeyWith" => {
+            emit_handle_index(text, analysis, &format!("crya{dest}"), arguments[0]);
+            emit_handle_index(text, analysis, &format!("cryb{dest}"), arguments[1]);
+            let args = vec![
+                (T::I64, O::reg(format!("crya{dest}"))),
+                (T::I64, O::reg(format!("cryb{dest}"))),
+                (T::I64, O::int(256)),
+                (T::Ptr, O::null()),
+                (T::Ptr, O::null()),
+            ];
+            let call = I::call(T::I64, "bn_rt_crypto_secret_key_unwrap", args);
+            text.assign(format!("cryu{dest}"), call);
+            text.assign(
+                format!("v{dest}"),
+                I::cast(
+                    CastOp::IntToPtr,
+                    T::I64,
+                    O::reg(format!("cryu{dest}")),
+                    T::Ptr,
+                ),
+            );
+            return;
+        }
+        "Id" | "Purpose" => {
+            emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
+            let args = vec![(T::I64, cryh())];
+            let is_pub = analysis
+                .values
+                .get(&arguments[0])
+                .is_some_and(|ty| carries_type(ty, "PublicKey"));
+            let is_priv = analysis
+                .values
+                .get(&arguments[0])
+                .is_some_and(|ty| carries_type(ty, "PrivateKey"));
+            let sym = if is_pub {
+                "bn_rt_crypto_public_key_id"
+            } else if is_priv {
+                "bn_rt_crypto_private_key_id"
+            } else if member == "Id" {
+                "bn_rt_crypto_secret_key_id"
+            } else {
+                "bn_rt_crypto_secret_key_purpose"
+            };
+            let call = I::call(T::Ptr, sym, args);
+            text.assign(format!("v{dest}"), call);
+            return;
+        }
+        "Bits" => {
+            emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
+            let args = vec![(T::I64, cryh())];
+            let call = I::call(T::I64, "bn_rt_crypto_secret_key_bits", args);
+            text.assign(format!("cryb{dest}"), call);
+            text.assign(
+                format!("v{dest}"),
+                I::cast(CastOp::Trunc, T::I64, O::reg(format!("cryb{dest}")), T::I32),
+            );
+            return;
+        }
+        "ExportSecret" => {
+            emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
+            let fmt_op = if arguments.len() > 1 {
+                v(arguments[1])
+            } else {
+                O::null()
+            };
+            let args = vec![(T::I64, cryh()), (T::Ptr, fmt_op)];
+            let call = I::call(T::I64, "bn_rt_crypto_secret_key_export", args);
+            text.assign(format!("crye{dest}"), call);
+            text.assign(
+                format!("v{dest}"),
+                I::cast(
+                    CastOp::IntToPtr,
+                    T::I64,
+                    O::reg(format!("crye{dest}")),
+                    T::Ptr,
+                ),
+            );
+            return;
+        }
+        "EncryptFile" | "DecryptFile" => {
+            emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
+            let symbol = if member == "EncryptFile" {
+                "bn_rt_crypto_encrypt_file"
+            } else {
+                "bn_rt_crypto_decrypt_file"
+            };
+            let args = vec![
+                (T::I64, cryh()),
+                (T::Ptr, v(arguments[1])),
+                (T::Ptr, v(arguments[2])),
+            ];
+            text.assign(format!("cryrc{dest}"), I::call(T::I32, symbol, args));
+            emit_void_result(text, destination, &O::reg(format!("cryrc{dest}")));
+            return;
+        }
+        "EncryptFileWithPassword" | "DecryptFileWithPassword" => {
+            let symbol = if member == "EncryptFileWithPassword" {
+                "bn_rt_crypto_encrypt_file_with_password"
+            } else {
+                "bn_rt_crypto_decrypt_file_with_password"
+            };
+            let args = vec![
+                (T::Ptr, v(arguments[0])),
+                (T::Ptr, v(arguments[1])),
+                (T::Ptr, v(arguments[2])),
+            ];
+            text.assign(format!("cryrc{dest}"), I::call(T::I32, symbol, args));
+            emit_void_result(text, destination, &O::reg(format!("cryrc{dest}")));
+            return;
+        }
+        "Hash" => {
+            emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
+            let args = vec![(T::I64, cryh()), (T::I32, O::int(1))];
+            let call = I::call(T::I64, "bn_rt_crypto_hash_handle", args);
+            text.assign(format!("cryd{dest}"), call);
+            text.assign(
+                format!("v{dest}"),
+                I::cast(
+                    CastOp::IntToPtr,
+                    T::I64,
+                    O::reg(format!("cryd{dest}")),
+                    T::Ptr,
+                ),
+            );
+            return;
+        }
+        "HashText" => {
+            let args = vec![(T::Ptr, v(arguments[0]))];
+            let call = I::call(T::Ptr, "bn_rt_crypto_hash_text", args);
+            text.assign(format!("v{dest}"), call);
+            return;
+        }
+        "HashFile" => {
+            let args = vec![(T::Ptr, v(arguments[0])), (T::I32, O::int(1))];
+            lower_status_call(
+                text,
+                destination,
+                "bn_rt_crypto_hash_file",
+                args,
+                Out::Handle,
+            );
+            return;
+        }
+        "HashWith" => {
+            emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
+            let args = vec![(T::I64, cryh()), (T::Ptr, v(arguments[1]))];
+            lower_status_call(
+                text,
+                destination,
+                "bn_rt_crypto_hash_with",
+                args,
+                Out::Handle,
+            );
+            return;
+        }
+        "MacWith" => {
+            emit_handle_index(text, analysis, &format!("cryk{dest}"), arguments[0]);
+            emit_handle_index(text, analysis, &format!("cryd{dest}"), arguments[1]);
+            let args = vec![
+                (T::I64, O::reg(format!("cryk{dest}"))),
+                (T::I64, O::reg(format!("cryd{dest}"))),
+                (T::Ptr, v(arguments[2])),
+            ];
+            lower_status_call(
+                text,
+                destination,
+                "bn_rt_crypto_mac_with",
+                args,
+                Out::Handle,
+            );
+            return;
+        }
+        "VerifyMac" => {
+            emit_handle_index(text, analysis, &format!("cryk{dest}"), arguments[0]);
+            emit_handle_index(text, analysis, &format!("cryd{dest}"), arguments[1]);
+            emit_handle_index(text, analysis, &format!("cryt{dest}"), arguments[2]);
+            let args = vec![
+                (T::I64, O::reg(format!("cryk{dest}"))),
+                (T::I64, O::reg(format!("cryd{dest}"))),
+                (T::I64, O::reg(format!("cryt{dest}"))),
+            ];
+            lower_status_call(
+                text,
+                destination,
+                "bn_rt_crypto_mac_verify_handle",
+                args,
+                Out::Verify,
+            );
+            return;
+        }
+        "HashPassword" => {
+            let args = vec![(T::Ptr, v(arguments[0]))];
+            let call = I::call(T::Ptr, "bn_rt_crypto_hash_password", args);
+            text.assign(format!("v{dest}"), call);
+            return;
+        }
+        "VerifyPassword" => {
+            let args = vec![(T::Ptr, v(arguments[0])), (T::Ptr, v(arguments[1]))];
+            let call = I::call(T::I32, "bn_rt_crypto_verify_password", args);
+            text.assign(format!("cryrc{dest}"), call);
+            text.assign(
+                format!("v{dest}"),
+                I::icmp(
+                    ICmpCond::Eq,
+                    T::I32,
+                    O::reg(format!("cryrc{dest}")),
+                    O::int(1),
+                ),
+            );
+            return;
+        }
+        "Hkdf" => {
+            emit_handle_index(text, analysis, &format!("cryikm{dest}"), arguments[0]);
+            emit_handle_index(text, analysis, &format!("crysalt{dest}"), arguments[1]);
+            emit_handle_index(text, analysis, &format!("cryinfo{dest}"), arguments[2]);
+            let len_ty = analysis
+                .values
+                .get(&arguments[3])
+                .and_then(llvm_type)
+                .unwrap_or(T::I64);
+            let len_op = if len_ty == T::I64 {
+                v(arguments[3])
+            } else {
+                let slot = format!("crylen{dest}");
+                text.assign(
+                    &slot,
+                    I::cast(CastOp::SExt, len_ty, v(arguments[3]), T::I64),
+                );
+                O::reg(slot)
+            };
+            let args = vec![
+                (T::I64, O::reg(format!("cryikm{dest}"))),
+                (T::I64, O::reg(format!("crysalt{dest}"))),
+                (T::I64, O::reg(format!("cryinfo{dest}"))),
+                (T::I64, len_op),
+            ];
+            lower_status_call(text, destination, "bn_rt_crypto_hkdf", args, Out::Handle);
+            return;
+        }
+        "New" | "NewWith" => {
+            let is_key = analysis
+                .values
+                .get(&arguments[0])
+                .is_some_and(|t| carries_type(t, "SecretKey") || carries_type(t, "Key"));
+            if is_key {
+                emit_handle_index(text, analysis, &format!("cryk{dest}"), arguments[0]);
+                if member == "NewWith" {
+                    let args = vec![
+                        (T::I64, O::reg(format!("cryk{dest}"))),
+                        (T::Ptr, v(arguments[1])),
+                    ];
+                    lower_status_call(
+                        text,
+                        destination,
+                        "bn_rt_crypto_mac_stream_new_with",
+                        args,
+                        Out::Handle,
+                    );
+                    return;
+                }
+                let alg_op = if arguments.len() > 1 {
+                    let ty = analysis
+                        .values
+                        .get(&arguments[1])
+                        .and_then(llvm_type)
+                        .unwrap_or(T::I32);
+                    if ty == T::I32 {
+                        v(arguments[1])
+                    } else {
+                        let slot = format!("cryalg{dest}");
+                        text.assign(&slot, I::cast(CastOp::Trunc, ty, v(arguments[1]), T::I32));
+                        O::reg(slot)
+                    }
+                } else {
+                    O::int(11) // default MAC_HMAC_SHA256
+                };
+                let args = vec![(T::I64, O::reg(format!("cryk{dest}"))), (T::I32, alg_op)];
+                lower_status_call(
+                    text,
+                    destination,
+                    "bn_rt_crypto_mac_stream_new",
+                    args,
+                    Out::Handle,
+                );
+                return;
+            }
+            if member == "NewWith" {
+                // `Hasher.NewWith(opts)`: the runtime reads the algorithm and
+                // the policy from the `HashOptions` record.
+                let args = vec![(T::Ptr, v(arguments[0]))];
+                lower_status_call(
+                    text,
+                    destination,
+                    "bn_rt_crypto_hasher_new_with",
+                    args,
+                    Out::Handle,
+                );
+                return;
+            }
             let ty = analysis
                 .values
                 .get(&arguments[0])
                 .and_then(llvm_type)
-                .unwrap_or(T::I64);
-            let arg_op = if ty == T::I64 {
+                .unwrap_or(T::I32);
+            let arg_op = if ty == T::I32 {
                 v(arguments[0])
             } else {
-                let slot = format!("crybound{dest}");
-                text.assign(&slot, I::cast(CastOp::SExt, ty, v(arguments[0]), T::I64));
+                let slot = format!("cryalg{dest}");
+                text.assign(&slot, I::cast(CastOp::Trunc, ty, v(arguments[0]), T::I32));
                 O::reg(slot)
             };
-            let args = vec![(T::I64, arg_op)];
+            let args = vec![(T::I32, arg_op)];
             lower_status_call(
                 text,
                 destination,
-                "bn_rt_crypto_random_bytes",
+                "bn_rt_crypto_hasher_new",
                 args,
                 Out::Handle,
+            );
+            return;
+        }
+        "Update" => {
+            emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
+            emit_handle_index(text, analysis, &format!("cryd{dest}"), arguments[1]);
+            let is_mac = analysis
+                .values
+                .get(&arguments[0])
+                .is_some_and(|t| carries_type(t, "MacStream"));
+            let sym = if is_mac {
+                "bn_rt_crypto_mac_stream_update_handle"
+            } else {
+                "bn_rt_crypto_hasher_update_handle"
+            };
+            let args = vec![(T::I64, cryh()), (T::I64, O::reg(format!("cryd{dest}")))];
+            text.assign(format!("cryrc{dest}"), I::call(T::I32, sym, args));
+            return;
+        }
+        "Finish" => {
+            emit_handle_index(text, analysis, &format!("cryh{dest}"), arguments[0]);
+            let is_mac = analysis
+                .values
+                .get(&arguments[0])
+                .is_some_and(|t| carries_type(t, "MacStream"));
+            let sym = if is_mac {
+                "bn_rt_crypto_mac_stream_finish"
+            } else {
+                "bn_rt_crypto_hasher_finish"
+            };
+            let args = vec![(T::I64, cryh())];
+            lower_status_call(text, destination, sym, args, Out::Bytes);
+            return;
+        }
+        "Verify" => {
+            emit_handle_index(text, analysis, &format!("crys{dest}"), arguments[0]);
+            emit_handle_index(text, analysis, &format!("cryt{dest}"), arguments[1]);
+            let args = vec![
+                (T::I64, O::reg(format!("crys{dest}"))),
+                (T::I64, O::reg(format!("cryt{dest}"))),
+            ];
+            lower_status_call(
+                text,
+                destination,
+                "bn_rt_crypto_mac_stream_verify",
+                args,
+                Out::Verify,
             );
             return;
         }
@@ -159,17 +795,6 @@ pub(super) fn lower_bncrypto_call(
                 text,
                 destination,
                 "bn_rt_crypto_import_key",
-                args,
-                Out::Handle,
-            );
-            return;
-        }
-        "FromHex" => {
-            let args = vec![(T::Ptr, v(arguments[0]))];
-            lower_status_call(
-                text,
-                destination,
-                "bn_rt_crypto_bytes_from_hex",
                 args,
                 Out::Handle,
             );
@@ -239,7 +864,7 @@ pub(super) fn lower_bncrypto_call(
     );
 }
 
-fn lower_status_call(
+pub(super) fn lower_status_call(
     text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     symbol: &str,

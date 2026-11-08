@@ -1,0 +1,53 @@
+// Library handles end with their binding on both backends. A copy returned
+// from a function keeps its count after the function's own binding ends.
+// Explicit RELEASE, then the end of the copy's binding, releases once.
+IMPORT BNJson AS Json
+IMPORT BNData AS Data
+IMPORT BNSqlite AS Sqlite
+IMPORT BNCompress AS Compress
+
+FUNCTION FreshJson() AS Json.Json
+    LET doc AS Json.Json OR Error = Json.Json.Parse("{\"key\":\"hello\"}")
+    IF doc IS Error THEN
+        STOP 1
+    END IF
+    RETURN doc
+END FUNCTION
+
+FUNCTION FreshData() AS Data.DataFrame
+    LET df AS Data.DataFrame = NEW Data.DataFrame()
+    RETURN df
+END FUNCTION
+
+FUNCTION FreshSqlite() AS Sqlite.Connection
+    LET conn AS Sqlite.Connection OR Error = Sqlite.Open(":memory:")
+    IF conn IS Error THEN
+        STOP 1
+    END IF
+    RETURN conn
+END FUNCTION
+
+FUNCTION FreshBytes() AS Compress.Bytes
+    LET b AS Compress.Bytes = Compress.FromText("test")
+    RETURN b
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET j AS Json.Json = FreshJson()
+    LET key AS STRING OR Error = Json.Json.GetString(j, "key")
+    IF key IS Error THEN
+        PRINT "error"
+    ELSE
+        PRINT key
+    END IF
+    RELEASE j
+    LET df AS Data.DataFrame = FreshData()
+    PRINT df.RowCount()
+    RELEASE df
+    LET conn AS Sqlite.Connection = FreshSqlite()
+    PRINT conn.Changes()
+    RELEASE conn
+    LET b AS Compress.Bytes = FreshBytes()
+    PRINT b.Length()
+    RELEASE b
+END FUNCTION

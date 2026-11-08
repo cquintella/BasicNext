@@ -56,6 +56,7 @@ fn function(name: &str, instructions: Vec<Instruction>, returned: Option<u32>) -
                 value: returned.map(ValueId),
             },
         }],
+        symbol_names: std::collections::HashMap::new(),
         span: span(),
     }
 }

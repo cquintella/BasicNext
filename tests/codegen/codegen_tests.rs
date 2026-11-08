@@ -42,6 +42,7 @@ fn start_module(blocks: Vec<BasicBlock>) -> Module {
             entry: BlockId(0),
             blocks,
             weak_symbols: std::collections::HashSet::default(),
+            symbol_names: std::collections::HashMap::default(),
             span: span(),
         }],
         ..Module::default()

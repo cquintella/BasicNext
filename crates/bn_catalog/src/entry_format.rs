@@ -18,7 +18,7 @@
 /// # Errors
 ///
 /// A line without ` = `, or a value with an unknown escape, names the line.
-pub fn parse(contents: &str) -> Result<Vec<(&str, String)>, String> {
+pub(crate) fn parse(contents: &str) -> Result<Vec<(&str, String)>, String> {
     let mut entries = Vec::new();
     for line in contents.lines() {
         let line = line.trim_end();
@@ -99,6 +99,10 @@ pub fn escape(value: &str) -> String {
     if leading == out.len() {
         return "\\s".repeat(leading);
     }
+    #[expect(
+        clippy::string_slice,
+        reason = "leading and trailing offsets are derived from single-byte ASCII space trimming"
+    )]
     let middle = &out[leading..out.len() - trailing];
     format!(
         "{}{middle}{}",

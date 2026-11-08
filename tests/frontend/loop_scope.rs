@@ -71,6 +71,10 @@ const SIBLING_CLASSES: [(&str, &str); 8] = [
     ),
 ];
 
+#[expect(
+    clippy::unwrap_in_result,
+    reason = "test helper: a failed set-up is a failed test"
+)]
 fn analyze_source(name: &str, text: String) -> Result<(), String> {
     let source = SourceFile::new(name, text);
     let tokens = lex(&source).expect("lex source");

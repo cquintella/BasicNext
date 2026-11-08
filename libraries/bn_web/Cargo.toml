@@ -21,6 +21,7 @@ bn_core_dispatch = { path = "../bn_core_dispatch" }
 bn_core_log = { path = "../bn_core_log" }
 bn_core_net = { path = "../../crates/bn_core_net" }
 bn_limits = { path = "../../crates/bn_limits" }
+bn_rt = { path = "../../crates/bn_rt" }
 bn_types = { path = "../../crates/bn_types" }
 http-body-util = "0.1.5"
 hyper = { version = "1.11.1", default-features = false, features = ["client", "http1", "http2", "server"] }
@@ -30,6 +31,18 @@ ring = "0.17.14"
 rustls = { version = "0.23.43", default-features = false, features = ["ring", "std"] }
 tokio = { version = "1.53.1", default-features = false, features = ["net", "rt", "rt-multi-thread", "sync", "time"] }
 tokio-rustls = { version = "0.26.4", default-features = false, features = ["ring"] }
+
+# The platform trust stores, read without `SSL_CERT_FILE`/`SSL_CERT_DIR`
+# (`tls_roots`).
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3.7.0"
+
+[target.'cfg(windows)'.dependencies]
+schannel = "0.1.30"
+
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+openssl-probe = "0.2.2"
+rustls-native-certs = "0.8.5"
 
 [dev-dependencies]
 bn_rt = { path = "../../crates/bn_rt" }

@@ -9,6 +9,15 @@
 //! the native runtime (`bn_rt`).
 
 #![allow(clippy::missing_errors_doc)]
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
 
 use std::collections::HashMap;
 use std::sync::{Arc, Condvar, Mutex, Weak, mpsc};

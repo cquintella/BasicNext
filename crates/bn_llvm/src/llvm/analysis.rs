@@ -10,7 +10,7 @@ use super::*;
 use crate::ir::LlvmType;
 
 pub(crate) fn analyze_function<'a>(
-    module: &Module,
+    module: &'a Module,
     function: &'a Function,
     module_functions: &std::collections::HashSet<&str>,
 ) -> Result<LoweringAnalysis<'a>, String> {
@@ -133,8 +133,9 @@ pub(crate) fn analyze_function<'a>(
                         {
                             uses_bn_rt_math = true;
                         }
-                        if bncrypto_method(module, name).is_some() {
+                        if let Some(member) = bncrypto_method(module, name) {
                             uses_bn_rt = true;
+                            uses_heap |= crate::helpers::KEYPAIR_CONSTRUCTORS.contains(&member);
                         }
                         if bncompress_method(module, name).is_some() {
                             uses_bn_rt = true;
@@ -576,6 +577,7 @@ pub(crate) fn analyze_function<'a>(
             _ => false,
         });
     Ok(LoweringAnalysis {
+        module,
         values,
         symbols,
         functions,

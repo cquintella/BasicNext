@@ -121,6 +121,11 @@ pub(crate) fn analyze_with_modules_mode(
         class_model: analyzer.class_model,
         bnmath_modules: analyzer.bnmath_modules,
         bnlog_modules: HashSet::new(),
+        bncrypto_modules: HashSet::new(),
+        bnjson_modules: HashSet::new(),
+        bndata_modules: HashSet::new(),
+        bnsqlite_modules: HashSet::new(),
+        bncompress_modules: HashSet::new(),
         standard_modules: analyzer.standard_modules,
         module_constants,
         record_members: analyzer

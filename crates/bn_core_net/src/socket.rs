@@ -18,6 +18,14 @@ use std::{
 /// The largest UDP payload (IPv6 without jumbograms is 65 527 bytes).
 const UDP_PAYLOAD_MAX: usize = 65_536;
 
+thread_local! {
+    /// The area a thread reads datagrams into, kept between receives so a
+    /// receive allocates only the bytes it returns, not 64 KiB. It is the
+    /// size of the largest UDP payload even for a small request, because
+    /// Windows fails a receive into a smaller buffer and loses the source.
+    static RECEIVE_AREA: std::cell::RefCell<Option<Vec<u8>>> = const { std::cell::RefCell::new(None) };
+}
+
 #[derive(Debug)]
 pub struct TcpStream {
     inner: std::net::TcpStream,
@@ -212,20 +220,21 @@ impl UdpSocket {
         )
     }
 
-    /// One datagram, cut to `maximum` bytes. The buffer holds any UDP
-    /// payload, so truncation is exact on every platform: Unix would drop the
-    /// excess silently, and Windows fails the call (`WSAEMSGSIZE`) and loses
-    /// the source endpoint.
-    // ponytail: 64 KiB per receive; reuse a per-socket buffer if receive
-    // rates make the allocation show up.
+    /// One datagram, cut to `maximum` bytes. The thread's receive area holds any
+    /// UDP payload, so truncation is exact on every platform: Unix would drop
+    /// the excess silently, and Windows fails the call (`WSAEMSGSIZE`) and
+    /// loses the source endpoint.
     pub fn receive(&self, maximum: usize) -> io::Result<UdpPacket> {
-        let mut bytes = vec![0; UDP_PAYLOAD_MAX.max(maximum)];
-        let (count, source) = self.inner.recv_from(&mut bytes)?;
-        bytes.truncate(count.min(maximum));
-        Ok(UdpPacket {
-            source: Endpoint::new(Address::from_ip(source.ip()), source.port()),
-            bytes,
-            truncated: count > maximum,
+        RECEIVE_AREA.with_borrow_mut(|area| {
+            // No datagram is larger than `UDP_PAYLOAD_MAX`, so the area never
+            // grows past it whatever `maximum` asks for.
+            let area = area.get_or_insert_with(|| vec![0; UDP_PAYLOAD_MAX]);
+            let (count, source) = self.inner.recv_from(area)?;
+            Ok(UdpPacket {
+                source: Endpoint::new(Address::from_ip(source.ip()), source.port()),
+                bytes: area[..count.min(maximum)].to_vec(),
+                truncated: count > maximum,
+            })
         })
     }
 
@@ -252,5 +261,78 @@ impl UdpPacket {
     #[must_use]
     pub const fn truncated(&self) -> bool {
         self.truncated
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::UdpSocket;
+    use crate::{Address, Endpoint};
+    use std::time::Duration;
+
+    fn loopback_socket() -> UdpSocket {
+        let socket = UdpSocket::bind(Endpoint::new(
+            Address::parse("127.0.0.1").expect("loopback"),
+            0,
+        ))
+        .expect("bind loopback");
+        socket
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .expect("timeout");
+        socket
+    }
+
+    /// One datagram of `length` bytes (`7`s) from a second socket to `target`.
+    fn send_datagram(target: &UdpSocket, length: usize) {
+        let sender = loopback_socket();
+        let to = target.local_endpoint().expect("local endpoint");
+        assert_eq!(
+            sender.send_to(to, &vec![7_u8; length]).expect("send"),
+            length
+        );
+    }
+
+    /// Truncation is exact whatever the datagram size: the buffer the socket
+    /// reads into holds any UDP payload, because Windows fails a receive into
+    /// a smaller buffer and loses the source, and Unix drops the excess
+    /// silently. The packet keeps `maximum` bytes and says it was cut.
+    #[test]
+    fn a_datagram_larger_than_the_request_is_cut_and_flagged() {
+        let socket = loopback_socket();
+        // 8 000 bytes: above any request here, below the loopback send limit of
+        // macOS (about 9 KB by default).
+        for (length, maximum) in [(100, 1), (100, 99), (8_000, 10)] {
+            send_datagram(&socket, length);
+            let packet = socket.receive(maximum).expect("receive");
+            assert_eq!(
+                packet.bytes().len(),
+                maximum,
+                "{length} bytes, maximum {maximum}"
+            );
+            assert!(packet.truncated(), "{length} bytes, maximum {maximum}");
+        }
+    }
+
+    #[test]
+    fn a_datagram_that_fits_is_whole_and_not_flagged() {
+        let socket = loopback_socket();
+        for (length, maximum) in [(1, 1), (100, 100), (100, 4096)] {
+            send_datagram(&socket, length);
+            let packet = socket.receive(maximum).expect("receive");
+            assert_eq!(packet.bytes().len(), length);
+            assert!(!packet.truncated());
+        }
+    }
+
+    /// The socket does not keep one datagram's bytes for the next receive.
+    #[test]
+    fn consecutive_datagrams_do_not_leak_into_each_other() {
+        let socket = loopback_socket();
+        send_datagram(&socket, 50);
+        assert_eq!(socket.receive(64).expect("first").bytes(), &[7_u8; 50][..]);
+        let sender = loopback_socket();
+        let to = socket.local_endpoint().expect("local endpoint");
+        sender.send_to(to, &[1, 2, 3]).expect("send");
+        assert_eq!(socket.receive(64).expect("second").bytes(), &[1, 2, 3][..]);
     }
 }

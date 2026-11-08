@@ -10,6 +10,16 @@
 //! - `is_timezone_id`: canonical IANA timezone identifier validation.
 //! - Civil date/time conversions, RFC 3339 parsing and formatting.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
+
 pub mod builtin;
 pub mod civil;
 pub mod temporal;

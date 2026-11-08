@@ -6,6 +6,16 @@
 //! Verifies that `bn_types::error_codes::sqlite::ALL` matches the constants
 //! exported in `modules/bn/BNSqlite.bn`.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 use bn_types::error_codes::sqlite;
 
 #[test]

@@ -1,9 +1,21 @@
 //! Programs and cross-backend parity tests.
 
-#![allow(clippy::uninlined_format_args)]
+#![allow(
+    clippy::uninlined_format_args,
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
 
 #[path = "support/migration_target.rs"]
 mod migration_target;
+#[cfg(unix)]
+#[path = "support/resident.rs"]
+mod resident;
 #[path = "support/mod.rs"]
 pub(crate) mod support;
 
@@ -26,12 +38,24 @@ mod compress_module;
 mod compress_policy;
 #[path = "programs/conformance.rs"]
 mod conformance;
+#[path = "programs/crypto_handle_release.rs"]
+mod crypto_handle_release;
 #[path = "programs/crypto_limits.rs"]
 mod crypto_limits;
+#[path = "programs/crypto_tour.rs"]
+mod crypto_tour;
 #[path = "programs/destructuring.rs"]
 mod destructuring;
+#[path = "programs/exec_signal_child.rs"]
+mod exec_signal_child;
 #[path = "programs/fs_directories_policy.rs"]
 mod fs_directories_policy;
+#[path = "programs/host_handle_release.rs"]
+mod host_handle_release;
+#[path = "programs/https_trust_roots.rs"]
+mod https_trust_roots;
+#[path = "programs/library_handle_release.rs"]
+mod library_handle_release;
 #[path = "programs/loop_scope.rs"]
 mod loop_scope;
 #[path = "programs/math_expressions.rs"]
@@ -50,3 +74,9 @@ mod signed_zero;
 mod spec_0_6_5_s13;
 #[path = "programs/struct_vector_literals.rs"]
 mod struct_vector_literals;
+#[path = "programs/web_egress_policy_bounds.rs"]
+mod web_egress_policy_bounds;
+#[path = "programs/web_error_fields.rs"]
+mod web_error_fields;
+#[path = "programs/web_static_policy.rs"]
+mod web_static_policy;

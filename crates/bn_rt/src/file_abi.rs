@@ -338,6 +338,7 @@ pub extern "C" fn bn_rt_file_read_bytes(
     let buffer = unsafe { std::slice::from_raw_parts_mut(buffer, len) };
     match with_file(handle, |file| file.read_bytes(buffer)) {
         Ok(Some(count)) => {
+            // SAFETY: `out` was checked non-null at entry and is a writable `i64` slot.
             unsafe { out.write(i64::try_from(count).unwrap_or(i64::MAX)) };
             BN_FILE_OK
         }
@@ -577,7 +578,12 @@ mod tests {
         assert!(read_handle(handle).is_err());
         assert!(write_handle(handle, "bad").is_err());
         assert_eq!(bn_rt_file_close(handle), BN_FILE_OK);
-        assert_eq!(std::fs::read(&path).unwrap(), b"preserve");
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the test reads back the fixture file it wrote"
+        )]
+        let kept = std::fs::read(&path).unwrap();
+        assert_eq!(kept, b"preserve");
         std::fs::remove_file(path).unwrap();
     }
 

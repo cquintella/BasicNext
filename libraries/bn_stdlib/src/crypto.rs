@@ -39,26 +39,8 @@ pub const fn required_key_length(algorithm: i32) -> Option<usize> {
     }
 }
 
-/// The most bytes one `RandomBytes` call returns (`bncrypto.md`): keys,
-/// seeds and nonces need tens of bytes, and the bound keeps a mistaken
-/// length from exhausting memory.
-pub const MAX_RANDOM_BYTES: usize = 1024 * 1024;
-
-/// Generates `length` random bytes using the operating system CSPRNG (`getrandom`).
-///
-/// # Errors
-///
-/// `RandomLength` for a length outside 0 through [`MAX_RANDOM_BYTES`];
-/// `Random` when the system entropy source fails.
-pub fn random_bytes(length: i128) -> Result<Vec<u8>, CryptoFailure> {
-    let length = usize::try_from(length)
-        .ok()
-        .filter(|length| *length <= MAX_RANDOM_BYTES)
-        .ok_or(CryptoFailure::RandomLength(length))?;
-    let mut buf = vec![0u8; length];
-    getrandom::getrandom(&mut buf).map_err(|_| CryptoFailure::Random("BNCrypto.RandomBytes"))?;
-    Ok(buf)
-}
+pub use crate::crypto_asymmetric::*;
+pub use crate::crypto_csprng::*;
 
 /// Generates a CSPRNG nonce of appropriate length for the cipher specified by `algorithm`.
 pub fn generate_nonce(algorithm: i32) -> Result<Vec<u8>, CryptoFailure> {
@@ -267,8 +249,18 @@ pub fn hmac_sha256(key: &[u8], data: &[u8]) -> Vec<u8> {
 #[must_use]
 pub fn hmac_verify(key: &[u8], data: &[u8], tag: &[u8]) -> bool {
     use subtle::ConstantTimeEq;
-    let expected = hmac_sha256(key, data);
+    let expected = zeroize::Zeroizing::new(hmac_sha256(key, data));
     expected.len() == tag.len() && bool::from(expected.ct_eq(tag))
+}
+
+/// Compares two byte slices in constant time without short-circuiting.
+#[must_use]
+pub fn constant_time_equals(a: &[u8], b: &[u8]) -> bool {
+    use subtle::ConstantTimeEq;
+    if a.len() != b.len() {
+        return false;
+    }
+    a.ct_eq(b).into()
 }
 
 /// Cost and optional inputs for [`argon2id`]. `secret` and `associated_data`
@@ -320,7 +312,7 @@ pub fn argon2id(password: &[u8], salt: &[u8], params: Argon2Params<'_>) -> Optio
 /// not exactly 32 bytes.
 #[must_use]
 pub fn ed25519_public_key(seed: &[u8]) -> Option<Vec<u8>> {
-    let seed: [u8; 32] = seed.try_into().ok()?;
+    let seed = zeroize::Zeroizing::new(<[u8; 32]>::try_from(seed).ok()?);
     Some(
         ed25519_dalek::SigningKey::from_bytes(&seed)
             .verifying_key()
@@ -344,12 +336,21 @@ pub fn ed25519_sign(seed: &[u8], message: &[u8]) -> Option<Vec<u8>> {
     )
 }
 
+/// Whether 32 bytes are an Ed25519 public key that is a valid point of large
+/// order. A small-order (weak) key lets a forged signature verify any message.
+#[must_use]
+pub fn ed25519_public_key_is_strong(public_key: &[u8]) -> bool {
+    <[u8; 32]>::try_from(public_key)
+        .ok()
+        .and_then(|bytes| ed25519_dalek::VerifyingKey::from_bytes(&bytes).ok())
+        .is_some_and(|key| !key.is_weak())
+}
+
 /// Verifies an Ed25519 signature. `false` for a malformed key or signature, a
 /// tampered message, or a signature from another key — never an error the
 /// caller might mistake for success.
 #[must_use]
 pub fn ed25519_verify(public_key: &[u8], message: &[u8], signature: &[u8]) -> bool {
-    use ed25519_dalek::Verifier as _;
     let (Ok(public_key), Ok(signature)) = (
         <[u8; 32]>::try_from(public_key),
         <[u8; 64]>::try_from(signature),
@@ -357,7 +358,7 @@ pub fn ed25519_verify(public_key: &[u8], message: &[u8], signature: &[u8]) -> bo
         return false;
     };
     ed25519_dalek::VerifyingKey::from_bytes(&public_key)
-        .map(|key| key.verify(message, &ed25519_dalek::Signature::from_bytes(&signature)))
+        .map(|key| key.verify_strict(message, &ed25519_dalek::Signature::from_bytes(&signature)))
         .is_ok_and(|verified| verified.is_ok())
 }
 
@@ -497,6 +498,15 @@ impl std::fmt::Debug for KeyEntry {
             .finish_non_exhaustive()
     }
 }
+
+pub use crate::crypto_encoding::*;
+pub use crate::crypto_envelope::*;
+pub use crate::crypto_file::*;
+pub use crate::crypto_hash::*;
+pub use crate::crypto_mac::*;
+pub use crate::crypto_password::*;
+pub use crate::crypto_secret_abi::*;
+pub use crate::crypto_sign::*;
 
 #[cfg(test)]
 mod tests {

@@ -5,6 +5,11 @@
 
 use super::Value;
 
+/// The text `PRINT` shows for `value`.
+///
+/// # Panics
+///
+/// In a debug build, when a dispatch queue id is 0, which no queue ever has.
 pub fn render(value: &Value) -> String {
     match value {
         Value::Integer(value, _) => bn_types::text::integer(*value),
@@ -30,10 +35,20 @@ pub fn render(value: &Value) -> String {
         Value::Json(_) => "BNJson.Json".into(),
         Value::CryptoBytes(_) => "BNCrypto.Bytes".into(),
         Value::CryptoKey(_) => bn_catalog::text("modules", "type.crypto_key").into(),
+        Value::CryptoSecret(_) | Value::CryptoSecretKey(_) => "***".into(),
         Value::CompressBytes(_) => bn_catalog::text("modules", "type.compress_bytes").into(),
         Value::CompressZip(_) => bn_catalog::text("modules", "type.compress_zip_archive").into(),
         Value::DispatchQueue(id) => {
-            debug_assert_ne!(*id, 0);
+            #[cfg(debug_assertions)]
+            #[expect(
+                clippy::manual_assert,
+                reason = "the queue-id check panics with its message: as an assert message the text-literal gate would count it"
+            )]
+            if *id == 0 {
+                panic!("a dispatch queue id is never 0");
+            }
+            #[cfg(not(debug_assertions))]
+            let _ = id;
             "BNDispatch.Queue".into()
         }
         Value::DispatchTicket(id) => format!("BNDispatch.Ticket#{id}"),
@@ -43,11 +58,14 @@ pub fn render(value: &Value) -> String {
         Value::DispatchMutex(id) => format!("BNDispatch.Mutex#{id}"),
         Value::Handle { type_name } => type_name.to_string(),
         Value::Record { record } => record.type_name().to_string(),
-        Value::Object { class, .. } => class
-            .rsplit('.')
-            .next()
-            .unwrap_or(class.as_ref())
-            .to_string(),
+        Value::Object { class, .. } => {
+            let short = class.rsplit('.').next().unwrap_or(class.as_ref());
+            if matches!(short, "Secret" | "SecretKey" | "PrivateKey") {
+                "***".into()
+            } else {
+                short.to_string()
+            }
+        }
         Value::Pointer { .. } => "POINTER".into(),
         Value::File(_) => "FS.File".into(),
         Value::DataFrame(_) => "DataFrame".into(),

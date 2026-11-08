@@ -27,6 +27,7 @@ pub(crate) fn lower_indirect_call(
             let llvm_ty = llvm_type(parameter).expect("validated indirect parameter");
             let operand = coerce_to_type(
                 text,
+                analysis.module,
                 *argument,
                 analysis.values.get(argument).expect("validated argument"),
                 parameter,

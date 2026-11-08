@@ -4,3 +4,5 @@
 run.message = cannot run "{program}"
 run.pipe_timeout = the program ended, but a process it started kept its output open past the {timeout_ms} ms execution timeout
 run.reader_lost = the thread capturing an output stream ended without its capture
+run.tree_adopt_failed = the child process could not be placed in a process tree that the timeout can end: {cause}
+run.tree_kill_failed = failed to end the child process tree after the timeout: {cause}

@@ -53,7 +53,7 @@ impl bn_core_log::LogSink for RuntimeSink {
     }
     fn open_append(&self, path: &std::path::Path) -> std::io::Result<Box<dyn std::io::Write>> {
         super::policy::open_path(path, super::secure_fs::OpenMode::Append)
-            .map(|file| Box::new(file) as Box<dyn std::io::Write>)
+            .map(|file| -> Box<dyn std::io::Write> { Box::new(file) })
     }
 }
 
@@ -132,16 +132,9 @@ fn header_pairs(blob: &str) -> Vec<(String, String)> {
 
 /// A BN string from emitted code; a null pointer reads as `""`.
 fn text(pointer: *const c_char) -> String {
-    if pointer.is_null() {
-        return String::new();
-    }
-    crate::string::string_text(pointer).unwrap_or_else(|| {
-        // Fallback for non-BN static strings
-        // SAFETY: the pointer is non-null and NUL-terminated for this read.
-        unsafe { CStr::from_ptr(pointer) }
-            .to_string_lossy()
-            .into_owned()
-    })
+    // One contract: a STRING payload. Null, any other pointer and invalid
+    // UTF-8 read as "", never as a guessed C string.
+    crate::string::string_text(pointer).unwrap_or_default()
 }
 
 /// The fields of a `Log.Event` as emitted code passes them.

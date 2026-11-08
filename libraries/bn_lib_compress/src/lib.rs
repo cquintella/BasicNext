@@ -6,6 +6,16 @@
 //! `BNCompress` — external library module (`IMPORT BNCompress`), served through
 //! the provider seam. Owns interpreter-side `Bytes` and `ZipArchive` handles.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
+
 use std::collections::HashMap;
 use std::fs::File;
 use std::io;
@@ -25,6 +35,7 @@ use bn_interp::{
     name_not_found, require_arity_pub as require_arity, runtime_error_pub as runtime_error,
     type_mismatch,
 };
+use bn_rt::FsEntryPolicy as _;
 use bn_rt::secure_fs::OpenMode;
 
 pub const NAME: &str = "BNCompress";

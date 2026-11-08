@@ -7,6 +7,16 @@
 //! the provider seam. Nothing here is language: the language globals
 //! (`ASC`, `CHAR`, `TOLOWER`, `TOUPPER`) stay in the interpreter core.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
+
 use bn_diag::Diagnostic;
 use bn_source::Span;
 use bn_value::Value;

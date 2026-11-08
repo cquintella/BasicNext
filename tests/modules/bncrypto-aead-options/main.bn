@@ -1,0 +1,62 @@
+IMPORT BNCrypto AS Crypto
+
+// EncryptWith / DecryptWith: the AAD is bound, the KeyId section names the key,
+// an unsupported algorithm is refused, and a wrong key is an Error on both backends.
+FUNCTION Start() AS VOID
+    LET key AS Crypto.SecretKey OR Error = Crypto.NewSecretKey()
+    LET other AS Crypto.SecretKey OR Error = Crypto.NewSecretKey()
+    IF key IS Error OR other IS Error THEN
+        PRINT "key-failed"
+        RETURN
+    END IF
+    IF key IS Crypto.SecretKey AND other IS Crypto.SecretKey THEN
+        LET plain AS Crypto.Bytes = Crypto.FromText("order 17")
+
+        LET opts AS Crypto.AeadOptions
+        opts.aad = Crypto.FromText("invoice")
+        opts.includeKeyId = TRUE
+        LET sealed AS Crypto.Bytes OR Error = Crypto.EncryptWith(key, plain, opts)
+        IF sealed IS Crypto.Bytes THEN
+            LET opened AS Crypto.Bytes OR Error = Crypto.DecryptWith(key, sealed, opts)
+            IF opened IS Crypto.Bytes THEN
+                LET text AS STRING OR Error = opened.ToText()
+                IF text IS STRING THEN
+                    PRINT text
+                END IF
+            END IF
+
+            LET plainOpts AS Crypto.AeadOptions
+            LET noAad AS Crypto.Bytes OR Error = Crypto.DecryptWith(key, sealed, plainOpts)
+            IF noAad IS Error THEN
+                IF noAad.Code = Crypto.AUTHENTICATION_FAILED THEN
+                    PRINT "aad-bound"
+                END IF
+            END IF
+
+            LET wrongKey AS Crypto.Bytes OR Error = Crypto.Decrypt(other, sealed)
+            IF wrongKey IS Error THEN
+                IF wrongKey.Code = Crypto.AUTHENTICATION_FAILED THEN
+                    PRINT "wrong-key-is-error"
+                END IF
+            END IF
+        END IF
+
+        LET defaults AS Crypto.AeadOptions
+        LET same AS Crypto.Bytes OR Error = Crypto.EncryptWith(key, plain, defaults)
+        IF same IS Crypto.Bytes THEN
+            LET back AS Crypto.Bytes OR Error = Crypto.Decrypt(key, same)
+            IF back IS Crypto.Bytes THEN
+                PRINT "defaults-open-with-decrypt"
+            END IF
+        END IF
+
+        LET aes AS Crypto.AeadOptions
+        aes.alg = Crypto.Alg.AES_256_GCM
+        LET refused AS Crypto.Bytes OR Error = Crypto.EncryptWith(key, plain, aes)
+        IF refused IS Error THEN
+            IF refused.Code = Crypto.UNSUPPORTED_ALGORITHM THEN
+                PRINT "alg-refused"
+            END IF
+        END IF
+    END IF
+END FUNCTION

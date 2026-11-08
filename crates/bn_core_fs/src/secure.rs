@@ -11,17 +11,19 @@
 //! a policy root or by a plain open without one, so a link swapped in after
 //! a check is never written through.
 
+#![cfg(unix)]
 #![allow(unsafe_code)] // Narrow libc boundary for descriptor-relative entry calls.
 
-use std::ffi::{CStr, CString};
+use std::ffi::{CStr, CString, OsStr};
 use std::fs::{File, OpenOptions, Permissions};
 use std::io;
 use std::mem::MaybeUninit;
 use std::os::fd::{AsRawFd as _, FromRawFd as _, OwnedFd};
+use std::os::unix::ffi::OsStrExt as _;
 use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
-use std::path::{Component, Path};
+use std::path::Path;
 
-use super::{EntryKind, RootedDir, c_name, denied, open_directory_at};
+use crate::kind::{EntryKind, denied};
 
 /// The modes of an owner-only directory and file. `fchmod` sets them again
 /// after the create, so the process umask neither widens nor narrows them.
@@ -30,73 +32,53 @@ const PRIVATE_FILE_MODE: libc::mode_t = 0o600;
 /// Group and other permission bits: owner-only means none is set.
 const SHARED_PERMISSION_BITS: u32 = 0o077;
 
+fn c_name(name: &OsStr) -> io::Result<CString> {
+    CString::new(name.as_bytes()).map_err(|_| io::Error::from(io::ErrorKind::InvalidInput))
+}
+
+fn open_directory_at(parent: &File, name: &CStr) -> io::Result<File> {
+    // SAFETY: the parent descriptor is live and name is a NUL-terminated single component.
+    let descriptor = unsafe {
+        libc::openat(
+            parent.as_raw_fd(),
+            name.as_ptr(),
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+        )
+    };
+    if descriptor < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: a successful openat returned a new owned descriptor.
+    Ok(File::from(unsafe { OwnedFd::from_raw_fd(descriptor) }))
+}
+
 /// Where an entry operation acts: the parent directory and the final name,
 /// or a directory with no name to act on (a policy root, `/`).
-pub(crate) struct Anchor {
+#[derive(Debug)]
+pub struct Anchor {
     directory: File,
     name: Option<CString>,
 }
 
-impl RootedDir {
-    /// The anchor of `path`, reached from the pinned root without following
-    /// a symbolic link on the way. The root itself has no name.
-    pub(crate) fn anchor(&self, path: &Path) -> io::Result<Anchor> {
-        if self.is_root(path)? {
-            return Ok(Anchor {
-                directory: self.directory.try_clone()?,
-                name: None,
-            });
-        }
-        let relative = self.relative(path)?;
-        let mut directory = self.directory.try_clone()?;
-        let mut names = relative
-            .components()
-            .filter_map(|component| match component {
-                Component::Normal(name) => Some(name),
-                _ => None,
-            })
-            .peekable();
-        while let Some(name) = names.next() {
-            let name = c_name(name)?;
-            if names.peek().is_none() {
-                return Ok(Anchor {
-                    directory,
-                    name: Some(name),
-                });
-            }
-            directory = open_directory_at(&directory, &name)?;
-        }
-        Ok(Anchor {
+impl Anchor {
+    /// Creates an anchor for a directory without a target name (a policy root).
+    #[must_use]
+    pub const fn root(directory: File) -> Self {
+        Self {
             directory,
             name: None,
-        })
+        }
     }
-}
 
-/// The anchor of `path` without a policy root: the parent is opened as the
-/// system resolves it, and only the final component is never followed.
-pub(crate) fn anchor_unrooted(path: &Path) -> io::Result<Anchor> {
-    let absolute = std::path::absolute(path)?;
-    match (absolute.parent(), absolute.file_name()) {
-        (Some(parent), Some(name)) => Ok(Anchor {
-            directory: open_directory(parent)?,
-            name: Some(c_name(name)?),
-        }),
-        _ => Ok(Anchor {
-            directory: open_directory(&absolute)?,
-            name: None,
-        }),
+    /// Creates an anchor inside `directory` for entry `name`.
+    #[must_use]
+    pub const fn named(directory: File, name: CString) -> Self {
+        Self {
+            directory,
+            name: Some(name),
+        }
     }
-}
 
-fn open_directory(path: &Path) -> io::Result<File> {
-    OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_DIRECTORY | libc::O_CLOEXEC)
-        .open(path)
-}
-
-impl Anchor {
     /// The final name; the anchored directory itself is not a write target.
     fn name(&self) -> io::Result<&CStr> {
         self.name
@@ -109,7 +91,7 @@ impl Anchor {
     /// # Errors
     ///
     /// `NotFound` for a missing entry; the system error otherwise.
-    pub(crate) fn kind(&self) -> io::Result<EntryKind> {
+    pub fn kind(&self) -> io::Result<EntryKind> {
         let Some(name) = &self.name else {
             return Ok(EntryKind::Directory);
         };
@@ -146,7 +128,7 @@ impl Anchor {
     /// `AlreadyExists` for an existing entry (a symbolic link included),
     /// `NotFound` for a missing parent, `PermissionDenied` when the result is
     /// not owner-only, and the system error otherwise.
-    pub(crate) fn create_private_directory(&self) -> io::Result<()> {
+    pub fn create_private_directory(&self) -> io::Result<()> {
         let Some(name) = &self.name else {
             return Err(io::ErrorKind::AlreadyExists.into());
         };
@@ -176,7 +158,7 @@ impl Anchor {
     /// # Errors
     ///
     /// As [`Self::create_private_directory`].
-    pub(crate) fn create_private_file(&self) -> io::Result<File> {
+    pub fn create_private_file(&self) -> io::Result<File> {
         let Some(name) = &self.name else {
             return Err(io::ErrorKind::AlreadyExists.into());
         };
@@ -214,7 +196,7 @@ impl Anchor {
     ///
     /// The system error: `ELOOP` for a symbolic link, `NotFound` for a
     /// missing entry.
-    pub(crate) fn open_read(&self) -> io::Result<File> {
+    pub fn open_read(&self) -> io::Result<File> {
         let Some(name) = &self.name else {
             return self.directory.try_clone();
         };
@@ -240,7 +222,7 @@ impl Anchor {
     ///
     /// `NotADirectory`, `DirectoryNotEmpty`, `NotFound`, a refusal for the
     /// anchored directory itself, and the system error otherwise.
-    pub(crate) fn remove_empty_directory(&self) -> io::Result<()> {
+    pub fn remove_empty_directory(&self) -> io::Result<()> {
         let name = self.name()?;
         // SAFETY: the parent descriptor is live and `name` is a NUL-terminated
         // single component; AT_REMOVEDIR removes only a directory and fails
@@ -269,7 +251,7 @@ impl Anchor {
     /// `AlreadyExists` for a directory or a symbolic link at `target`, a
     /// refusal for an anchored directory itself, `CrossesDevices` across file
     /// systems, and the system error otherwise.
-    pub(crate) fn rename_to(&self, target: &Self) -> io::Result<()> {
+    pub fn rename_to(&self, target: &Self) -> io::Result<()> {
         let source = self.name()?;
         let destination = target.name()?;
         match target.kind() {
@@ -303,7 +285,7 @@ impl Anchor {
     ///
     /// `NotADirectory` for a file or a symbolic link, `NotFound` for a
     /// missing entry, and the system error otherwise.
-    pub(crate) fn change_directory(&self) -> io::Result<()> {
+    pub fn change_directory(&self) -> io::Result<()> {
         let directory = match &self.name {
             None => self.directory.try_clone()?,
             Some(name) => self.open_final_directory(name)?,
@@ -351,10 +333,35 @@ impl Anchor {
     }
 }
 
+/// The anchor of `path` without a policy root: the parent is opened as the
+/// system resolves it, and only the final component is never followed.
+///
+/// # Errors
+///
+/// Returns an error if the parent directory cannot be opened.
+pub fn anchor_unrooted(path: &Path) -> io::Result<Anchor> {
+    let absolute = std::path::absolute(path)?;
+    match (absolute.parent(), absolute.file_name()) {
+        (Some(parent), Some(name)) => Ok(Anchor {
+            directory: open_directory(parent)?,
+            name: Some(c_name(name)?),
+        }),
+        _ => Ok(Anchor {
+            directory: open_directory(&absolute)?,
+            name: None,
+        }),
+    }
+}
+
+fn open_directory(path: &Path) -> io::Result<File> {
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_DIRECTORY | libc::O_CLOEXEC)
+        .open(path)
+}
+
 /// Sets `mode` on the open entry and checks that no group or other bit is
 /// left (the mode bits are the check; inherited ACLs are not read).
-// `mode_t` is `u16` on macOS and `u32` on Linux: the conversion is needed
-// on the first and the same type on the second.
 #[allow(clippy::useless_conversion)]
 fn make_private(entry: &File, mode: libc::mode_t) -> io::Result<()> {
     entry.set_permissions(Permissions::from_mode(u32::from(mode)))?;
@@ -371,7 +378,7 @@ fn make_private(entry: &File, mode: libc::mode_t) -> io::Result<()> {
 
 /// Whether `mode` grants nothing to the group or to others.
 #[must_use]
-pub(crate) const fn is_private(mode: u32) -> bool {
+pub const fn is_private(mode: u32) -> bool {
     mode & SHARED_PERMISSION_BITS == 0
 }
 

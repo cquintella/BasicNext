@@ -4,6 +4,16 @@
 //! The interpreter behaviour itself is covered by the relocated `tests/cli.rs`
 //! suite (activity 2.4); here: command set, version, JSON channel purity and
 //! the rejection of compiler-only flags.
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 use std::process::Command;
 
 const WORKSPACE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");

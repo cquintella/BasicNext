@@ -104,13 +104,25 @@ pub(crate) fn lower_dispatch_emission(
                             }
                             Type::Float(_) | Type::FloatLiteral => {
                                 let wide = Type::Float(FloatType::Float64);
-                                let value = coerce_to_type(text, *argument, argument_ty, &wide);
+                                let value = coerce_to_type(
+                                    text,
+                                    analysis.module,
+                                    *argument,
+                                    argument_ty,
+                                    &wide,
+                                );
                                 (T::Double, value)
                             }
                             Type::String => (T::Ptr, own),
                             _ => {
                                 let wide = Type::Integer(IntegerType::Int64);
-                                let value = coerce_to_type(text, *argument, argument_ty, &wide);
+                                let value = coerce_to_type(
+                                    text,
+                                    analysis.module,
+                                    *argument,
+                                    argument_ty,
+                                    &wide,
+                                );
                                 (T::I64, value)
                             }
                         }

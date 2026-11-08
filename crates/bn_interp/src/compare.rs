@@ -118,50 +118,73 @@ pub(super) fn is_value(
                 if test[open + 1..close].parse::<usize>() == Ok(items.len())
                     && items.iter().all(|item| is_value(item, &element, classes, None)))
         }
-        _ => match value {
-            Value::File(_) => is_host_file_type(test),
-            Value::DataFrame(_) => {
-                test == "DataFrame" || (test.ends_with(".DataFrame") && !test.starts_with('#'))
-            }
-            Value::LogFields(_) => test == "BNLog.Fields" || test == "Fields",
-            Value::LogEntry(_) => test == "BNLog.Entry" || test == "Entry",
-            Value::LogLogger(_) => test == "BNLog.Logger" || test == "Logger",
-            Value::Json(_) => test == "BNJson.Json" || test == "Json",
-            Value::CryptoBytes(_) => {
-                test == bn_catalog::text("modules", "type.crypto_bytes")
-                    || test == "Bytes"
-                    || test == bn_catalog::text("modules", "type.compress_bytes")
-            }
-            Value::CryptoKey(_) => {
-                test == bn_catalog::text("modules", "type.crypto_key") || test == "Key"
-            }
-            Value::CompressBytes(_) => {
-                test == bn_catalog::text("modules", "type.compress_bytes")
-                    || test == "Bytes"
-                    || test == bn_catalog::text("modules", "type.crypto_bytes")
-            }
-            Value::CompressZip(_) => {
-                test == bn_catalog::text("modules", "type.compress_zip_archive")
-                    || test == "ZipArchive"
-            }
-            Value::DispatchQueue(_) => test == "BNDispatch.Queue" || test == "Queue",
-            Value::DispatchTicket(_) => test == "BNDispatch.Ticket" || test == "Ticket",
-            Value::DispatchGroup(_) => test == "BNDispatch.Group" || test == "Group",
-            Value::DispatchBarrier(_) => test == "BNDispatch.Barrier" || test == "Barrier",
-            Value::DispatchSemaphore(_) => test == "BNDispatch.Semaphore" || test == "Semaphore",
-            Value::DispatchMutex(_) => test == "BNDispatch.Mutex" || test == "Mutex",
-            // HOST type tests arrive under their canonical names (lowering).
-            Value::TcpStream(_) => test == "HOST.Net.TCPStream",
-            Value::TcpListener(_) => test == "HOST.Net.TCPListener",
-            Value::UdpSocket(_) => test == "HOST.Net.UDPSocket",
-            Value::Object { class, .. } => {
-                class.as_ref() == test
-                    || class.rsplit('.').next() == Some(test)
-                    || classes.is_upcast(class, test)
-            }
-            Value::Record { record } => record.type_name().as_ref() == test,
-            _ => false,
-        },
+        _ => is_opaque_or_object_value(value, test, classes),
+    }
+}
+
+fn is_opaque_or_object_value(value: &Value, test: &str, classes: &ClassModel) -> bool {
+    match value {
+        Value::File(_) => is_host_file_type(test),
+        Value::DataFrame(_) => {
+            test == "DataFrame" || (test.ends_with(".DataFrame") && !test.starts_with('#'))
+        }
+        Value::LogFields(_) => test == "BNLog.Fields" || test == "Fields",
+        Value::LogEntry(_) => test == "BNLog.Entry" || test == "Entry",
+        Value::LogLogger(_) => test == "BNLog.Logger" || test == "Logger",
+        Value::Json(_) => test == "BNJson.Json" || test == "Json",
+        Value::CryptoBytes(_) => {
+            test == bn_catalog::text("modules", "type.crypto_bytes")
+                || test == "Bytes"
+                || test == bn_catalog::text("modules", "type.compress_bytes")
+        }
+        Value::CryptoKey(_) => {
+            test == bn_catalog::text("modules", "type.crypto_key")
+                || test == "Key"
+                || test.ends_with(".Key")
+                || test == "PublicKey"
+                || test.ends_with(".PublicKey")
+                || test == "PrivateKey"
+                || test.ends_with(".PrivateKey")
+        }
+        Value::CryptoSecret(_) => {
+            test == bn_catalog::text("modules", "type.crypto_secret")
+                || test == "Secret"
+                || test.ends_with(".Secret")
+        }
+        Value::CryptoSecretKey(_) => {
+            test == bn_catalog::text("modules", "type.crypto_secret_key")
+                || test == "SecretKey"
+                || test.ends_with(".SecretKey")
+        }
+        Value::CompressBytes(_) => {
+            test == bn_catalog::text("modules", "type.compress_bytes")
+                || test == "Bytes"
+                || test == bn_catalog::text("modules", "type.crypto_bytes")
+        }
+        Value::CompressZip(_) => {
+            test == bn_catalog::text("modules", "type.compress_zip_archive") || test == "ZipArchive"
+        }
+        Value::DispatchQueue(_) => test == "BNDispatch.Queue" || test == "Queue",
+        Value::DispatchTicket(_) => test == "BNDispatch.Ticket" || test == "Ticket",
+        Value::DispatchGroup(_) => test == "BNDispatch.Group" || test == "Group",
+        Value::DispatchBarrier(_) => test == "BNDispatch.Barrier" || test == "Barrier",
+        Value::DispatchSemaphore(_) => test == "BNDispatch.Semaphore" || test == "Semaphore",
+        Value::DispatchMutex(_) => test == "BNDispatch.Mutex" || test == "Mutex",
+        // HOST type tests arrive under their canonical names (lowering).
+        Value::TcpStream(_) => test == "HOST.Net.TCPStream",
+        Value::TcpListener(_) => test == "HOST.Net.TCPListener",
+        Value::UdpSocket(_) => test == "HOST.Net.UDPSocket",
+        Value::Object { class, .. } => {
+            class.as_ref() == test
+                || class.rsplit('.').next() == Some(test)
+                || classes.is_upcast(class, test)
+        }
+        Value::Record { record } => {
+            record.type_name().as_ref() == test
+                || record.type_name().rsplit('.').next() == Some(test)
+                || record.type_name().rsplit('.').next() == test.rsplit('.').next()
+        }
+        _ => false,
     }
 }
 
@@ -210,6 +233,7 @@ pub(super) fn value_matches_type(value: &Value, ty: &Type) -> bool {
         ) => {
             record.type_name().as_ref() == name
                 || record.type_name().rsplit('.').next() == Some(name.as_str())
+                || record.type_name().rsplit('.').next() == name.rsplit('.').next()
                 || (name.starts_with("Net.")
                     && record.type_name().as_ref() == format!("HOST.{name}"))
         }
@@ -257,6 +281,30 @@ pub(super) fn value_matches_type(value: &Value, ty: &Type) -> bool {
             name == bn_catalog::text("modules", "type.crypto_key")
                 || name == "Key"
                 || name.ends_with(".Key")
+                || name == "PublicKey"
+                || name.ends_with(".PublicKey")
+                || name == "PrivateKey"
+                || name.ends_with(".PrivateKey")
+        }
+        (
+            Value::CryptoSecret(_),
+            Type::Named(name)
+            | Type::ImportedNamed { name, .. }
+            | Type::ImportedTypeName { name, .. },
+        ) => {
+            name == bn_catalog::text("modules", "type.crypto_secret")
+                || name == "Secret"
+                || name.ends_with(".Secret")
+        }
+        (
+            Value::CryptoSecretKey(_),
+            Type::Named(name)
+            | Type::ImportedNamed { name, .. }
+            | Type::ImportedTypeName { name, .. },
+        ) => {
+            name == bn_catalog::text("modules", "type.crypto_secret_key")
+                || name == "SecretKey"
+                || name.ends_with(".SecretKey")
         }
         (
             Value::CompressBytes(_),

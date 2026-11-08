@@ -159,6 +159,11 @@ pub fn report(text: *const c_char, [first, second]: [i128; 2]) {
     let _ = writeln!(stderr, "{}", fill(&text, [first, second]));
 }
 
+#[expect(
+    clippy::exit,
+    clippy::print_stderr,
+    reason = "a runtime trap ends the program and prints diagnostic to stderr: the language's defined outcome of this failure"
+)]
 pub fn fail(code: &str, message: &str) -> ! {
     eprintln!("error[{code}]: {message}");
     std::process::exit(1);
@@ -167,6 +172,10 @@ pub fn fail(code: &str, message: &str) -> ! {
 /// Ends the program with the diagnostic `bnc` rendered for the calling site
 /// (`trap`, all facts known when compiling), as `bni` reports the failure;
 /// `code` and `message` only serve a caller that passed no site.
+#[expect(
+    clippy::exit,
+    reason = "a runtime trap ends the program: the language's defined outcome of this failure"
+)]
 pub fn fail_at(trap: *const c_char, code: &str, message: &str) -> ! {
     if trap.is_null() {
         fail(code, message);

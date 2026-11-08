@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version = "1.97"
 description = "Basic Next language IR model and validator"
 license.workspace = true
+publish = false
 
 [lib]
 path = "src/lib.rs"

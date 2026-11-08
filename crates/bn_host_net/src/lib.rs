@@ -12,9 +12,15 @@
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
     clippy::cast_precision_loss,
-    clippy::unused_self
-)] // Moved verbatim from the core; one arm per HOST.Net member.
-
+    clippy::unused_self,
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
 pub mod net;
 pub mod net_values;
 
@@ -65,13 +71,8 @@ fn record<'a>(
 }
 
 /// The BN `Error` of a failed `HOST.Net` operation: the core's report.
-fn net_error(error: &bn_rt::net::error::NetError) -> Value {
-    Value::error_report(
-        error.code(),
-        error.operation(),
-        error.message(),
-        error.cause(),
-    )
+fn net_error(err: &bn_rt::net::error::NetError) -> Value {
+    Value::error_report(err.code(), err.operation(), err.message(), err.cause())
 }
 
 #[derive(Debug)]
@@ -436,7 +437,7 @@ impl NetProvider {
                         span,
                     ));
                 };
-                Ok(Value::String(value.clone()))
+                Ok(Value::String(std::sync::Arc::clone(value)))
             }
             "HOST.Net.Address.IsIPv4"
             | "HOST.Net.Address.IsIPv6"
@@ -618,7 +619,7 @@ impl NetProvider {
                     Ok(Value::Record {
                         record: RecordValue::new(
                             "HOST.Net.Address",
-                            vec![Value::String(network.clone())],
+                            vec![Value::String(std::sync::Arc::clone(network))],
                         ),
                     })
                 } else {

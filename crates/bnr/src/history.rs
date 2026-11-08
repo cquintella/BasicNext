@@ -79,18 +79,6 @@ impl BnrHistory {
     pub fn transient_last(&self) -> Option<&str> {
         self.transient_last.as_deref()
     }
-
-    /// Returns the total number of history entries (including any active transient error).
-    #[must_use]
-    pub fn len(&self) -> usize {
-        History::len(self)
-    }
-
-    /// Returns `true` if history contains no entries.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        History::is_empty(self)
-    }
 }
 
 impl History for BnrHistory {

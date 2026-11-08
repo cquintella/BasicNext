@@ -40,6 +40,7 @@ fn malformed_module() -> Module {
                 terminator: Terminator::Jump { target: BlockId(9) },
             }],
             weak_symbols: std::collections::HashSet::default(),
+            symbol_names: std::collections::HashMap::default(),
             span: span(),
         }],
         ..Module::default()
@@ -586,6 +587,7 @@ fn function_with_blocks(blocks: Vec<BasicBlock>) -> Module {
             entry: BlockId(0),
             blocks,
             weak_symbols: std::collections::HashSet::default(),
+            symbol_names: std::collections::HashMap::default(),
             span: span(),
         }],
         ..Module::default()

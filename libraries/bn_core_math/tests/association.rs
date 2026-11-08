@@ -6,11 +6,23 @@
 //! `BNMath.Covariance` / `Correlation` (math.md): R 4.5.1 values, the `NAN`
 //! cases, the length check, and the overflow rules decided on 2026-10-27.
 
-#![allow(clippy::float_cmp)] // exact values are the contract
+#![allow(clippy::float_cmp, reason = "exact values are the contract")]
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
 
 use bn_core_math::{LengthMismatch, correlation, covariance};
 
-#[allow(clippy::excessive_precision)] // the bc digits, rounded to binary64 by the parser
+#[allow(
+    clippy::excessive_precision,
+    reason = "the bc digits, rounded to binary64 by the parser"
+)]
 const ONE_OVER_TWO_ROOT_TWO: f64 = 0.353_553_390_593_273_762_200_422_181_052_424_5;
 
 /// Within one unit in the last place of `exact`.
@@ -23,7 +35,10 @@ fn near(computed: Result<f64, LengthMismatch>, exact: f64) -> bool {
 /// (the mean 2.8 is not a binary64 value; R 4.5.1 is one unit off on the
 /// first and exact on the second, the other way round).
 #[test]
-#[allow(clippy::excessive_precision)] // the bc digits, rounded to binary64 by the parser
+#[allow(
+    clippy::excessive_precision,
+    reason = "the bc digits, rounded to binary64 by the parser"
+)]
 fn covariance_and_correlation_match_the_exact_values() {
     let (x, y) = ([1.0, 2.0, 3.0, 4.0], [2.0, 4.0, 6.0, 9.0]);
     assert_eq!(covariance(&x, &y), Ok(3.833_333_333_333_333_5));

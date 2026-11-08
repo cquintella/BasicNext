@@ -2,12 +2,14 @@
 
 use std::{io, net::IpAddr, time::Duration};
 
-use super::Address;
+use super::{Address, LookupPool, Refusal};
 
 #[derive(Debug)]
 pub enum ReverseError {
     Timeout,
     NotFound,
+    /// This many name lookups are already in flight, the ceiling.
+    Limit(usize),
     Io(io::Error),
 }
 
@@ -17,6 +19,9 @@ impl ReverseError {
         match self {
             Self::Timeout => "reverse timeout".into(),
             Self::NotFound => "reverse name not found".into(),
+            Self::Limit(maximum) => {
+                bn_catalog::fill("net", "resolve.limit.cause", &[("maximum", maximum)])
+            }
             Self::Io(error) => error.to_string(),
         }
     }
@@ -29,29 +34,19 @@ impl ReverseError {
 /// Returns timeout, not-found, or resolver I/O failures.
 pub fn reverse_timeout(address: Address, timeout: Duration) -> Result<String, ReverseError> {
     let ip = address.as_std();
-    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
-    let task = std::thread::spawn(move || {
-        let _ = sender.send(lookup(ip));
-    });
-    match receiver.recv_timeout(timeout) {
-        Ok(Ok(name)) => {
-            let _ = task.join();
-            Ok(name)
-        }
-        Ok(Err(error)) => {
-            let _ = task.join();
-            Err(error)
-        }
-        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-            super::retain_resolver_task(task);
-            Err(ReverseError::Timeout)
-        }
-        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-            let _ = task.join();
-            Err(ReverseError::Io(io::Error::other(
-                "reverse resolver stopped",
-            )))
-        }
+    let outcome = LookupPool::global().and_then(|pool| pool.run(timeout, move || lookup(ip)));
+    match outcome {
+        Ok(Some(answer)) => answer,
+        Ok(None) => Err(ReverseError::Timeout),
+        Err(Refusal::Full { in_flight_max }) => Err(ReverseError::Limit(in_flight_max)),
+        Err(Refusal::Lost) => Err(ReverseError::Io(io::Error::other(bn_catalog::text(
+            "net",
+            "resolve.worker_lost.cause",
+        )))),
+        Err(Refusal::Unavailable) => Err(ReverseError::Io(io::Error::other(bn_catalog::text(
+            "net",
+            "resolve.workers_unavailable.cause",
+        )))),
     }
 }
 

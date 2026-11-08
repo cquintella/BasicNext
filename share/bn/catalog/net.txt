@@ -19,6 +19,9 @@ cidr.prefix.cause = the part after '/' is not a prefix length: decimal digits, n
 # Resolve and its results.
 resolve.host_name.cause = a host name has 1..253 bytes and no space or control character
 resolve.not_found.cause = no address is registered for "{host}"
+resolve.limit.cause = {maximum} name lookups are already in flight, the quota
+resolve.worker_lost.cause = the name lookup stopped without an answer
+resolve.workers_unavailable.cause = the name lookup threads could not start
 addresses.empty.cause = the result holds no address; got {index}
 addresses.index.cause = the index must be within 0..{last}; got {index}
 

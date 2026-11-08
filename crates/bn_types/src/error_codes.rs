@@ -124,13 +124,12 @@ pub mod crypto {
     pub const INVALID_ARGUMENT: i32 = 1;
     pub const AUTHENTICATION_FAILED: i32 = 2;
     pub const UNAVAILABLE: i32 = 3;
-
-    /// Name and value of each constant, as `modules/bn/BNCrypto.bn` exports them.
-    pub const ALL: &[(&str, i32)] = &[
-        ("INVALID_ARGUMENT", INVALID_ARGUMENT),
-        ("AUTHENTICATION_FAILED", AUTHENTICATION_FAILED),
-        ("UNAVAILABLE", UNAVAILABLE),
-    ];
+    pub const UNSUPPORTED_ALGORITHM: i32 = 4;
+    pub const LEGACY_DISABLED: i32 = 5;
+    pub const PARSE_ERROR: i32 = 6;
+    pub const WRONG_KEY_TYPE: i32 = 7;
+    pub const IO_ERROR: i32 = 8;
+    pub const WRONG_PASSWORD: i32 = 9;
 }
 
 /// `BNJson` `Error.Code` (`language/0.6/bnjson.md` "Errors").

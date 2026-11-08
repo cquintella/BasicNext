@@ -82,6 +82,10 @@ fn run_on_both(cell: &Cell, directory: &TestDir, index: usize) -> [Result<(), St
 
 /// The cells whose name contains the value of `filter_variable`, each source
 /// printed to study it by hand; every cell when the variable is unset.
+#[expect(
+    clippy::print_stderr,
+    reason = "test matrix filter prints matching cell details when filtered"
+)]
 pub fn selected(cells: Vec<Cell>, filter_variable: &str) -> Vec<Cell> {
     let Ok(only) = std::env::var(filter_variable) else {
         return cells;

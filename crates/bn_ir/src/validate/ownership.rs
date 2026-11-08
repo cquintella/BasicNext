@@ -29,17 +29,28 @@ use crate::{
 pub(super) fn is_arc_type(module: &Module, ty: &Type) -> bool {
     match ty {
         Type::String | Type::Pointer { .. } => true,
-        // `FS.File` is a counted handle. The count lives in the file table.
-        Type::Named(name) if name == "FS.File" => true,
+        // A counted HOST handle (`FS.File`, an Exec result, an address list):
+        // the count lives in a runtime table.
+        Type::Named(name) if crate::names::is_counted_host_handle(name) => true,
         Type::Named(name) => is_declared(module, name),
-        // A `BNLog.Logger` is a counted handle; any other type of a natively
-        // implemented library is a handle the IR does not count (the same
-        // rule the lowering applies).
+        // A `BNLog.Logger`, counted `BNCrypto`, `BNJson`, `BNData`, `BNSqlite`
+        // and `BNCompress` handles carry a count (the same rule lowering applies).
         Type::ImportedNamed { module: id, name }
             if module.standard_library_of((*id).into()).is_some() =>
         {
-            module.bnlog_providers.contains(&(*id).into())
-                && name == crate::names::BNLOG_COUNTED_CLASS
+            (module.bnlog_providers.contains(&(*id).into())
+                && name == crate::names::BNLOG_COUNTED_CLASS)
+                || (module.bncrypto_providers.contains(&(*id).into())
+                    && (crate::names::is_bncrypto_counted_handle(name)
+                        || crate::names::is_bncrypto_counted_record(name)))
+                || (module.bnjson_providers.contains(&(*id).into())
+                    && name == crate::names::BNJSON_COUNTED_CLASS)
+                || (module.bndata_providers.contains(&(*id).into())
+                    && name == crate::names::BNDATA_COUNTED_CLASS)
+                || (module.bnsqlite_providers.contains(&(*id).into())
+                    && name == crate::names::BNSQLITE_COUNTED_CLASS)
+                || (module.bncompress_providers.contains(&(*id).into())
+                    && crate::names::is_bncompress_counted_handle(name))
         }
         Type::ImportedNamed { module: id, name } => {
             is_declared(module, &format!("#{}.{name}", id.0))
@@ -427,6 +438,7 @@ mod tests {
             return_type: Type::Named("VOID".into()),
             entry: BlockId(0),
             blocks,
+            symbol_names: std::collections::HashMap::new(),
             span: span(),
         }
     }

@@ -76,11 +76,65 @@ signatures! {
     ZIP_RELEASE = "bn_rt_zip_release"(I64) -> I32;
     CRYPTO_ARGON2ID = "bn_rt_crypto_argon2id"(I64, I64, I64, I64, I64, Ptr) -> I32;
     CRYPTO_BYTES_FROM_HEX = "bn_rt_crypto_bytes_from_hex"(Ptr, Ptr) -> I32;
+    CRYPTO_BYTES_FROM_BASE64 = "bn_rt_crypto_bytes_from_base64"(Ptr, Ptr) -> I32;
+    CRYPTO_BYTES_FROM_BASE64URL = "bn_rt_crypto_bytes_from_base64url"(Ptr, Ptr) -> I32;
     CRYPTO_BYTES_FROM_TEXT = "bn_rt_crypto_bytes_from_text"(Ptr) -> I64;
     CRYPTO_BYTES_LENGTH = "bn_rt_crypto_bytes_length"(I64) -> I64;
     CRYPTO_BYTES_RELEASE = "bn_rt_crypto_bytes_release"(I64) -> I32;
     CRYPTO_BYTES_RETAIN = "bn_rt_crypto_bytes_retain"(I64) -> I32;
     CRYPTO_BYTES_TO_HEX = "bn_rt_crypto_bytes_to_hex"(I64) -> Ptr;
+    CRYPTO_BYTES_TO_BASE64 = "bn_rt_crypto_bytes_to_base64"(I64) -> Ptr;
+    CRYPTO_BYTES_TO_BASE64URL = "bn_rt_crypto_bytes_to_base64url"(I64) -> Ptr;
+    CRYPTO_BYTES_TO_TEXT = "bn_rt_crypto_bytes_to_text"(I64, Ptr) -> I32;
+    CRYPTO_BYTES_CONCAT = "bn_rt_crypto_bytes_concat"(I64, I64, Ptr) -> I32;
+    CRYPTO_BYTES_ZEROIZE = "bn_rt_crypto_bytes_zeroize"(I64) -> I32;
+    CRYPTO_BYTES_CONSTANT_TIME_EQUALS = "bn_rt_crypto_bytes_constant_time_equals"(I64, I64) -> I32;
+    CRYPTO_SECRET_FROM_TEXT = "bn_rt_crypto_secret_from_text"(Ptr) -> I64;
+    CRYPTO_SECRET_LENGTH = "bn_rt_crypto_secret_length"(I64) -> I64;
+    CRYPTO_SECRET_TO_BYTES = "bn_rt_crypto_secret_to_bytes"(I64) -> I64;
+    CRYPTO_SECRET_CONSTANT_TIME_EQUALS = "bn_rt_crypto_secret_constant_time_equals"(I64, I64) -> I32;
+    CRYPTO_SECRET_ZEROIZE = "bn_rt_crypto_secret_zeroize"(I64) -> I32;
+    CRYPTO_SECRET_RETAIN = "bn_rt_crypto_secret_retain"(I64) -> I32;
+    CRYPTO_SECRET_RELEASE = "bn_rt_crypto_secret_release"(I64) -> I32;
+    CRYPTO_SECRET_KEY_GENERATE = "bn_rt_crypto_secret_key_generate"(I64, Ptr, Ptr) -> I64;
+    CRYPTO_SECRET_KEY_FROM_BYTES = "bn_rt_crypto_secret_key_from_bytes"(I64, Ptr, Ptr) -> I64;
+    CRYPTO_SECRET_KEY_ID = "bn_rt_crypto_secret_key_id"(I64) -> Ptr;
+    CRYPTO_SECRET_KEY_BITS = "bn_rt_crypto_secret_key_bits"(I64) -> I64;
+    CRYPTO_SECRET_KEY_LENGTH = "bn_rt_crypto_secret_key_length"(I64) -> I64;
+    CRYPTO_SECRET_KEY_PURPOSE = "bn_rt_crypto_secret_key_purpose"(I64) -> Ptr;
+    CRYPTO_SECRET_KEY_ALGORITHM = "bn_rt_crypto_secret_key_algorithm"(I64) -> Ptr;
+    CRYPTO_SECRET_KEY_EXPORT = "bn_rt_crypto_secret_key_export"(I64, Ptr) -> I64;
+    CRYPTO_SECRET_KEY_WRAP = "bn_rt_crypto_secret_key_wrap"(I64, I64) -> I64;
+    CRYPTO_SECRET_KEY_UNWRAP = "bn_rt_crypto_secret_key_unwrap"(I64, I64, I64, Ptr, Ptr) -> I64;
+    CRYPTO_SECRET_KEY_ZEROIZE = "bn_rt_crypto_secret_key_zeroize"(I64) -> I32;
+    CRYPTO_SECRET_KEY_RETAIN = "bn_rt_crypto_secret_key_retain"(I64) -> I32;
+    CRYPTO_SECRET_KEY_RELEASE = "bn_rt_crypto_secret_key_release"(I64) -> I32;
+    CRYPTO_ENCRYPT = "bn_rt_crypto_encrypt_status"(I64, I64, Ptr) -> I32;
+    CRYPTO_DECRYPT = "bn_rt_crypto_decrypt_status"(I64, I64, Ptr) -> I32;
+    CRYPTO_ENCRYPT_WITH = "bn_rt_crypto_encrypt_with"(I64, I64, I32, I64, I32, Ptr) -> I32;
+    CRYPTO_DECRYPT_WITH = "bn_rt_crypto_decrypt_with"(I64, I64, I32, I64, Ptr) -> I32;
+    CRYPTO_ENCRYPT_TEXT = "bn_rt_crypto_encrypt_text_status"(I64, Ptr, Ptr) -> I32;
+    CRYPTO_DECRYPT_TEXT = "bn_rt_crypto_decrypt_text_status"(I64, Ptr, Ptr) -> I32;
+    CRYPTO_ENCRYPT_FILE = "bn_rt_crypto_encrypt_file"(I64, Ptr, Ptr) -> I32;
+    CRYPTO_DECRYPT_FILE = "bn_rt_crypto_decrypt_file"(I64, Ptr, Ptr) -> I32;
+    CRYPTO_ENCRYPT_FILE_WITH_PASSWORD = "bn_rt_crypto_encrypt_file_with_password"(Ptr, Ptr, Ptr) -> I32;
+    CRYPTO_DECRYPT_FILE_WITH_PASSWORD = "bn_rt_crypto_decrypt_file_with_password"(Ptr, Ptr, Ptr) -> I32;
+    CRYPTO_HASH = "bn_rt_crypto_hash_handle"(I64, I32) -> I64;
+    CRYPTO_HASH_TEXT = "bn_rt_crypto_hash_text"(Ptr) -> Ptr;
+    CRYPTO_HASH_FILE = "bn_rt_crypto_hash_file"(Ptr, I32, Ptr) -> I32;
+    CRYPTO_HASH_WITH = "bn_rt_crypto_hash_with"(I64, Ptr, Ptr) -> I32;
+    CRYPTO_HASH_PASSWORD = "bn_rt_crypto_hash_password"(Ptr) -> Ptr;
+    CRYPTO_VERIFY_PASSWORD = "bn_rt_crypto_verify_password"(Ptr, Ptr) -> I32;
+    CRYPTO_HKDF = "bn_rt_crypto_hkdf"(I64, I64, I64, I64, Ptr) -> I32;
+    CRYPTO_HASH_PASSWORD_WITH = "bn_rt_crypto_hash_password_with"(Ptr, I32, I32, I32, Ptr) -> I32;
+    CRYPTO_NEEDS_REHASH = "bn_rt_crypto_needs_rehash"(Ptr, I32, I32, I32) -> I32;
+    CRYPTO_DERIVE_KEY = "bn_rt_crypto_derive_key"(Ptr, I64, Ptr) -> I32;
+    CRYPTO_DERIVE_SUBKEY = "bn_rt_crypto_derive_subkey"(I64, Ptr, Ptr) -> I32;
+    CRYPTO_HASHER_NEW = "bn_rt_crypto_hasher_new"(I32, Ptr) -> I32;
+    CRYPTO_HASHER_NEW_WITH = "bn_rt_crypto_hasher_new_with"(Ptr, Ptr) -> I32;
+    CRYPTO_HASHER_UPDATE = "bn_rt_crypto_hasher_update_handle"(I64, I64) -> I32;
+    CRYPTO_HASHER_FINISH = "bn_rt_crypto_hasher_finish"(I64, Ptr) -> I32;
+    CRYPTO_HASHER_RELEASE = "bn_rt_crypto_hasher_release"(I64) -> I32;
     CRYPTO_DSA_KEYPAIR = "bn_rt_crypto_dsa_keypair"(I64, Ptr) -> I32;
     CRYPTO_DSA_SIGN = "bn_rt_crypto_dsa_sign"(I64, I64, Ptr) -> I32;
     CRYPTO_DSA_VERIFY = "bn_rt_crypto_dsa_verify"(I64, I64, I64) -> I32;
@@ -97,15 +151,57 @@ signatures! {
     CRYPTO_KEY_RELEASE = "bn_rt_crypto_key_release"(I64) -> I32;
     CRYPTO_KEY_RETAIN = "bn_rt_crypto_key_retain"(I64) -> I32;
     CRYPTO_KEY_ZEROIZE = "bn_rt_crypto_key_zeroize"(I64) -> I32;
+    CRYPTO_KEYPAIR_GENERATE = "bn_rt_crypto_keypair_generate"(I32, Ptr, Ptr) -> I32;
+    CRYPTO_KEYPAIR_GENERATE_WITH = "bn_rt_crypto_keypair_generate_with"(Ptr, Ptr, Ptr) -> I32;
+    CRYPTO_PRIVATE_SIGN = "bn_rt_crypto_private_sign"(I64, I64, Ptr) -> I32;
+    CRYPTO_PUBLIC_VERIFY = "bn_rt_crypto_public_verify"(I64, I64, I64) -> I32;
+    CRYPTO_SIGN_FILE = "bn_rt_crypto_sign_file"(I64, Ptr, Ptr) -> I32;
+    CRYPTO_VERIFY_FILE = "bn_rt_crypto_verify_file"(I64, Ptr, I64) -> I32;
+    CRYPTO_PRIVATE_EXPORT_PEM = "bn_rt_crypto_private_export_pem"(I64, I32, Ptr, Ptr) -> I32;
+    CRYPTO_PRIVATE_EXPORT_PEM_PLAIN = "bn_rt_crypto_private_export_pem_plain"(I64, I32, Ptr) -> I32;
+    CRYPTO_PUBLIC_EXPORT_PEM = "bn_rt_crypto_public_export_pem"(I64, Ptr) -> I32;
+    CRYPTO_PUBLIC_FINGERPRINT = "bn_rt_crypto_public_fingerprint"(I64, I32, Ptr) -> I32;
+    CRYPTO_LOAD_PRIVATE_KEY = "bn_rt_crypto_load_private_key"(Ptr, Ptr, Ptr) -> I32;
+    CRYPTO_LOAD_PUBLIC_KEY = "bn_rt_crypto_load_public_key"(Ptr, Ptr) -> I32;
+    CRYPTO_MAC_WITH = "bn_rt_crypto_mac_with"(I64, I64, Ptr, Ptr) -> I32;
+    CRYPTO_VERIFY_MAC = "bn_rt_crypto_mac_verify_handle"(I64, I64, I64) -> I32;
+    CRYPTO_MAC_STREAM_NEW = "bn_rt_crypto_mac_stream_new"(I64, I32, Ptr) -> I32;
+    CRYPTO_MAC_STREAM_NEW_WITH = "bn_rt_crypto_mac_stream_new_with"(I64, Ptr, Ptr) -> I32;
+    CRYPTO_MAC_STREAM_UPDATE = "bn_rt_crypto_mac_stream_update_handle"(I64, I64) -> I32;
+    CRYPTO_MAC_STREAM_FINISH = "bn_rt_crypto_mac_stream_finish"(I64, Ptr) -> I32;
+    CRYPTO_MAC_STREAM_VERIFY = "bn_rt_crypto_mac_stream_verify"(I64, I64) -> I32;
+    CRYPTO_MAC_STREAM_RELEASE = "bn_rt_crypto_mac_stream_release"(I64) -> I32;
     CRYPTO_OPEN = "bn_rt_crypto_open"(I32, I64, I64, I64, I64, Ptr) -> I32;
+    CRYPTO_PRIVATE_KEY_ALGORITHM = "bn_rt_crypto_private_key_algorithm"(I64) -> I32;
+    CRYPTO_PRIVATE_KEY_ID = "bn_rt_crypto_private_key_id"(I64) -> Ptr;
+    CRYPTO_PRIVATE_KEY_PUBLIC_KEY = "bn_rt_crypto_private_key_public_key"(I64) -> I64;
+    CRYPTO_PRIVATE_KEY_RELEASE = "bn_rt_crypto_private_key_release"(I64) -> I32;
+    CRYPTO_PRIVATE_KEY_RETAIN = "bn_rt_crypto_private_key_retain"(I64) -> I32;
+    CRYPTO_PRIVATE_KEY_ZEROIZE = "bn_rt_crypto_private_key_zeroize"(I64) -> I32;
     CRYPTO_PUBLIC_KEY = "bn_rt_crypto_public_key"(I32, I64, Ptr) -> I32;
+    CRYPTO_PUBLIC_KEY_ALGORITHM = "bn_rt_crypto_public_key_algorithm"(I64) -> I32;
+    CRYPTO_PUBLIC_KEY_ID = "bn_rt_crypto_public_key_id"(I64) -> Ptr;
+    CRYPTO_PUBLIC_KEY_RELEASE = "bn_rt_crypto_public_key_release"(I64) -> I32;
+    CRYPTO_PUBLIC_KEY_RETAIN = "bn_rt_crypto_public_key_retain"(I64) -> I32;
     CRYPTO_RANDOM_BYTES = "bn_rt_crypto_random_bytes"(I64, Ptr) -> I32;
+    CRYPTO_RANDOM_INT = "bn_rt_crypto_random_int"(I64, I64, Ptr) -> I32;
+    CRYPTO_RANDOM_PASSWORD = "bn_rt_crypto_random_password"(Ptr, Ptr) -> I32;
+    CRYPTO_RANDOM_TOKEN = "bn_rt_crypto_random_token"(I64, Ptr) -> I32;
+    CRYPTO_RANDOM_UUID_V4 = "bn_rt_crypto_random_uuid_v4"() -> Ptr;
+    CRYPTO_UUID_V7 = "bn_rt_crypto_uuid_v7"() -> Ptr;
     CRYPTO_SEAL = "bn_rt_crypto_seal"(I32, I64, I64, I64, I64, Ptr) -> I32;
     CRYPTO_SHA256 = "bn_rt_crypto_sha256"(Ptr) -> Ptr;
     CRYPTO_SHA512 = "bn_rt_crypto_sha512"(Ptr) -> Ptr;
     CRYPTO_SIGN = "bn_rt_crypto_sign"(I32, I64, I64, Ptr) -> I32;
     CRYPTO_SLICE = "bn_rt_crypto_slice"(I64, I64, I64, Ptr) -> I32;
     CRYPTO_VERIFY = "bn_rt_crypto_verify"(I32, I64, I64, I64) -> I32;
+    CRYPTO_TO_PEM = "bn_rt_crypto_to_pem"(Ptr, I64) -> Ptr;
+    CRYPTO_FROM_PEM = "bn_rt_crypto_from_pem"(Ptr, Ptr) -> I32;
+    CRYPTO_CRC32 = "bn_rt_crypto_crc32"(I64) -> I64;
+    CRYPTO_CRC32C = "bn_rt_crypto_crc32c"(I64) -> I64;
+    CRYPTO_ADLER32 = "bn_rt_crypto_adler32"(I64) -> I64;
+    CRYPTO_XXHASH64 = "bn_rt_crypto_xxhash64"(I64) -> I64;
+    CRYPTO_VERIFY_FILE_CHECKSUM = "bn_rt_crypto_verify_file_checksum"(Ptr, Ptr) -> I32;
     DATAFRAME_ADD_BOOLEAN = "bn_rt_dataframe_add_boolean"(I64, Ptr, Ptr, I32) -> I32;
     DATAFRAME_ADD_FLOAT = "bn_rt_dataframe_add_float"(I64, Ptr, Ptr, I32) -> I32;
     DATAFRAME_ADD_INTEGER_START = "bn_rt_dataframe_add_integer_start"(I64, Ptr, I32) -> I32;
@@ -177,6 +273,7 @@ signatures! {
     ERROR_TAKE = "bn_rt_error_take"(I32, Ptr) -> Ptr;
     ERROR_WRAP = "bn_rt_error_wrap"(I1, Ptr, Ptr) -> Ptr;
     EXEC_RESULT_CLOSE = "bn_rt_exec_result_close"(I64) -> I32;
+    EXEC_RESULT_RETAIN = "bn_rt_exec_result_retain"(I64) -> I32;
     EXEC_RESULT_RETURN_CODE = "bn_rt_exec_result_return_code"(I64) -> I64;
     EXEC_RESULT_STDERR = "bn_rt_exec_result_stderr"(I64) -> Ptr;
     EXEC_RESULT_STDOUT = "bn_rt_exec_result_stdout"(I64) -> Ptr;
@@ -348,6 +445,7 @@ signatures! {
     NET_ADDRESSES_COUNT = "bn_rt_net_addresses_count"(Ptr) -> I32;
     NET_ADDRESSES_FREE = "bn_rt_net_addresses_free"(Ptr) -> Void;
     NET_ADDRESSES_GET = "bn_rt_net_addresses_get"(Ptr, I32, Ptr) -> I32;
+    NET_ADDRESSES_RETAIN = "bn_rt_net_addresses_retain"(Ptr) -> I32;
     NET_CIDR_CONTAINS = "bn_rt_net_cidr_contains"(Ptr, I32, Ptr) -> I32;
     NET_CIDR_PARSE = "bn_rt_net_cidr_parse"(Ptr, Ptr, Ptr) -> I32;
     NET_HANDLE_CLOSE = "bn_rt_net_handle_close"(I64) -> I32;
@@ -470,7 +568,7 @@ declarations! {
     BN_RT_DECLARATIONS =
     POLICY_INIT POLICY_CHECK POLICY_FILESYSTEM_SANDBOXED POLICY_FILESYSTEM_ROOT ENV_GET ENV_HAS
     EXEC_RUN EXEC_RESULT_RETURN_CODE EXEC_RESULT_STDOUT EXEC_RESULT_STDERR EXEC_RESULT_CLOSE
-    DATAFRAME_CREATE DATAFRAME_ROW_COUNT DATAFRAME_COLUMN_COUNT DATAFRAME_ADD_INTEGER_START
+    EXEC_RESULT_RETAIN DATAFRAME_CREATE DATAFRAME_ROW_COUNT DATAFRAME_COLUMN_COUNT DATAFRAME_ADD_INTEGER_START
     DATAFRAME_SET_INTEGER_CELL DATAFRAME_ADD_FLOAT DATAFRAME_ADD_BOOLEAN DATAFRAME_ADD_STRING
     DATAFRAME_GET_INTEGER DATAFRAME_GET_FLOAT DATAFRAME_GET_BOOLEAN DATAFRAME_GET_STRING
     DATAFRAME_SET_LABEL DATAFRAME_REDUCE DATAFRAME_ZSCORE DATAFRAME_COPY_INTEGER
@@ -488,12 +586,21 @@ declarations! {
     RANDOM_SEED RANDOM_NEXT CONSOLE_CLS CONSOLE_BEEP CONSOLE_PRINT_AT CONSOLE_NUM_COLS
     CONSOLE_NUM_ROWS STR_ASC STR_CONCAT STR_TO_LOWER STR_TO_UPPER PRINT_STR TEXT_INT TEXT_UINT TEXT_FLOAT
     TEXT_FLOAT32 CRYPTO_SHA256 CRYPTO_SHA512 CRYPTO_BYTES_FROM_TEXT CRYPTO_BYTES_FROM_HEX
-    CRYPTO_BYTES_LENGTH CRYPTO_BYTES_TO_HEX CRYPTO_BYTES_RELEASE CRYPTO_BYTES_RETAIN CRYPTO_SEAL CRYPTO_OPEN
-    CRYPTO_HMAC CRYPTO_HMAC_VERIFY CRYPTO_ARGON2ID CRYPTO_PUBLIC_KEY CRYPTO_SIGN CRYPTO_VERIFY
+    CRYPTO_BYTES_LENGTH CRYPTO_BYTES_TO_HEX CRYPTO_BYTES_TO_BASE64 CRYPTO_BYTES_TO_BASE64URL CRYPTO_BYTES_TO_TEXT CRYPTO_BYTES_CONCAT CRYPTO_BYTES_FROM_BASE64 CRYPTO_BYTES_FROM_BASE64URL CRYPTO_BYTES_RELEASE CRYPTO_BYTES_RETAIN CRYPTO_BYTES_ZEROIZE CRYPTO_BYTES_CONSTANT_TIME_EQUALS CRYPTO_SEAL CRYPTO_OPEN
+    CRYPTO_SECRET_FROM_TEXT CRYPTO_SECRET_LENGTH CRYPTO_SECRET_TO_BYTES CRYPTO_SECRET_CONSTANT_TIME_EQUALS CRYPTO_SECRET_ZEROIZE CRYPTO_SECRET_RETAIN CRYPTO_SECRET_RELEASE
+    CRYPTO_SECRET_KEY_GENERATE CRYPTO_SECRET_KEY_FROM_BYTES CRYPTO_SECRET_KEY_ID CRYPTO_SECRET_KEY_BITS CRYPTO_SECRET_KEY_LENGTH CRYPTO_SECRET_KEY_PURPOSE CRYPTO_SECRET_KEY_ALGORITHM
+    CRYPTO_SECRET_KEY_EXPORT CRYPTO_SECRET_KEY_WRAP CRYPTO_SECRET_KEY_UNWRAP CRYPTO_SECRET_KEY_ZEROIZE CRYPTO_SECRET_KEY_RETAIN CRYPTO_SECRET_KEY_RELEASE
+    CRYPTO_ENCRYPT CRYPTO_DECRYPT CRYPTO_ENCRYPT_WITH CRYPTO_DECRYPT_WITH CRYPTO_ENCRYPT_TEXT CRYPTO_DECRYPT_TEXT
+    CRYPTO_ENCRYPT_FILE CRYPTO_DECRYPT_FILE CRYPTO_ENCRYPT_FILE_WITH_PASSWORD CRYPTO_DECRYPT_FILE_WITH_PASSWORD
+    CRYPTO_HASH CRYPTO_HASH_TEXT CRYPTO_HASH_FILE CRYPTO_HASH_WITH CRYPTO_HASH_PASSWORD CRYPTO_VERIFY_PASSWORD CRYPTO_HKDF CRYPTO_HASH_PASSWORD_WITH CRYPTO_NEEDS_REHASH CRYPTO_DERIVE_KEY CRYPTO_DERIVE_SUBKEY CRYPTO_HASHER_NEW CRYPTO_HASHER_NEW_WITH CRYPTO_HASHER_UPDATE CRYPTO_HASHER_FINISH CRYPTO_HASHER_RELEASE
+    CRYPTO_HMAC CRYPTO_HMAC_VERIFY CRYPTO_MAC_WITH CRYPTO_VERIFY_MAC CRYPTO_MAC_STREAM_NEW CRYPTO_MAC_STREAM_NEW_WITH CRYPTO_MAC_STREAM_UPDATE CRYPTO_MAC_STREAM_FINISH CRYPTO_MAC_STREAM_VERIFY CRYPTO_MAC_STREAM_RELEASE CRYPTO_ARGON2ID CRYPTO_PUBLIC_KEY CRYPTO_SIGN CRYPTO_VERIFY
     CRYPTO_SLICE CRYPTO_KEM_KEYPAIR CRYPTO_KEM_ENCAPSULATE CRYPTO_KEM_DECAPSULATE
     CRYPTO_DSA_KEYPAIR CRYPTO_DSA_SIGN CRYPTO_DSA_VERIFY
     CRYPTO_GENERATE_KEY CRYPTO_GENERATE_NONCE CRYPTO_IMPORT_KEY CRYPTO_KEY_ALGORITHM
     CRYPTO_KEY_LENGTH CRYPTO_KEY_RELEASE CRYPTO_KEY_RETAIN CRYPTO_KEY_ZEROIZE CRYPTO_RANDOM_BYTES
+    CRYPTO_RANDOM_INT CRYPTO_RANDOM_PASSWORD CRYPTO_RANDOM_TOKEN CRYPTO_RANDOM_UUID_V4 CRYPTO_UUID_V7
+    CRYPTO_TO_PEM CRYPTO_FROM_PEM CRYPTO_CRC32 CRYPTO_CRC32C CRYPTO_ADLER32 CRYPTO_XXHASH64 CRYPTO_VERIFY_FILE_CHECKSUM
+    CRYPTO_KEYPAIR_GENERATE CRYPTO_KEYPAIR_GENERATE_WITH CRYPTO_PRIVATE_SIGN CRYPTO_PUBLIC_VERIFY CRYPTO_SIGN_FILE CRYPTO_VERIFY_FILE CRYPTO_PRIVATE_EXPORT_PEM CRYPTO_PRIVATE_EXPORT_PEM_PLAIN CRYPTO_PUBLIC_EXPORT_PEM CRYPTO_PUBLIC_FINGERPRINT CRYPTO_LOAD_PRIVATE_KEY CRYPTO_LOAD_PUBLIC_KEY CRYPTO_PRIVATE_KEY_ALGORITHM CRYPTO_PRIVATE_KEY_ID CRYPTO_PRIVATE_KEY_PUBLIC_KEY CRYPTO_PRIVATE_KEY_RELEASE CRYPTO_PRIVATE_KEY_RETAIN CRYPTO_PRIVATE_KEY_ZEROIZE CRYPTO_PUBLIC_KEY_ALGORITHM CRYPTO_PUBLIC_KEY_ID CRYPTO_PUBLIC_KEY_RELEASE CRYPTO_PUBLIC_KEY_RETAIN
     COMPRESS_DEFLATE COMPRESS_INFLATE COMPRESS_GZIP COMPRESS_GUNZIP COMPRESS_DEFLATE_TEXT
     COMPRESS_INFLATE_TEXT COMPRESS_GZIP_TEXT COMPRESS_GUNZIP_TEXT COMPRESS_BYTES_FROM_HEX
     COMPRESS_BYTES_FROM_TEXT COMPRESS_BYTES_LENGTH COMPRESS_BYTES_RELEASE COMPRESS_BYTES_RETAIN
@@ -515,7 +622,7 @@ declarations! {
     NET_ADDRESS_PARSE NET_ADDRESS_IS_IPV4 NET_ADDRESS_IS_IPV6 NET_ADDRESS_IS_LOOPBACK
     NET_ADDRESS_IS_PRIVATE NET_ADDRESS_IS_LINK_LOCAL NET_ADDRESS_IS_MULTICAST NET_CIDR_PARSE
     NET_CIDR_CONTAINS NET_PING NET_REVERSE NET_NEIGHBOR NET_RESOLVE NET_ADDRESSES_COUNT
-    NET_ADDRESSES_GET NET_ADDRESSES_FREE NET_UDP_BIND NET_TCP_CONNECT
+    NET_ADDRESSES_GET NET_ADDRESSES_FREE NET_ADDRESSES_RETAIN NET_UDP_BIND NET_TCP_CONNECT
     NET_TCP_LISTEN_WITH_BACKLOG NET_TCP_ACCEPT NET_TCP_LISTENER_LOCAL_ENDPOINT
     NET_UDP_LOCAL_ENDPOINT NET_TCP_STREAM_LOCAL_ENDPOINT NET_TCP_STREAM_REMOTE_ENDPOINT
     NET_TCP_WRITE NET_TCP_READ NET_TCP_SET_TIMEOUTS NET_TCP_SHUTDOWN_READ NET_TCP_SHUTDOWN_WRITE

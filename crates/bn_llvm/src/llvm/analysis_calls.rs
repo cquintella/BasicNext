@@ -294,11 +294,382 @@ pub(crate) fn call_instruction_supported(
                             .and_then(llvm_type)
                             .is_some_and(|ty| ty.is_integer())
                 }
-                "Algorithm" | "Zeroize" => {
+                "Algorithm" => {
+                    arguments.len() == 1
+                        && values.get(&arguments[0]).is_some_and(|ty| {
+                            carries_bncrypto_key(module, ty)
+                                || carries_bncrypto_secret_key(module, ty)
+                                || carries_bncrypto_public_key(module, ty)
+                                || carries_bncrypto_private_key(module, ty)
+                        })
+                }
+                "Zeroize" => {
+                    arguments.len() == 1
+                        && values.get(&arguments[0]).is_some_and(|ty| {
+                            carries_bncrypto_key(module, ty)
+                                || carries_bncrypto_bytes(module, ty)
+                                || carries_bncrypto_secret(module, ty)
+                                || carries_bncrypto_secret_key(module, ty)
+                                || carries_bncrypto_private_key(module, ty)
+                        })
+                }
+                "ConstantTimeEquals" => {
+                    arguments.len() == 2
+                        && arguments.iter().all(|argument| {
+                            values.get(argument).is_some_and(|ty| {
+                                carries_bncrypto_bytes(module, ty)
+                                    || carries_bncrypto_secret(module, ty)
+                            })
+                        })
+                }
+                "NewSecret" | "SecretFromText" => {
                     arguments.len() == 1
                         && values
                             .get(&arguments[0])
-                            .is_some_and(|ty| carries_bncrypto_key(module, ty))
+                            .is_some_and(|ty| *ty == Type::String)
+                }
+                "ToBytes" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_secret(module, ty))
+                }
+                "NewKeyPair" => arguments.is_empty(),
+                "NewKeyPairFor" => {
+                    arguments.len() == 1
+                        && values.get(&arguments[0]).is_some_and(|ty| {
+                            matches!(ty, Type::Integer(_) | Type::IntegerLiteral(_))
+                        })
+                }
+                "NewKeyPairWith" => arguments.len() == 1,
+                "Sign" | "SignFile" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_private_key(module, ty))
+                }
+                "VerifyFile" => {
+                    arguments.len() == 3
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_public_key(module, ty))
+                        && values
+                            .get(&arguments[2])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "ExportPem" => {
+                    (arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_public_key(module, ty)))
+                        || (arguments.len() == 3
+                            && values
+                                .get(&arguments[0])
+                                .is_some_and(|ty| carries_bncrypto_private_key(module, ty))
+                            && values.get(&arguments[1]).is_some_and(|ty| {
+                                matches!(ty, Type::Integer(_) | Type::IntegerLiteral(_))
+                            })
+                            && values.get(&arguments[2]) == Some(&Type::String))
+                }
+                "ExportPemUnencrypted" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_private_key(module, ty))
+                        && values.get(&arguments[1]).is_some_and(|ty| {
+                            matches!(ty, Type::Integer(_) | Type::IntegerLiteral(_))
+                        })
+                }
+                "Fingerprint" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_public_key(module, ty))
+                        && values.get(&arguments[1]).is_some_and(|ty| {
+                            matches!(ty, Type::Integer(_) | Type::IntegerLiteral(_))
+                        })
+                }
+                "LoadPrivateKey" => {
+                    arguments.len() == 2 && values.get(&arguments[0]) == Some(&Type::String)
+                }
+                "LoadPublicKey" => {
+                    arguments.len() == 1 && values.get(&arguments[0]) == Some(&Type::String)
+                }
+                "PublicKey" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_private_key(module, ty))
+                }
+                "NewSecretKey" => arguments.is_empty(),
+                "NewSecretKeyWith" => arguments.len() == 1,
+                "SecretKeyFromBytes" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "WrapKey" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_secret_key(module, ty))
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| carries_bncrypto_secret_key(module, ty))
+                }
+                "UnwrapKey" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_secret_key(module, ty))
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "UnwrapKeyWith" => {
+                    arguments.len() == 3
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_secret_key(module, ty))
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "Id" => {
+                    arguments.len() == 1
+                        && values.get(&arguments[0]).is_some_and(|ty| {
+                            carries_bncrypto_secret_key(module, ty)
+                                || carries_bncrypto_public_key(module, ty)
+                                || carries_bncrypto_private_key(module, ty)
+                        })
+                }
+                "Bits" | "Purpose" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_secret_key(module, ty))
+                }
+                "ExportSecret" => {
+                    (arguments.len() == 1 || arguments.len() == 2)
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_secret_key(module, ty))
+                }
+                "Encrypt" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_secret_key(module, ty))
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "Decrypt" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_secret_key(module, ty))
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                // The second operand is the `PasswordOptions` record the lowering reads.
+                "HashPasswordWith" | "NeedsRehash" => {
+                    arguments.len() == 2
+                        && values.get(&arguments[0]) == Some(&Type::String)
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| crate::layout::struct_owner(module, ty).is_some())
+                }
+                "DeriveKey" => {
+                    arguments.len() == 2
+                        && values.get(&arguments[0]) == Some(&Type::String)
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "DeriveSubkey" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_secret_key(module, ty))
+                        && values.get(&arguments[1]) == Some(&Type::String)
+                }
+                // The third operand is the `AeadOptions` record the lowering reads.
+                "EncryptWith" | "DecryptWith" => {
+                    arguments.len() == 3
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_secret_key(module, ty))
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                        && values
+                            .get(&arguments[2])
+                            .is_some_and(|ty| crate::layout::struct_owner(module, ty).is_some())
+                }
+                "EncryptText" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_secret_key(module, ty))
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| *ty == Type::String)
+                }
+                "DecryptText" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_secret_key(module, ty))
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| *ty == Type::String)
+                }
+                "EncryptFileWithPassword" | "DecryptFileWithPassword" => {
+                    arguments.len() == 3
+                        && arguments
+                            .iter()
+                            .all(|argument| values.get(argument) == Some(&Type::String))
+                }
+                "EncryptFile" | "DecryptFile" => {
+                    arguments.len() == 3
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_secret_key(module, ty))
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| *ty == Type::String)
+                        && values
+                            .get(&arguments[2])
+                            .is_some_and(|ty| *ty == Type::String)
+                }
+                "Hash" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "HashText" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| *ty == Type::String)
+                }
+                "HashFile" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| *ty == Type::String)
+                }
+                "HashWith" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "Mac" => arguments.len() == 2,
+                "VerifyMac" => arguments.len() == 3,
+                "MacWith" => arguments.len() == 3,
+                "HashPassword" => arguments.len() == 1,
+                "VerifyPassword" => arguments.len() == 2,
+                "Hkdf" => arguments.len() == 4,
+                "New" | "NewWith" => arguments.len() == 1 || arguments.len() == 2,
+                "Update" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "Finish" => arguments.len() == 1,
+                "Verify" => {
+                    arguments.len() == 2
+                        || (arguments.len() == 3
+                            && values
+                                .get(&arguments[0])
+                                .is_some_and(|ty| carries_bncrypto_public_key(module, ty))
+                            && values
+                                .get(&arguments[1])
+                                .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                            && values
+                                .get(&arguments[2])
+                                .is_some_and(|ty| carries_bncrypto_bytes(module, ty)))
+                }
+                "RandomInt" => {
+                    arguments.len() == 2
+                        && arguments.iter().all(|argument| {
+                            values
+                                .get(argument)
+                                .and_then(llvm_type)
+                                .is_some_and(|ty| ty.is_integer())
+                        })
+                }
+                "RandomToken" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .and_then(llvm_type)
+                            .is_some_and(|ty| ty.is_integer())
+                }
+                "RandomUuidV4" | "UuidV7" => arguments.is_empty(),
+                "RandomPassword" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .and_then(llvm_type)
+                            .is_some_and(|ty| ty == LlvmType::Ptr)
+                }
+                "ToText" | "ToBase64" | "ToBase64Url" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "FromBase64" | "FromBase64Url" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| *ty == Type::String)
+                }
+                "Concat" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "ToPem" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| *ty == Type::String)
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "FromPem" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| *ty == Type::String)
+                }
+                "Crc32" | "Crc32c" | "Adler32" | "XxHash64" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "VerifyFileChecksum" => {
+                    arguments.len() == 2
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| *ty == Type::String)
+                        && values
+                            .get(&arguments[1])
+                            .is_some_and(|ty| *ty == Type::String)
                 }
                 method => {
                     arguments.len() == 1
@@ -306,8 +677,12 @@ pub(crate) fn call_instruction_supported(
                             "Length" => {
                                 carries_bncrypto_bytes(module, ty)
                                     || carries_bncrypto_key(module, ty)
+                                    || carries_bncrypto_secret(module, ty)
+                                    || carries_bncrypto_secret_key(module, ty)
                             }
-                            "ToHex" => carries_bncrypto_bytes(module, ty),
+                            "ToHex" | "ToText" | "ToBase64" | "ToBase64Url" => {
+                                carries_bncrypto_bytes(module, ty)
+                            }
                             _ => *ty == Type::String,
                         })
                 }

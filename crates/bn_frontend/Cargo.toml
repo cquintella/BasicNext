@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version = "1.97"
 description = "Basic Next source frontend and semantic analysis"
 license.workspace = true
+publish = false
 build = "build.rs"
 
 [features]

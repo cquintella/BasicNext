@@ -40,7 +40,7 @@ impl Executor<'_, '_> {
         }
     }
 
-    pub fn allocate_object(&mut self, class: &str, span: Span) -> Result<Value, Diagnostic> {
+    pub fn allocate_heap_object(&mut self, class: &str, span: Span) -> Result<Value, Diagnostic> {
         let field_count = self
             .module
             .field_layouts

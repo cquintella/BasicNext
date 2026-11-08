@@ -360,7 +360,7 @@ pub(crate) fn lower_scalar_instruction(
                 format!("vecdefaultfat{dest}"),
                 I::insert(fat.clone(), O::undef(), T::Ptr, pointer, 0),
             );
-            let length = O::int(i64::try_from(len).expect("vector length fits i64"));
+            let length = O::int(i64::try_from(len).map_err(|error| error.to_string())?);
             text.assign(
                 format!("v{dest}"),
                 I::insert(
@@ -406,7 +406,7 @@ pub(crate) fn lower_scalar_instruction(
                         .as_deref()
                         .expect("validated default constructor owner");
                     let bytes = i64::try_from(class_instance_bytes(module, owner))
-                        .expect("object size fits i64");
+                        .map_err(|error| error.to_string())?;
                     I::call(
                         T::Ptr,
                         "calloc",
@@ -511,8 +511,13 @@ pub(crate) fn lower_scalar_instruction(
             } else if slot_llvm == crate::layout::optional_float_ty()
                 && matches!(value_llvm, T::Float | T::Double)
             {
-                let optional_value =
-                    coerce_to_type(text, *value, value_ty, &Type::Float(FloatType::Float64));
+                let optional_value = coerce_to_type(
+                    text,
+                    module,
+                    *value,
+                    value_ty,
+                    &Type::Float(FloatType::Float64),
+                );
                 let optional = T::struct_of([T::I1, T::Double]);
                 let tag = O::reg(format!("optstoretag{}", value.0));
                 text.assign(
@@ -538,7 +543,7 @@ pub(crate) fn lower_scalar_instruction(
                     state,
                 )
             } else if value_llvm != slot_llvm {
-                coerce_to_type(text, *value, value_ty, slot_ty)
+                coerce_to_type(text, module, *value, value_ty, slot_ty)
             } else {
                 O::reg(format!("v{}", value.0))
             };
@@ -594,6 +599,7 @@ pub(crate) fn lower_scalar_instruction(
             ..
         } => lower_load(
             text,
+            module,
             block_id,
             function,
             analysis,
@@ -707,7 +713,7 @@ pub(crate) fn lower_scalar_instruction(
             ) {
                 ("Plus", T::I8 | T::I16 | T::I32 | T::I64) => {
                     let operand_ty = analysis.values.get(operand).unwrap_or(ty);
-                    let operand_op = coerce_to_type(text, *operand, operand_ty, ty);
+                    let operand_op = coerce_to_type(text, module, *operand, operand_ty, ty);
                     let layout = llvm_type(ty).expect("validated integer unary type");
                     let plus = I::binary(BinaryOp::Add, layout, O::int(0), operand_op);
                     text.assign(format!("v{}", destination.0), plus);
@@ -716,6 +722,7 @@ pub(crate) fn lower_scalar_instruction(
                     let operand_ty = analysis.values.get(operand).unwrap_or(ty);
                     emit_checked_integer_op(
                         text,
+                        module,
                         block_id,
                         *destination,
                         "Minus",

@@ -36,10 +36,10 @@ impl Builder<'_> {
                 })
         };
         match ty {
-            // `FS.File` is a counted handle, not an object: the last strong
-            // reference closes it (host.md). The count is the file table, not
-            // `bn_rt_arc_retain`.
-            Type::Named(name) if name == "FS.File" => true,
+            // A counted HOST handle (`FS.File`, an Exec result, an address
+            // list) is not an object: the last strong reference closes or frees
+            // it (host.md). The count is a runtime table, not `bn_rt_arc_retain`.
+            Type::Named(name) if bn_ir::names::is_counted_host_handle(name) => true,
             Type::Named(name) => declared(name),
             // A `BNLog.Logger` is a counted handle: a copy retains it and the
             // end of its last binding destroys it, which closes its
@@ -50,9 +50,42 @@ impl Builder<'_> {
             {
                 true
             }
-            // Any other type of a natively implemented library (`BNJson`,
-            // `BNData`, …) is a library handle the IR does not count yet
-            // (the same gap a logger had before its handles were released).
+            // A counted `BNCrypto` handle, and the `KeyPair` record of two
+            // keys: a copy retains one count and the end of the last binding
+            // releases one (bncrypto.md, "Zeroized on drop or `RELEASE`").
+            Type::ImportedNamed { module, name }
+                if self.model.bncrypto_modules.contains(module)
+                    && (bn_ir::names::is_bncrypto_counted_handle(name)
+                        || bn_ir::names::is_bncrypto_counted_record(name)) =>
+            {
+                true
+            }
+            Type::ImportedNamed { module, name }
+                if self.model.bnjson_modules.contains(module)
+                    && name == bn_ir::names::BNJSON_COUNTED_CLASS =>
+            {
+                true
+            }
+            Type::ImportedNamed { module, name }
+                if self.model.bndata_modules.contains(module)
+                    && name == bn_ir::names::BNDATA_COUNTED_CLASS =>
+            {
+                true
+            }
+            Type::ImportedNamed { module, name }
+                if self.model.bnsqlite_modules.contains(module)
+                    && name == bn_ir::names::BNSQLITE_COUNTED_CLASS =>
+            {
+                true
+            }
+            Type::ImportedNamed { module, name }
+                if self.model.bncompress_modules.contains(module)
+                    && bn_ir::names::is_bncompress_counted_handle(name) =>
+            {
+                true
+            }
+            // Any other type of a natively implemented library is a handle
+            // the IR does not count.
             Type::ImportedNamed { module, .. } if self.model.standard_modules.contains(module) => {
                 false
             }

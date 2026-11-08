@@ -1,0 +1,38 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Memory zeroization parity fixture for bni and bnc:
+// Bytes.Zeroize() and Crypto.Zeroize(Bytes).
+
+IMPORT BNCrypto AS Crypto
+
+FUNCTION Start() AS VOID
+    // 1. Explicit method Zeroize() on Bytes
+    LET b1 AS Crypto.Bytes OR Error = Crypto.FromText("test-secret-value")
+    IF b1 IS Crypto.Bytes THEN
+        IF b1.Length() = 17 THEN
+            PRINT "b1-init-len-ok"
+        END IF
+        b1.Zeroize()
+        IF b1.Length() = 17 THEN
+            PRINT "b1-zeroized-len-ok"
+        END IF
+        IF b1.ToHex() = "0000000000000000000000000000000000" THEN
+            PRINT "b1-zeroized-hex-ok"
+        END IF
+    END IF
+
+    // 2. Explicit module-level Zeroize() on Bytes
+    LET b2 AS Crypto.Bytes OR Error = Crypto.FromText("another-secret")
+    IF b2 IS Crypto.Bytes THEN
+        Crypto.Zeroize(b2)
+        IF b2.Length() = 14 THEN
+            PRINT "b2-zeroized-len-ok"
+        END IF
+        IF b2.ToHex() = "0000000000000000000000000000" THEN
+            PRINT "b2-zeroized-hex-ok"
+        END IF
+    END IF
+END FUNCTION

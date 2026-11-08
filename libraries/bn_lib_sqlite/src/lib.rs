@@ -9,6 +9,15 @@
 //! through `bn_rt::sqlite_abi`; this adapter does not.
 
 #![allow(clippy::similar_names)]
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
 
 use std::collections::HashMap;
 use std::ffi::CString;
@@ -23,7 +32,7 @@ use bn_interp::{name_not_found, require_arity_pub as require_arity, type_mismatc
 use bn_lib_data::DataProvider;
 use bn_runtime::Handle;
 use bn_source::Span;
-use bn_stdlib::{DataFrameColumn, DataFrameResource};
+use bn_stdlib::{DataFrameColumn, DataFrameResource, FsEntryPolicy as _};
 use bn_types::error_codes::sqlite as sqlite_err;
 use bn_types::{FloatType, IntegerType};
 use bn_value::{Value, shared_string};

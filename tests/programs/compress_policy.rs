@@ -154,6 +154,7 @@ fn bncompress_obeys_the_file_policy_on_both_backends() {
 /// each pointing outside it: `ExtractFile` to a dangling link, `ExtractAll`
 /// through a linked directory, and `Create` at a dangling link. Each is
 /// `POLICY_DENIED`.
+#[cfg(unix)]
 const SYMLINK_PROGRAM: &str = "IMPORT BNCompress AS Z
 
 FUNCTION Start() AS VOID
@@ -177,6 +178,7 @@ FUNCTION Start() AS VOID
 END FUNCTION
 ";
 
+#[cfg(unix)]
 const ARCHIVE_PROGRAM: &str = "IMPORT BNCompress AS Z
 
 FUNCTION Start() AS VOID

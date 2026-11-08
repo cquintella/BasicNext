@@ -1,0 +1,22 @@
+// PRINT of a value of a general alternative type, many times in one function
+// and through a parameter: the native lowering names each extracted member
+// with a fresh value id, so no two prints share a register.
+FUNCTION Show(value AS INTEGER OR STRING OR BOOLEAN) AS VOID
+    PRINT value
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET a AS INTEGER OR STRING OR BOOLEAN = 7
+    LET b AS INTEGER OR STRING OR BOOLEAN = "seven"
+    LET c AS INTEGER OR STRING OR BOOLEAN = TRUE
+    PRINT a
+    PRINT b
+    PRINT c
+    Show(a)
+    Show(b)
+    Show(c)
+    LET d AS INTEGER OR STRING OR BOOLEAN OR NULL = NULL
+    PRINT d
+    LET e AS INTEGER OR STRING OR BOOLEAN OR NULL = 8
+    PRINT e
+END FUNCTION

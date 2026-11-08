@@ -4,7 +4,15 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! Stable diagnostic facts shared by frontend, IR and backend crates.
-
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::path::Path;
@@ -12,6 +20,7 @@ use std::sync::OnceLock;
 
 use bn_source::{Position, Revision, SourceFile, SourceId, Span};
 
+mod fixed_facts;
 pub mod trap_texts;
 
 /// Stable diagnostic identity: a validated handle into the single
@@ -151,7 +160,6 @@ diagnostic_registry! {
     INVALID_CONSTRUCTOR { code: "INVALID_CONSTRUCTOR", fluent: "INVALID_CONSTRUCTOR", severity: Error, schema: LEGACY_MESSAGE },
     INVALID_DATE { code: "INVALID_DATE", fluent: "INVALID_DATE", severity: Error, schema: DETAIL },
     INVALID_DESTRUCTOR { code: "INVALID_DESTRUCTOR", fluent: "INVALID_DESTRUCTOR", severity: Error, schema: LEGACY_MESSAGE },
-    INVALID_EGRESS_POLICY { code: "INVALID_EGRESS_POLICY", fluent: "INVALID_EGRESS_POLICY", severity: Error, schema: DETAIL },
     INVALID_EXIT_CODE { code: "INVALID_EXIT_CODE", fluent: "INVALID_EXIT_CODE", severity: Error, schema: DETAIL },
     INVALID_EXPONENT { code: "INVALID_EXPONENT", fluent: "INVALID_EXPONENT", severity: Error, schema: DETAIL },
     INVALID_FILE_MODE { code: "INVALID_FILE_MODE", fluent: "INVALID_FILE_MODE", severity: Error, schema: LEGACY_MESSAGE },
@@ -2060,24 +2068,11 @@ mod tests {
                 .expect("render")
                 .title
         };
-        assert_eq!(
-            title(
-                Catalog::selected_from_paths(
-                    Some(&environment),
-                    Some(&configured),
-                    Some(&installed)
-                )
-                .expect("environment")
-            ),
-            "Environment"
-        );
-        assert_eq!(
-            title(
-                Catalog::selected_from_paths(None, Some(&configured), Some(&installed))
-                    .expect("configured")
-            ),
-            "Configured"
-        );
+        let p1 =
+            Catalog::selected_from_paths(Some(&environment), Some(&configured), Some(&installed));
+        assert_eq!(title(p1.expect("environment")), "Environment");
+        let p2 = Catalog::selected_from_paths(None, Some(&configured), Some(&installed));
+        assert_eq!(title(p2.expect("configured")), "Configured");
         assert_eq!(
             title(Catalog::selected_from_paths(None, None, Some(&installed)).expect("installed")),
             "Installed"

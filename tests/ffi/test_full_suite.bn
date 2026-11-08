@@ -38,6 +38,18 @@ FUNCTION Start() AS INTEGER
         PRINT "FAIL read string content: ", str
         RETURN 1
     END IF
+    // The STRING is a copy: releasing it must not free the C constant, and the
+    // same pointer can be read again. An alias would free a static here.
+    RELEASE str
+    LET again AS STRING OR Error = h.ReadString()
+    IF again IS Error THEN
+        PRINT "FAIL read string after release: ", again.Message
+        RETURN 1
+    END IF
+    IF again <> "hello from C" THEN
+        PRINT "FAIL read string after release content: ", again
+        RETURN 1
+    END IF
 
     // 3. NULL pointer return
     ok = C.Call("bnffi_test", "test_return_null", empty_args, res_ptr)

@@ -77,6 +77,11 @@ pub fn reverse_lookup(address: Address, timeout_ms: i128) -> Result<String, NetE
             ReverseError::NotFound => {
                 Failure::NotFound(format!("no name is registered for {address}"))
             }
+            ReverseError::Limit(maximum) => Failure::Limit(bn_catalog::fill(
+                "net",
+                "resolve.limit.cause",
+                &[("maximum", &maximum)],
+            )),
             ReverseError::Io(error) => Failure::Io(error),
         };
         NetError::new(OPERATION, action, failure)
@@ -112,6 +117,11 @@ pub fn resolve_host(
                     &[("host", &host)],
                 )),
                 std::io::ErrorKind::InvalidInput => Failure::InvalidArgument(error.to_string()),
+                std::io::ErrorKind::QuotaExceeded => Failure::Limit(bn_catalog::fill(
+                    "net",
+                    "resolve.limit.cause",
+                    &[("maximum", &super::LOOKUPS_IN_FLIGHT_MAX)],
+                )),
                 _ => Failure::Io(error),
             };
             Err(NetError::new(OPERATION, action, failure))

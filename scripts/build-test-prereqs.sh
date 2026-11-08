@@ -30,9 +30,10 @@ if [ -z "${BASH_VERSION:-}" ]; then
 fi
 
 TEST_PREREQS_STAMP_FILE=test-prereqs.stamp
+TEST_PREREQS_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
 test_prereqs_root() {
-    (cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+    printf '%s\n' "$TEST_PREREQS_ROOT"
 }
 
 # True when the workspace root is the top of a git work tree. A source copy
@@ -146,7 +147,7 @@ prepare_test_artifacts() {
 # Run as a command (not sourced): build from the workspace root.
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
     set -euo pipefail
-    cd "$(dirname "${BASH_SOURCE[0]}")/.."
+    cd "$TEST_PREREQS_ROOT"
     if [[ ${1:-} == --print-stamp ]]; then
         test_prereqs_stamp
     else

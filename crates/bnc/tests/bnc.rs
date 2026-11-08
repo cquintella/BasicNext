@@ -1,4 +1,14 @@
-#![allow(clippy::map_unwrap_or)]
+#![allow(
+    clippy::disallowed_methods,
+    clippy::map_unwrap_or,
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
 
 //! Integration tests of the `bnc` executable (Clang-like surface).
 //! Relocated from the root `tests/bnc.rs`; tests

@@ -98,7 +98,7 @@ pub(crate) struct LlvmModule {
 
 impl LlvmModule {
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
@@ -123,7 +123,7 @@ impl LlvmModule {
     }
 
     /// Defines a whole function.
-    pub fn function(&mut self, function: LlvmFunction) {
+    pub(crate) fn function(&mut self, function: LlvmFunction) {
         self.append(Piece::Function(function));
     }
 
@@ -171,7 +171,7 @@ impl LlvmModule {
     /// The point between the pieces emitted so far and the next one, where
     /// `insert_assign` can add an instruction later (a deferred `phi`).
     #[must_use]
-    pub const fn position(&self) -> usize {
+    pub(crate) const fn position(&self) -> usize {
         self.pieces.len()
     }
 

@@ -17,6 +17,16 @@
 //! Interpreter and native `bn build` binaries share these implementations.
 //! LLVM emits calls to the `bn_rt_*` C ABI; `bn run` uses the Rust API.
 
+#![allow(
+    unreachable_pub,
+    clippy::allow_attributes_without_reason,
+    clippy::let_underscore_must_use,
+    clippy::string_slice,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "DEC-55: native"
+)]
+
 use std::{
     ffi::c_char,
     io::{self, Write},
@@ -35,6 +45,7 @@ mod exec;
 pub mod file;
 pub mod file_abi;
 mod file_error;
+pub mod handle_table_abi;
 mod stack_abi;
 #[cfg(feature = "net")]
 pub use bn_core_net as net;
@@ -42,6 +53,7 @@ pub use bn_core_net as net;
 mod net_abi;
 pub mod policy;
 pub mod secure_fs;
+pub mod static_file;
 pub mod string;
 mod terminal;
 pub mod text_abi;
@@ -51,6 +63,7 @@ mod vector_abi;
 pub use stack_abi::bn_rt_stack_check;
 pub use vector_abi::{Row, bn_rt_vector_nest};
 
+pub use bn_core_fs::FsEntryPolicy;
 pub use console::{ConsoleError, beep, cls, num_cols, num_rows, print_at};
 pub use error_abi::{
     bn_rt_error_code, bn_rt_error_field, bn_rt_error_print, bn_rt_error_take, bn_rt_error_wrap,
@@ -61,7 +74,7 @@ pub use file_abi::*;
 #[cfg(feature = "net")]
 pub use net::{
     Address as NetAddress, AddressesHandle, NeighborError, PingError, PingReply, ReverseError,
-    join_resolver_tasks, neighbor, ping, reverse_timeout,
+    neighbor, ping, reverse_timeout,
 };
 #[cfg(feature = "net")]
 pub use net_abi::*;

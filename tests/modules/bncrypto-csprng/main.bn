@@ -1,0 +1,75 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// CSPRNG additions parity fixture for bni and bnc:
+// RandomInt, RandomToken, RandomUuidV4, UuidV7, RandomPassword.
+
+IMPORT BNCrypto AS Crypto
+
+FUNCTION Start() AS VOID
+    // 1. RandomInt valid range
+    LET n AS INTEGER OR Error = Crypto.RandomInt(10, 20)
+    IF n IS INTEGER THEN
+        IF n >= 10 AND n <= 20 THEN
+            PRINT "random-int-range-ok"
+        END IF
+    END IF
+
+    // 2. RandomInt invalid range
+    LET badInt AS INTEGER OR Error = Crypto.RandomInt(20, 10)
+    IF badInt IS Error THEN
+        IF badInt.Code = Crypto.INVALID_ARGUMENT THEN
+            PRINT "random-int-error-caught"
+        END IF
+    END IF
+
+    // 3. RandomToken valid
+    LET tok AS STRING OR Error = Crypto.RandomToken(16)
+    IF tok IS STRING THEN
+        IF LEN(tok) = 22 THEN
+            PRINT "random-token-len-ok"
+        END IF
+    END IF
+
+    // 4. RandomToken invalid length
+    LET badTok AS STRING OR Error = Crypto.RandomToken(-1)
+    IF badTok IS Error THEN
+        IF badTok.Code = Crypto.INVALID_ARGUMENT THEN
+            PRINT "random-token-error-caught"
+        END IF
+    END IF
+
+    // 5. RandomUuidV4 format
+    LET u4 AS STRING = Crypto.RandomUuidV4()
+    IF LEN(u4) = 36 AND u4[14] = "4" THEN
+        PRINT "random-uuid-v4-ok"
+    END IF
+
+    // 6. UuidV7 format and monotonicity
+    LET u7a AS STRING = Crypto.UuidV7()
+    LET u7b AS STRING = Crypto.UuidV7()
+    IF LEN(u7a) = 36 AND u7a[14] = "7" AND u7b >= u7a THEN
+        PRINT "uuid-v7-monotonic-ok"
+    END IF
+
+    // 7. RandomPassword default options
+    LET opts AS Crypto.PasswordGenOptions
+    LET pwd AS STRING OR Error = Crypto.RandomPassword(opts)
+    IF pwd IS STRING THEN
+        IF LEN(pwd) = 20 THEN
+            PRINT "random-pwd-default-ok"
+        END IF
+    END IF
+
+    // 8. RandomPassword invalid options
+    LET badOpts AS Crypto.PasswordGenOptions
+    badOpts.length = 0
+    LET badPwd AS STRING OR Error = Crypto.RandomPassword(badOpts)
+    IF badPwd IS Error THEN
+        IF badPwd.Code = Crypto.INVALID_ARGUMENT THEN
+            PRINT "random-pwd-error-caught"
+        END IF
+    END IF
+END FUNCTION

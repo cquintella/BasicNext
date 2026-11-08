@@ -90,80 +90,117 @@ pub(crate) fn region_element_label(element: &Type) -> String {
     }
 }
 
-pub(crate) fn is_integer_handle_type(ty: &Type) -> bool {
+fn is_provider_handle(module: &Module, id: bn_ir::ModuleId, name: &str) -> bool {
+    if module.bncrypto_providers.contains(&id) {
+        matches!(
+            name,
+            "Bytes"
+                | "Key"
+                | "SecretKey"
+                | "PublicKey"
+                | "PrivateKey"
+                | "Secret"
+                | "Hasher"
+                | "MacStream"
+        )
+    } else if module.bnsqlite_providers.contains(&id) {
+        name == "Connection"
+    } else if module.bndata_providers.contains(&id) {
+        name == "DataFrame"
+    } else if module.bncompress_providers.contains(&id) {
+        matches!(name, "Bytes" | "ZipArchive")
+    } else if module.bnjson_providers.contains(&id) {
+        name == "Json"
+    } else if module.bnlog_providers.contains(&id) {
+        name == "Logger"
+    } else if module.bndispatch_providers.contains(&id) {
+        matches!(
+            name,
+            "Queue" | "Ticket" | "Group" | "Barrier" | "Semaphore" | "Mutex"
+        )
+    } else if module.bnweb_providers.contains(&id) {
+        matches!(
+            name,
+            "SessionStore"
+                | "CookieJar"
+                | "Scraper"
+                | "ACL"
+                | "Client"
+                | "Server"
+                | "EgressPolicy"
+                | "TLSConfig"
+                | "Response"
+                | "Request"
+        )
+    } else {
+        false
+    }
+}
+
+pub(crate) fn is_integer_handle_type(module: &Module, ty: &Type) -> bool {
     match ty {
         Type::Named(name) | Type::TypeName(name) => {
-            let base = name.rsplit('.').next().unwrap_or(name);
-            matches!(
-                base,
-                "File"
-                    | "TCPStream"
-                    | "TCPListener"
-                    | "UDPSocket"
-                    | "UDPPacket"
-                    | "Connection"
-                    | "DataFrame"
-                    | "Bytes"
-                    | "Queue"
-                    | "Ticket"
-                    | "Group"
-                    | "Barrier"
-                    | "Semaphore"
-                    | "Mutex"
-                    | "SessionStore"
-                    | "CookieJar"
-                    | "Scraper"
-                    | "ACL"
-                    | "Client"
-                    | "Server"
-                    | "EgressPolicy"
-                    | "TLSConfig"
-                    | "Response"
-                    | "Request"
-                    | "Json"
-                    | "Logger"
-                    | "Result"
-            )
-        }
-        Type::ImportedNamed { name, .. } | Type::ImportedTypeName { name, .. } => {
+            if let Some((id_str, base)) = name.strip_prefix('#').and_then(|r| r.split_once('.')) {
+                if let Ok(id) = id_str.parse::<u32>() {
+                    return is_provider_handle(module, bn_ir::ModuleId(id), base);
+                }
+            }
             matches!(
                 name.as_str(),
-                "File"
-                    | "TCPStream"
-                    | "TCPListener"
-                    | "UDPSocket"
-                    | "UDPPacket"
-                    | "Connection"
-                    | "DataFrame"
-                    | "Bytes"
-                    | "Queue"
-                    | "Ticket"
-                    | "Group"
-                    | "Barrier"
-                    | "Semaphore"
-                    | "Mutex"
-                    | "SessionStore"
-                    | "CookieJar"
-                    | "Scraper"
-                    | "ACL"
-                    | "Client"
-                    | "Server"
-                    | "EgressPolicy"
-                    | "TLSConfig"
-                    | "Response"
-                    | "Request"
-                    | "Json"
-                    | "Logger"
-                    | "Result"
+                "FS.File"
+                    | "HOST.Net.TCPStream"
+                    | "HOST.Net.TCPListener"
+                    | "HOST.Net.UDPSocket"
+                    | "HOST.Net.UDPPacket"
+                    | "HOST.Exec.Result"
+                    | "BNCrypto.Bytes"
+                    | "BNCrypto.Key"
+                    | "BNCrypto.SecretKey"
+                    | "BNCrypto.PublicKey"
+                    | "BNCrypto.PrivateKey"
+                    | "BNCrypto.Secret"
+                    | "BNCrypto.Hasher"
+                    | "BNCrypto.MacStream"
+                    | "BNSqlite.Connection"
+                    | "BNData.DataFrame"
+                    | "BNCompress.Bytes"
+                    | "BNCompress.ZipArchive"
+                    | "BNJson.Json"
+                    | "BNLog.Logger"
+                    | "BNDispatch.Queue"
+                    | "BNDispatch.Ticket"
+                    | "BNDispatch.Group"
+                    | "BNDispatch.Barrier"
+                    | "BNDispatch.Semaphore"
+                    | "BNDispatch.Mutex"
+                    | "BNWeb.SessionStore"
+                    | "BNWeb.CookieJar"
+                    | "BNWeb.Scraper"
+                    | "BNWeb.ACL"
+                    | "BNWeb.Client"
+                    | "BNWeb.Server"
+                    | "BNWeb.EgressPolicy"
+                    | "BNWeb.TLSConfig"
+                    | "BNWeb.Response"
+                    | "BNWeb.Request"
             )
         }
-        Type::Alternative(members) => members.iter().any(is_integer_handle_type),
+        Type::ImportedNamed {
+            module: mod_id,
+            name,
+        }
+        | Type::ImportedTypeName {
+            module: mod_id,
+            name,
+        } => is_provider_handle(module, (*mod_id).into(), name),
+        Type::Alternative(members) => members.iter().any(|m| is_integer_handle_type(module, m)),
         _ => false,
     }
 }
 
 pub(crate) fn coerce_to_type(
     text: &mut crate::ir::LlvmModule,
+    module: &Module,
     value: ValueId,
     from: &Type,
     to: &Type,
@@ -175,7 +212,7 @@ pub(crate) fn coerce_to_type(
     }
     if from_llvm == crate::layout::handle_result_ty() && to_llvm == LlvmType::Ptr {
         let union_ty = LlvmType::struct_of([LlvmType::I1, LlvmType::Ptr, LlvmType::I64]);
-        if is_integer_handle_type(from) || is_integer_handle_type(to) {
+        if is_integer_handle_type(module, from) || is_integer_handle_type(module, to) {
             let tag = format!("unhdlpayload{}_{}", value.0, text.fresh_tag());
             text.assign(
                 tag.clone(),
@@ -277,7 +314,7 @@ pub(crate) fn coerce_to_type(
         );
         return crate::ir::LlvmOperand::reg(&ctag);
     }
-    if let Some(constructed) = alternatives::construct(text, value, from, to) {
+    if let Some(constructed) = alternatives::construct(text, module, value, from, to) {
         return constructed;
     }
     if from_llvm == crate::layout::status_endpoint_ty() && to_llvm == crate::layout::vector_ty() {
@@ -632,7 +669,7 @@ pub(crate) fn provider_name(module: &Module, name: &str) -> Option<&'static str>
         .iter()
         .any(|provider| provider.0 == module_id)
     {
-        Some("BNJson")
+        Some(bn_catalog::text("modules", "module.json"))
     } else if module
         .bnsqlite_providers
         .iter()

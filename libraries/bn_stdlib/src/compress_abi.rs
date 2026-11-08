@@ -15,28 +15,24 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, PoisonError};
 
+use crate::counted::{Counted, Release};
 use crate::secure_fs::OpenMode;
 use crate::{c_str, c_string};
 use bn_core_compress::{
     CompressError, FileAccess, ZipArchiveHandle, decode_hex, deflate, encode_hex, gunzip, gzip,
     inflate,
 };
+use bn_rt::FsEntryPolicy as _;
 
 pub(crate) const BN_COMPRESS_OK: i32 = 0;
 pub(crate) const BN_COMPRESS_INVALID_ARGUMENT: i32 = 1;
 pub(crate) const BN_COMPRESS_INVALID_HANDLE: i32 = 2;
 
 #[derive(Default)]
-struct Buffers {
-    values: Mutex<HashMap<u64, Vec<u8>>>,
-    holders: Mutex<HashMap<u64, usize>>,
-}
+struct Buffers(Mutex<Counted<Vec<u8>>>);
 
 #[derive(Default)]
-struct Archives {
-    values: Mutex<HashMap<u64, ZipArchiveHandle>>,
-    holders: Mutex<HashMap<u64, usize>>,
-}
+struct Archives(Mutex<Counted<ZipArchiveHandle>>);
 
 fn next_handle() -> u64 {
     static NEXT: AtomicU64 = AtomicU64::new(1);
@@ -47,9 +43,10 @@ fn with_buffers<T>(operation: impl FnOnce(&mut HashMap<u64, Vec<u8>>) -> T) -> T
     let buffers = bn_core_copy::table::<Buffers>();
     operation(
         &mut buffers
-            .values
+            .0
             .lock()
-            .unwrap_or_else(PoisonError::into_inner),
+            .unwrap_or_else(PoisonError::into_inner)
+            .values,
     )
 }
 
@@ -57,33 +54,30 @@ fn with_archives<T>(operation: impl FnOnce(&mut HashMap<u64, ZipArchiveHandle>) 
     let archives = bn_core_copy::table::<Archives>();
     operation(
         &mut archives
-            .values
+            .0
             .lock()
-            .unwrap_or_else(PoisonError::into_inner),
+            .unwrap_or_else(PoisonError::into_inner)
+            .values,
     )
 }
 
 fn store_buffer(bytes: Vec<u8>) -> u64 {
     let handle = next_handle();
-    with_buffers(|buffers| buffers.insert(handle, bytes));
-    let buffers = bn_core_copy::table::<Buffers>();
-    buffers
-        .holders
+    bn_core_copy::table::<Buffers>()
+        .0
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
-        .insert(handle, 1);
+        .insert(handle, bytes);
     handle
 }
 
 fn store_archive(archive: ZipArchiveHandle) -> u64 {
     let handle = next_handle();
-    with_archives(|archives| archives.insert(handle, archive));
-    let archives = bn_core_copy::table::<Archives>();
-    archives
-        .holders
+    bn_core_copy::table::<Archives>()
+        .0
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
-        .insert(handle, 1);
+        .insert(handle, archive);
     handle
 }
 
@@ -200,13 +194,15 @@ pub extern "C" fn bn_rt_compress_bytes_to_text(handle: u64, out: *mut *mut c_cha
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_compress_bytes_retain(handle: u64) -> i32 {
-    let buffers = bn_core_copy::table::<Buffers>();
-    let mut holders = buffers
-        .holders
+    if handle == 0 {
+        return BN_COMPRESS_OK;
+    }
+    let held = bn_core_copy::table::<Buffers>()
+        .0
         .lock()
-        .unwrap_or_else(PoisonError::into_inner);
-    if let Some(count) = holders.get_mut(&handle) {
-        *count += 1;
+        .unwrap_or_else(PoisonError::into_inner)
+        .retain(handle);
+    if held {
         BN_COMPRESS_OK
     } else {
         BN_COMPRESS_INVALID_HANDLE
@@ -219,24 +215,14 @@ pub extern "C" fn bn_rt_compress_bytes_release(handle: u64) -> i32 {
     if handle == 0 {
         return BN_COMPRESS_OK;
     }
-    let buffers = bn_core_copy::table::<Buffers>();
-    let mut holders = buffers
-        .holders
+    let released = bn_core_copy::table::<Buffers>()
+        .0
         .lock()
-        .unwrap_or_else(PoisonError::into_inner);
-    if let Some(count) = holders.get_mut(&handle) {
-        *count -= 1;
-        if *count == 0 {
-            holders.remove(&handle);
-            buffers
-                .values
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .remove(&handle);
-        }
-        BN_COMPRESS_OK
-    } else {
-        BN_COMPRESS_INVALID_HANDLE
+        .unwrap_or_else(PoisonError::into_inner)
+        .release(handle);
+    match released {
+        Release::Last(_) | Release::Held => BN_COMPRESS_OK,
+        Release::Unknown => BN_COMPRESS_INVALID_HANDLE,
     }
 }
 
@@ -726,13 +712,15 @@ pub extern "C" fn bn_rt_zip_close(handle: u64) -> i32 {
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_zip_retain(handle: u64) -> i32 {
-    let archives = bn_core_copy::table::<Archives>();
-    let mut holders = archives
-        .holders
+    if handle == 0 {
+        return BN_COMPRESS_OK;
+    }
+    let held = bn_core_copy::table::<Archives>()
+        .0
         .lock()
-        .unwrap_or_else(PoisonError::into_inner);
-    if let Some(count) = holders.get_mut(&handle) {
-        *count += 1;
+        .unwrap_or_else(PoisonError::into_inner)
+        .retain(handle);
+    if held {
         BN_COMPRESS_OK
     } else {
         BN_COMPRESS_INVALID_HANDLE
@@ -745,26 +733,19 @@ pub extern "C" fn bn_rt_zip_release(handle: u64) -> i32 {
     if handle == 0 {
         return BN_COMPRESS_OK;
     }
-    let archives = bn_core_copy::table::<Archives>();
-    let mut holders = archives
-        .holders
+    let released = bn_core_copy::table::<Archives>()
+        .0
         .lock()
-        .unwrap_or_else(PoisonError::into_inner);
-    if let Some(count) = holders.get_mut(&handle) {
-        *count -= 1;
-        if *count == 0 {
-            holders.remove(&handle);
-            if let Some(mut archive) = archives
-                .values
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .remove(&handle)
-            {
-                let _ = archive.close();
-            }
+        .unwrap_or_else(PoisonError::into_inner)
+        .release(handle);
+    // The archive is closed after the table lock is released: closing writes
+    // to disk.
+    match released {
+        Release::Last(mut archive) => {
+            let _ = archive.close();
+            BN_COMPRESS_OK
         }
-        BN_COMPRESS_OK
-    } else {
-        BN_COMPRESS_INVALID_HANDLE
+        Release::Held => BN_COMPRESS_OK,
+        Release::Unknown => BN_COMPRESS_INVALID_HANDLE,
     }
 }

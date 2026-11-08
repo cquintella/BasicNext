@@ -7,6 +7,15 @@
 //! `bni eval --session --format json`.
 
 #![allow(clippy::map_unwrap_or)]
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
 
 use std::{
     io::{BufRead, BufReader, Write},

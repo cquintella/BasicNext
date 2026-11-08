@@ -8,6 +8,7 @@ use crate::ir::{
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn emit_euclidean_integer_op(
     text: &mut crate::ir::LlvmModule,
+    module: &Module,
     block_id: BlockId,
     destination: ValueId,
     operator: &str,
@@ -22,8 +23,8 @@ pub(crate) fn emit_euclidean_integer_op(
     let llvm_ty = llvm_str;
     let dest = destination.0;
     let r = |name: &str| O::reg(format!("div{name}{dest}"));
-    let left_op = coerce_to_type(text, left, left_ty, ty);
-    let right_op = coerce_to_type(text, right, right_ty, ty);
+    let left_op = coerce_to_type(text, module, left, left_ty, ty);
+    let right_op = coerce_to_type(text, module, right, right_ty, ty);
     let compare = |text: &mut crate::ir::LlvmModule, name: &str, value: &O, constant: O| {
         let inst = I::icmp(ICmpCond::Eq, llvm_ty.clone(), value.clone(), constant);
         text.assign(format!("div{name}{dest}"), inst);

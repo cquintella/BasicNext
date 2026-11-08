@@ -28,36 +28,31 @@ pub(crate) const BN_CRYPTO_OK: i32 = 0;
 pub(crate) const BN_CRYPTO_INVALID_ARGUMENT: i32 = 1;
 pub(crate) const BN_CRYPTO_INVALID_HANDLE: i32 = 2;
 
+use crate::counted::{Counted, Release};
 use crate::crypto::KeyEntry;
 
 #[derive(Default)]
-struct Keys {
-    values: Mutex<HashMap<u64, KeyEntry>>,
-    holders: Mutex<HashMap<u64, usize>>,
-}
+struct Keys(Mutex<Counted<KeyEntry>>);
 
 fn with_keys<T>(operation: impl FnOnce(&mut HashMap<u64, KeyEntry>) -> T) -> T {
     let keys = bn_core_copy::table::<Keys>();
-    operation(&mut keys.values.lock().unwrap_or_else(PoisonError::into_inner))
+    operation(&mut keys.0.lock().unwrap_or_else(PoisonError::into_inner).values)
 }
 
 fn store_key(algorithm: i32, material: zeroize::Zeroizing<Vec<u8>>) -> u64 {
     let handle = next_handle();
-    with_keys(|keys| {
-        keys.insert(handle, KeyEntry::new(algorithm, material));
-    });
-    let keys = bn_core_copy::table::<Keys>();
-    keys.holders
+    bn_core_copy::table::<Keys>()
+        .0
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
-        .insert(handle, 1);
+        .insert(handle, KeyEntry::new(algorithm, material));
     handle
 }
 
 /// The material of the `Key` `handle`: `Err(BN_CRYPTO_INVALID_HANDLE)` for an
 /// unknown or released handle, and the `INVALID_ARGUMENT` `Error` of
 /// `bncrypto.md` for a key erased with `Zeroize()`.
-fn get_key_material(handle: u64) -> Result<zeroize::Zeroizing<Vec<u8>>, i32> {
+pub(crate) fn get_key_material(handle: u64) -> Result<zeroize::Zeroizing<Vec<u8>>, i32> {
     let material = with_keys(|keys| {
         keys.get(&handle)
             .map(|entry| (!entry.zeroized).then(|| entry.material.clone()))
@@ -72,49 +67,50 @@ fn get_key_material(handle: u64) -> Result<zeroize::Zeroizing<Vec<u8>>, i32> {
 /// The byte buffers of the module copy that runs on this thread
 /// (`bn_core_copy`): a task's are freed when the task ends.
 #[derive(Default)]
-struct Buffers {
-    values: Mutex<HashMap<u64, Vec<u8>>>,
-    holders: Mutex<HashMap<u64, usize>>,
-}
+struct Buffers(Mutex<Counted<zeroize::Zeroizing<Vec<u8>>>>);
 
-fn next_handle() -> u64 {
+pub(crate) fn next_handle() -> u64 {
     static NEXT: AtomicU64 = AtomicU64::new(1);
     NEXT.fetch_add(1, Ordering::Relaxed)
 }
 
-fn with_buffers<T>(operation: impl FnOnce(&mut HashMap<u64, Vec<u8>>) -> T) -> T {
+pub(crate) fn with_buffers<T>(
+    operation: impl FnOnce(&mut HashMap<u64, zeroize::Zeroizing<Vec<u8>>>) -> T,
+) -> T {
     let buffers = bn_core_copy::table::<Buffers>();
     operation(
         &mut buffers
-            .values
+            .0
             .lock()
-            .unwrap_or_else(PoisonError::into_inner),
+            .unwrap_or_else(PoisonError::into_inner)
+            .values,
     )
 }
 
-fn store(bytes: Vec<u8>) -> u64 {
+pub(crate) fn store(bytes: Vec<u8>) -> u64 {
     let handle = next_handle();
-    with_buffers(|buffers| buffers.insert(handle, bytes));
-    let buffers = bn_core_copy::table::<Buffers>();
-    buffers
-        .holders
+    bn_core_copy::table::<Buffers>()
+        .0
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
-        .insert(handle, 1);
+        .insert(handle, zeroize::Zeroizing::new(bytes));
     handle
 }
 
-/// Stores the UTF-8 bytes of `text` and returns the handle. A null or
-/// non-UTF-8 argument yields an empty buffer rather than a null handle, so the
-/// caller never has to branch on a sentinel.
+/// Stores the UTF-8 bytes of `text` and returns the handle. A null pointer or
+/// an argument that is not a BN STRING is refused and returns no
+/// handle (0), so a later use of it is `USE_AFTER_RELEASE`.
 #[allow(unsafe_code)] // C ABI: STRING in, opaque handle out.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_bytes_from_text(text: *const c_char) -> u64 {
-    store(
-        c_str(text)
-            .map(|text| text.as_bytes().to_vec())
-            .unwrap_or_default(),
-    )
+    // Not a BN STRING: refused, no handle. An empty buffer here would become
+    // an empty key or MAC key downstream.
+    match c_str(text) {
+        Some(text) => store(text.as_bytes().to_vec()),
+        // No error record: `FromText` returns `Bytes`, not `OR Error`, so nothing
+        // would read it, and a stale record could reach a later failure.
+        None => 0,
+    }
 }
 
 /// Decodes `text` as hex into a new buffer. Writes the handle through `out` and
@@ -126,7 +122,9 @@ pub extern "C" fn bn_rt_crypto_bytes_from_hex(text: *const c_char, out: *mut u64
     if out.is_null() {
         return BN_CRYPTO_INVALID_ARGUMENT;
     }
-    let text = c_str(text).unwrap_or_default();
+    let Some(text) = c_str(text) else {
+        return failed(&crate::crypto_error::CryptoFailure::Utf8);
+    };
     let Some(bytes) = decode_hex(text) else {
         return failed(&crate::crypto_error::CryptoFailure::Hex(text.to_owned()));
     };
@@ -165,13 +163,12 @@ pub extern "C" fn bn_rt_crypto_bytes_retain(handle: u64) -> i32 {
     if handle == 0 {
         return BN_CRYPTO_OK;
     }
-    let buffers = bn_core_copy::table::<Buffers>();
-    let mut holders = buffers
-        .holders
+    let held = bn_core_copy::table::<Buffers>()
+        .0
         .lock()
-        .unwrap_or_else(PoisonError::into_inner);
-    if let Some(count) = holders.get_mut(&handle) {
-        *count += 1;
+        .unwrap_or_else(PoisonError::into_inner)
+        .retain(handle);
+    if held {
         BN_CRYPTO_OK
     } else {
         BN_CRYPTO_INVALID_HANDLE
@@ -187,27 +184,64 @@ pub extern "C" fn bn_rt_crypto_bytes_release(handle: u64) -> i32 {
     if handle == 0 {
         return BN_CRYPTO_OK;
     }
-    let buffers = bn_core_copy::table::<Buffers>();
-    let mut holders = buffers
-        .holders
+    let released = bn_core_copy::table::<Buffers>()
+        .0
         .lock()
-        .unwrap_or_else(PoisonError::into_inner);
-    let Some(count) = holders.get_mut(&handle) else {
-        return BN_CRYPTO_INVALID_HANDLE;
-    };
-    *count -= 1;
-    if *count == 0 {
-        holders.remove(&handle);
-        drop(holders);
-        with_buffers(|buffers| buffers.remove(&handle));
+        .unwrap_or_else(PoisonError::into_inner)
+        .release(handle);
+    match released {
+        Release::Last(mut buf) => {
+            buf.zeroize();
+            BN_CRYPTO_OK
+        }
+        Release::Held => BN_CRYPTO_OK,
+        Release::Unknown => BN_CRYPTO_INVALID_HANDLE,
     }
-    BN_CRYPTO_OK
 }
+
+/// Explicitly zeroizes the buffer memory in `handle`.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_bytes_zeroize(handle: u64) -> i32 {
+    let buffers = bn_core_copy::table::<Buffers>();
+    let mut tables = buffers.0.lock().unwrap_or_else(PoisonError::into_inner);
+    if let Some(buf) = tables.values.get_mut(&handle) {
+        buf.as_mut_slice().zeroize();
+        BN_CRYPTO_OK
+    } else {
+        BN_CRYPTO_INVALID_HANDLE
+    }
+}
+
+/// Compares two `Bytes` buffers in constant time without short-circuiting.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_bytes_constant_time_equals(a: u64, b: u64) -> i32 {
+    let a_bytes = with_buffers(|buffers| buffers.get(&a).cloned());
+    let b_bytes = with_buffers(|buffers| buffers.get(&b).cloned());
+    match (a_bytes, b_bytes) {
+        (Some(a_buf), Some(b_buf)) => {
+            i32::from(crate::crypto::constant_time_equals(&a_buf, &b_buf))
+        }
+        _ => 0,
+    }
+}
+
+pub use crate::crypto_asymmetric::*;
+pub use crate::crypto_csprng::*;
+pub use crate::crypto_encoding::*;
+pub use crate::crypto_envelope::*;
+pub use crate::crypto_file::*;
+pub use crate::crypto_hash::*;
+pub use crate::crypto_mac::*;
+pub use crate::crypto_password::*;
+pub use crate::crypto_secret_abi::*;
+pub use crate::crypto_sign::*;
 
 /// Algorithm selector shared with the backends: `0` is AES-256-GCM, `1` is
 /// ChaCha20-Poly1305. Anything else is rejected.
 /// Records `failure` for the emitted code's `Error` and returns the status.
-fn failed(failure: &crate::crypto_error::CryptoFailure) -> i32 {
+pub(crate) fn failed(failure: &crate::crypto_error::CryptoFailure) -> i32 {
     crate::set_error_report(
         failure.code(),
         failure.operation(),
@@ -225,18 +259,23 @@ fn algorithm(selector: i32) -> Option<Aead> {
     }
 }
 
-/// The four operands an AEAD call needs: key, nonce, message and AAD. The key
-/// stays in `Zeroizing`, so this copy is erased when the call ends.
-type AeadOperands = (zeroize::Zeroizing<Vec<u8>>, Vec<u8>, Vec<u8>, Vec<u8>);
+/// The four operands an AEAD call needs: key, nonce, message and AAD. Key,
+/// nonce and message stay in `Zeroizing`, so these copies are erased when the call ends.
+type AeadOperands = (
+    zeroize::Zeroizing<Vec<u8>>,
+    zeroize::Zeroizing<Vec<u8>>,
+    zeroize::Zeroizing<Vec<u8>>,
+    Vec<u8>,
+);
 
 /// The AEAD operands, or the status to return (see [`get_key_material`]).
 fn borrow_aead(key_handle: u64, b: u64, c: u64, d: u64) -> Result<AeadOperands, i32> {
     let key = get_key_material(key_handle)?;
     let (nonce, msg, aad) = with_buffers(|buffers| {
         Some((
-            buffers.get(&b)?.clone(),
-            buffers.get(&c)?.clone(),
-            buffers.get(&d)?.clone(),
+            zeroize::Zeroizing::new(buffers.get(&b)?.to_vec()),
+            zeroize::Zeroizing::new(buffers.get(&c)?.to_vec()),
+            buffers.get(&d)?.to_vec(),
         ))
     })
     .ok_or(BN_CRYPTO_INVALID_HANDLE)?;
@@ -317,7 +356,11 @@ pub extern "C" fn bn_rt_crypto_hmac(key: u64, data: u64, out: *mut u64) -> i32 {
         Ok(material) => material,
         Err(status) => return status,
     };
-    let Some(data) = with_buffers(|buffers| buffers.get(&data).cloned()) else {
+    let Some(data) = with_buffers(|buffers| {
+        buffers
+            .get(&data)
+            .map(|b| zeroize::Zeroizing::new(b.to_vec()))
+    }) else {
         return BN_CRYPTO_INVALID_HANDLE;
     };
     let handle = store(hmac_sha256(&key, &data));
@@ -335,9 +378,12 @@ pub extern "C" fn bn_rt_crypto_hmac_verify(key: u64, data: u64, tag: u64) -> i32
         Ok(material) => material,
         Err(status) => return status,
     };
-    let Some((data, tag)) =
-        with_buffers(|buffers| Some((buffers.get(&data)?.clone(), buffers.get(&tag)?.clone())))
-    else {
+    let Some((data, tag)) = with_buffers(|buffers| {
+        Some((
+            zeroize::Zeroizing::new(buffers.get(&data)?.to_vec()),
+            buffers.get(&tag)?.to_vec(),
+        ))
+    }) else {
         return BN_CRYPTO_INVALID_HANDLE;
     };
     i32::from(hmac_verify(&key, &data, &tag))
@@ -367,7 +413,10 @@ pub extern "C" fn bn_rt_crypto_argon2id(
         return failed(&crate::crypto_error::CryptoFailure::Argon2id);
     };
     let Some((password, salt)) = with_buffers(|buffers| {
-        Some((buffers.get(&password)?.clone(), buffers.get(&salt)?.clone()))
+        Some((
+            zeroize::Zeroizing::new(buffers.get(&password)?.to_vec()),
+            buffers.get(&salt)?.to_vec(),
+        ))
     }) else {
         return BN_CRYPTO_INVALID_HANDLE;
     };
@@ -662,23 +711,6 @@ pub extern "C" fn bn_rt_crypto_slice(data: u64, start: i64, length: i64, out: *m
     BN_CRYPTO_OK
 }
 
-/// Generates `length` random bytes using the operating system CSPRNG and stores them in a new buffer.
-#[allow(unsafe_code)]
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_crypto_random_bytes(length: i64, out: *mut u64) -> i32 {
-    if out.is_null() {
-        return BN_CRYPTO_INVALID_ARGUMENT;
-    }
-    let bytes = match crate::crypto::random_bytes(i128::from(length)) {
-        Ok(b) => b,
-        Err(err) => return failed(&err),
-    };
-    let handle = store(bytes);
-    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
-    unsafe { *out = handle };
-    BN_CRYPTO_OK
-}
-
 /// Generates a CSPRNG nonce suitable for `algorithm` and stores it in a new buffer.
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
@@ -736,45 +768,36 @@ pub extern "C" fn bn_rt_crypto_import_key(
             actual: raw_bytes.len(),
         });
     }
-    let material = zeroize::Zeroizing::new(raw_bytes);
-    let handle = store_key(algorithm, material);
+    let handle = store_key(algorithm, raw_bytes);
     // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe { *out = handle };
     BN_CRYPTO_OK
 }
 
-/// Returns the byte length of `key_handle`, or `-1` if unknown/zeroized.
+/// The byte length of `key_handle`; 0 once zeroized (as `bni`). A released
+/// handle is `USE_AFTER_RELEASE`.
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_key_length(key_handle: u64) -> i64 {
     with_keys(|keys| {
-        keys.get(&key_handle)
-            .and_then(|entry| {
-                if entry.zeroized {
-                    None
-                } else {
-                    i64::try_from(entry.material.len()).ok()
-                }
-            })
-            .unwrap_or(-1)
+        keys.get(&key_handle).map(|entry| {
+            if entry.zeroized {
+                0
+            } else {
+                i64::try_from(entry.material.len()).unwrap_or(i64::MAX)
+            }
+        })
     })
+    .unwrap_or_else(|| crate::arc_abi::abort_use_after_release())
 }
 
-/// Returns the algorithm constant of `key_handle`, or `-1` if unknown/zeroized.
+/// The algorithm constant of `key_handle`. A released handle is `USE_AFTER_RELEASE`.
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_key_algorithm(key_handle: u64) -> i32 {
-    with_keys(|keys| {
-        keys.get(&key_handle)
-            .and_then(|entry| {
-                if entry.zeroized {
-                    None
-                } else {
-                    Some(entry.algorithm)
-                }
-            })
-            .unwrap_or(-1)
-    })
+    // The algorithm is not secret: it survives Zeroize (as `bni`).
+    with_keys(|keys| keys.get(&key_handle).map(|entry| entry.algorithm))
+        .unwrap_or_else(|| crate::arc_abi::abort_use_after_release())
 }
 
 /// Explicitly zeroizes the key material in `key_handle`.
@@ -799,10 +822,12 @@ pub extern "C" fn bn_rt_crypto_key_retain(key_handle: u64) -> i32 {
     if key_handle == 0 {
         return BN_CRYPTO_OK;
     }
-    let keys = bn_core_copy::table::<Keys>();
-    let mut holders = keys.holders.lock().unwrap_or_else(PoisonError::into_inner);
-    if let Some(count) = holders.get_mut(&key_handle) {
-        *count += 1;
+    let held = bn_core_copy::table::<Keys>()
+        .0
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .retain(key_handle);
+    if held {
         BN_CRYPTO_OK
     } else {
         BN_CRYPTO_INVALID_HANDLE
@@ -816,22 +841,45 @@ pub extern "C" fn bn_rt_crypto_key_release(key_handle: u64) -> i32 {
     if key_handle == 0 {
         return BN_CRYPTO_OK;
     }
-    let keys = bn_core_copy::table::<Keys>();
-    let mut holders = keys.holders.lock().unwrap_or_else(PoisonError::into_inner);
-    let Some(count) = holders.get_mut(&key_handle) else {
-        return BN_CRYPTO_INVALID_HANDLE;
-    };
-    *count -= 1;
-    if *count == 0 {
-        holders.remove(&key_handle);
-        drop(holders);
-        with_keys(|keys| {
-            if let Some(mut entry) = keys.remove(&key_handle) {
-                entry.material.zeroize();
-            }
-        });
+    let released = bn_core_copy::table::<Keys>()
+        .0
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .release(key_handle);
+    match released {
+        Release::Last(mut entry) => {
+            entry.material.zeroize();
+            BN_CRYPTO_OK
+        }
+        Release::Held => BN_CRYPTO_OK,
+        Release::Unknown => BN_CRYPTO_INVALID_HANDLE,
     }
-    BN_CRYPTO_OK
+}
+
+/// The key material of `handle` for a MAC or a derivation: a `SecretKey`, a
+/// raw `Key` or a `Bytes`. A zeroized key is `ZeroizedKey`
+/// (`INVALID_ARGUMENT`); a handle that is none of them is a key failure of
+/// `operation`. One rule for every caller, so each records its failure.
+pub(crate) fn any_key_material(
+    handle: u64,
+    operation: &'static str,
+) -> Result<zeroize::Zeroizing<Vec<u8>>, crate::crypto_error::CryptoFailure> {
+    use crate::crypto_error::CryptoFailure;
+    let secret = crate::crypto_secret_abi::with_secret_keys(|keys| {
+        keys.get(&handle)
+            .map(|entry| (!entry.zeroized).then(|| entry.material.clone()))
+    });
+    if let Some(found) = secret {
+        return found.ok_or(CryptoFailure::ZeroizedKey);
+    }
+    let raw = with_keys(|keys| {
+        keys.get(&handle)
+            .map(|entry| (!entry.zeroized).then(|| entry.material.clone()))
+    });
+    if let Some(found) = raw {
+        return found.ok_or(CryptoFailure::ZeroizedKey);
+    }
+    with_buffers(|buffers| buffers.get(&handle).cloned()).ok_or(CryptoFailure::Key(operation))
 }
 
 #[cfg(test)]
@@ -863,8 +911,9 @@ mod tests {
             BN_CRYPTO_INVALID_ARGUMENT
         );
         let bad_utf8 = [0xFFu8, 0x00u8];
+        // Not a BN STRING: no handle, never an empty buffer.
         let empty_h = bn_rt_crypto_bytes_from_text(bad_utf8.as_ptr().cast());
-        assert_eq!(bn_rt_crypto_bytes_length(empty_h), 0);
+        assert_eq!(empty_h, 0);
 
         let buf = store(vec![10, 20, 30, 40]);
         for (start, len) in [(-1i64, 2i64), (0, -1), (2, i64::MAX), (i64::MAX, 1), (0, 5)] {
@@ -881,5 +930,31 @@ mod tests {
 
         assert_eq!(bn_rt_crypto_bytes_release(empty_h), BN_CRYPTO_OK);
         assert_eq!(bn_rt_crypto_bytes_release(buf), BN_CRYPTO_OK);
+    }
+
+    /// The count and the material change together: the key is readable while
+    /// a holder remains, gone in the release that reaches zero, and a further
+    /// release is an invalid handle.
+    #[test]
+    fn the_last_key_release_removes_the_material_in_the_same_step() {
+        let handle = super::store_key(
+            crate::crypto::ALG_AES_GCM_256,
+            zeroize::Zeroizing::new(vec![7; 32]),
+        );
+        assert_eq!(super::bn_rt_crypto_key_retain(handle), BN_CRYPTO_OK);
+        assert_eq!(super::bn_rt_crypto_key_release(handle), BN_CRYPTO_OK);
+        assert!(
+            super::get_key_material(handle).is_ok(),
+            "one holder remains"
+        );
+        assert_eq!(super::bn_rt_crypto_key_release(handle), BN_CRYPTO_OK);
+        assert_eq!(
+            super::get_key_material(handle),
+            Err(BN_CRYPTO_INVALID_HANDLE)
+        );
+        assert_eq!(
+            super::bn_rt_crypto_key_release(handle),
+            BN_CRYPTO_INVALID_HANDLE
+        );
     }
 }

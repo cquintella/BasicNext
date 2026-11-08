@@ -1,31 +1,14 @@
 use std::sync::OnceLock;
 
-/// Builds a client configuration from the host's conventional CA bundle.
-/// The loader fails closed when no system trust store is available.
+/// Builds a client configuration over the HTTPS client trust roots
+/// (`tls_roots`): the platform store plus at most one extra CA file. With no
+/// usable root there is no configuration, and no mode accepts a certificate
+/// the roots do not vouch for.
 pub(crate) fn client_config() -> Result<rustls::ClientConfig, String> {
-    let mut roots = rustls::RootCertStore::empty();
-    let candidates = ["/etc/ssl/cert.pem", "/etc/ssl/certs/ca-certificates.crt"];
-    let mut loaded = false;
-    for path in candidates {
-        let Ok(pem) = std::fs::read_to_string(path) else {
-            continue;
-        };
-        for block in pem_blocks(&pem, "CERTIFICATE") {
-            let der = rustls::pki_types::CertificateDer::from(block?);
-            roots
-                .add(der)
-                .map_err(|error| format!("invalid system CA certificate: {error}"))?;
-            loaded = true;
-        }
-        if loaded {
-            break;
-        }
-    }
-    if !loaded {
-        return Err("no system CA bundle was found".into());
-    }
     Ok(rustls::ClientConfig::builder()
-        .with_root_certificates(roots)
+        .with_root_certificates(crate::tls_roots::client_roots().map_err(|cause| {
+            bn_catalog::fill("web", "tls.trust_failed.message", &[("cause", &cause)])
+        })?)
         .with_no_client_auth())
 }
 
@@ -59,23 +42,6 @@ fn pem_block(input: &str, label: &str) -> Result<Vec<u8>, String> {
         .ok_or_else(|| format!("missing PEM {label} block"))?;
     let encoded: String = body.chars().filter(|c| !c.is_ascii_whitespace()).collect();
     decode_base64(&encoded)
-}
-
-fn pem_blocks(input: &str, label: &str) -> Vec<Result<Vec<u8>, String>> {
-    let begin = format!("-----BEGIN {label}-----");
-    let end = format!("-----END {label}-----");
-    input
-        .split(&begin)
-        .skip(1)
-        .map(|part| {
-            let body = part
-                .split_once(&end)
-                .map(|(body, _)| body)
-                .ok_or_else(|| format!("missing PEM {label} end marker"))?;
-            let encoded: String = body.chars().filter(|c| !c.is_ascii_whitespace()).collect();
-            decode_base64(&encoded)
-        })
-        .collect()
 }
 
 #[allow(clippy::cast_possible_truncation)] // each extraction is limited to one byte by the bit layout.
@@ -165,14 +131,5 @@ mod tests {
         assert!(super::server_config_from_pem(&"x".repeat(65 * 1024), "").is_err());
         assert!(super::decode_base64("T=Q=").is_err());
         assert_eq!(super::decode_base64("TQ==").unwrap(), b"M");
-    }
-
-    #[test]
-    fn client_config_uses_a_system_trust_store_when_available() {
-        if std::path::Path::new("/etc/ssl/cert.pem").exists()
-            || std::path::Path::new("/etc/ssl/certs/ca-certificates.crt").exists()
-        {
-            assert!(super::client_config().is_ok());
-        }
     }
 }

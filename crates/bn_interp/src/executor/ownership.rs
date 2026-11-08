@@ -52,11 +52,17 @@ impl Executor<'_, '_> {
         span: Span,
     ) -> Result<(), Diagnostic> {
         match value {
-            Value::Object { handle, .. } | Value::Pointer { handle, .. } => self
-                .arc
-                .retain(id_of(*handle), site(span))
-                .map(|_| ())
-                .map_err(|error| arc_error(error, span)),
+            Value::Object { handle, .. } | Value::Pointer { handle, .. } => {
+                if matches!(value, Value::Object { .. })
+                    && let Some(retained) = self.library_retain(value, span)
+                {
+                    retained?;
+                }
+                self.arc
+                    .retain(id_of(*handle), site(span))
+                    .map(|_| ())
+                    .map_err(|error| arc_error(error, span))
+            }
             Value::Vector(values) => {
                 for value in values.iter() {
                     self.retain_owned_value(value, span)?;
@@ -123,6 +129,14 @@ impl Executor<'_, '_> {
                     self.release_owned_value(value, span)?;
                 }
                 Ok(())
+            }
+            // A counted crypto value inside a record (`KeyPair`). A handle on
+            // its own is released by `release_value` before it reaches here.
+            Value::CryptoBytes(_)
+            | Value::CryptoKey(_)
+            | Value::CryptoSecret(_)
+            | Value::CryptoSecretKey(_) => {
+                self.release_from_library(&value, span).unwrap_or(Ok(()))
             }
             _ => Ok(()),
         }

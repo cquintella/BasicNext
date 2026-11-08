@@ -10,6 +10,15 @@
 //! tested alone in `file_working_directory.rs`.
 
 #![cfg(unix)]
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
 
 use bn_rt::FsPolicy;
 use bn_rt::file::{

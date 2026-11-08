@@ -62,7 +62,10 @@ pub fn take_error_report() -> (i32, String, String, String) {
     })
 }
 
-/// Sets the recorded report for the next `bn_rt_error_take` from C ABI.
+/// Sets the recorded report for the next `bn_rt_error_take` from C ABI. The
+/// callers are libraries (`BNWeb`), which pass plain NUL-terminated strings,
+/// not STRING payloads: they are read as C strings. Reading them through
+/// `text` would take the bytes before each pointer for a STRING header.
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_error_set_report(
@@ -71,7 +74,18 @@ pub extern "C" fn bn_rt_error_set_report(
     message: *const c_char,
     cause: *const c_char,
 ) {
-    set_error_report(code, text(operation), text(message), text(cause));
+    set_error_report(code, c_text(operation), c_text(message), c_text(cause));
+}
+
+/// A plain NUL-terminated string; null or invalid UTF-8 is empty.
+#[allow(unsafe_code)]
+fn c_text<'a>(ptr: *const c_char) -> &'a str {
+    if ptr.is_null() {
+        return "";
+    }
+    // SAFETY: the caller passes a non-null NUL-terminated string that lives
+    // for this call (`bn_rt_error_set_report`'s contract).
+    unsafe { CStr::from_ptr(ptr) }.to_str().unwrap_or("")
 }
 
 /// One native `Error`'s fields: its code and owned NUL-terminated texts.
@@ -91,16 +105,12 @@ fn records() -> &'static Mutex<HashSet<usize>> {
     RECORDS.get_or_init(|| Mutex::new(HashSet::new()))
 }
 
-#[allow(unsafe_code)] // C ABI: a borrowed Basic Next string or NUL-terminated constant.
+/// A borrowed STRING payload. Null, a pointer whose header is not a STRING's,
+/// and invalid UTF-8 read as empty: the reader never guesses a C string.
 fn text<'a>(ptr: *const c_char) -> &'a str {
-    if ptr.is_null() {
-        return "";
-    }
-    match crate::string::slice_from_raw(ptr) {
-        Some(bytes) => std::str::from_utf8(bytes).unwrap_or(""),
-        // SAFETY: the pointer is non-null and NUL-terminated for this read.
-        None => unsafe { CStr::from_ptr(ptr) }.to_str().unwrap_or(""),
-    }
+    crate::string::slice_from_raw(ptr)
+        .and_then(|bytes| std::str::from_utf8(bytes).ok())
+        .unwrap_or("")
 }
 
 fn new_record(code: i64, message: &str, operation: &str, cause: &str) -> *mut c_char {
@@ -190,7 +200,7 @@ pub extern "C" fn bn_rt_error_field(error: *const c_char, field: i32) -> *const 
         return if field == 0 && !error.is_null() {
             error
         } else {
-            c"".as_ptr()
+            crate::string::empty_string()
         };
     }
     // SAFETY: the address is a live, never-freed `ErrorRecord` from
@@ -237,6 +247,62 @@ mod tests {
         text,
     };
 
+    /// A NUL-terminated text after 16 bytes that are no STRING header (a
+    /// reference count above the heap ceiling that is not the immortal one).
+    #[repr(C, align(8))]
+    struct ForeignText([u8; 32]);
+
+    fn foreign_text(body: &[u8]) -> ForeignText {
+        let mut bytes = [0_u8; 32];
+        bytes[..16].fill(0xFE);
+        bytes[16..16 + body.len()].copy_from_slice(body);
+        ForeignText(bytes)
+    }
+
+    /// One contract per reader: a pointer that is not a STRING payload is
+    /// refused (read as empty), never guessed to be a C string.
+    #[test]
+    fn a_c_string_is_refused_not_guessed() {
+        let foreign = foreign_text(b"plain\0");
+        let pointer = foreign.0[16..].as_ptr().cast::<std::ffi::c_char>();
+        assert_eq!(text(pointer), "");
+    }
+
+    /// The empty fields of a plain message are STRING payloads: emitted code
+    /// reads their header like any other STRING.
+    #[test]
+    fn the_empty_fields_of_a_plain_message_are_strings() {
+        let plain = crate::c_string("column not found");
+        for field in [1, 2] {
+            let pointer = bn_rt_error_field(plain, field);
+            assert_eq!(crate::string::slice_from_raw(pointer), Some(&b""[..]));
+        }
+        assert_eq!(
+            crate::string::slice_from_raw(bn_rt_error_field(std::ptr::null(), 0)),
+            Some(&b""[..])
+        );
+    }
+
+    /// A library reports its failure with plain NUL-terminated strings (the
+    /// `BNWeb` ABI builds them with `format!`), not STRING payloads: the
+    /// record keeps their text.
+    #[test]
+    fn a_report_of_plain_c_strings_keeps_its_texts() {
+        let operation = std::ffi::CString::new("BNWeb.Client.Request").expect("text");
+        let message =
+            std::ffi::CString::new("destination is outside the egress policy").expect("text");
+        let cause = std::ffi::CString::new("a private address").expect("text");
+        super::bn_rt_error_set_report(7, operation.as_ptr(), message.as_ptr(), cause.as_ptr());
+        let record = bn_rt_error_take(1, std::ptr::null());
+        assert_eq!(bn_rt_error_code(record), 7);
+        assert_eq!(
+            text(bn_rt_error_field(record, 0)),
+            "destination is outside the egress policy"
+        );
+        assert_eq!(text(bn_rt_error_field(record, 1)), "BNWeb.Client.Request");
+        assert_eq!(text(bn_rt_error_field(record, 2)), "a private address");
+    }
+
     #[test]
     fn records_carry_three_fields_and_plain_messages_still_read() {
         assert!(bn_rt_error_take(0, c"HOST.X".as_ptr()).is_null());
@@ -247,7 +313,7 @@ mod tests {
         assert_eq!(text(bn_rt_error_field(record, 1)), "HOST.FileSystem.Open");
         assert_eq!(text(bn_rt_error_field(record, 2)), "not found");
 
-        let plain = c"column not found".as_ptr().cast_mut();
+        let plain = crate::c_string("column not found");
         assert_eq!(bn_rt_error_wrap(false, plain, std::ptr::null()), plain);
         let wrapped = bn_rt_error_wrap(true, plain, std::ptr::null());
         assert_eq!(text(bn_rt_error_field(wrapped, 0)), "column not found");

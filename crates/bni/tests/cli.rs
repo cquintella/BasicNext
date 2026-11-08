@@ -11,6 +11,15 @@
 // placeholders than with inlined path expressions.
 #![allow(clippy::uninlined_format_args)]
 #![allow(clippy::map_unwrap_or)]
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
 
 use std::{
     collections::HashMap,
@@ -1243,6 +1252,353 @@ fn bncrypto_post_quantum_interprets() {
     );
 }
 
+/// CSPRNG additions interpret: `RandomInt`, `RandomToken`, `RandomUuidV4`, `UuidV7`,
+/// and `RandomPassword`, plus error handling on invalid bounds or options.
+#[test]
+fn bncrypto_csprng_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-csprng/main.bn"])
+        .output()
+        .expect("run the BNCrypto CSPRNG fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "random-int-range-ok\nrandom-int-error-caught\nrandom-token-len-ok\nrandom-token-error-caught\nrandom-uuid-v4-ok\nuuid-v7-monotonic-ok\nrandom-pwd-default-ok\nrandom-pwd-error-caught\n"
+    );
+}
+
+/// Memory zeroization interprets: explicit `Zeroize` method and module function
+/// on `Bytes` overwrites memory with zeros.
+#[test]
+fn bncrypto_zeroize_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-zeroize/main.bn"])
+        .output()
+        .expect("run the BNCrypto zeroize fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "b1-init-len-ok\nb1-zeroized-len-ok\nb1-zeroized-hex-ok\nb2-zeroized-len-ok\nb2-zeroized-hex-ok\n"
+    );
+}
+
+/// Secret type and constant-time operations interpret: print output is masked as
+/// `***`, constant-time equality compares accurately, and zeroization wipes memory.
+#[test]
+fn bncrypto_secret_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-secret/main.bn"])
+        .output()
+        .expect("run the BNCrypto secret fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "s1-len-ok\ns1-eq-s2-ok\ns1-neq-s3-ok\nb1-eq-b2-ok\nb1-neq-b3-ok\nmod-b1-eq-b2-ok\nmod-b1-neq-b3-ok\n***\ns1-zeroized-neq-s2-ok\ns1-zeroized-hex-ok\n"
+    );
+}
+
+/// The `BNCrypto` secret key slice: generates 256-bit `SecretKey`, verifies `Id`/`Length`/`Bits`,
+/// masks PRINT as `***`, exports secret bytes, imports from bytes, performs RFC 3394
+/// key wrap and unwrap, and zeroizes memory.
+#[test]
+fn bncrypto_secretkey_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-secretkey/main.bn"])
+        .output()
+        .expect("run the BNCrypto secretkey fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "key-bits-256-ok\nkey-length-32-ok\nkey-purpose-ok\nkey-alg-ok\nkey-id-len-ok\n***\nkey-export-len-ok\nimported-key-id-match-ok\nwrapped-len-40-ok\nunwrap-key-id-match-ok\nzeroized-bits-ok\n"
+    );
+}
+
+/// The `BNCrypto` authenticated envelope slice: verifies `Encrypt` produces versioned
+/// `BNC1` envelope, `Decrypt` authenticates and round-trips, and `EncryptText`/`DecryptText` work.
+#[test]
+fn bncrypto_envelope_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-envelope/main.bn"])
+        .output()
+        .expect("run the BNCrypto envelope fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "sealed-len-82-ok\nmagic-bnc1-ok\nunsealed-matches-plain-ok\ndecrypt-text-ok\n"
+    );
+}
+
+/// The `BNCrypto` streaming file encryption slice: verifies `EncryptFile` and `DecryptFile`
+/// stream in 64 KiB authenticated chunks, create owner-only target files, and roundtrip.
+#[test]
+fn bncrypto_file_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-file/main.bn"])
+        .output()
+        .expect("run the BNCrypto file fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "encrypt-file-ok\ndecrypt-file-ok\ncleanup-ok\n"
+    );
+}
+
+/// The `BNCrypto` raw AEAD modes slice: verifies that unauthenticated/unsupported modes
+/// fail closed, and raw AEAD requires exact lengths.
+#[test]
+fn bncrypto_raw_modes_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-raw-modes/main.bn"])
+        .output()
+        .expect("run the BNCrypto raw modes fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "forbidden-mode-import-rejected\nforbidden-mode-generate-rejected\nraw-aes-gcm-seal-ok\nraw-aes-gcm-open-ok\nbad-nonce-rejected\n"
+    );
+}
+
+/// The `BNCrypto` hash and streaming slice: verifies `Hash`, `HashText`, `HashWith` (SHA-3, `BLAKE2b`, BLAKE3),
+/// legacy rejection, `Hasher` streaming, and `HashFile`.
+#[test]
+fn bncrypto_hash_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-hash/main.bn"])
+        .output()
+        .expect("run the BNCrypto hash fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "hash-sha256-len-32-ok\nhash-text-matches-hex-ok\nhash-sha3-256-ok\nhash-blake2b-ok\nhash-blake3-ok\nlegacy-md5-rejected\nhasher-stream-sha256-ok\nhash-file-matches-hash-ok\n"
+    );
+}
+
+/// The `BNCrypto` MAC and streaming slice: verifies `Mac`, `VerifyMac`, and `MacStream`.
+#[test]
+fn bncrypto_mac_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-mac/main.bn"])
+        .output()
+        .expect("run the BNCrypto mac fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "mac-verify-ok\nmac-corrupt-rejected\nmac-stream-matches-oneshot-ok\nmac-stream-verify-ok\nmac-with-matches-default-ok\nmac-stream-new-with-ok\n"
+    );
+}
+
+/// The `BNCrypto` password and KDF slice: verifies `HashPassword`, `VerifyPassword`, and `Hkdf`.
+#[test]
+fn bncrypto_pwd_kdf_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-pwd-kdf/main.bn"])
+        .output()
+        .expect("run the BNCrypto password and KDF fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "pwd-verify-ok\npwd-wrong-rejected\nhkdf-ok\n"
+    );
+}
+
+/// The `BNCrypto` encoding and checksum slice: Base64, `Base64Url`, Concat, PEM, CRC32, `CRC32c`, Adler32, and `XxHash64`.
+#[test]
+fn bncrypto_encoding_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-encoding/main.bn"])
+        .output()
+        .expect("run the BNCrypto encoding fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "Hello Encoding World!\nbase64-roundtrip-ok\nbase64url-roundtrip-ok\nconcat-ok\npem-roundtrip-ok\ncrc32-ok\ncrc32c-ok\nadler32-ok\nxxhash64-ok\n"
+    );
+}
+
+/// A path as a BN string literal: BN strings escape only `\"` and `\\`, so a
+/// Windows path doubles its backslashes.
+fn bn_literal(path: &std::path::Path) -> String {
+    path.display().to_string().replace('\\', "\\\\")
+}
+
+/// `BNCrypto` file operations read through the execution policy: under
+/// `--sandbox --read-root`, a file outside the root is neither verified nor
+/// hashed. The compiled twin is in the `bnc` suite.
+#[test]
+fn sandboxed_bncrypto_file_operations_obey_the_read_root() {
+    let base = std::env::temp_dir().join(format!("bn-bni-sandbox-checksum-{}", std::process::id()));
+    let read_root = base.join("read");
+    let outside_root = base.join("outside");
+    fs::create_dir_all(&read_root).expect("create read root");
+    fs::create_dir_all(&outside_root).expect("create outside root");
+    // CRC-32 of "abc" is 0x352441c2.
+    let inside = read_root.join("inside.txt");
+    let outside = outside_root.join("outside.txt");
+    fs::write(&inside, "abc").expect("write inside input");
+    fs::write(&outside, "abc").expect("write outside input");
+    let fixture = base.join("checksum.bn");
+    fs::write(
+        &fixture,
+        format!(
+            "IMPORT BNCrypto AS Crypto\n\nFUNCTION Start() AS VOID\n    PRINT Crypto.Checksum.VerifyFileChecksum(\"{}\", \"crc32:352441c2\")\n    PRINT Crypto.Checksum.VerifyFileChecksum(\"{}\", \"crc32:352441c2\")\n    LET digest AS Crypto.Bytes OR Error = Crypto.HashFile(\"{}\")\n    IF digest IS Error THEN\n        PRINT \"hashfile-denied\"\n    END IF\nEND FUNCTION\n",
+            bn_literal(&inside),
+            bn_literal(&outside),
+            bn_literal(&outside)
+        ),
+    )
+    .expect("write checksum fixture");
+    let output = bni()
+        .args(["run", "--sandbox", "--read-root"])
+        .arg(&read_root)
+        .arg(&fixture)
+        .output()
+        .expect("run the sandboxed fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "TRUE\nFALSE\nhashfile-denied\n"
+    );
+    let _ = fs::remove_dir_all(&base);
+}
+
+/// Per-call policy: `fipsOnly` per family, reserved `allowLegacy`, no leak to
+/// the next call. The compiled twin is in the `bnc` suite.
+#[test]
+fn bncrypto_policy_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-policy/main.bn"])
+        .output()
+        .expect("run the BNCrypto policy fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        BNCRYPTO_POLICY_OUTPUT
+    );
+}
+
+/// RELEASE of each `BNCrypto` handle type; the compiled twin is in the `bnc` suite.
+#[test]
+fn bncrypto_release_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-release/main.bn"])
+        .output()
+        .expect("run the BNCrypto release fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "hasher-released\nmac-stream-released\n30\npublic-key-released\nprivate-key-released\nalternatives-released\n"
+    );
+}
+
+/// A program whose only heap use is the `KeyPair` record; the compiled twin is
+/// in the `bnc` suite.
+#[test]
+fn bncrypto_keypair_alone_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-keypair-minimal/main.bn"])
+        .output()
+        .expect("run the BNCrypto keypair fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "30\n");
+}
+
+/// The `BNCrypto` asymmetric key slice: `KeyPair`, `PublicKey`, `PrivateKey`.
+#[test]
+fn bncrypto_asymmetric_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-asymmetric/main.bn"])
+        .output()
+        .expect("run the BNCrypto asymmetric fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "asym-keypair-ok\nkey-ids-match\nderived-public-matches\ned25519-for-ok\nx25519-for-ok\np256-for-ok\ninvalid-alg-rejected\ninvalid-alg-code-ok\nnon-keypair-alg-rejected\nwith-default-ok\nsign-verify-ok\nverify-rejects\npem-roundtrip\nwrong-password\nplain-roundtrip\nplain-password-rejected\npublic-from-private-rejected\npublic-pem-ok\np256-sign-ok\nx25519-sign-rejected\nx25519-verify-false\npublic-after-zeroize-ok\n"
+    );
+}
+
+/// `PublicKey.Fingerprint`: OpenSSH-style `<ALG>:<unpadded base64>` known answers
+/// computed with `openssl`; MD5/SHA-1 and keyed ids are refused with their codes.
+#[test]
+fn bncrypto_fingerprint_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-fingerprint/main.bn"])
+        .output()
+        .expect("run the BNCrypto fingerprint fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "sha256-ok\nsha512-ok\nlegacy-rejected\nkeyed-rejected\n"
+    );
+}
+
 /// The `BNJson` DOM slice: build an object, write and read a member, and reject
 /// a missing key instead of yielding an empty STRING. The compiled twin is in
 /// the `bnc` suite; the two must print the same.
@@ -1374,5 +1730,99 @@ fn unknown_member_names_the_member_and_its_owner() {
         ),
         "{}",
         String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// What `tests/modules/bncrypto-policy` prints on both backends: 4 is
+/// `UNSUPPORTED_ALGORITHM`, 5 is `LEGACY_DISABLED`.
+const BNCRYPTO_POLICY_OUTPUT: &str = "hash-blake3 ok\nhash-blake3-fips 4\nhash-sha3-fips ok\nhasher-blake2b-fips 4\nhash-md5-allow-legacy 5\nhash-blake3-next-call ok\nmac-blake3-fips 4\nmac-stream-blake3-fips 4\nmac-hmac384-fips ok\nkeypair-x25519 ok\nkeypair-x25519-fips 4\nkeypair-ed25519-fips ok\n";
+
+/// `EncryptWith` and `DecryptWith`: the AAD is bound, the `KEYID` names the key, an unsupported algorithm and a wrong key are Errors.
+#[test]
+fn bncrypto_aead_options_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-aead-options/main.bn"])
+        .output()
+        .expect("run the fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "order 17\naad-bound\nwrong-key-is-error\ndefaults-open-with-decrypt\nalg-refused\n"
+    );
+}
+
+/// A `BNCrypto` handle widened into `T OR Error` keeps its value; a program class named `SecretKey` stays an object.
+#[test]
+fn bncrypto_widened_handles_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-widened-handles/main.bn"])
+        .output()
+        .expect("run the fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "64\nsealed\npublic-kept\nuser\n"
+    );
+}
+
+/// `HashPasswordWith`, `NeedsRehash`, `DeriveKey` and `DeriveSubkey`: cost floor, fail-safe rehash, deterministic derived keys, refusals as Errors.
+#[test]
+fn bncrypto_kdf_options_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-kdf-options/main.bn"])
+        .output()
+        .expect("run the fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "cost-recorded\nverifies\nfloor-is-reached\nstronger-target-needs-rehash\nmalformed-needs-rehash\nbelow-floor-refused\nderive-key-deterministic\n256\nDERIVED\nARGON2ID\nsubkey-labelled\nHKDF\nempty-context-refused\nzeroized-master-refused\nshort-salt-refused\n"
+    );
+}
+
+/// `EncryptFileWithPassword` and `DecryptFileWithPassword`: round trip, `WRONG_PASSWORD` without partial output, and no opening by key.
+#[test]
+fn bncrypto_password_file_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-password-file/main.bn"])
+        .output()
+        .expect("run the fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "encrypted\nopened-with-password\nwrong-password\nno-partial-output\nnot-a-key-file\n"
+    );
+}
+
+/// A zeroized key: `INVALID_ARGUMENT` with its operation for every `T OR Error` call, FALSE for `VerifyMac`, the key checked before the options.
+#[test]
+fn bncrypto_zeroized_key_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-zeroized-key/main.bn"])
+        .output()
+        .expect("run the fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "Mac invalid-argument BNCrypto.Key\nMacWith invalid-argument BNCrypto.Key\nMacStream.New invalid-argument BNCrypto.Key\nHkdf invalid-argument BNCrypto.Key\nVerifyMac false\nEncryptWith invalid-argument BNCrypto.Key\n"
     );
 }

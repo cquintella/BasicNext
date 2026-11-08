@@ -1,0 +1,36 @@
+IMPORT BNCrypto AS Crypto
+
+// A user class that shares a BNCrypto type name stays an object.
+CLASS SecretKey
+    PUBLIC label AS STRING = "user"
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+// A BNCrypto handle a function returns plainly keeps its value once it is
+// widened into `T OR Error` and narrowed back, on both backends.
+FUNCTION Start() AS VOID
+    LET key AS Crypto.SecretKey OR Error = Crypto.NewSecretKey()
+    IF key IS Crypto.SecretKey THEN
+        PRINT LEN(key.Id())
+        LET sealed AS Crypto.Bytes OR Error = Crypto.Encrypt(key, Crypto.FromText("x"))
+        IF sealed IS Crypto.Bytes THEN
+            PRINT "sealed"
+        END IF
+    END IF
+
+    LET pair AS Crypto.KeyPair OR Error = Crypto.NewKeyPair()
+    IF pair IS Crypto.KeyPair THEN
+        LET derived AS Crypto.PublicKey OR Error = pair.PrivateKey.PublicKey()
+        IF derived IS Crypto.PublicKey THEN
+            IF derived.Id() = pair.PublicKey.Id() THEN
+                PRINT "public-kept"
+            END IF
+        END IF
+    END IF
+
+    LET mine AS SecretKey OR Error = NEW SecretKey()
+    IF mine IS SecretKey THEN
+        PRINT mine.label
+    END IF
+END FUNCTION

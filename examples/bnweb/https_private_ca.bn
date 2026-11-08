@@ -1,0 +1,36 @@
+// BNWeb: an HTTPS request to a server whose certificate a private CA signed.
+//
+// The client trusts the operating system's CA store and, added to it, one
+// extra PEM file: the file named by the environment variable BN_CA_FILE, or
+// else bn-cacert.pem (then bn-ca.pem) in the program's directory, that is
+// beside this .bn file under bni and beside the executable under bnc.
+// SSL_CERT_FILE and SSL_CERT_DIR are not read. An extra file that cannot be
+// read, or that holds no certificate, fails the request before any name is
+// resolved; it is never skipped.
+//
+// The client still refuses loopback and private-network destinations, so the
+// server must have a public address. Put your CA beside the program:
+//
+//   cp my-ca.pem bn-cacert.pem
+//   bni run https_private_ca.bn -- https://intranet.example.com/
+//
+// or name the file instead:
+//
+//   BN_CA_FILE=/path/to/my-ca.pem bni run https_private_ca.bn -- https://intranet.example.com/
+IMPORT BNWeb AS Web
+
+FUNCTION Start() AS INTEGER
+    IF LEN(HOST.Args) < 2 THEN
+        PRINT "usage: https_private_ca <https-url>"
+        RETURN 2
+    END IF
+    LET client AS Web.Client = NEW Web.Client()
+    LET response AS Web.Response OR Error = client.Request("GET", HOST.Args[1], "")
+    IF response IS Error THEN
+        PRINT "request failed:", response.Code = Web.HTTP_FAILED
+        PRINT response.Cause
+        RETURN 1
+    END IF
+    PRINT "status", response.Status()
+    RETURN 0
+END FUNCTION

@@ -8,8 +8,19 @@
 //! a missing entry is a compile error; plus the embedded files and the
 //! sorted entry table that `text` searches.
 
+#![expect(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::let_underscore_must_use,
+    reason = "build script generates code at compile time"
+)]
+
 #[path = "src/entry_format.rs"]
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    unreachable_pub,
+    reason = "only a subset of entry_format helpers is used in build.rs"
+)]
 mod entry_format;
 
 use std::collections::BTreeMap;

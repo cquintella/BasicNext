@@ -242,6 +242,7 @@ fn validate_rejects_a_dangling_block_target() {
                 terminator: Terminator::Jump { target: BlockId(9) },
             }],
             weak_symbols: std::collections::HashSet::default(),
+            symbol_names: std::collections::HashMap::default(),
             span: bn_source::Span {
                 start: bn_source::Position {
                     source_id: bn_source::Position::UNKNOWN_SOURCE,

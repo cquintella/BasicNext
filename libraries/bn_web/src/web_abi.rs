@@ -15,7 +15,7 @@
 //! are recorded for `bn_rt_error_take` via `bn_rt_error_set_report`.
 
 use std::collections::HashMap;
-use std::ffi::{CStr, c_char};
+use std::ffi::c_char;
 use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
 
@@ -42,62 +42,15 @@ unsafe extern "C" {
 
 // ---- Native String Marshalling -------------------------------------------
 
-#[repr(C, align(8))]
-pub(crate) struct StringHeader {
-    pub ref_count: std::sync::atomic::AtomicU64,
-    pub len: u64,
-}
-pub(crate) const HEADER_SIZE: usize = std::mem::size_of::<StringHeader>();
+// One STRING layout for the whole runtime: `bn_rt::string` owns the header,
+// the reader's checks and the allocator; this module does not copy them.
 
-#[allow(clippy::cast_ptr_alignment)] // the alignment check above the cast accepts only a StringHeader
-pub(crate) fn slice_from_raw<'a>(ptr: *const c_char) -> Option<&'a [u8]> {
-    if ptr.is_null() || !(ptr as usize).is_multiple_of(std::mem::align_of::<StringHeader>()) {
-        return None;
-    }
-    // SAFETY: A non-null, aligned STRING payload is preceded by its header.
-    let header_ptr = unsafe { ptr.cast::<u8>().sub(HEADER_SIZE).cast::<StringHeader>() };
-    // SAFETY: `header_ptr` is that header, and it stays live for this read.
-    let header = unsafe { &*header_ptr };
-    let count = usize::try_from(header.len).ok()?;
-    // SAFETY: `header.len` is the number of payload bytes at `ptr`.
-    Some(unsafe { std::slice::from_raw_parts(ptr.cast::<u8>(), count) })
-}
+pub(crate) use bn_rt::string::c_string_from_bytes;
 
+/// A STRING payload as owned text. Null, any other pointer and invalid UTF-8
+/// are `None`: the reader never guesses a C string.
 pub(crate) fn string_text(ptr: *const c_char) -> Option<String> {
-    if ptr.is_null() {
-        return None;
-    }
-    if let Some(bytes) = slice_from_raw(ptr) {
-        String::from_utf8(bytes.to_vec()).ok()
-    } else {
-        // SAFETY: the pointer is non-null and NUL-terminated for this read.
-        unsafe { CStr::from_ptr(ptr) }
-            .to_str()
-            .ok()
-            .map(String::from)
-    }
-}
-
-#[allow(clippy::cast_ptr_alignment)] // malloc is aligned for StringHeader
-pub(crate) fn c_string_from_bytes(bytes: &[u8]) -> *mut c_char {
-    let len = bytes.len();
-    let total_alloc = HEADER_SIZE + len + 1;
-    // SAFETY: a non-null STRING is preceded by its header; the allocation is the header, the payload and a trailing NUL, and a null allocation is not read.
-    let base = unsafe { libc::malloc(total_alloc) }.cast::<u8>();
-    if base.is_null() {
-        return std::ptr::null_mut();
-    }
-    // SAFETY: a non-null STRING is preceded by its header; the allocation is the header, the payload and a trailing NUL, and a null allocation is not read.
-    unsafe {
-        base.cast::<StringHeader>().write(StringHeader {
-            ref_count: std::sync::atomic::AtomicU64::new(1),
-            len: len as u64,
-        });
-        let data_ptr = base.add(HEADER_SIZE);
-        std::ptr::copy_nonoverlapping(bytes.as_ptr(), data_ptr, bytes.len());
-        data_ptr.add(bytes.len()).write(0);
-        data_ptr.cast::<c_char>()
-    }
+    bn_rt::string::string_text(ptr)
 }
 
 pub(crate) fn c_string(text: &str) -> *mut c_char {
@@ -858,7 +811,7 @@ pub extern "C" fn bn_web_server_dispatch(handle: u64, req_handle: u64, resp_hand
         (
             entry.filters.clone(),
             entry.routes.clone(),
-            entry.state.clone(),
+            std::sync::Arc::clone(&entry.state),
         )
     };
 
@@ -957,7 +910,7 @@ pub extern "C" fn bn_web_server_stop(handle: u64, timeout_ms: i64) -> i32 {
         let Some(entry) = guard.servers.get(&handle) else {
             return record_failure("Server.Stop", &WebFailure::Closed("server closed".into()));
         };
-        entry.state.clone()
+        std::sync::Arc::clone(&entry.state)
     };
     match crate::web::drain_server(&state_arc, i128::from(timeout_ms), false) {
         Ok(()) => BN_WEB_OK,
@@ -973,7 +926,7 @@ pub extern "C" fn bn_web_server_close(handle: u64, timeout_ms: i64) -> i32 {
         let Some(entry) = guard.servers.get(&handle) else {
             return record_failure("Server.Close", &WebFailure::Closed("server closed".into()));
         };
-        entry.state.clone()
+        std::sync::Arc::clone(&entry.state)
     };
     match crate::web::drain_server(&state_arc, i128::from(timeout_ms), true) {
         Ok(()) => BN_WEB_OK,
@@ -1293,7 +1246,7 @@ pub extern "C" fn bn_web_session_store_get(
 pub extern "C" fn bn_web_scraper_create(html: *const c_char) -> u64 {
     let html_str = string_text(html).unwrap_or_default();
     let scraper = crate::web_state::Scraper::parse(&html_str)
-        .unwrap_or_else(|_| crate::web_state::Scraper::parse("").unwrap());
+        .unwrap_or_else(|_| crate::web_state::Scraper::empty());
     let handle = alloc_handle();
     let wrapper = table();
     let mut guard = wrapper.lock_table();
@@ -1432,8 +1385,15 @@ pub extern "C" fn bn_web_egress_policy_new(
     let schemes_str = string_text(schemes).unwrap_or_default();
     let cidrs_str = string_text(cidrs).unwrap_or_default();
     let ports_str = string_text(ports).unwrap_or_default();
-    let redirects = usize::try_from(max_redirects.max(0)).unwrap_or(0);
-    let deadline = u64::try_from(deadline_ms.max(0)).unwrap_or(0);
+    // A negative value is refused, not clamped (`EgressPolicy OR Error`).
+    let (Ok(redirects), Ok(deadline)) =
+        (usize::try_from(max_redirects), u64::try_from(deadline_ms))
+    else {
+        return record_failure(
+            "EgressPolicy.New",
+            &WebFailure::InvalidArgument(crate::web::EGRESS_POLICY_BOUNDS.into()),
+        );
+    };
 
     match crate::web::EgressPolicy::from_csv(
         &schemes_str,
@@ -1453,7 +1413,7 @@ pub extern "C" fn bn_web_egress_policy_new(
             }
             BN_WEB_OK
         }
-        Err(err) => record_failure("EgressPolicy.New", &WebFailure::from_message(err)),
+        Err(err) => record_failure("EgressPolicy.New", &WebFailure::InvalidArgument(err.into())),
     }
 }
 
@@ -1596,4 +1556,25 @@ pub extern "C" fn bn_web_client_request_with_policy(
 pub extern "C" fn bn_web_client_close(handle: u64) -> i32 {
     table().lock_table().clients.remove(&handle);
     BN_WEB_OK
+}
+
+#[cfg(test)]
+mod string_contract_tests {
+    /// A NUL-terminated text after 16 bytes that are no STRING header.
+    #[repr(C, align(8))]
+    struct ForeignText([u8; 32]);
+
+    /// A web argument is a STRING payload; any other pointer is refused,
+    /// never guessed to be a C string.
+    #[test]
+    fn a_web_argument_that_is_not_a_string_is_refused_not_guessed() {
+        let mut bytes = [0_u8; 32];
+        bytes[..16].fill(0xFE);
+        bytes[16..22].copy_from_slice(b"plain\0");
+        let foreign = ForeignText(bytes);
+        let pointer = foreign.0[16..].as_ptr().cast::<std::ffi::c_char>();
+        assert_eq!(super::string_text(pointer), None);
+        let real = super::c_string("plain");
+        assert_eq!(super::string_text(real).as_deref(), Some("plain"));
+    }
 }

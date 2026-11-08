@@ -14,6 +14,10 @@ use bn_source::SourceFile;
 
 const TYPE_MISMATCH: &str = "TYPE_MISMATCH";
 
+#[expect(
+    clippy::unwrap_in_result,
+    reason = "test helper: a failed set-up is a failed test"
+)]
 fn analysis_code(body: &str) -> Result<(), String> {
     let source = SourceFile::new(
         "inexact.bn",

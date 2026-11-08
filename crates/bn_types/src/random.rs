@@ -33,7 +33,10 @@ pub const fn next_state(state: u64) -> u64 {
 
 /// The `Random()` value of a stepped state: its top 53 bits over `2^53`.
 #[must_use]
-#[allow(clippy::cast_precision_loss)] // 53 bits are exact in a binary64 mantissa
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "53 bits are exact in a binary64 mantissa"
+)]
 pub fn unit_interval(state: u64) -> f64 {
     let top = state >> (u64::BITS - MANTISSA_BITS);
     top as f64 / (1_u64 << MANTISSA_BITS) as f64

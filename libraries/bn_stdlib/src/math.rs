@@ -5,6 +5,11 @@
 
 use std::process;
 
+#[expect(
+    clippy::exit,
+    clippy::print_stderr,
+    reason = "a runtime trap ends the program and prints failure message: the language's defined outcome of this failure"
+)]
 pub(crate) fn fail(code: &str, message: &str) -> ! {
     eprintln!("{}", format_failure(code, message));
     process::exit(1);
@@ -13,6 +18,10 @@ pub(crate) fn fail(code: &str, message: &str) -> ! {
 /// Ends the program with the diagnostic `bnc` rendered for the calling site
 /// (`trap`, all facts known when compiling), as `bni` reports the failure;
 /// `code` and `message` only serve a caller that passed no site.
+#[expect(
+    clippy::exit,
+    reason = "a runtime trap ends the program: the language's defined outcome of this failure"
+)]
 pub(crate) fn fail_at(trap: *const std::ffi::c_char, code: &str, message: &str) -> ! {
     if trap.is_null() {
         fail(code, message);

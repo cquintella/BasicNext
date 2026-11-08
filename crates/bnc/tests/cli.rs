@@ -1,4 +1,14 @@
-#![allow(clippy::map_unwrap_or)]
+#![allow(
+    clippy::disallowed_methods,
+    clippy::map_unwrap_or,
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
 // Author: Carlos Quintella
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -81,6 +91,64 @@ fn native_exec_program(label: &str, body: &str, env: &[(&str, &str)]) -> String 
     let stdout = String::from_utf8(run.stdout).expect("UTF-8 program stdout");
     let _ = fs::remove_dir_all(&base);
     stdout
+}
+
+/// A path as a BN string literal: BN strings escape only `\"` and `\\`, so a
+/// Windows path doubles its backslashes.
+fn bn_literal(path: &std::path::Path) -> String {
+    path.display().to_string().replace('\\', "\\\\")
+}
+
+/// `Checksum.VerifyFileChecksum` reads through the execution policy: a file
+/// outside the read root is FALSE even when its checksum matches.
+#[test]
+fn compiled_verify_file_checksum_obeys_the_read_root() {
+    let base = std::env::temp_dir().join(format!("bn-sandbox-checksum-{}", std::process::id()));
+    let read_root = base.join("read");
+    let outside_root = base.join("outside");
+    fs::create_dir_all(&read_root).expect("create read root");
+    fs::create_dir_all(&outside_root).expect("create outside root");
+    // CRC-32 of "abc" is 0x352441c2.
+    let inside = read_root.join("inside.txt");
+    let outside = outside_root.join("outside.txt");
+    fs::write(&inside, "abc").expect("write inside input");
+    fs::write(&outside, "abc").expect("write outside input");
+    let fixture = base.join("checksum.bn");
+    fs::write(
+        &fixture,
+        format!(
+            "IMPORT BNCrypto AS Crypto\n\nFUNCTION Start() AS VOID\n    PRINT Crypto.Checksum.VerifyFileChecksum(\"{}\", \"crc32:352441c2\")\n    PRINT Crypto.Checksum.VerifyFileChecksum(\"{}\", \"crc32:352441c2\")\n    LET digest AS Crypto.Bytes OR Error = Crypto.HashFile(\"{}\")\n    IF digest IS Error THEN\n        PRINT \"hashfile-denied\"\n    END IF\nEND FUNCTION\n",
+            bn_literal(&inside),
+            bn_literal(&outside),
+            bn_literal(&outside)
+        ),
+    )
+    .expect("write checksum fixture");
+    let artifact = base.join("checksum");
+    let built = bnc()
+        .args([
+            "--sandbox",
+            "--read-root",
+            read_root.to_str().expect("read root path"),
+            fixture.to_str().expect("fixture path"),
+            "-o",
+            artifact.to_str().expect("artifact path"),
+        ])
+        .output()
+        .expect("build checksum fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run checksum artifact");
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "TRUE\nFALSE\nhashfile-denied\n"
+    );
+    let _ = fs::remove_dir_all(&base);
 }
 
 #[test]
@@ -1527,6 +1595,539 @@ fn compiled_bncrypto_post_quantum_matches_the_interpreter() {
     );
 }
 
+/// CSPRNG additions survive compilation and match the interpreter output byte for byte.
+#[test]
+fn compiled_bncrypto_csprng_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_csprng_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-csprng/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "random-int-range-ok\nrandom-int-error-caught\nrandom-token-len-ok\nrandom-token-error-caught\nrandom-uuid-v4-ok\nuuid-v7-monotonic-ok\nrandom-pwd-default-ok\nrandom-pwd-error-caught\n"
+    );
+}
+
+/// Memory zeroization survives compilation and matches interpreter output byte for byte.
+#[test]
+fn compiled_bncrypto_zeroize_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_zeroize_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-zeroize/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "b1-init-len-ok\nb1-zeroized-len-ok\nb1-zeroized-hex-ok\nb2-zeroized-len-ok\nb2-zeroized-hex-ok\n"
+    );
+}
+
+/// Secret type and constant-time operations compile: print output is masked as
+/// `***`, constant-time equality compares accurately, and native binary matches interpreter.
+#[test]
+fn compiled_bncrypto_secret_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_secret_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-secret/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "s1-len-ok\ns1-eq-s2-ok\ns1-neq-s3-ok\nb1-eq-b2-ok\nb1-neq-b3-ok\nmod-b1-eq-b2-ok\nmod-b1-neq-b3-ok\n***\ns1-zeroized-neq-s2-ok\ns1-zeroized-hex-ok\n"
+    );
+}
+
+/// `SecretKey` opaque type and key wrapping compile: 256-bit generation, masked print,
+/// secret bytes export and import, RFC 3394 key wrap and unwrap, and zeroization.
+#[test]
+fn compiled_bncrypto_secretkey_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_secretkey_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-secretkey/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "key-bits-256-ok\nkey-length-32-ok\nkey-purpose-ok\nkey-alg-ok\nkey-id-len-ok\n***\nkey-export-len-ok\nimported-key-id-match-ok\nwrapped-len-40-ok\nunwrap-key-id-match-ok\nzeroized-bits-ok\n"
+    );
+}
+
+#[test]
+fn compiled_bncrypto_envelope_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_envelope_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-envelope/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "sealed-len-82-ok\nmagic-bnc1-ok\nunsealed-matches-plain-ok\ndecrypt-text-ok\n"
+    );
+}
+
+#[test]
+fn compiled_bncrypto_file_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_file_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-file/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "encrypt-file-ok\ndecrypt-file-ok\ncleanup-ok\n"
+    );
+}
+
+#[test]
+fn compiled_bncrypto_raw_modes_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_raw_modes_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-raw-modes/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "forbidden-mode-import-rejected\nforbidden-mode-generate-rejected\nraw-aes-gcm-seal-ok\nraw-aes-gcm-open-ok\nbad-nonce-rejected\n"
+    );
+}
+
+#[test]
+fn compiled_bncrypto_hash_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_hash_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-hash/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "hash-sha256-len-32-ok\nhash-text-matches-hex-ok\nhash-sha3-256-ok\nhash-blake2b-ok\nhash-blake3-ok\nlegacy-md5-rejected\nhasher-stream-sha256-ok\nhash-file-matches-hash-ok\n"
+    );
+}
+
+#[test]
+fn compiled_bncrypto_mac_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_mac_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-mac/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "mac-verify-ok\nmac-corrupt-rejected\nmac-stream-matches-oneshot-ok\nmac-stream-verify-ok\nmac-with-matches-default-ok\nmac-stream-new-with-ok\n"
+    );
+}
+
+#[test]
+fn compiled_bncrypto_pwd_kdf_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_pwd_kdf_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-pwd-kdf/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "pwd-verify-ok\npwd-wrong-rejected\nhkdf-ok\n"
+    );
+}
+
+#[test]
+fn compiled_bncrypto_encoding_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_encoding_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-encoding/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "Hello Encoding World!\nbase64-roundtrip-ok\nbase64url-roundtrip-ok\nconcat-ok\npem-roundtrip-ok\ncrc32-ok\ncrc32c-ok\nadler32-ok\nxxhash64-ok\n"
+    );
+}
+
+#[test]
+fn compiled_bncrypto_policy_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_policy_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-policy/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), BNCRYPTO_POLICY_OUTPUT);
+    let _ = fs::remove_dir_all(&directory);
+}
+
+#[test]
+fn compiled_bncrypto_release_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_release_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-release/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "hasher-released\nmac-stream-released\n30\npublic-key-released\nprivate-key-released\nalternatives-released\n"
+    );
+    let _ = fs::remove_dir_all(&directory);
+}
+
+#[test]
+fn compiled_bncrypto_keypair_alone_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_keypair_alone_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-keypair-minimal/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "30\n");
+    let _ = fs::remove_dir_all(&directory);
+}
+
+#[test]
+fn compiled_bncrypto_asymmetric_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_asymmetric_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-asymmetric/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "asym-keypair-ok\nkey-ids-match\nderived-public-matches\ned25519-for-ok\nx25519-for-ok\np256-for-ok\ninvalid-alg-rejected\ninvalid-alg-code-ok\nnon-keypair-alg-rejected\nwith-default-ok\nsign-verify-ok\nverify-rejects\npem-roundtrip\nwrong-password\nplain-roundtrip\nplain-password-rejected\npublic-from-private-rejected\npublic-pem-ok\np256-sign-ok\nx25519-sign-rejected\nx25519-verify-false\npublic-after-zeroize-ok\n"
+    );
+    let _ = fs::remove_dir_all(&directory);
+}
+
+#[test]
+fn compiled_bncrypto_fingerprint_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_fingerprint_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-fingerprint/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "sha256-ok\nsha512-ok\nlegacy-rejected\nkeyed-rejected\n"
+    );
+    let _ = fs::remove_dir_all(&directory);
+}
+
 /// `BNJson` survives compilation: the DOM slice links against the `bn_rt`
 /// document table and the native binary prints what the interpreter prints.
 /// Before 0.6.1 the backend had no `BNJson` support at all.
@@ -1736,4 +2337,184 @@ fn companion_log_never_replaces_or_hides_the_product() {
     assert!(String::from_utf8_lossy(&refused.stderr).starts_with("error[CONFIG_INVALID]"));
     assert!(!same.exists());
     fs::remove_dir_all(directory).expect("remove companion test directory");
+}
+
+/// What `tests/modules/bncrypto-policy` prints on both backends: 4 is
+/// `UNSUPPORTED_ALGORITHM`, 5 is `LEGACY_DISABLED`.
+const BNCRYPTO_POLICY_OUTPUT: &str = "hash-blake3 ok\nhash-blake3-fips 4\nhash-sha3-fips ok\nhasher-blake2b-fips 4\nhash-md5-allow-legacy 5\nhash-blake3-next-call ok\nmac-blake3-fips 4\nmac-stream-blake3-fips 4\nmac-hmac384-fips ok\nkeypair-x25519 ok\nkeypair-x25519-fips 4\nkeypair-ed25519-fips ok\n";
+
+/// `EncryptWith` and `DecryptWith`: the AAD is bound, the `KEYID` names the key, an unsupported algorithm and a wrong key are Errors.
+#[test]
+fn compiled_bncrypto_aead_options_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_aead_options_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-aead-options/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "order 17\naad-bound\nwrong-key-is-error\ndefaults-open-with-decrypt\nalg-refused\n"
+    );
+    let _ = fs::remove_dir_all(&directory);
+}
+
+/// A `BNCrypto` handle widened into `T OR Error` keeps its value; a program class named `SecretKey` stays an object.
+#[test]
+fn compiled_bncrypto_widened_handles_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_widened_handles_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-widened-handles/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "64\nsealed\npublic-kept\nuser\n"
+    );
+    let _ = fs::remove_dir_all(&directory);
+}
+
+/// `HashPasswordWith`, `NeedsRehash`, `DeriveKey` and `DeriveSubkey`: cost floor, fail-safe rehash, deterministic derived keys, refusals as Errors.
+#[test]
+fn compiled_bncrypto_kdf_options_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_kdf_options_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-kdf-options/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "cost-recorded\nverifies\nfloor-is-reached\nstronger-target-needs-rehash\nmalformed-needs-rehash\nbelow-floor-refused\nderive-key-deterministic\n256\nDERIVED\nARGON2ID\nsubkey-labelled\nHKDF\nempty-context-refused\nzeroized-master-refused\nshort-salt-refused\n"
+    );
+    let _ = fs::remove_dir_all(&directory);
+}
+
+/// `EncryptFileWithPassword` and `DecryptFileWithPassword`: round trip, `WRONG_PASSWORD` without partial output, and no opening by key.
+#[test]
+fn compiled_bncrypto_password_file_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_password_file_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-password-file/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .current_dir(&directory)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "encrypted\nopened-with-password\nwrong-password\nno-partial-output\nnot-a-key-file\n"
+    );
+    let _ = fs::remove_dir_all(&directory);
+}
+
+/// A zeroized key: `INVALID_ARGUMENT` with its operation for every `T OR Error` call, FALSE for `VerifyMac`, the key checked before the options.
+#[test]
+fn compiled_bncrypto_zeroized_key_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_zeroized_key_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-zeroized-key/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "Mac invalid-argument BNCrypto.Key\nMacWith invalid-argument BNCrypto.Key\nMacStream.New invalid-argument BNCrypto.Key\nHkdf invalid-argument BNCrypto.Key\nVerifyMac false\nEncryptWith invalid-argument BNCrypto.Key\n"
+    );
+    let _ = fs::remove_dir_all(&directory);
 }

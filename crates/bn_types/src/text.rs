@@ -30,7 +30,7 @@ pub fn float(value: f64, ty: FloatType) -> String {
     if value == f64::NEG_INFINITY {
         return "-INF".into();
     }
-    #[allow(clippy::cast_possible_truncation)] // exact: `value` holds an f32
+    #[allow(clippy::cast_possible_truncation, reason = "exact: value holds an f32")]
     let mut text = match ty {
         FloatType::Float32 => (value as f32).to_string(),
         FloatType::Float64 => value.to_string(),

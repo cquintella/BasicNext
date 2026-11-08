@@ -1,6 +1,16 @@
 //! Language Server Protocol adapter over the shared frontend: document
 //! snapshots, diagnostics (≡ `check`), completion, definition and references.
 //! Frontend-only; no backend crate is reachable from here.
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
+
 use std::{collections::HashMap, fs, path::PathBuf};
 
 use lsp_server::{Connection, Message, Notification, Request, Response};

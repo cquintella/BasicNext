@@ -43,6 +43,8 @@ jobs:
         run: cargo fmt --check
       - name: Clippy
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: License checker
+        run: cargo install --locked cargo-deny
       - name: Repository gates
         # The one gate list, shared with scripts/test-battery.sh --gates.
         run: bash scripts/repository-gates.sh

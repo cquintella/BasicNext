@@ -108,14 +108,28 @@ impl Analyzer {
             Type::Alternative(_) | Type::Pointer { .. } | Type::Function { .. } => true,
             // A program cannot construct an `Error`, so it has no default
             // (error.md, "No default value"), nor do vectors of it.
-            Type::Named(name) if name == "Error" => true,
+            Type::Named(name) | Type::TypeName(name) if name == "Error" => true,
+            Type::ImportedNamed { name, .. } | Type::ImportedTypeName { name, .. }
+                if name == "Error" =>
+            {
+                true
+            }
             // A vector has a default only when its element has one: `Box[2]`,
             // an interface vector and `Error[2]` need `=` (0.6.md, defaults).
             Type::Vector { element, .. } => self.type_requires_initializer(element),
-            Type::Named(name) => matches!(
+            Type::Named(name) | Type::TypeName(name) => matches!(
                 self.declaration_kinds.get(name),
                 Some(DeclarationKind::Class | DeclarationKind::Interface)
             ),
+            Type::ImportedNamed { module, name } | Type::ImportedTypeName { module, name } => self
+                .imported_types
+                .get(&(*module, name.clone()))
+                .is_some_and(|info| {
+                    matches!(
+                        info.kind,
+                        DeclarationKind::Class | DeclarationKind::Interface
+                    )
+                }),
             _ => false,
         }
     }

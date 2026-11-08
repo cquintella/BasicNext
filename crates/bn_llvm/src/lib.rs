@@ -5,8 +5,20 @@
 
 //! Dependency-free LLVM backend and typed IR builder. Unsupported IR is rejected explicitly.
 
-#![allow(clippy::match_same_arms)]
-#![allow(clippy::too_many_lines)]
+#![allow(
+    clippy::match_same_arms,
+    clippy::too_many_lines,
+    reason = "compiler internals"
+)]
+#![allow(
+    unreachable_pub,
+    clippy::allow_attributes_without_reason,
+    clippy::let_underscore_must_use,
+    clippy::string_slice,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "DEC-55: native"
+)]
 
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
@@ -145,7 +157,8 @@ enum ConstantValue {
 }
 
 #[allow(clippy::struct_excessive_bools)]
-struct LoweringAnalysis<'a> {
+pub(crate) struct LoweringAnalysis<'a> {
+    pub(crate) module: &'a Module,
     values: HashMap<ValueId, Type>,
     symbols: HashMap<SymbolId, Type>,
     functions: HashMap<ValueId, &'a str>,
@@ -185,6 +198,19 @@ struct EmissionState {
     is_start: bool,
     synchronize_prints: bool,
     return_llvm: crate::ir::LlvmType,
+    /// The next value id no instruction of this function uses: a value the
+    /// lowering itself introduces (a member extracted to be printed) takes one
+    /// from here, so it never collides with a real value.
+    next_synthetic_value: u32,
+}
+
+impl EmissionState {
+    /// A value id that names no instruction of the function being lowered.
+    fn fresh_value(&mut self) -> ValueId {
+        let id = ValueId(self.next_synthetic_value);
+        self.next_synthetic_value += 1;
+        id
+    }
 }
 
 /// Lower the supported typed BN IR subset to LLVM IR.
@@ -696,6 +722,7 @@ fn printable_type(ty: &Type) -> bool {
             | Type::Float(_)
             | Type::FloatLiteral
             | Type::Named(_)
+            | Type::ImportedNamed { .. }
             | Type::NotAvailable
             | Type::EndOfFile
             | Type::Null
@@ -1003,13 +1030,16 @@ mod helpers;
 mod platform_stdio;
 use arc::{REGION_HEADER_BYTES, held_object, is_class_type, is_region_type, object_class};
 use helpers::{
-    bncompress_method, bncrypto_method, carries_bncompress_bytes, carries_bncompress_zip,
-    carries_bncrypto_bytes, carries_bncrypto_key, class_init_flag, coerce_return_operand,
-    coerce_to_type, emit_input_runtime, extend_to_i64, float_additive_identity, float_constant,
-    instruction_name, integer_constant, integer_kind, is_bncompress_bytes_type,
-    is_bncompress_zip_type, is_bncrypto_bytes_type, is_bncrypto_key_type, is_unsigned,
-    parse_float_constant, parse_integer, sanitize_symbol, static_global_name,
-    unsupported_call_detail, unsupported_instruction, unsupported_instruction_detail,
+    CryptoAlternativeRelease, bncompress_method, bncrypto_alternative_release,
+    bncrypto_handle_release, bncrypto_method, carries_bncompress_bytes, carries_bncompress_zip,
+    carries_bncrypto_bytes, carries_bncrypto_key, carries_bncrypto_private_key,
+    carries_bncrypto_public_key, carries_bncrypto_secret, carries_bncrypto_secret_key,
+    class_init_flag, coerce_return_operand, coerce_to_type, emit_input_runtime, extend_to_i64,
+    float_additive_identity, float_constant, instruction_name, integer_constant, integer_kind,
+    is_bncompress_bytes_type, is_bncompress_zip_type, is_bncrypto_bytes_type, is_bncrypto_key_type,
+    is_bncrypto_secret_key_type, is_bncrypto_secret_type, is_unsigned, parse_float_constant,
+    parse_integer, sanitize_symbol, static_global_name, unsupported_call_detail,
+    unsupported_instruction, unsupported_instruction_detail,
 };
 #[cfg(feature = "json")]
 use helpers::{bnjson_member, carries_bnjson};

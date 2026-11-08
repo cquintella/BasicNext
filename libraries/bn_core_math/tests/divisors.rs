@@ -6,6 +6,16 @@
 //! `BNMath.Gcd` / `Lcm` (math.md, "Integer divisors"): exact on the whole
 //! `INT64` range, the bounds included.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 use bn_core_math::{gcd_magnitude, lcm_exact};
 
 const TWO_TO_63: u64 = 1 << 63;

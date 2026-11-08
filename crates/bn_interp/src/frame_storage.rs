@@ -48,18 +48,6 @@ impl ValueSlots {
     pub(crate) fn clear(&mut self) {
         self.slots.clear();
     }
-
-    /// The values that are set, with their ids.
-    pub(crate) fn iter(&self) -> impl Iterator<Item = (ValueId, &Value)> {
-        self.slots.iter().enumerate().filter_map(|(slot, value)| {
-            value.as_ref().map(|value| {
-                (
-                    ValueId(u32::try_from(slot).expect("a slot came from a value id")),
-                    value,
-                )
-            })
-        })
-    }
 }
 
 /// The multiplier of `IdHasher`: the odd 64-bit constant nearest to

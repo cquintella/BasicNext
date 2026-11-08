@@ -75,7 +75,10 @@ fn assert_rejected(rows: &[Value], exit_code_key: &str) {
     let expected = configuration()["exit_codes"][exit_code_key]
         .as_i64()
         .expect("inventory rejection exit code");
-    assert!(!result.timed_out);
+    assert!(
+        !result.timed_out,
+        "the inventory run finishes before its timeout"
+    );
     assert_eq!(
         result.status.code().map(i64::from),
         Some(expected),

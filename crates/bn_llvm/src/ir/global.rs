@@ -46,7 +46,7 @@ const IMMORTAL_REF_COUNT_BITS: i64 = -1;
 impl LlvmGlobal {
     /// A mutable global with an initializer and default linkage.
     #[must_use]
-    pub fn variable(name: impl Into<String>, ty: LlvmType, init: LlvmOperand) -> Self {
+    pub(crate) fn variable(name: impl Into<String>, ty: LlvmType, init: LlvmOperand) -> Self {
         Self {
             name: name.into(),
             linkage: Linkage::Default,
@@ -78,7 +78,7 @@ impl LlvmGlobal {
 
     /// A private constant holding `text` and its terminating NUL.
     #[must_use]
-    pub fn text(name: impl Into<String>, text: &str, unnamed_addr: bool) -> Self {
+    pub(crate) fn text(name: impl Into<String>, text: &str, unnamed_addr: bool) -> Self {
         let bytes = text.bytes().chain(std::iter::once(0)).collect();
         Self::c_string(name, bytes, unnamed_addr)
     }

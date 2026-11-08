@@ -741,6 +741,13 @@ pub struct Scraper {
     html: String,
 }
 impl Scraper {
+    /// A scraper over no document.
+    #[must_use]
+    pub fn empty() -> Self {
+        Self {
+            html: String::new(),
+        }
+    }
     pub fn parse(html: &str) -> Result<Self, String> {
         if html.len() > 8 * 1024 * 1024 {
             return Err("scripts are not allowed".into());

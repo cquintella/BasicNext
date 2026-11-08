@@ -10,10 +10,23 @@
 //! an isolated executor over a clone of the module (`execute_callback`).
 
 #![allow(clippy::too_many_lines, clippy::too_many_arguments)] // Moved verbatim from the core; one arm per BNWeb member.
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
 
 pub use bn_web::web;
 use bn_web::web::drain_server;
 use bn_web::{http, tls, web_state};
+
+/// Where the HTTPS client looks for `bn-cacert.pem` and `bn-ca.pem` (bnweb.md,
+/// "HTTPS client trust roots"): `bni` names the entry file's directory.
+pub use bn_web::tls_roots::{ProgramDirectory, set_program_directory};
 
 mod access_log;
 mod request_response;
@@ -416,16 +429,6 @@ impl WebProvider {
                     if let Err(message) = crate::web::validate_client_url(url) {
                         return Ok(failed(name, &WebFailure::from_message(message)));
                     }
-                    let authority = url
-                        .split_once("://")
-                        .and_then(|(_, rest)| rest.split(['/', '?']).next())
-                        .unwrap_or_default();
-                    if let Ok(address) = authority.parse::<std::net::IpAddr>()
-                        && let Err(message) =
-                            crate::web::validate_ssrf_destinations(&[address], false)
-                    {
-                        return Ok(failed(name, &WebFailure::SsrfDenied(message.to_string())));
-                    }
                     if let Err(message) = crate::web::bounded_body(body, 8 * 1024 * 1024) {
                         return Ok(failed(name, &WebFailure::from_message(message)));
                     }
@@ -819,12 +822,17 @@ impl WebProvider {
                         core.host().clone(),
                         self.handlers.get(handle).cloned().unwrap_or_default(),
                         self.filters.get(handle).cloned().unwrap_or_default(),
-                        state.clone(),
+                        std::sync::Arc::clone(&state),
                     );
-                    let accept_state = state.clone();
+                    let accept_state = std::sync::Arc::clone(&state);
+                    let exit_notice = accept_state
+                        .lock()
+                        .ok()
+                        .map(|server| server.drain_signal().notify_on_drop());
                     let listener_handle = std::thread::Builder::new()
                         .name("bnweb-listener".into())
                         .spawn(move || {
+                            let _exit_notice = exit_notice;
                             loop {
                                 let stopped = accept_state
                                     .lock()
@@ -852,15 +860,15 @@ impl WebProvider {
                                             }
                                             continue;
                                         };
-                                        let connection_state = accept_state.clone();
-                                        let connection_handler = request_handler.clone();
+                                        let connection_state = std::sync::Arc::clone(&accept_state);
+                                        let connection_handler = std::sync::Arc::clone(&request_handler);
                                         let work: crate::web::ConnectionWork = Box::new(move || {
                                             crate::web::ServerState::run_connection_worker(
                                                 &connection_state,
                                                 || {
                                                     if let Err(error) = crate::http::serve_connection_with_runtime(
                                                         stream,
-                                                        connection_state.clone(),
+                                                        std::sync::Arc::clone(&connection_state),
                                                         Some(connection_handler),
                                                         &http_runtime,
                                                     ) && let Ok(mut server) = connection_state.lock() {
@@ -982,12 +990,17 @@ impl WebProvider {
                         core.host().clone(),
                         self.handlers.get(handle).cloned().unwrap_or_default(),
                         self.filters.get(handle).cloned().unwrap_or_default(),
-                        state.clone(),
+                        std::sync::Arc::clone(&state),
                     );
-                    let accept_state = state.clone();
+                    let accept_state = std::sync::Arc::clone(&state);
+                    let exit_notice = accept_state
+                        .lock()
+                        .ok()
+                        .map(|server| server.drain_signal().notify_on_drop());
                     let listener_handle = std::thread::Builder::new()
                         .name("bnweb-tls-listener".into())
                         .spawn(move || {
+                            let _exit_notice = exit_notice;
                             loop {
                                 let stopped = accept_state.lock().map_or(true, |server| {
                                     server.is_stopping() || server.is_closed()
@@ -1015,16 +1028,16 @@ impl WebProvider {
                                             }
                                             continue;
                                         };
-                                        let connection_state = accept_state.clone();
-                                        let tls_config = config.clone();
-                                        let connection_handler = request_handler.clone();
+                                        let connection_state = std::sync::Arc::clone(&accept_state);
+                                        let tls_config = std::sync::Arc::clone(&config);
+                                        let connection_handler = std::sync::Arc::clone(&request_handler);
                                         let work: crate::web::ConnectionWork = Box::new(move || {
                                             crate::web::ServerState::run_connection_worker(
                                                 &connection_state,
                                                 || {
                                                     if let Err(error) = crate::http::serve_tls_connection_with_runtime(
                                                         stream,
-                                                        connection_state.clone(),
+                                                        std::sync::Arc::clone(&connection_state),
                                                         tls_config,
                                                         Some(connection_handler),
                                                         &http_runtime,
@@ -1746,31 +1759,29 @@ impl WebProvider {
                         span,
                     ));
                 };
-                let max_redirects =
-                    usize::try_from(integer(&arguments[3], span)?.0).map_err(|_| {
-                        runtime_error(
-                            bn_diag::DiagId::INVALID_EGRESS_POLICY,
-                            "invalid redirect limit",
-                            span,
-                        )
-                    })?;
-                let deadline = u64::try_from(integer(&arguments[4], span)?.0).map_err(|_| {
-                    runtime_error(
-                        bn_diag::DiagId::INVALID_EGRESS_POLICY,
-                        "invalid egress deadline",
-                        span,
-                    )
-                })?;
-                let policy = crate::web::EgressPolicy::from_csv(
+                // `EgressPolicy OR Error`: a setting outside its bounds is an
+                // `INVALID_ARGUMENT` the program handles (bnweb.md, "Errors").
+                let (Ok(max_redirects), Ok(deadline)) = (
+                    usize::try_from(integer(&arguments[3], span)?.0),
+                    u64::try_from(integer(&arguments[4], span)?.0),
+                ) else {
+                    return Ok(failed(
+                        name,
+                        &WebFailure::InvalidArgument(crate::web::EGRESS_POLICY_BOUNDS.into()),
+                    ));
+                };
+                let policy = match crate::web::EgressPolicy::from_csv(
                     schemes,
                     cidrs,
                     ports,
                     max_redirects,
                     deadline,
-                )
-                .map_err(|message| {
-                    runtime_error(bn_diag::DiagId::INVALID_EGRESS_POLICY, message, span)
-                })?;
+                ) {
+                    Ok(policy) => policy,
+                    Err(message) => {
+                        return Ok(failed(name, &WebFailure::InvalidArgument(message.into())));
+                    }
+                };
                 let object = core.allocate_object("BNWeb.EgressPolicy", span)?;
                 if let Value::Object { handle, .. } = object {
                     self.egress_policies.insert(handle, policy);

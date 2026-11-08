@@ -16,22 +16,35 @@ fn with_socket<T>(
     handle: i64,
     f: impl FnOnce(Option<&net::UdpSocket>) -> Result<T, NetError>,
 ) -> Result<T, NetError> {
-    let socket = usize::try_from(handle).ok().and_then(|index| {
-        handles::with(index, |value| match value {
-            Handle::UdpSocket(socket) => socket.try_clone().ok(),
-            _ => None,
-        })
-        .ok()
-        .flatten()
-        .flatten()
-    });
+    let socket = handles::with(handle, |value| match value {
+        Handle::UdpSocket(socket) => socket.try_clone().ok(),
+        _ => None,
+    })
+    .ok()
+    .flatten()
+    .flatten();
     f(socket.as_ref())
+}
+
+/// Runs `f` on the socket behind `handle` by reference under the lock:
+/// non-blocking metadata operations must not clone the socket descriptor.
+fn with_socket_ref<T>(
+    handle: i64,
+    f: impl FnOnce(Option<&net::UdpSocket>) -> Result<T, NetError>,
+) -> Result<T, NetError> {
+    let mut f = Some(f);
+    if let Ok(Some(Some(result))) = handles::with(handle, |value| match value {
+        Handle::UdpSocket(socket) => f.take().map(|f| f(Some(socket))),
+        _ => None,
+    }) {
+        return result;
+    }
+    f.take().expect("socket operation not yet run")(None)
 }
 
 /// Runs `f` on the packet behind `handle` (packets do no I/O).
 fn with_packet<T>(handle: i64, f: impl FnOnce(&net::UdpPacket) -> T) -> Option<T> {
-    let index = usize::try_from(handle).ok()?;
-    handles::with(index, |value| match value {
+    handles::with(handle, |value| match value {
         Handle::UdpPacket(packet) => Some(f(packet)),
         _ => None,
     })
@@ -87,9 +100,7 @@ pub extern "C" fn bn_rt_net_udp_bind(address: *const c_char, port: i32, out: *mu
 #[allow(unsafe_code)] // C ABI export.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_handle_close(handle: i64) -> i32 {
-    if let Ok(handle) = usize::try_from(handle) {
-        let _ = handles::remove(handle);
-    }
+    let _ = handles::remove(handle);
     0
 }
 
@@ -102,7 +113,7 @@ pub extern "C" fn bn_rt_net_udp_local_endpoint(
     out_port: *mut i32,
 ) -> i32 {
     status(
-        with_socket(handle, net::udp_local_endpoint)
+        with_socket_ref(handle, net::udp_local_endpoint)
             .map(|endpoint| write_endpoint(endpoint, out_address, out_port)),
     )
 }

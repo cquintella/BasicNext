@@ -80,7 +80,6 @@ crates/bn_core_net/src/icmp.rs	prose	ICMP Echo operation unavailable on this hos
 crates/bn_core_net/src/icmp.rs	prose	ICMP Echo permission denied
 crates/bn_core_net/src/icmp.rs	prose	ping destination unreachable
 crates/bn_core_net/src/icmp.rs	prose	ping timeout
-crates/bn_core_net/src/lib.rs	prose	resolver worker stopped
 crates/bn_core_net/src/lookup.rs	identifier	HOST.Net.Addresses.Get
 crates/bn_core_net/src/lookup.rs	identifier	HOST.Net.Neighbor
 crates/bn_core_net/src/lookup.rs	identifier	HOST.Net.Ping
@@ -98,7 +97,6 @@ crates/bn_core_net/src/lookup.rs	prose	{address} reported the destination unreac
 crates/bn_core_net/src/neighbor.rs	prose	direct-neighbor entry not found
 crates/bn_core_net/src/neighbor.rs	prose	direct-neighbor lookup unsupported on this host
 crates/bn_core_net/src/reverse.rs	prose	reverse name not found
-crates/bn_core_net/src/reverse.rs	prose	reverse resolver stopped
 crates/bn_core_net/src/reverse.rs	prose	reverse timeout
 crates/bn_core_net/src/socket.rs	prose	backlog overflow
 crates/bn_core_net/src/socket.rs	prose	multicast and broadcast datagrams are denied
@@ -239,8 +237,6 @@ crates/bn_diag/src/lib.rs	identifier	INVALID_DATE
 crates/bn_diag/src/lib.rs	identifier	INVALID_DATE
 crates/bn_diag/src/lib.rs	identifier	INVALID_DESTRUCTOR
 crates/bn_diag/src/lib.rs	identifier	INVALID_DESTRUCTOR
-crates/bn_diag/src/lib.rs	identifier	INVALID_EGRESS_POLICY
-crates/bn_diag/src/lib.rs	identifier	INVALID_EGRESS_POLICY
 crates/bn_diag/src/lib.rs	identifier	INVALID_EXIT_CODE
 crates/bn_diag/src/lib.rs	identifier	INVALID_EXIT_CODE
 crates/bn_diag/src/lib.rs	identifier	INVALID_EXPONENT
@@ -516,7 +512,6 @@ crates/bn_frontend/src/lexer.rs	prose	a Basic Next token
 crates/bn_frontend/src/lexer.rs	prose	a number cannot start with '.'
 crates/bn_frontend/src/lexer.rs	prose	bare carriage return; use LF or CRLF
 crates/bn_frontend/src/lexer.rs	prose	bare carriage return; use LF or CRLF
-crates/bn_frontend/src/lexer.rs	prose	lexical error
 crates/bn_frontend/src/lexer.rs	prose	malformed numeric literal '{text}'
 crates/bn_frontend/src/lexer.rs	prose	nested block comments are not allowed
 crates/bn_frontend/src/lexer.rs	prose	string literals cannot contain a line break
@@ -640,7 +635,6 @@ crates/bn_frontend/src/module_graph.rs	prose	module graph error
 crates/bn_frontend/src/module_graph.rs	prose	module graph exceeds the portable module limit
 crates/bn_frontend/src/parser.rs	prose	an expression
 crates/bn_frontend/src/parser.rs	prose	host capability names after HOST. must start with a capital letter
-crates/bn_frontend/src/parser.rs	prose	parser error
 crates/bn_frontend/src/parser.rs	prose	the current declaration or statement
 crates/bn_frontend/src/parser.rs	prose	unexpected token after expression
 crates/bn_frontend/src/parser/expressions.rs	identifier	HOST
@@ -1734,7 +1728,6 @@ crates/bn_llvm/src/llvm/functions.rs	prose	TARGET_UNSUPPORTED_TYPE: function '{}
 crates/bn_llvm/src/llvm/general_alternative.rs	prose	a general alternative contains only `Class OR NULL` or `T OR Error`
 crates/bn_llvm/src/llvm/helpers.rs	identifier	BNCrypto
 crates/bn_llvm/src/llvm/helpers.rs	identifier	BNDispatch
-crates/bn_llvm/src/llvm/helpers.rs	identifier	BNJson
 crates/bn_llvm/src/llvm/helpers.rs	identifier	BNMath
 crates/bn_llvm/src/llvm/helpers.rs	identifier	BNWeb
 crates/bn_llvm/src/llvm/helpers.rs	identifier	HOST.
@@ -1788,7 +1781,6 @@ crates/bn_llvm/src/llvm/math.rs	prose	validated float BNMath arity
 crates/bn_llvm/src/llvm/math.rs	prose	validated integer BNMath
 crates/bn_llvm/src/llvm/math.rs	prose	validated unary float BNMath
 crates/bn_llvm/src/llvm/math.rs	prose	validated vector BNMath
-crates/bn_llvm/src/llvm/ownership_emission.rs	identifier	HOST.Exec.Result
 crates/bn_llvm/src/llvm/power_shift.rs	prose	integer LLVM type
 crates/bn_llvm/src/llvm/power_shift.rs	prose	shift count must be in 0..{width}
 crates/bn_llvm/src/llvm/power_shift.rs	prose	validated float power type
@@ -1812,8 +1804,6 @@ crates/bn_llvm/src/llvm/runtime.rs	identifier	HOST.Env.Get
 crates/bn_llvm/src/llvm/runtime.rs	identifier	HOST.Env.Get
 crates/bn_llvm/src/llvm/runtime.rs	identifier	HOST.Env.Has
 crates/bn_llvm/src/llvm/runtime.rs	identifier	HOST.Env.Has
-crates/bn_llvm/src/llvm/runtime.rs	identifier	HOST.Exec.Result.Close
-crates/bn_llvm/src/llvm/runtime.rs	identifier	HOST.Exec.Result.Close
 crates/bn_llvm/src/llvm/runtime.rs	identifier	HOST.Exec.Result.ReturnCode
 crates/bn_llvm/src/llvm/runtime.rs	identifier	HOST.Exec.Result.ReturnCode
 crates/bn_llvm/src/llvm/runtime.rs	identifier	HOST.Exec.Result.Stderr
@@ -1965,10 +1955,8 @@ crates/bn_llvm/src/llvm/runtime_process.rs	identifier	HOST.Console.NumRows
 crates/bn_llvm/src/llvm/runtime_process.rs	identifier	HOST.Console.PrintAt
 crates/bn_llvm/src/llvm/runtime_process.rs	identifier	HOST.Env.Get
 crates/bn_llvm/src/llvm/runtime_process.rs	identifier	HOST.Env.Has
-crates/bn_llvm/src/llvm/runtime_process.rs	identifier	HOST.Exec.Result.Close
 crates/bn_llvm/src/llvm/runtime_process.rs	identifier	HOST.Exec.Result.ReturnCode
 crates/bn_llvm/src/llvm/runtime_process.rs	identifier	HOST.Exec.Result.ReturnCode
-crates/bn_llvm/src/llvm/runtime_process.rs	identifier	HOST.Exec.Result.Stderr
 crates/bn_llvm/src/llvm/runtime_process.rs	identifier	HOST.Exec.Result.Stderr
 crates/bn_llvm/src/llvm/runtime_process.rs	identifier	HOST.Exec.Result.Stdout
 crates/bn_llvm/src/llvm/runtime_process.rs	identifier	HOST.Exec.Result.Stdout
@@ -2101,7 +2089,6 @@ crates/bn_rt/src/net_abi/address.rs	prose	parse an IP address
 crates/bn_rt/src/net_abi/address.rs	prose	parse an IP address
 crates/bn_rt/src/net_abi/address.rs	prose	ping an address
 crates/bn_rt/src/net_abi/address.rs	prose	resolve a host
-crates/bn_rt/src/net_abi/address.rs	prose	resolve a host
 crates/bn_rt/src/net_abi/handles.rs	prose	network handle table poisoned
 crates/bn_rt/src/net_abi/handles.rs	prose	network handle table poisoned
 crates/bn_rt/src/net_abi/handles.rs	prose	network handle table poisoned
@@ -2172,7 +2159,6 @@ crates/bn_runtime_instrumentation/src/profiler.rs	prose	Self (ms)
 crates/bn_runtime_instrumentation/src/profiler.rs	prose	Total (ms)
 crates/bn_types/src/error_codes.rs	identifier	ACCESS_DENIED
 crates/bn_types/src/error_codes.rs	identifier	ADDRESS_IN_USE
-crates/bn_types/src/error_codes.rs	identifier	AUTHENTICATION_FAILED
 crates/bn_types/src/error_codes.rs	identifier	CAPABILITY_REQUIRED
 crates/bn_types/src/error_codes.rs	identifier	CAPTURE_FAILED
 crates/bn_types/src/error_codes.rs	identifier	CAPTURE_LIMIT
@@ -2183,7 +2169,6 @@ crates/bn_types/src/error_codes.rs	identifier	EGRESS_DENIED
 crates/bn_types/src/error_codes.rs	identifier	FILE_NOT_FOUND
 crates/bn_types/src/error_codes.rs	identifier	HTTP_FAILED
 crates/bn_types/src/error_codes.rs	identifier	INTERNAL_ERROR
-crates/bn_types/src/error_codes.rs	identifier	INVALID_ARGUMENT
 crates/bn_types/src/error_codes.rs	identifier	INVALID_ARGUMENT
 crates/bn_types/src/error_codes.rs	identifier	INVALID_ARGUMENT
 crates/bn_types/src/error_codes.rs	identifier	INVALID_ARGUMENT
@@ -2238,3 +2223,1359 @@ crates/bn_types/src/error_codes.rs	identifier	TYPE_MISMATCH
 crates/bn_types/src/error_codes.rs	identifier	TYPE_MISMATCH
 crates/bn_types/src/error_codes.rs	identifier	WAIT_FAILED
 crates/bn_types/src/error_codes.rs	identifier	WRONG_FAMILY
+libraries/bn_core_dispatch/src/error.rs	prose	a closed queue accepts no more work
+libraries/bn_core_dispatch/src/error.rs	prose	all {permits} permits are already available
+libraries/bn_core_dispatch/src/error.rs	prose	Cancel, or the queue's Close, removed it before it ran
+libraries/bn_core_dispatch/src/error.rs	prose	cannot leave the group
+libraries/bn_core_dispatch/src/error.rs	prose	cannot release the semaphore
+libraries/bn_core_dispatch/src/error.rs	prose	cannot submit the task
+libraries/bn_core_dispatch/src/error.rs	prose	cannot unlock the mutex
+libraries/bn_core_dispatch/src/error.rs	prose	cannot use {value} as the {what}
+libraries/bn_core_dispatch/src/error.rs	prose	cannot wait for the queue from its own worker
+libraries/bn_core_dispatch/src/error.rs	prose	its only permit is already available
+libraries/bn_core_dispatch/src/error.rs	prose	only the task that locked the mutex can unlock it
+libraries/bn_core_dispatch/src/error.rs	prose	the {what} is closed
+libraries/bn_core_dispatch/src/error.rs	prose	the {what} must be from {min} through {max}
+libraries/bn_core_dispatch/src/error.rs	prose	the {what} was closed by Close
+libraries/bn_core_dispatch/src/error.rs	prose	the group count is already 0: each Leave needs an Enter
+libraries/bn_core_dispatch/src/error.rs	prose	the operation did not complete within its timeout
+libraries/bn_core_dispatch/src/error.rs	prose	the operation is not available
+libraries/bn_core_dispatch/src/error.rs	prose	the queue already holds {pending} pending tickets
+libraries/bn_core_dispatch/src/error.rs	prose	the system reports no processor count
+libraries/bn_core_dispatch/src/error.rs	prose	the task failed
+libraries/bn_core_dispatch/src/error.rs	prose	the task was cancelled
+libraries/bn_core_dispatch/src/error.rs	prose	the worker returned Error {code}: {message}
+libraries/bn_core_dispatch/src/error.rs	prose	the worker would wait for itself
+libraries/bn_core_dispatch/src/error.rs	prose	timed out after {ms} ms
+libraries/bn_core_dispatch/src/error.rs	prose	timeout in milliseconds
+libraries/bn_core_dispatch/src/error.rs	prose	worker count
+libraries/bn_core_dispatch/src/lib.rs	prose	dispatch task panicked
+libraries/bn_core_dispatch/src/lib.rs	prose	output length in bytes
+libraries/bn_core_dispatch/src/lib.rs	prose	the system provides no entropy for ticket identifiers
+libraries/bn_core_dispatch/src/lib.rs	prose	the task failed
+libraries/bn_core_json/src/documents.rs	prose	object or array
+libraries/bn_core_json/src/error.rs	prose	a value lives in exactly one place
+libraries/bn_core_json/src/error.rs	prose	cannot move a document into itself
+libraries/bn_core_json/src/error.rs	prose	cannot parse the text as JSON
+libraries/bn_core_json/src/error.rs	prose	cannot stringify the document
+libraries/bn_core_json/src/error.rs	prose	cannot use the Json document
+libraries/bn_core_json/src/error.rs	prose	cannot write a non-finite FLOAT
+libraries/bn_core_json/src/error.rs	prose	cannot write the value
+libraries/bn_core_json/src/error.rs	prose	element {index} is not of type {expected}
+libraries/bn_core_json/src/error.rs	prose	JSON has no NaN or infinity
+libraries/bn_core_json/src/error.rs	prose	no element {index}
+libraries/bn_core_json/src/error.rs	prose	only an {expected} accepts this operation
+libraries/bn_core_json/src/error.rs	prose	the document is {} {found}, not an {expected}
+libraries/bn_core_json/src/error.rs	prose	the document was released
+libraries/bn_core_json/src/error.rs	prose	the document would nest deeper than {} levels
+libraries/bn_core_json/src/error.rs	prose	the index must be at least 0 and less than the array length {length}
+libraries/bn_core_json/src/error.rs	prose	the object has no member with that key
+libraries/bn_core_json/src/error.rs	prose	the operation is not provided
+libraries/bn_core_json/src/error.rs	prose	the value there is {} {found}
+libraries/bn_core_json/src/error.rs	prose	this build does not provide it
+libraries/bn_core_json/src/parse.rs	prose	a valid bounded JSON value
+libraries/bn_core_json/src/parse.rs	prose	duplicate JSON object key
+libraries/bn_core_json/src/parse.rs	prose	JSON input exceeds 8 MiB
+libraries/bn_core_json/src/parse.rs	prose	JSON nesting exceeds 64 levels
+libraries/bn_core_json/src/parse.rs	prose	JSON nesting exceeds 64 levels
+libraries/bn_core_json/src/parse.rs	prose	JSON nesting exceeds 64 levels
+libraries/bn_core_json/src/parse.rs	prose	JSON nesting exceeds 64 levels
+libraries/bn_core_json/src/parse.rs	prose	JSON number is not finite
+libraries/bn_core_json/src/parse.rs	prose	JSON output exceeds 8 MiB
+libraries/bn_core_json/src/parse.rs	prose	trailing JSON input
+libraries/bn_core_log/src/error.rs	prose	{cap} capability is required
+libraries/bn_core_log/src/error.rs	prose	a closed logger accepts no further operations
+libraries/bn_core_log/src/error.rs	prose	cannot serialize log record: {reason}
+libraries/bn_core_log/src/error.rs	prose	cannot use {value} as the {what}
+libraries/bn_core_log/src/error.rs	prose	log transport failed: {reason}
+libraries/bn_core_log/src/error.rs	prose	logger is closed
+libraries/bn_core_log/src/error.rs	prose	the {what} must be from {min} through {max}
+libraries/bn_core_log/src/error.rs	prose	the {what} must have at least 1 byte
+libraries/bn_core_log/src/error.rs	prose	the {what} must not be empty
+libraries/bn_core_log/src/error.rs	prose	the {what} must not exceed {max} bytes
+libraries/bn_core_log/src/error.rs	prose	the {what} of {len} bytes exceeds the maximum of {max} bytes
+libraries/bn_core_log/src/error.rs	prose	the handle was released or was not created by BNLog
+libraries/bn_core_log/src/error.rs	prose	the logger or fields handle is invalid
+libraries/bn_core_log/src/error.rs	prose	the operation is not available
+libraries/bn_core_log/src/lib.rs	prose	serialized log record exceeds 64 KiB
+libraries/bn_lib_compress/src/lib.rs	identifier	BNCompress
+libraries/bn_lib_compress/src/lib.rs	identifier	BNCompress.Bytes
+libraries/bn_lib_compress/src/lib.rs	identifier	BNCompress.Bytes
+libraries/bn_lib_compress/src/lib.rs	prose	BNCompress function
+libraries/bn_lib_compress/src/lib.rs	prose	BNCrypto.Bytes value
+libraries/bn_lib_compress/src/lib.rs	prose	non-Bytes value
+libraries/bn_lib_compress/src/lib.rs	prose	non-INTEGER value
+libraries/bn_lib_compress/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_compress/src/lib.rs	prose	non-ZipArchive value
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.Bytes
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.Bytes
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.EcdsaP256PublicKey
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.EcdsaP256Sign
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.Ed25519PublicKey
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.Ed25519Sign
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.Hasher
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.HashOptions
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.HashOptions
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.Key
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.Key
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.Key
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.Key
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.KeyPairOptions
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.MacOptions
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.MacStream
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.MacStream
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.MlDsaKeypair
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.MlKemKeypair
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.PrivateKey
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.PrivateKey
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.PublicKey
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.PublicKey
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.PublicKey
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.Secret
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.SecretKey
+libraries/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.SecretKey
+libraries/bn_lib_crypto/src/lib.rs	prose	a non-negative INTEGER
+libraries/bn_lib_crypto/src/lib.rs	prose	allocate_object returns object
+libraries/bn_lib_crypto/src/lib.rs	prose	allocate_object returns object
+libraries/bn_lib_crypto/src/lib.rs	prose	an INTEGER algorithm code
+libraries/bn_lib_crypto/src/lib.rs	prose	an INTEGER algorithm code
+libraries/bn_lib_crypto/src/lib.rs	prose	an INTEGER algorithm code
+libraries/bn_lib_crypto/src/lib.rs	prose	an INTEGER algorithm code
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto CSPRNG function
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto function
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto function
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto function
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto function
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto function
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto hash method
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto MAC method
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto password/KDF method
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto SecretKey method
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Bytes is invalid
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Bytes is invalid
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Bytes is invalid
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Bytes is invalid
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Bytes or BNCrypto.Secret
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Bytes or BNCrypto.Secret
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Bytes, BNCrypto.Key, BNCrypto.Secret or BNCrypto.SecretKey
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Bytes, BNCrypto.Secret, BNCrypto.Key or BNCrypto.SecretKey
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Hasher or BNCrypto.MacStream
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Hasher or BNCrypto.MacStream
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Key is invalid
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Key is invalid
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Key is invalid
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Key is invalid
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Key or BNCrypto.SecretKey
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.MacStream is invalid
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.PrivateKey was already released
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Secret is invalid
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Secret is invalid
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Secret was already released
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Secret was already released
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.SecretKey is invalid
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.SecretKey is invalid
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.SecretKey is invalid
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.SecretKey is invalid
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.SecretKey is invalid
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.SecretKey is invalid
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.SecretKey is invalid
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.SecretKey is invalid
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.SecretKey is invalid
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.SecretKey is invalid
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.SecretKey is invalid
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.SecretKey was already released
+libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.SecretKey was already released
+libraries/bn_lib_crypto/src/lib.rs	prose	invalid HKDF length
+libraries/bn_lib_crypto/src/lib.rs	prose	Key was already released
+libraries/bn_lib_crypto/src/lib.rs	prose	Key was already released
+libraries/bn_lib_crypto/src/lib.rs	prose	Key was already released
+libraries/bn_lib_crypto/src/lib.rs	prose	non-BNCrypto.Bytes value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-BNCrypto.Bytes value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-BNCrypto.Key value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-BNCrypto.Secret value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-Bytes value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-Bytes value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-crypto value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-crypto value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-crypto value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-crypto value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-INT32 value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-INT32 value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-integer alg field
+libraries/bn_lib_crypto/src/lib.rs	prose	non-integer value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-INTEGER value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-INTEGER value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-INTEGER value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-INTEGER value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-INTEGER value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-INTEGER value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-INTEGER value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-INTEGER value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-INTEGER value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-INTEGER value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-INTEGER value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-key value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-Key value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-Key value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-Key value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-object receiver
+libraries/bn_lib_crypto/src/lib.rs	prose	non-object receiver
+libraries/bn_lib_crypto/src/lib.rs	prose	non-object receiver
+libraries/bn_lib_crypto/src/lib.rs	prose	non-PrivateKey value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-PrivateKey value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-PublicKey value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-PublicKey value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-PublicKey value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-record value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-record value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-record value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-record value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-record value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-SecretKey value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-SecretKey value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-SecretKey value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-SecretKey value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-SecretKey value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-SecretKey value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-SecretKey value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-SecretKey value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_crypto/src/lib.rs	prose	out-of-range alg value
+libraries/bn_lib_crypto/src/lib.rs	prose	out-of-range alg value
+libraries/bn_lib_crypto/src/lib.rs	prose	out-of-range value
+libraries/bn_lib_crypto/src/lib.rs	prose	out-of-range value
+libraries/bn_lib_crypto/src/lib.rs	prose	out-of-range value
+libraries/bn_lib_crypto/src/lib.rs	prose	out-of-range value
+libraries/bn_lib_crypto/src/lib.rs	prose	out-of-range value
+libraries/bn_lib_crypto/src/lib.rs	prose	out-of-range value
+libraries/bn_lib_crypto/src/lib.rs	prose	out-of-range value
+libraries/bn_lib_crypto/src/lib.rs	prose	out-of-range value
+libraries/bn_lib_crypto/src/lib.rs	prose	streaming receiver is invalid
+libraries/bn_lib_crypto/src/lib.rs	prose	streaming receiver is invalid
+libraries/bn_lib_crypto/src/lib.rs	prose	STRING OR NULL
+libraries/bn_lib_data/src/lib.rs	identifier	BNData
+libraries/bn_lib_data/src/lib.rs	identifier	BNData
+libraries/bn_lib_data/src/lib.rs	prose	BNData function
+libraries/bn_lib_data/src/lib.rs	prose	BNData member
+libraries/bn_lib_data/src/lib.rs	prose	CSV read failed
+libraries/bn_lib_data/src/lib.rs	prose	DataFrame column copy
+libraries/bn_lib_data/src/lib.rs	prose	DataFrame column name
+libraries/bn_lib_data/src/lib.rs	prose	DataFrame column name
+libraries/bn_lib_data/src/lib.rs	prose	DataFrame column name
+libraries/bn_lib_data/src/lib.rs	prose	DataFrame column name
+libraries/bn_lib_data/src/lib.rs	prose	DataFrame column name
+libraries/bn_lib_data/src/lib.rs	prose	DataFrame handle is invalid
+libraries/bn_lib_data/src/lib.rs	prose	DataFrame handle is invalid
+libraries/bn_lib_data/src/lib.rs	prose	DataFrame handle is invalid
+libraries/bn_lib_data/src/lib.rs	prose	DataFrame handle is invalid
+libraries/bn_lib_data/src/lib.rs	prose	DataFrame handle is invalid
+libraries/bn_lib_data/src/lib.rs	prose	DataFrame handle is invalid
+libraries/bn_lib_data/src/lib.rs	prose	DataFrame handle is invalid
+libraries/bn_lib_data/src/lib.rs	prose	DataFrame handle is invalid
+libraries/bn_lib_data/src/lib.rs	prose	DataFrame handle is invalid
+libraries/bn_lib_data/src/lib.rs	prose	DataFrame handle is invalid
+libraries/bn_lib_data/src/lib.rs	prose	DataFrame method
+libraries/bn_lib_data/src/lib.rs	prose	DataFrame method
+libraries/bn_lib_data/src/lib.rs	prose	DataFrame method
+libraries/bn_lib_data/src/lib.rs	prose	DataFrame.AddColumn name
+libraries/bn_lib_data/src/lib.rs	prose	DataFrame.AddColumn values
+libraries/bn_lib_data/src/lib.rs	prose	DataFrame.SetLabel new label
+libraries/bn_lib_data/src/lib.rs	prose	DataFrame.SetLabel old label
+libraries/bn_lib_data/src/lib.rs	prose	FS.File.ReadCSV header flag
+libraries/bn_lib_data/src/lib.rs	prose	FS.File.ReadCSV separator
+libraries/bn_lib_data/src/lib.rs	prose	FS.File.WriteCSV data
+libraries/bn_lib_data/src/lib.rs	prose	FS.File.WriteCSV file
+libraries/bn_lib_data/src/lib.rs	prose	FS.File.WriteCSV header flag
+libraries/bn_lib_data/src/lib.rs	prose	FS.File.WriteCSV separator
+libraries/bn_lib_data/src/lib.rs	prose	join left key
+libraries/bn_lib_data/src/lib.rs	prose	join right key
+libraries/bn_lib_data/src/lib.rs	prose	missing receiver
+libraries/bn_lib_data/src/lib.rs	prose	non-BOOLEAN value
+libraries/bn_lib_data/src/lib.rs	prose	non-BOOLEAN value
+libraries/bn_lib_data/src/lib.rs	prose	non-DataFrame value
+libraries/bn_lib_data/src/lib.rs	prose	non-DataFrame value
+libraries/bn_lib_data/src/lib.rs	prose	non-DataFrame value
+libraries/bn_lib_data/src/lib.rs	prose	non-DataFrame value
+libraries/bn_lib_data/src/lib.rs	prose	non-FS.File value
+libraries/bn_lib_data/src/lib.rs	prose	non-pointer value
+libraries/bn_lib_data/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_data/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_data/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_data/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_data/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_data/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_data/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_data/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_data/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_data/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_data/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_data/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_data/src/lib.rs	prose	non-vector value
+libraries/bn_lib_data/src/missing.rs	prose	DataFrame column name
+libraries/bn_lib_data/src/missing.rs	prose	non-STRING value
+libraries/bn_lib_dispatch/src/lib.rs	identifier	BNDispatch
+libraries/bn_lib_dispatch/src/lib.rs	prose	a queue keeps its worker count within the configured bounds
+libraries/bn_lib_dispatch/src/lib.rs	prose	Async expects a named function
+libraries/bn_lib_dispatch/src/lib.rs	prose	async task output exceeds configured bound
+libraries/bn_lib_dispatch/src/lib.rs	prose	async task output exceeds configured bound
+libraries/bn_lib_dispatch/src/lib.rs	prose	barrier is invalid
+libraries/bn_lib_dispatch/src/lib.rs	prose	dispatch barrier
+libraries/bn_lib_dispatch/src/lib.rs	prose	dispatch group
+libraries/bn_lib_dispatch/src/lib.rs	prose	dispatch mutex
+libraries/bn_lib_dispatch/src/lib.rs	prose	dispatch operation
+libraries/bn_lib_dispatch/src/lib.rs	prose	dispatch operation
+libraries/bn_lib_dispatch/src/lib.rs	prose	dispatch semaphore
+libraries/bn_lib_dispatch/src/lib.rs	prose	dispatch ticket
+libraries/bn_lib_dispatch/src/lib.rs	prose	group is invalid
+libraries/bn_lib_dispatch/src/lib.rs	prose	insufficient arguments
+libraries/bn_lib_dispatch/src/lib.rs	prose	mutex is invalid
+libraries/bn_lib_dispatch/src/lib.rs	prose	non-Barrier value
+libraries/bn_lib_dispatch/src/lib.rs	prose	non-Group value
+libraries/bn_lib_dispatch/src/lib.rs	prose	non-Mutex value
+libraries/bn_lib_dispatch/src/lib.rs	prose	non-Queue value
+libraries/bn_lib_dispatch/src/lib.rs	prose	non-Queue value
+libraries/bn_lib_dispatch/src/lib.rs	prose	non-Queue value
+libraries/bn_lib_dispatch/src/lib.rs	prose	non-Semaphore value
+libraries/bn_lib_dispatch/src/lib.rs	prose	non-Ticket value
+libraries/bn_lib_dispatch/src/lib.rs	prose	queue is invalid
+libraries/bn_lib_dispatch/src/lib.rs	prose	queue is invalid
+libraries/bn_lib_dispatch/src/lib.rs	prose	queue is invalid
+libraries/bn_lib_dispatch/src/lib.rs	prose	Queue, FUNCTION
+libraries/bn_lib_dispatch/src/lib.rs	prose	semaphore is invalid
+libraries/bn_lib_dispatch/src/lib.rs	prose	this build does not provide the member
+libraries/bn_lib_dispatch/src/lib.rs	prose	ticket is invalid
+libraries/bn_lib_ffi/src/lib.rs	identifier	BNFfi
+libraries/bn_lib_ffi/src/lib.rs	identifier	BNFfi.Handle
+libraries/bn_lib_ffi/src/lib.rs	prose	allocate_object returns Object
+libraries/bn_lib_ffi/src/lib.rs	prose	Array constructor
+libraries/bn_lib_ffi/src/lib.rs	prose	BNFfi class constructor
+libraries/bn_lib_ffi/src/lib.rs	prose	BNFfi member
+libraries/bn_lib_ffi/src/lib.rs	prose	BNFfi member
+libraries/bn_lib_ffi/src/lib.rs	prose	invalid handle record
+libraries/bn_lib_ffi/src/lib.rs	prose	invalid handle record
+libraries/bn_lib_ffi/src/lib.rs	prose	invalid handle record
+libraries/bn_lib_ffi/src/lib.rs	prose	non-args parameter
+libraries/bn_lib_ffi/src/lib.rs	prose	non-handle argument
+libraries/bn_lib_ffi/src/lib.rs	prose	non-handle argument
+libraries/bn_lib_ffi/src/lib.rs	prose	non-object argument
+libraries/bn_lib_ffi/src/lib.rs	prose	non-object receiver
+libraries/bn_lib_ffi/src/lib.rs	prose	non-object receiver
+libraries/bn_lib_ffi/src/lib.rs	prose	non-object receiver
+libraries/bn_lib_ffi/src/lib.rs	prose	non-object receiver
+libraries/bn_lib_ffi/src/lib.rs	prose	non-object receiver
+libraries/bn_lib_ffi/src/lib.rs	prose	non-object receiver
+libraries/bn_lib_ffi/src/lib.rs	prose	non-object receiver
+libraries/bn_lib_ffi/src/lib.rs	prose	non-string library
+libraries/bn_lib_ffi/src/lib.rs	prose	non-string symbol
+libraries/bn_lib_ffi/src/lib.rs	prose	non-value result
+libraries/bn_lib_ffi/src/lib.rs	prose	Region Pointer
+libraries/bn_lib_ffi/src/lib.rs	prose	result object has no registered record
+libraries/bn_lib_ffi/src/lib.rs	prose	unrecognized argument record
+libraries/bn_lib_ffi/src/lib.rs	prose	unregistered array
+libraries/bn_lib_ffi/src/lib.rs	prose	unregistered array
+libraries/bn_lib_json/src/lib.rs	identifier	BNJson
+libraries/bn_lib_json/src/lib.rs	identifier	BNJson.Json
+libraries/bn_lib_json/src/lib.rs	prose	an INTEGER in range
+libraries/bn_lib_json/src/lib.rs	prose	BNJson.Json is invalid
+libraries/bn_lib_json/src/lib.rs	prose	non-BNJson.Json value
+libraries/bn_lib_json/src/lib.rs	prose	non-BOOLEAN value
+libraries/bn_lib_json/src/lib.rs	prose	non-FLOAT value
+libraries/bn_lib_json/src/lib.rs	prose	non-INTEGER value
+libraries/bn_lib_json/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_json/src/lib.rs	prose	out-of-range value
+libraries/bn_lib_log/src/lib.rs	identifier	BNLog
+libraries/bn_lib_log/src/lib.rs	identifier	BNLog.Logger
+libraries/bn_lib_log/src/lib.rs	prose	BNLog.Logger is invalid
+libraries/bn_lib_log/src/lib.rs	prose	non-BNLog.Logger value
+libraries/bn_lib_log/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_math/src/lib.rs	identifier	BNMath
+libraries/bn_lib_math/src/lib.rs	identifier	BNMath.VAL
+libraries/bn_lib_math/src/lib.rs	prose	BNMath function
+libraries/bn_lib_math/src/lib.rs	prose	BNMath.TOTIMESTAMP date
+libraries/bn_lib_math/src/lib.rs	prose	BNMath.TOTIMESTAMP time
+libraries/bn_lib_math/src/lib.rs	prose	evaluating BNMath.ABS
+libraries/bn_lib_math/src/lib.rs	prose	non-DATE value
+libraries/bn_lib_math/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_math/src/lib.rs	prose	non-TIME value
+libraries/bn_lib_math/src/lib.rs	prose	TIMESTAMP is outside 0001-01-01..9999-12-31
+libraries/bn_lib_math/src/reduce.rs	prose	BNMath reduction
+libraries/bn_lib_math/src/reduce.rs	prose	BNMath reduction
+libraries/bn_lib_math/src/reduce.rs	prose	non-numeric value
+libraries/bn_lib_math/src/reduce.rs	prose	non-vector value
+libraries/bn_lib_math/src/reduce.rs	prose	numeric value
+libraries/bn_lib_math/src/reduce.rs	prose	the input of BNMath.{name}
+libraries/bn_lib_math/src/reduce.rs	prose	the input of BNMath.{name}
+libraries/bn_lib_math/src/reduce.rs	prose	the input of BNMath.{name}
+libraries/bn_lib_math/src/reduce.rs	prose	the input of BNMath.{name}
+libraries/bn_lib_sqlite/src/lib.rs	identifier	BNData
+libraries/bn_lib_sqlite/src/lib.rs	identifier	BNData
+libraries/bn_lib_sqlite/src/lib.rs	identifier	BNData
+libraries/bn_lib_sqlite/src/lib.rs	identifier	BNSqlite
+libraries/bn_lib_sqlite/src/lib.rs	identifier	BNSqlite.Connection
+libraries/bn_lib_sqlite/src/lib.rs	identifier	BNSqlite.Connection
+libraries/bn_lib_sqlite/src/lib.rs	identifier	BNSqlite.Connection
+libraries/bn_lib_sqlite/src/lib.rs	prose	allocate_object returns object
+libraries/bn_lib_sqlite/src/lib.rs	prose	BNData provider is unavailable
+libraries/bn_lib_sqlite/src/lib.rs	prose	BNSqlite member
+libraries/bn_lib_sqlite/src/lib.rs	prose	closed handle
+libraries/bn_lib_sqlite/src/lib.rs	prose	Connection is already closed
+libraries/bn_lib_sqlite/src/lib.rs	prose	Connection is closed or invalid
+libraries/bn_lib_sqlite/src/lib.rs	prose	Database path contains interior NUL byte
+libraries/bn_lib_sqlite/src/lib.rs	prose	downcast error
+libraries/bn_lib_sqlite/src/lib.rs	prose	Failed to downcast BNData provider
+libraries/bn_lib_sqlite/src/lib.rs	prose	handle not found in connection table
+libraries/bn_lib_sqlite/src/lib.rs	prose	missing BNData provider
+libraries/bn_lib_sqlite/src/lib.rs	prose	non-object receiver
+libraries/bn_lib_sqlite/src/lib.rs	prose	non-object receiver
+libraries/bn_lib_sqlite/src/lib.rs	prose	non-STRING path
+libraries/bn_lib_sqlite/src/lib.rs	prose	non-STRING SQL query
+libraries/bn_lib_sqlite/src/lib.rs	prose	non-STRING SQL query
+libraries/bn_lib_sqlite/src/lib.rs	prose	SQL statement contains interior NUL byte
+libraries/bn_lib_sqlite/src/lib.rs	prose	SQL statement contains interior NUL byte
+libraries/bn_lib_web/src/access_log.rs	prose	BNLog provider unavailable
+libraries/bn_lib_web/src/access_log.rs	prose	BNLog provider unavailable
+libraries/bn_lib_web/src/lib.rs	identifier	BNLog.Logger
+libraries/bn_lib_web/src/lib.rs	identifier	BNLog.Logger
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb.
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb.Client
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb.Client.New
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb.Client.Request
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb.Client.RequestWithPolicy
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb.EgressPolicy
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb.Request
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb.Response
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb.Response
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb.Response
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb.Scraper
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb.Server
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb.Server
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb.Server
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb.Server.Dispatch
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb.Server.New
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb.Server.Route
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb.Server.StartTLS
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb.Server.StartTLSWithOptions
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb.Server.StartWithOptions
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb.Server.Static
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb.ServerOptions
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb.SessionStore
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb.TLSConfig
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb.TLSConfig
+libraries/bn_lib_web/src/lib.rs	identifier	BNWeb.TLSConfig
+libraries/bn_lib_web/src/lib.rs	identifier	HOST.Net.Address
+libraries/bn_lib_web/src/lib.rs	identifier	HOST.Net.Address
+libraries/bn_lib_web/src/lib.rs	identifier	HOST.Net.CIDR
+libraries/bn_lib_web/src/lib.rs	identifier	HOST.Net.CIDR
+libraries/bn_lib_web/src/lib.rs	prose	ACL CIDR
+libraries/bn_lib_web/src/lib.rs	prose	ACL CIDR
+libraries/bn_lib_web/src/lib.rs	prose	ACL CIDR
+libraries/bn_lib_web/src/lib.rs	prose	ACL handle is not live
+libraries/bn_lib_web/src/lib.rs	prose	ACL object
+libraries/bn_lib_web/src/lib.rs	prose	ACL receiver
+libraries/bn_lib_web/src/lib.rs	prose	ACL.Check address
+libraries/bn_lib_web/src/lib.rs	prose	ACL.Check address
+libraries/bn_lib_web/src/lib.rs	prose	ACL.Check address
+libraries/bn_lib_web/src/lib.rs	prose	allocate_object returns object
+libraries/bn_lib_web/src/lib.rs	prose	BNWeb callback did not retain its response
+libraries/bn_lib_web/src/lib.rs	prose	BNWeb callback object allocation failed
+libraries/bn_lib_web/src/lib.rs	prose	BNWeb callback object allocation failed
+libraries/bn_lib_web/src/lib.rs	prose	BNWeb filter failed
+libraries/bn_lib_web/src/lib.rs	prose	BNWeb handler failed
+libraries/bn_lib_web/src/lib.rs	prose	BNWeb handler is not live
+libraries/bn_lib_web/src/lib.rs	prose	BNWeb provider unavailable
+libraries/bn_lib_web/src/lib.rs	prose	BNWeb provider unavailable
+libraries/bn_lib_web/src/lib.rs	prose	BNWeb route disappeared
+libraries/bn_lib_web/src/lib.rs	prose	BNWeb state was lost during a handler
+libraries/bn_lib_web/src/lib.rs	prose	BNWeb values handle is not live
+libraries/bn_lib_web/src/lib.rs	prose	BNWeb values object
+libraries/bn_lib_web/src/lib.rs	prose	BNWeb values object
+libraries/bn_lib_web/src/lib.rs	prose	BNWeb.Request handle is not live
+libraries/bn_lib_web/src/lib.rs	prose	BNWeb.Server constructor receiver
+libraries/bn_lib_web/src/lib.rs	prose	BNWeb.Server handle is not live
+libraries/bn_lib_web/src/lib.rs	prose	BNWeb.Server operation receiver
+libraries/bn_lib_web/src/lib.rs	prose	BNWeb.TLSConfig handle is not live
+libraries/bn_lib_web/src/lib.rs	prose	cookie policy types
+libraries/bn_lib_web/src/lib.rs	prose	CookieJar handle is not live
+libraries/bn_lib_web/src/lib.rs	prose	CookieJar object
+libraries/bn_lib_web/src/lib.rs	prose	CookieJar receiver
+libraries/bn_lib_web/src/lib.rs	prose	EgressPolicy handle is not live
+libraries/bn_lib_web/src/lib.rs	prose	GET, HEAD
+libraries/bn_lib_web/src/lib.rs	prose	HOST.FileSystem is denied by host policy
+libraries/bn_lib_web/src/lib.rs	prose	HOST.FileSystem is not provided by this host
+libraries/bn_lib_web/src/lib.rs	prose	HOST.FileSystem is required for static file serving
+libraries/bn_lib_web/src/lib.rs	prose	incompatible argument
+libraries/bn_lib_web/src/lib.rs	prose	invalid address text
+libraries/bn_lib_web/src/lib.rs	prose	invalid CIDR fields
+libraries/bn_lib_web/src/lib.rs	prose	malformed record shape
+libraries/bn_lib_web/src/lib.rs	prose	malformed record shape
+libraries/bn_lib_web/src/lib.rs	prose	missing field
+libraries/bn_lib_web/src/lib.rs	prose	missing network
+libraries/bn_lib_web/src/lib.rs	prose	missing prefix
+libraries/bn_lib_web/src/lib.rs	prose	non-logger value
+libraries/bn_lib_web/src/lib.rs	prose	non-logger value
+libraries/bn_lib_web/src/lib.rs	prose	non-object value
+libraries/bn_lib_web/src/lib.rs	prose	non-object value
+libraries/bn_lib_web/src/lib.rs	prose	non-object value
+libraries/bn_lib_web/src/lib.rs	prose	non-object value
+libraries/bn_lib_web/src/lib.rs	prose	non-object value
+libraries/bn_lib_web/src/lib.rs	prose	non-object value
+libraries/bn_lib_web/src/lib.rs	prose	non-object value
+libraries/bn_lib_web/src/lib.rs	prose	non-object value
+libraries/bn_lib_web/src/lib.rs	prose	non-object value
+libraries/bn_lib_web/src/lib.rs	prose	non-object value
+libraries/bn_lib_web/src/lib.rs	prose	non-options value
+libraries/bn_lib_web/src/lib.rs	prose	non-options value
+libraries/bn_lib_web/src/lib.rs	prose	non-policy value
+libraries/bn_lib_web/src/lib.rs	prose	non-record value
+libraries/bn_lib_web/src/lib.rs	prose	non-record value
+libraries/bn_lib_web/src/lib.rs	prose	non-request/response values
+libraries/bn_lib_web/src/lib.rs	prose	non-STRING argument
+libraries/bn_lib_web/src/lib.rs	prose	non-STRING argument
+libraries/bn_lib_web/src/lib.rs	prose	non-STRING argument
+libraries/bn_lib_web/src/lib.rs	prose	non-STRING argument
+libraries/bn_lib_web/src/lib.rs	prose	non-STRING argument
+libraries/bn_lib_web/src/lib.rs	prose	non-STRING argument
+libraries/bn_lib_web/src/lib.rs	prose	non-STRING argument
+libraries/bn_lib_web/src/lib.rs	prose	non-STRING argument
+libraries/bn_lib_web/src/lib.rs	prose	non-STRING argument
+libraries/bn_lib_web/src/lib.rs	prose	non-STRING field
+libraries/bn_lib_web/src/lib.rs	prose	non-STRING request argument
+libraries/bn_lib_web/src/lib.rs	prose	non-STRING route argument
+libraries/bn_lib_web/src/lib.rs	prose	non-STRING static argument
+libraries/bn_lib_web/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_web/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_web/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_web/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_web/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_web/src/lib.rs	prose	non-STRING value
+libraries/bn_lib_web/src/lib.rs	prose	non-TLSConfig value
+libraries/bn_lib_web/src/lib.rs	prose	Request, Response
+libraries/bn_lib_web/src/lib.rs	prose	route handler is not live
+libraries/bn_lib_web/src/lib.rs	prose	route handler was validated above
+libraries/bn_lib_web/src/lib.rs	prose	Scraper constructor HTML
+libraries/bn_lib_web/src/lib.rs	prose	Scraper handle is not live
+libraries/bn_lib_web/src/lib.rs	prose	Scraper object
+libraries/bn_lib_web/src/lib.rs	prose	Scraper receiver
+libraries/bn_lib_web/src/lib.rs	prose	Scraper.Parse HTML
+libraries/bn_lib_web/src/lib.rs	prose	Scraper.Text selector
+libraries/bn_lib_web/src/lib.rs	prose	server option must be non-negative
+libraries/bn_lib_web/src/lib.rs	prose	server state unavailable
+libraries/bn_lib_web/src/lib.rs	prose	server state unavailable
+libraries/bn_lib_web/src/lib.rs	prose	server state unavailable
+libraries/bn_lib_web/src/lib.rs	prose	server state unavailable
+libraries/bn_lib_web/src/lib.rs	prose	server state unavailable
+libraries/bn_lib_web/src/lib.rs	prose	server state unavailable
+libraries/bn_lib_web/src/lib.rs	prose	server state unavailable
+libraries/bn_lib_web/src/lib.rs	prose	server state unavailable
+libraries/bn_lib_web/src/lib.rs	prose	server state unavailable
+libraries/bn_lib_web/src/lib.rs	prose	server state unavailable
+libraries/bn_lib_web/src/lib.rs	prose	server state unavailable
+libraries/bn_lib_web/src/lib.rs	prose	server state unavailable
+libraries/bn_lib_web/src/lib.rs	prose	server state unavailable
+libraries/bn_lib_web/src/lib.rs	prose	server state unavailable
+libraries/bn_lib_web/src/lib.rs	prose	server state unavailable
+libraries/bn_lib_web/src/lib.rs	prose	server timeout must be non-negative
+libraries/bn_lib_web/src/lib.rs	prose	ServerOptions handle is not live
+libraries/bn_lib_web/src/lib.rs	prose	ServerOptions handle is not live
+libraries/bn_lib_web/src/lib.rs	prose	ServerOptions object
+libraries/bn_lib_web/src/lib.rs	prose	ServerOptions receiver
+libraries/bn_lib_web/src/lib.rs	prose	SessionStore handle is not live
+libraries/bn_lib_web/src/lib.rs	prose	SessionStore object
+libraries/bn_lib_web/src/lib.rs	prose	SessionStore receiver
+libraries/bn_lib_web/src/lib.rs	prose	STRING, INTEGER
+libraries/bn_lib_web/src/lib.rs	prose	STRING, STRING
+libraries/bn_lib_web/src/lib.rs	prose	STRING, STRING
+libraries/bn_lib_web/src/lib.rs	prose	STRING, STRING
+libraries/bn_lib_web/src/lib.rs	prose	STRING, STRING
+libraries/bn_lib_web/src/lib.rs	prose	STRING, STRING
+libraries/bn_lib_web/src/lib.rs	prose	STRING, STRING
+libraries/bn_lib_web/src/lib.rs	prose	STRING, STRING
+libraries/bn_lib_web/src/lib.rs	prose	STRING, STRING, STRING
+libraries/bn_lib_web/src/lib.rs	prose	STRING, STRING, STRING
+libraries/bn_lib_web/src/lib.rs	prose	STRING, STRING, STRING
+libraries/bn_lib_web/src/lib.rs	prose	STRING, STRING, STRING
+libraries/bn_lib_web/src/lib.rs	prose	STRING, STRING, STRING, STRING
+libraries/bn_lib_web/src/lib.rs	prose	TLSConfig constructor
+libraries/bn_lib_web/src/lib.rs	prose	TLSConfig object
+libraries/bn_lib_web/src/lib.rs	prose	TLSConfig receiver
+libraries/bn_lib_web/src/lib.rs	prose	trustedProxy must be BOOLEAN
+libraries/bn_lib_web/src/lib.rs	prose	valid IP address
+libraries/bn_lib_web/src/lib.rs	prose	value: STRING
+libraries/bn_lib_web/src/lib.rs	prose	value: STRING
+libraries/bn_lib_web/src/lib.rs	prose	values constructor
+libraries/bn_lib_web/src/lib.rs	prose	values method
+libraries/bn_lib_web/src/lib.rs	prose	web function '{name}' is not available
+libraries/bn_lib_web/src/lib.rs	prose	well-formed HOST.Net.Address
+libraries/bn_lib_web/src/lib.rs	prose	well-formed HOST.Net.CIDR
+libraries/bn_lib_web/src/request_response.rs	identifier	BNWeb
+libraries/bn_lib_web/src/request_response.rs	identifier	BNWeb
+libraries/bn_lib_web/src/request_response.rs	identifier	BNWeb.HeaderValues
+libraries/bn_lib_web/src/request_response.rs	identifier	BNWeb.QueryValues
+libraries/bn_lib_web/src/request_response.rs	identifier	BNWeb.Request
+libraries/bn_lib_web/src/request_response.rs	identifier	BNWeb.Request
+libraries/bn_lib_web/src/request_response.rs	identifier	BNWeb.Response
+libraries/bn_lib_web/src/request_response.rs	identifier	BNWeb.Response
+libraries/bn_lib_web/src/request_response.rs	identifier	BNWeb.Response.SetHeader
+libraries/bn_lib_web/src/request_response.rs	prose	allocate_object returns object
+libraries/bn_lib_web/src/request_response.rs	prose	BNWeb.Request collection name
+libraries/bn_lib_web/src/request_response.rs	prose	BNWeb.Request handle is not live
+libraries/bn_lib_web/src/request_response.rs	prose	BNWeb.Request operation receiver
+libraries/bn_lib_web/src/request_response.rs	prose	BNWeb.Request operation receiver
+libraries/bn_lib_web/src/request_response.rs	prose	BNWeb.Response constructor receiver
+libraries/bn_lib_web/src/request_response.rs	prose	BNWeb.Response handle is not live
+libraries/bn_lib_web/src/request_response.rs	prose	BNWeb.Response operation receiver
+libraries/bn_lib_web/src/request_response.rs	prose	BNWeb.Response.Header name
+libraries/bn_lib_web/src/request_response.rs	prose	BNWeb.Response.Write body
+libraries/bn_lib_web/src/request_response.rs	prose	incompatible argument
+libraries/bn_lib_web/src/request_response.rs	prose	non-object value
+libraries/bn_lib_web/src/request_response.rs	prose	non-object value
+libraries/bn_lib_web/src/request_response.rs	prose	non-object value
+libraries/bn_lib_web/src/request_response.rs	prose	non-object value
+libraries/bn_lib_web/src/request_response.rs	prose	non-STRING argument
+libraries/bn_lib_web/src/request_response.rs	prose	non-STRING argument
+libraries/bn_lib_web/src/request_response.rs	prose	non-STRING header name/value
+libraries/bn_lib_web/src/request_response.rs	prose	non-STRING value
+libraries/bn_lib_web/src/request_response.rs	prose	non-STRING value
+libraries/bn_lib_web/src/request_response.rs	prose	non-STRING value
+libraries/bn_lib_web/src/request_response.rs	prose	non-STRING value
+libraries/bn_lib_web/src/request_response.rs	prose	STRING, STRING
+libraries/bn_lib_web/src/request_response.rs	prose	STRING, STRING, STRING
+libraries/bn_lib_web/src/request_response.rs	prose	STRING, STRING, STRING, STRING
+libraries/bn_lib_web/src/request_response.rs	prose	web function '{name}' is not available
+libraries/bn_lib_web/src/request_response.rs	prose	web function '{name}' is not available
+libraries/bn_lib_web/src/sessions.rs	identifier	BNWeb
+libraries/bn_lib_web/src/sessions.rs	identifier	BNWeb.Request
+libraries/bn_lib_web/src/sessions.rs	identifier	BNWeb.Session
+libraries/bn_lib_web/src/sessions.rs	identifier	BNWeb.Session
+libraries/bn_lib_web/src/sessions.rs	prose	BNWeb.Request handle is not live
+libraries/bn_lib_web/src/sessions.rs	prose	BNWeb.Request operation receiver
+libraries/bn_lib_web/src/sessions.rs	prose	non-object value
+libraries/bn_lib_web/src/sessions.rs	prose	non-object value
+libraries/bn_lib_web/src/sessions.rs	prose	non-STRING value
+libraries/bn_lib_web/src/sessions.rs	prose	server state unavailable
+libraries/bn_lib_web/src/sessions.rs	prose	server state unavailable
+libraries/bn_stdlib/src/crypto_abi.rs	identifier	BNCrypto.EcdsaP256PublicKey
+libraries/bn_stdlib/src/crypto_abi.rs	identifier	BNCrypto.EcdsaP256Sign
+libraries/bn_stdlib/src/crypto_abi.rs	identifier	BNCrypto.Ed25519PublicKey
+libraries/bn_stdlib/src/crypto_abi.rs	identifier	BNCrypto.Ed25519Sign
+libraries/bn_stdlib/src/crypto_abi.rs	identifier	BNCrypto.MlDsaKeypair
+libraries/bn_stdlib/src/crypto_abi.rs	identifier	BNCrypto.MlKemKeypair
+libraries/bn_stdlib/src/crypto_asymmetric.rs	identifier	BNCrypto.LoadPrivateKey
+libraries/bn_stdlib/src/crypto_asymmetric.rs	identifier	BNCrypto.LoadPrivateKey
+libraries/bn_stdlib/src/crypto_asymmetric.rs	identifier	BNCrypto.LoadPrivateKey
+libraries/bn_stdlib/src/crypto_asymmetric.rs	identifier	BNCrypto.LoadPrivateKey
+libraries/bn_stdlib/src/crypto_asymmetric.rs	identifier	BNCrypto.LoadPublicKey
+libraries/bn_stdlib/src/crypto_asymmetric.rs	identifier	BNCrypto.LoadPublicKey
+libraries/bn_stdlib/src/crypto_asymmetric.rs	identifier	BNCrypto.LoadPublicKey
+libraries/bn_stdlib/src/crypto_asymmetric.rs	identifier	BNCrypto.NewKeyPair
+libraries/bn_stdlib/src/crypto_asymmetric.rs	identifier	BNCrypto.NewKeyPair
+libraries/bn_stdlib/src/crypto_asymmetric.rs	identifier	BNCrypto.NewKeyPair
+libraries/bn_stdlib/src/crypto_asymmetric.rs	identifier	BNCrypto.NewKeyPairFor
+libraries/bn_stdlib/src/crypto_asymmetric.rs	identifier	BNCrypto.NewKeyPairWith
+libraries/bn_stdlib/src/crypto_csprng.rs	identifier	BNCrypto.RandomBytes
+libraries/bn_stdlib/src/crypto_csprng.rs	identifier	BNCrypto.RandomInt
+libraries/bn_stdlib/src/crypto_csprng.rs	identifier	BNCrypto.RandomInt
+libraries/bn_stdlib/src/crypto_csprng.rs	identifier	BNCrypto.RandomPassword
+libraries/bn_stdlib/src/crypto_csprng.rs	identifier	BNCrypto.RandomToken
+libraries/bn_stdlib/src/crypto_file.rs	identifier	BNCrypto.DecryptFile
+libraries/bn_stdlib/src/crypto_file.rs	prose	invalid inPath
+libraries/bn_stdlib/src/crypto_file.rs	prose	invalid inPath
+libraries/bn_stdlib/src/crypto_file.rs	prose	invalid outPath
+libraries/bn_stdlib/src/crypto_file.rs	prose	invalid outPath
+libraries/bn_stdlib/src/crypto_file.rs	prose	sync failed
+libraries/bn_stdlib/src/crypto_file.rs	prose	write failed
+libraries/bn_stdlib/src/crypto_hash.rs	identifier	BNCrypto.Hash
+libraries/bn_stdlib/src/crypto_mac.rs	prose	BLAKE3 keyed MAC requires a 32-byte key
+libraries/bn_stdlib/src/crypto_mac.rs	prose	invalid key for HMAC-SHA256
+libraries/bn_stdlib/src/crypto_mac.rs	prose	invalid key for HMAC-SHA384
+libraries/bn_stdlib/src/crypto_mac.rs	prose	invalid key for HMAC-SHA512
+libraries/bn_stdlib/src/crypto_password.rs	prose	counter overflow
+libraries/bn_stdlib/src/crypto_password.rs	prose	expand failed
+libraries/bn_stdlib/src/crypto_password.rs	prose	extract failed
+libraries/bn_stdlib/src/crypto_password.rs	prose	invalid HKDF key length
+libraries/bn_stdlib/src/crypto_policy.rs	identifier	BNCrypto.HashWith
+libraries/bn_stdlib/src/crypto_policy.rs	identifier	BNCrypto.MacWith
+libraries/bn_stdlib/src/crypto_policy.rs	identifier	BNCrypto.NewKeyPairWith
+libraries/bn_stdlib/src/crypto_sign.rs	identifier	BNCrypto.ExportPem
+libraries/bn_stdlib/src/crypto_sign.rs	identifier	BNCrypto.ExportPemUnencrypted
+libraries/bn_stdlib/src/crypto_sign.rs	identifier	BNCrypto.LoadPrivateKey
+libraries/bn_stdlib/src/crypto_sign.rs	identifier	BNCrypto.LoadPublicKey
+libraries/bn_stdlib/src/crypto_sign.rs	identifier	BNCrypto.PublicKey.ExportPem
+libraries/bn_stdlib/src/crypto_sign.rs	identifier	BNCrypto.Sign
+libraries/bn_stdlib/src/crypto_sign.rs	identifier	BNCrypto.SignFile
+libraries/bn_stdlib/src/crypto_sign.rs	identifier	BNCrypto.VerifyFile
+libraries/bn_stdlib/src/crypto_sign.rs	prose	ENCRYPTED PRIVATE KEY
+libraries/bn_stdlib/src/crypto_sign.rs	prose	PRIVATE KEY
+libraries/bn_stdlib/src/crypto_sign.rs	prose	PUBLIC KEY
+libraries/bn_stdlib/src/crypto.rs	identifier	BNCrypto.GenerateKey
+libraries/bn_stdlib/src/crypto.rs	identifier	BNCrypto.GenerateKey
+libraries/bn_stdlib/src/crypto.rs	identifier	BNCrypto.GenerateNonce
+libraries/bn_stdlib/src/data_error.rs	prose	AppendColumns requires frames with equal row counts
+libraries/bn_stdlib/src/data_error.rs	prose	AppendRows requires frames with identical column names and ordering
+libraries/bn_stdlib/src/data_error.rs	prose	AppendRows requires matching column types
+libraries/bn_stdlib/src/data_error.rs	prose	cannot use {value} as the {bound}
+libraries/bn_stdlib/src/data_error.rs	prose	column index {column} out of range for frame with {count} columns
+libraries/bn_stdlib/src/data_error.rs	prose	column layouts differ between frames
+libraries/bn_stdlib/src/data_error.rs	prose	column length {got} does not match frame row count {expected}
+libraries/bn_stdlib/src/data_error.rs	prose	column names in a DataFrame must be unique
+libraries/bn_stdlib/src/data_error.rs	prose	copying to a typed buffer does not permit NA cells
+libraries/bn_stdlib/src/data_error.rs	prose	CSV I/O failed: {reason}
+libraries/bn_stdlib/src/data_error.rs	prose	destination length {got} does not match column length {expected}
+libraries/bn_stdlib/src/data_error.rs	prose	every column in a DataFrame must have the same number of rows
+libraries/bn_stdlib/src/data_error.rs	prose	every row in a CSV file must have the same number of fields
+libraries/bn_stdlib/src/data_error.rs	prose	invalid CSV format: {reason}
+libraries/bn_stdlib/src/data_error.rs	prose	numeric column is empty
+libraries/bn_stdlib/src/data_error.rs	prose	quoted fields in CSV must have a closing quote
+libraries/bn_stdlib/src/data_error.rs	prose	ragged CSV row: expected {expected} fields, got {got}
+libraries/bn_stdlib/src/data_error.rs	prose	row counts differ: left frame has {left}, right frame has {right}
+libraries/bn_stdlib/src/data_error.rs	prose	row index {row} out of range for frame with {count} rows
+libraries/bn_stdlib/src/data_error.rs	prose	slice {dim} range {start}..{} out of bounds for total {total}
+libraries/bn_stdlib/src/data_error.rs	prose	statistical reductions require at least one row
+libraries/bn_stdlib/src/data_error.rs	prose	statistics and z-score operations require an integer or float column
+libraries/bn_stdlib/src/data_error.rs	prose	the {bound} must not be negative
+libraries/bn_stdlib/src/data_error.rs	prose	the {side} frame does not contain the specified key column
+libraries/bn_stdlib/src/data_error.rs	prose	the column index must be from 0 through {}
+libraries/bn_stdlib/src/data_error.rs	prose	the DataFrame does not contain a column with that name
+libraries/bn_stdlib/src/data_error.rs	prose	the DataFrame handle is invalid
+libraries/bn_stdlib/src/data_error.rs	prose	the destination array must have the same length as the column
+libraries/bn_stdlib/src/data_error.rs	prose	the handle was released or was not created by BNData
+libraries/bn_stdlib/src/data_error.rs	prose	the requested operation requires a {expected} column
+libraries/bn_stdlib/src/data_error.rs	prose	the row index must be from 0 through {}
+libraries/bn_stdlib/src/data_error.rs	prose	the slice bounds must not exceed the frame {dim} count
+libraries/bn_stdlib/src/data_error.rs	prose	unterminated quoted field in CSV
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.AddBooleanColumn
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.AddBooleanColumn
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.AddFloatColumn
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.AddIntegerColumn
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.AddIntegerColumn
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.AddIntegerColumn
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.AddStringColumn
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.AddStringColumn
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.AddStringColumn
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.AppendColumns
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.AppendColumns
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.AppendColumns
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.AppendRows
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.AppendRows
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.AppendRows
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.Close
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.Close
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.ColumnCount
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.ColumnCount
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.ColumnCount
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.ColumnCount
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.ColumnName
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.ColumnName
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.ConvertToFloat
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.ConvertToInteger
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.CopyFloat
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.CopyFloat
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.CopyFloat
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.CopyInteger
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.CopyInteger
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.CopyInteger
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.Create
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.Create
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.Create
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.GetString
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.GetString
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.GetString
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.GetString
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.Join
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.Join
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.Join
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.Join
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.Reduce
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.RowCount
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.RowCount
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.RowCount
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.RowCount
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.Select
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.Select
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.Select
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.SetIntegerCell
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.SetIntegerCell
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.SetLabel
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.SetLabel
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.SetLabel
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.Slice
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.Slice
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.Transpose
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.Transpose
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.ZScore
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.ZScore
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.ZScore
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.DataFrame.ZScore
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.ReadCSV
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.ReadCSV
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.ReadCSV
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.ReadCSV
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.ReadCSV
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.ReadCSV
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.ReadCSV
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.WriteCSV
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.WriteCSV
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.WriteCSV
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.WriteCSV
+libraries/bn_stdlib/src/dataframe_abi.rs	identifier	BNData.WriteCSV
+libraries/bn_stdlib/src/dataframe_abi.rs	prose	column count overflow
+libraries/bn_stdlib/src/dataframe_abi.rs	prose	column count overflow
+libraries/bn_stdlib/src/dataframe_abi.rs	prose	file error status {status}
+libraries/bn_stdlib/src/dataframe_abi.rs	prose	file error status {status}
+libraries/bn_stdlib/src/dataframe_abi.rs	prose	invalid column view
+libraries/bn_stdlib/src/dataframe_abi.rs	prose	out of memory
+libraries/bn_stdlib/src/dataframe_abi.rs	prose	row count overflow
+libraries/bn_stdlib/src/dataframe_na_abi.rs	identifier	BNData.DataFrame.CountNA
+libraries/bn_stdlib/src/dataframe_na_abi.rs	identifier	BNData.DataFrame.DropNA
+libraries/bn_stdlib/src/dataframe_na_abi.rs	identifier	BNData.DataFrame.FillNA
+libraries/bn_stdlib/src/dataframe.rs	prose	a column label must not be empty
+libraries/bn_stdlib/src/dataframe.rs	prose	failed to convert column
+libraries/bn_stdlib/src/dataframe.rs	prose	unknown reduction method {method}
+libraries/bn_stdlib/src/dataframe/checked.rs	prose	DataFrame allocation failed
+libraries/bn_stdlib/src/dataframe/checked.rs	prose	DataFrame allocation failed
+libraries/bn_stdlib/src/dataframe/checked.rs	prose	slice bound
+libraries/bn_stdlib/src/dispatch_abi.rs	identifier	BNDispatch.Queue.Async
+libraries/bn_stdlib/src/dispatch_abi.rs	identifier	BNDispatch.Queue.Async
+libraries/bn_stdlib/src/dispatch_abi.rs	identifier	BNDispatch.Queue.Auto
+libraries/bn_stdlib/src/dispatch_abi.rs	identifier	BNDispatch.Queue.Close
+libraries/bn_stdlib/src/dispatch_abi.rs	identifier	BNDispatch.Queue.Concurrent
+libraries/bn_stdlib/src/dispatch_abi.rs	identifier	BNDispatch.Queue.Create
+libraries/bn_stdlib/src/dispatch_abi.rs	identifier	BNDispatch.Queue.Join
+libraries/bn_stdlib/src/dispatch_abi.rs	identifier	BNDispatch.Ticket.Cancel
+libraries/bn_stdlib/src/dispatch_abi.rs	identifier	BNDispatch.Ticket.Cancel
+libraries/bn_stdlib/src/dispatch_abi.rs	identifier	BNDispatch.Ticket.Error
+libraries/bn_stdlib/src/dispatch_abi.rs	identifier	BNDispatch.Ticket.Error
+libraries/bn_stdlib/src/dispatch_abi.rs	identifier	BNDispatch.Ticket.Wait
+libraries/bn_stdlib/src/dispatch_abi.rs	identifier	BNValue
+libraries/bn_stdlib/src/dispatch_abi.rs	identifier	BNValuePayload
+libraries/bn_stdlib/src/dispatch_sync_abi.rs	identifier	BNDispatch.Barrier.New
+libraries/bn_stdlib/src/dispatch_sync_abi.rs	identifier	BNDispatch.Barrier.Wait
+libraries/bn_stdlib/src/dispatch_sync_abi.rs	identifier	BNDispatch.Group.Leave
+libraries/bn_stdlib/src/dispatch_sync_abi.rs	identifier	BNDispatch.Group.New
+libraries/bn_stdlib/src/dispatch_sync_abi.rs	identifier	BNDispatch.Group.Wait
+libraries/bn_stdlib/src/dispatch_sync_abi.rs	identifier	BNDispatch.Mutex.Lock
+libraries/bn_stdlib/src/dispatch_sync_abi.rs	identifier	BNDispatch.Mutex.New
+libraries/bn_stdlib/src/dispatch_sync_abi.rs	identifier	BNDispatch.Mutex.Unlock
+libraries/bn_stdlib/src/dispatch_sync_abi.rs	identifier	BNDispatch.Semaphore.Acquire
+libraries/bn_stdlib/src/dispatch_sync_abi.rs	identifier	BNDispatch.Semaphore.New
+libraries/bn_stdlib/src/dispatch_sync_abi.rs	identifier	BNDispatch.Semaphore.Release
+libraries/bn_stdlib/src/dispatch_sync.rs	prose	number of barrier parties
+libraries/bn_stdlib/src/dispatch_sync.rs	prose	number of semaphore permits
+libraries/bn_stdlib/src/dispatch_sync.rs	prose	the system reports no processor count
+libraries/bn_stdlib/src/dispatch_sync.rs	prose	timeout in milliseconds
+libraries/bn_stdlib/src/dispatch_sync.rs	prose	worker count
+libraries/bn_stdlib/src/ffi_abi.rs	prose	invalid null or non-UTF8 library name
+libraries/bn_stdlib/src/ffi_abi.rs	prose	invalid null or non-UTF8 symbol name
+libraries/bn_stdlib/src/ffi_abi.rs	prose	out of memory
+libraries/bn_stdlib/src/ffi_loader.rs	identifier	BN_LIBRARY_PATH
+libraries/bn_stdlib/src/ffi_loader.rs	prose	failed to load library at {}: {e}
+libraries/bn_stdlib/src/ffi_loader.rs	prose	invalid symbol name CString
+libraries/bn_stdlib/src/ffi_loader.rs	prose	library '{}' not found; tried: {}
+libraries/bn_stdlib/src/ffi_loader.rs	prose	library name cannot be empty or contain NUL
+libraries/bn_stdlib/src/ffi_loader.rs	prose	library not found at path: {}
+libraries/bn_stdlib/src/ffi_loader.rs	prose	symbol '{symbol_name}' not found in library '{library_name}'
+libraries/bn_stdlib/src/ffi_loader.rs	prose	symbol name cannot be empty or contain NUL
+libraries/bn_stdlib/src/ffi_loader.rs	prose	system loader failed to load '{filename}': {e}
+libraries/bn_stdlib/src/ffi_loader.rs	prose	system loader: {filename}
+libraries/bn_stdlib/src/ffi.rs	prose	array buffer pointer is null
+libraries/bn_stdlib/src/ffi.rs	prose	array buffer pointer is null
+libraries/bn_stdlib/src/ffi.rs	prose	array byte size overflow
+libraries/bn_stdlib/src/ffi.rs	prose	C string is not valid UTF-8
+libraries/bn_stdlib/src/ffi.rs	prose	C.String contains embedded NUL
+libraries/bn_stdlib/src/ffi.rs	prose	cannot read from null handle pointer
+libraries/bn_stdlib/src/ffi.rs	prose	cannot read from null pointer
+libraries/bn_stdlib/src/ffi.rs	prose	cannot read string from null pointer
+libraries/bn_stdlib/src/ffi.rs	prose	cannot write to null handle pointer
+libraries/bn_stdlib/src/ffi.rs	prose	cannot write to null pointer
+libraries/bn_stdlib/src/ffi.rs	prose	expected Array payload
+libraries/bn_stdlib/src/ffi.rs	prose	expected Bool payload
+libraries/bn_stdlib/src/ffi.rs	prose	expected Double payload
+libraries/bn_stdlib/src/ffi.rs	prose	expected Float payload
+libraries/bn_stdlib/src/ffi.rs	prose	expected Handle payload
+libraries/bn_stdlib/src/ffi.rs	prose	expected Int16 payload
+libraries/bn_stdlib/src/ffi.rs	prose	expected Int32/Int payload
+libraries/bn_stdlib/src/ffi.rs	prose	expected Int64 payload
+libraries/bn_stdlib/src/ffi.rs	prose	expected Int8 payload
+libraries/bn_stdlib/src/ffi.rs	prose	expected Long payload
+libraries/bn_stdlib/src/ffi.rs	prose	expected SizeT payload
+libraries/bn_stdlib/src/ffi.rs	prose	expected String payload
+libraries/bn_stdlib/src/ffi.rs	prose	expected UInt16 payload
+libraries/bn_stdlib/src/ffi.rs	prose	expected UInt32/UInt payload
+libraries/bn_stdlib/src/ffi.rs	prose	expected UInt64 payload
+libraries/bn_stdlib/src/ffi.rs	prose	expected UInt8 payload
+libraries/bn_stdlib/src/ffi.rs	prose	expected ULong payload
+libraries/bn_stdlib/src/ffi.rs	prose	failed to convert string to CString
+libraries/bn_stdlib/src/ffi.rs	prose	invalid args handle
+libraries/bn_stdlib/src/ffi.rs	prose	invalid argument handle: {h}
+libraries/bn_stdlib/src/ffi.rs	prose	invalid array handle
+libraries/bn_stdlib/src/ffi.rs	prose	invalid array handle
+libraries/bn_stdlib/src/ffi.rs	prose	invalid handle record
+libraries/bn_stdlib/src/ffi.rs	prose	invalid result handle: {result_handle}
+libraries/bn_stdlib/src/ffi.rs	prose	Long value {v} out of range for target C long
+libraries/bn_stdlib/src/ffi.rs	prose	record is not a handle or handle result
+libraries/bn_stdlib/src/ffi.rs	prose	record is not an Args object
+libraries/bn_stdlib/src/ffi.rs	prose	SizeT value {v} out of range for target size_t
+libraries/bn_stdlib/src/ffi.rs	prose	source record is not an array
+libraries/bn_stdlib/src/ffi.rs	prose	target record is not an array
+libraries/bn_stdlib/src/ffi.rs	prose	type code {} cannot be passed as an argument
+libraries/bn_stdlib/src/ffi.rs	prose	type code {} cannot be used as a return type
+libraries/bn_stdlib/src/ffi.rs	prose	ULong value {v} out of range for target C unsigned long
+libraries/bn_stdlib/src/ffi.rs	prose	unknown type code: {code}
+libraries/bn_stdlib/src/ffi.rs	prose	unsupported argument type
+libraries/bn_stdlib/src/ffi.rs	prose	unsupported result type
+libraries/bn_stdlib/src/json_abi.rs	identifier	BNJson.Json.
+libraries/bn_stdlib/src/json_abi.rs	identifier	BNJson.Json.
+libraries/bn_stdlib/src/json_abi.rs	identifier	BNJson.Json.
+libraries/bn_stdlib/src/json_abi.rs	identifier	BNJson.Json.AppendJson
+libraries/bn_stdlib/src/json_abi.rs	identifier	BNJson.Json.Clone
+libraries/bn_stdlib/src/json_abi.rs	identifier	BNJson.Json.GetBoolean
+libraries/bn_stdlib/src/json_abi.rs	identifier	BNJson.Json.GetBooleanAt
+libraries/bn_stdlib/src/json_abi.rs	identifier	BNJson.Json.GetFloat
+libraries/bn_stdlib/src/json_abi.rs	identifier	BNJson.Json.GetFloatAt
+libraries/bn_stdlib/src/json_abi.rs	identifier	BNJson.Json.GetInteger
+libraries/bn_stdlib/src/json_abi.rs	identifier	BNJson.Json.GetIntegerAt
+libraries/bn_stdlib/src/json_abi.rs	identifier	BNJson.Json.GetJson
+libraries/bn_stdlib/src/json_abi.rs	identifier	BNJson.Json.GetJsonAt
+libraries/bn_stdlib/src/json_abi.rs	identifier	BNJson.Json.GetString
+libraries/bn_stdlib/src/json_abi.rs	identifier	BNJson.Json.GetStringAt
+libraries/bn_stdlib/src/json_abi.rs	identifier	BNJson.Json.Length
+libraries/bn_stdlib/src/json_abi.rs	identifier	BNJson.Json.Parse
+libraries/bn_stdlib/src/json_abi.rs	identifier	BNJson.Json.SetJson
+libraries/bn_stdlib/src/json_abi.rs	identifier	BNJson.Json.SetJsonAt
+libraries/bn_stdlib/src/json_abi.rs	identifier	BNJson.Json.Stringify
+libraries/bn_stdlib/src/math_abi.rs	identifier	INDEX_OUT_OF_BOUNDS
+libraries/bn_stdlib/src/math_abi.rs	identifier	INDEX_OUT_OF_BOUNDS
+libraries/bn_stdlib/src/math_abi.rs	identifier	INDEX_OUT_OF_BOUNDS
+libraries/bn_stdlib/src/math_abi.rs	prose	BNMath reduction received an empty vector
+libraries/bn_stdlib/src/math_abi.rs	prose	BNMath reduction received an empty vector
+libraries/bn_stdlib/src/math_abi.rs	prose	BNMath reduction received an empty vector
+libraries/bn_stdlib/src/math_vector_abi.rs	identifier	VECTOR_LENGTH_MISMATCH
+libraries/bn_stdlib/src/math.rs	identifier	NUMERIC_OVERFLOW
+libraries/bn_stdlib/src/math.rs	prose	BNMath.ABS overflowed
+libraries/bn_stdlib/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Begin
+libraries/bn_stdlib/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Close
+libraries/bn_stdlib/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Commit
+libraries/bn_stdlib/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Exec
+libraries/bn_stdlib/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Exec
+libraries/bn_stdlib/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Query
+libraries/bn_stdlib/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Query
+libraries/bn_stdlib/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Query
+libraries/bn_stdlib/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Rollback
+libraries/bn_stdlib/src/sqlite_abi.rs	identifier	BNSqlite.Open
+libraries/bn_stdlib/src/sqlite_abi.rs	identifier	BNSqlite.Open
+libraries/bn_stdlib/src/sqlite_abi.rs	identifier	BNSqlite.Open
+libraries/bn_stdlib/src/sqlite_abi.rs	identifier	BNSqlite.OpenExisting
+libraries/bn_stdlib/src/sqlite_abi.rs	identifier	BNSqlite.OpenExisting
+libraries/bn_stdlib/src/sqlite_abi.rs	identifier	BNSqlite.OpenExisting
+libraries/bn_stdlib/src/sqlite_abi.rs	identifier	BNSqlite.OpenReadOnly
+libraries/bn_stdlib/src/sqlite_abi.rs	identifier	BNSqlite.OpenReadOnly
+libraries/bn_stdlib/src/sqlite_abi.rs	identifier	BNSqlite.OpenReadOnly
+libraries/bn_stdlib/src/sqlite_abi.rs	prose	invalid null or non-UTF8 path string
+libraries/bn_stdlib/src/sqlite_abi.rs	prose	invalid null or non-UTF8 path string
+libraries/bn_stdlib/src/sqlite_abi.rs	prose	invalid null or non-UTF8 path string
+libraries/bn_stdlib/src/sqlite_abi.rs	prose	invalid null or non-UTF8 SQL string
+libraries/bn_stdlib/src/sqlite_abi.rs	prose	invalid null or non-UTF8 SQL string
+libraries/bn_stdlib/src/sqlite_abi.rs	prose	null out_frame pointer
+libraries/bn_stdlib/src/sqlite_abi.rs	prose	null out_handle pointer
+libraries/bn_stdlib/src/sqlite_abi.rs	prose	null out_handle pointer
+libraries/bn_stdlib/src/sqlite_abi.rs	prose	null out_handle pointer
+libraries/bn_stdlib/src/stats.rs	identifier	INDEX_OUT_OF_BOUNDS
+libraries/bn_stdlib/src/stats.rs	identifier	INDEX_OUT_OF_BOUNDS
+libraries/bn_stdlib/src/stats.rs	prose	BNMath reduction received an empty vector
+libraries/bn_stdlib/src/stats.rs	prose	BNMath reduction received an empty vector
+libraries/bn_web/src/http.rs	prose	BNWeb handler
+libraries/bn_web/src/http.rs	prose	compressed responses are unavailable without a bounded decoder
+libraries/bn_web/src/http.rs	prose	connection deadline exceeded
+libraries/bn_web/src/http.rs	prose	failed to connect to allowed destination
+libraries/bn_web/src/http.rs	prose	GET, HEAD
+libraries/bn_web/src/http.rs	prose	handler failed
+libraries/bn_web/src/http.rs	prose	handler failed
+libraries/bn_web/src/http.rs	prose	handler queue is full
+libraries/bn_web/src/http.rs	prose	handler queue is full
+libraries/bn_web/src/http.rs	prose	handler timed out
+libraries/bn_web/src/http.rs	prose	handler timed out
+libraries/bn_web/src/http.rs	prose	handler timed out
+libraries/bn_web/src/http.rs	prose	HTTP handshake timed out
+libraries/bn_web/src/http.rs	prose	HTTP request timed out
+libraries/bn_web/src/http.rs	prose	HTTP response body timed out
+libraries/bn_web/src/http.rs	prose	internal server error
+libraries/bn_web/src/http.rs	prose	invalid IPv6 authority
+libraries/bn_web/src/http.rs	prose	invalid IPv6 authority
+libraries/bn_web/src/http.rs	prose	invalid port
+libraries/bn_web/src/http.rs	prose	invalid port
+libraries/bn_web/src/http.rs	prose	invalid redirect base
+libraries/bn_web/src/http.rs	prose	invalid redirect Location
+libraries/bn_web/src/http.rs	prose	invalid request
+libraries/bn_web/src/http.rs	prose	invalid request body
+libraries/bn_web/src/http.rs	prose	invalid request header
+libraries/bn_web/src/http.rs	prose	invalid response
+libraries/bn_web/src/http.rs	prose	invalid TLS server name
+libraries/bn_web/src/http.rs	prose	invalid URL authority
+libraries/bn_web/src/http.rs	prose	invalid URL authority
+libraries/bn_web/src/http.rs	prose	method not allowed
+libraries/bn_web/src/http.rs	prose	method not allowed
+libraries/bn_web/src/http.rs	prose	not found
+libraries/bn_web/src/http.rs	prose	not found
+libraries/bn_web/src/http.rs	prose	peer address unavailable
+libraries/bn_web/src/http.rs	prose	rate limit exceeded
+libraries/bn_web/src/http.rs	prose	rate limit exceeded
+libraries/bn_web/src/http.rs	prose	redirect limit exceeded
+libraries/bn_web/src/http.rs	prose	redirect response missing Location
+libraries/bn_web/src/http.rs	prose	request body exceeds 8 MiB
+libraries/bn_web/src/http.rs	prose	request body exceeds 8 MiB
+libraries/bn_web/src/http.rs	prose	request body is not UTF-8
+libraries/bn_web/src/http.rs	prose	request body timed out
+libraries/bn_web/src/http.rs	prose	request headers or target exceed configured bounds
+libraries/bn_web/src/http.rs	prose	response body exceeds 8 MiB
+libraries/bn_web/src/http.rs	prose	response body is not UTF-8
+libraries/bn_web/src/http.rs	prose	response commit failed
+libraries/bn_web/src/http.rs	prose	server is stopping
+libraries/bn_web/src/http.rs	prose	server state unavailable
+libraries/bn_web/src/http.rs	prose	server state unavailable
+libraries/bn_web/src/http.rs	prose	server state unavailable
+libraries/bn_web/src/http.rs	prose	server state unavailable
+libraries/bn_web/src/http.rs	prose	server state unavailable
+libraries/bn_web/src/http.rs	prose	static file exceeds configured body limit
+libraries/bn_web/src/http.rs	prose	TLS configuration must advertise h2 or http/1.1
+libraries/bn_web/src/http.rs	prose	TLS handshake failed: {error}
+libraries/bn_web/src/http.rs	prose	TLS handshake timed out
+libraries/bn_web/src/http.rs	prose	unsupported URL scheme
+libraries/bn_web/src/http.rs	prose	URL requires an authority
+libraries/bn_web/src/http.rs	prose	URL resolved to no addresses
+libraries/bn_web/src/tls_roots.rs	identifier	BN_CA_FILE
+libraries/bn_web/src/tls.rs	prose	a non-ring Rustls crypto provider is already installed
+libraries/bn_web/src/tls.rs	prose	invalid PEM base64
+libraries/bn_web/src/tls.rs	prose	invalid PEM base64
+libraries/bn_web/src/tls.rs	prose	invalid PEM base64
+libraries/bn_web/src/tls.rs	prose	invalid PEM base64
+libraries/bn_web/src/tls.rs	prose	invalid TLS certificate or key: {error}
+libraries/bn_web/src/tls.rs	prose	missing PEM {label} block
+libraries/bn_web/src/tls.rs	prose	PRIVATE KEY
+libraries/bn_web/src/tls.rs	prose	TLS material exceeds 64 KiB
+libraries/bn_web/src/web_abi.rs	identifier	BNWeb
+libraries/bn_web/src/web_abi.rs	prose	ACL closed
+libraries/bn_web/src/web_abi.rs	prose	ACL closed
+libraries/bn_web/src/web_abi.rs	prose	cookie jar closed
+libraries/bn_web/src/web_abi.rs	prose	cookie jar closed
+libraries/bn_web/src/web_abi.rs	prose	invalid argument
+libraries/bn_web/src/web_abi.rs	prose	invalid cert or key
+libraries/bn_web/src/web_abi.rs	prose	invalid CIDR network
+libraries/bn_web/src/web_abi.rs	prose	invalid CIDR network
+libraries/bn_web/src/web_abi.rs	prose	invalid cookie name
+libraries/bn_web/src/web_abi.rs	prose	invalid cookie name
+libraries/bn_web/src/web_abi.rs	prose	invalid cookie name or val
+libraries/bn_web/src/web_abi.rs	prose	invalid cookie name or value
+libraries/bn_web/src/web_abi.rs	prose	invalid header name
+libraries/bn_web/src/web_abi.rs	prose	invalid header name
+libraries/bn_web/src/web_abi.rs	prose	invalid id
+libraries/bn_web/src/web_abi.rs	prose	invalid method or pattern
+libraries/bn_web/src/web_abi.rs	prose	invalid method or url
+libraries/bn_web/src/web_abi.rs	prose	invalid param name
+libraries/bn_web/src/web_abi.rs	prose	invalid prefix or directory
+libraries/bn_web/src/web_abi.rs	prose	invalid selector
+libraries/bn_web/src/web_abi.rs	prose	invalid string
+libraries/bn_web/src/web_abi.rs	prose	invalid val
+libraries/bn_web/src/web_abi.rs	prose	request closed
+libraries/bn_web/src/web_abi.rs	prose	request closed
+libraries/bn_web/src/web_abi.rs	prose	request closed
+libraries/bn_web/src/web_abi.rs	prose	request closed
+libraries/bn_web/src/web_abi.rs	prose	request closed
+libraries/bn_web/src/web_abi.rs	prose	response closed
+libraries/bn_web/src/web_abi.rs	prose	response closed
+libraries/bn_web/src/web_abi.rs	prose	response closed
+libraries/bn_web/src/web_abi.rs	prose	response closed
+libraries/bn_web/src/web_abi.rs	prose	response closed
+libraries/bn_web/src/web_abi.rs	prose	response handle closed
+libraries/bn_web/src/web_abi.rs	prose	response handle closed
+libraries/bn_web/src/web_abi.rs	prose	response header is not present
+libraries/bn_web/src/web_abi.rs	prose	scraper closed
+libraries/bn_web/src/web_abi.rs	prose	server closed
+libraries/bn_web/src/web_abi.rs	prose	server closed
+libraries/bn_web/src/web_abi.rs	prose	server closed
+libraries/bn_web/src/web_abi.rs	prose	server closed
+libraries/bn_web/src/web_abi.rs	prose	server closed
+libraries/bn_web/src/web_abi.rs	prose	server closed
+libraries/bn_web/src/web_abi.rs	prose	server closed
+libraries/bn_web/src/web_abi.rs	prose	server closed
+libraries/bn_web/src/web_abi.rs	prose	session store closed
+libraries/bn_web/src/web_abi.rs	prose	session store closed
+libraries/bn_web/src/web_abi.rs	prose	status code out of range
+libraries/bn_web/src/web_error.rs	prose	{p} provider unavailable
+libraries/bn_web/src/web_error.rs	prose	a 3xx redirect response did not include a Location header
+libraries/bn_web/src/web_error.rs	prose	a committed or closed response cannot be modified
+libraries/bn_web/src/web_error.rs	prose	a server may register at most 64 filters
+libraries/bn_web/src/web_error.rs	prose	an error occurred while dispatching the request
+libraries/bn_web/src/web_error.rs	prose	cookie max age must be non-negative
+libraries/bn_web/src/web_error.rs	prose	cookie name, value, domain, or path exceeded bounds
+libraries/bn_web/src/web_error.rs	prose	cookie not found
+libraries/bn_web/src/web_error.rs	prose	cookie not found
+libraries/bn_web/src/web_error.rs	prose	could not acquire internal server state lock
+libraries/bn_web/src/web_error.rs	prose	DNS resolution yielded no IP addresses for the target
+libraries/bn_web/src/web_error.rs	prose	filter limit exceeded
+libraries/bn_web/src/web_error.rs	prose	filter limit exceeded
+libraries/bn_web/src/web_error.rs	prose	filter must be a FUNCTION
+libraries/bn_web/src/web_error.rs	prose	filter must be a FUNCTION
+libraries/bn_web/src/web_error.rs	prose	headers exceed declared limit
+libraries/bn_web/src/web_error.rs	prose	HTML markup could not be parsed
+libraries/bn_web/src/web_error.rs	prose	HTTP handshake timed out
+libraries/bn_web/src/web_error.rs	prose	HTTP handshake timed out
+libraries/bn_web/src/web_error.rs	prose	HTTP method must be GET, POST, PUT, PATCH, DELETE, or HEAD
+libraries/bn_web/src/web_error.rs	prose	HTTP status code must be from 100 through 599
+libraries/bn_web/src/web_error.rs	prose	index {index} is outside collection (count {count})
+libraries/bn_web/src/web_error.rs	prose	index is outside collection
+libraries/bn_web/src/web_error.rs	prose	invalid cookie bounds
+libraries/bn_web/src/web_error.rs	prose	invalid cookie bounds
+libraries/bn_web/src/web_error.rs	prose	invalid cookie domain
+libraries/bn_web/src/web_error.rs	prose	invalid cookie name
+libraries/bn_web/src/web_error.rs	prose	invalid cookie path
+libraries/bn_web/src/web_error.rs	prose	invalid cookie value
+libraries/bn_web/src/web_error.rs	prose	invalid response status
+libraries/bn_web/src/web_error.rs	prose	invalid route
+libraries/bn_web/src/web_error.rs	prose	invalid SameSite policy
+libraries/bn_web/src/web_error.rs	prose	invalid SameSite policy
+libraries/bn_web/src/web_error.rs	prose	invalid server options
+libraries/bn_web/src/web_error.rs	prose	invalid server options
+libraries/bn_web/src/web_error.rs	prose	invalid session capacity
+libraries/bn_web/src/web_error.rs	prose	invalid session capacity
+libraries/bn_web/src/web_error.rs	prose	invalid session idle timeout
+libraries/bn_web/src/web_error.rs	prose	invalid session idle timeout
+libraries/bn_web/src/web_error.rs	prose	malformed HTML
+libraries/bn_web/src/web_error.rs	prose	malformed HTML
+libraries/bn_web/src/web_error.rs	prose	negative cookie age
+libraries/bn_web/src/web_error.rs	prose	negative cookie age
+libraries/bn_web/src/web_error.rs	prose	percent escape
+libraries/bn_web/src/web_error.rs	prose	private or local
+libraries/bn_web/src/web_error.rs	prose	provider unavailable
+libraries/bn_web/src/web_error.rs	prose	redirect limit exceeded
+libraries/bn_web/src/web_error.rs	prose	redirect limit exceeded
+libraries/bn_web/src/web_error.rs	prose	redirect response missing Location
+libraries/bn_web/src/web_error.rs	prose	redirect response missing Location
+libraries/bn_web/src/web_error.rs	prose	request dispatch failed
+libraries/bn_web/src/web_error.rs	prose	request dispatch failed
+libraries/bn_web/src/web_error.rs	prose	response header is not present
+libraries/bn_web/src/web_error.rs	prose	response is already committed or closed
+libraries/bn_web/src/web_error.rs	prose	response is already committed or closed
+libraries/bn_web/src/web_error.rs	prose	response is closed
+libraries/bn_web/src/web_error.rs	prose	response is closed
+libraries/bn_web/src/web_error.rs	prose	route handler must be a FUNCTION
+libraries/bn_web/src/web_error.rs	prose	route handler must be a FUNCTION
+libraries/bn_web/src/web_error.rs	prose	route handlers must be typed function references
+libraries/bn_web/src/web_error.rs	prose	SameSite policy must be Strict, Lax, or None
+libraries/bn_web/src/web_error.rs	prose	SameSite=None cookies must also declare the Secure attribute
+libraries/bn_web/src/web_error.rs	prose	SameSite=None requires Secure
+libraries/bn_web/src/web_error.rs	prose	SameSite=None requires Secure
+libraries/bn_web/src/web_error.rs	prose	scripts are not allowed
+libraries/bn_web/src/web_error.rs	prose	Secure cookies cannot be sent over cleartext HTTP
+libraries/bn_web/src/web_error.rs	prose	selector did not match
+libraries/bn_web/src/web_error.rs	prose	selector did not match
+libraries/bn_web/src/web_error.rs	prose	selectors must be non-empty alphanumeric tags excluding script
+libraries/bn_web/src/web_error.rs	prose	server cannot be started while already running
+libraries/bn_web/src/web_error.rs	prose	server drain timed out with active connections
+libraries/bn_web/src/web_error.rs	prose	server filters must be typed function references
+libraries/bn_web/src/web_error.rs	prose	server is already started
+libraries/bn_web/src/web_error.rs	prose	server is already started
+libraries/bn_web/src/web_error.rs	prose	server is not accepting requests
+libraries/bn_web/src/web_error.rs	prose	server is not accepting requests
+libraries/bn_web/src/web_error.rs	prose	server is stopping or closed
+libraries/bn_web/src/web_error.rs	prose	server is stopping or closed
+libraries/bn_web/src/web_error.rs	prose	server listener join failed
+libraries/bn_web/src/web_error.rs	prose	server listener join failed
+libraries/bn_web/src/web_error.rs	prose	server listener join timed out
+libraries/bn_web/src/web_error.rs	prose	server listener join timed out
+libraries/bn_web/src/web_error.rs	prose	server options exceed permitted configuration limits
+libraries/bn_web/src/web_error.rs	prose	server state unavailable
+libraries/bn_web/src/web_error.rs	prose	server state unavailable
+libraries/bn_web/src/web_error.rs	prose	server worker drain timed out
+libraries/bn_web/src/web_error.rs	prose	server worker drain timed out
+libraries/bn_web/src/web_error.rs	prose	server worker tasks did not finish within timeout
+libraries/bn_web/src/web_error.rs	prose	session capacity must be between 1 and 10000
+libraries/bn_web/src/web_error.rs	prose	session idle timeout must be between 1 ms and 30 minutes
+libraries/bn_web/src/web_error.rs	prose	session not found
+libraries/bn_web/src/web_error.rs	prose	session not found
+libraries/bn_web/src/web_error.rs	prose	session value too large
+libraries/bn_web/src/web_error.rs	prose	session value too large
+libraries/bn_web/src/web_error.rs	prose	session values must not exceed 8192 bytes
+libraries/bn_web/src/web_error.rs	prose	status {s} outside valid HTTP status range 100..599
+libraries/bn_web/src/web_error.rs	prose	status must be 100..599
+libraries/bn_web/src/web_error.rs	prose	the {p} provider is not available on this platform or build
+libraries/bn_web/src/web_error.rs	prose	the collection index is outside the valid range
+libraries/bn_web/src/web_error.rs	prose	the cookie does not exist in this jar for the given path
+libraries/bn_web/src/web_error.rs	prose	the remote host did not complete the HTTP handshake in time
+libraries/bn_web/src/web_error.rs	prose	the request exceeded the maximum number of allowed redirects
+libraries/bn_web/src/web_error.rs	prose	the response stream has been closed
+libraries/bn_web/src/web_error.rs	prose	the selector did not match any element in the HTML document
+libraries/bn_web/src/web_error.rs	prose	the server is not currently running or accepting inbound connections
+libraries/bn_web/src/web_error.rs	prose	the server is stopping or has closed
+libraries/bn_web/src/web_error.rs	prose	the server listener thread did not exit in time
+libraries/bn_web/src/web_error.rs	prose	the server listener thread panicked or failed
+libraries/bn_web/src/web_error.rs	prose	the session does not exist or has expired
+libraries/bn_web/src/web_error.rs	prose	TLS handshake failed
+libraries/bn_web/src/web_error.rs	prose	too large
+libraries/bn_web/src/web_error.rs	prose	total header size or count exceeded permitted bounds
+libraries/bn_web/src/web_error.rs	prose	unsupported HTTP method
+libraries/bn_web/src/web_error.rs	prose	unsupported selector
+libraries/bn_web/src/web_error.rs	prose	URL resolved to no addresses
+libraries/bn_web/src/web_error.rs	prose	URL resolved to no addresses
+libraries/bn_web/src/web_error.rs	prose	UTF-8 in target
+libraries/bn_web/src/web_state.rs	prose	; Max-Age={}
+libraries/bn_web/src/web_state.rs	prose	; SameSite=Lax
+libraries/bn_web/src/web_state.rs	prose	; SameSite=None
+libraries/bn_web/src/web_state.rs	prose	; SameSite=Strict
+libraries/bn_web/src/web_state.rs	prose	invalid CIDR
+libraries/bn_web/src/web_state.rs	prose	invalid CIDR
+libraries/bn_web/src/web_state.rs	prose	invalid CIDR
+libraries/bn_web/src/web_state.rs	prose	invalid CIDR prefix
+libraries/bn_web/src/web_state.rs	prose	invalid cookie bounds
+libraries/bn_web/src/web_state.rs	prose	invalid cookie domain
+libraries/bn_web/src/web_state.rs	prose	invalid cookie name
+libraries/bn_web/src/web_state.rs	prose	invalid cookie path
+libraries/bn_web/src/web_state.rs	prose	invalid cookie value
+libraries/bn_web/src/web_state.rs	prose	invalid SameSite policy
+libraries/bn_web/src/web_state.rs	prose	invalid session capacity
+libraries/bn_web/src/web_state.rs	prose	invalid session capacity
+libraries/bn_web/src/web_state.rs	prose	invalid session idle timeout
+libraries/bn_web/src/web_state.rs	prose	malformed HTML
+libraries/bn_web/src/web_state.rs	prose	malformed HTML
+libraries/bn_web/src/web_state.rs	prose	negative cookie age
+libraries/bn_web/src/web_state.rs	prose	request ID encoding failed
+libraries/bn_web/src/web_state.rs	prose	request ID entropy provider failed
+libraries/bn_web/src/web_state.rs	prose	SameSite=None requires Secure
+libraries/bn_web/src/web_state.rs	prose	scripts are not allowed
+libraries/bn_web/src/web_state.rs	prose	selector did not match
+libraries/bn_web/src/web_state.rs	prose	session entropy provider failed
+libraries/bn_web/src/web_state.rs	prose	session ID encoding failed
+libraries/bn_web/src/web_state.rs	prose	session not found
+libraries/bn_web/src/web_state.rs	prose	session not found
+libraries/bn_web/src/web_state.rs	prose	session not found
+libraries/bn_web/src/web_state.rs	prose	session value too large
+libraries/bn_web/src/web_state.rs	prose	session value too large
+libraries/bn_web/src/web_state.rs	prose	unsupported selector
+libraries/bn_web/src/web_state.rs	prose	unsupported selector
+libraries/bn_web/src/web.rs	prose	ambiguous path segment
+libraries/bn_web/src/web.rs	prose	body limit exceeds 8 MiB
+libraries/bn_web/src/web.rs	prose	body limit is invalid
+libraries/bn_web/src/web.rs	prose	destination is outside the egress policy
+libraries/bn_web/src/web.rs	prose	destination is outside the egress policy
+libraries/bn_web/src/web.rs	prose	egress policy contains an invalid port
+libraries/bn_web/src/web.rs	prose	egress policy contains an invalid port
+libraries/bn_web/src/web.rs	prose	egress policy contains an unsupported scheme
+libraries/bn_web/src/web.rs	prose	egress policy contains an unsupported scheme
+libraries/bn_web/src/web.rs	prose	egress policy list exceeds configured capacity
+libraries/bn_web/src/web.rs	prose	egress policy value is outside the configured bounds
+libraries/bn_web/src/web.rs	prose	invalid header name
+libraries/bn_web/src/web.rs	prose	invalid request header
+libraries/bn_web/src/web.rs	prose	invalid request method
+libraries/bn_web/src/web.rs	prose	invalid request target
+libraries/bn_web/src/web.rs	prose	invalid response header
+libraries/bn_web/src/web.rs	prose	invalid response status
+libraries/bn_web/src/web.rs	prose	invalid URL authority
+libraries/bn_web/src/web.rs	prose	invalid UTF-8 in target
+libraries/bn_web/src/web.rs	prose	malformed percent escape
+libraries/bn_web/src/web.rs	prose	malformed percent escape
+libraries/bn_web/src/web.rs	prose	malformed percent escape
+libraries/bn_web/src/web.rs	prose	private or local destination requires explicit opt-in
+libraries/bn_web/src/web.rs	prose	query exceeds 8 KiB
+libraries/bn_web/src/web.rs	prose	query fields exceed bounds
+libraries/bn_web/src/web.rs	prose	query key or value exceeds bounds
+libraries/bn_web/src/web.rs	prose	request body exceeds declared limit
+libraries/bn_web/src/web.rs	prose	request headers exceed bounds
+libraries/bn_web/src/web.rs	prose	request target must be an origin-form path
+libraries/bn_web/src/web.rs	prose	response body exceeds 8 MiB
+libraries/bn_web/src/web.rs	prose	response headers exceed 64 KiB
+libraries/bn_web/src/web.rs	prose	response is already committed or closed
+libraries/bn_web/src/web.rs	prose	response is already committed or closed
+libraries/bn_web/src/web.rs	prose	response is already committed or closed
+libraries/bn_web/src/web.rs	prose	response is closed
+libraries/bn_web/src/web.rs	prose	Secure cookies cannot be sent over cleartext HTTP
+libraries/bn_web/src/web.rs	prose	unsupported or ambiguous URL
+libraries/bn_web/src/web.rs	prose	URL requires an authority
+libraries/bn_web/src/web.rs	prose	URL resolved to no addresses
+libraries/bn_web/src/web.rs	prose	URL resolved to no addresses
+libraries/bn_web/src/web/drain.rs	prose	server drain timed out with active connections
+libraries/bn_web/src/web/drain.rs	prose	server drain timed out with active connections
+libraries/bn_web/src/web/drain.rs	prose	server listener is already installed
+libraries/bn_web/src/web/drain.rs	prose	server listener join failed
+libraries/bn_web/src/web/drain.rs	prose	server listener join timed out
+libraries/bn_web/src/web/drain.rs	prose	server state unavailable
+libraries/bn_web/src/web/drain.rs	prose	server state unavailable
+libraries/bn_web/src/web/drain.rs	prose	server state unavailable
+libraries/bn_web/src/web/drain.rs	prose	server state unavailable
+libraries/bn_web/src/web/drain.rs	prose	server state unavailable
+libraries/bn_web/src/web/drain.rs	prose	server worker drain timed out
+libraries/bn_web/src/web/drain.rs	prose	stop timeout is outside 1..60000 ms
+libraries/bn_web/src/web/policy_opener.rs	prose	file could not be read
+libraries/bn_web/src/web/server.rs	prose	failed to start server runtime
+libraries/bn_web/src/web/server.rs	prose	failed to start server worker pool
+libraries/bn_web/src/web/server.rs	prose	invalid route
+libraries/bn_web/src/web/server.rs	prose	rate limit exceeded
+libraries/bn_web/src/web/server.rs	prose	server connection limit reached
+libraries/bn_web/src/web/server.rs	prose	server drain timed out with active connections
+libraries/bn_web/src/web/server.rs	prose	server drain timed out with active handlers
+libraries/bn_web/src/web/server.rs	prose	server is already started
+libraries/bn_web/src/web/server.rs	prose	server is already started
+libraries/bn_web/src/web/server.rs	prose	server is not accepting connections
+libraries/bn_web/src/web/server.rs	prose	server is not accepting requests
+libraries/bn_web/src/web/server.rs	prose	server is stopping or closed
+libraries/bn_web/src/web/server.rs	prose	server is stopping or closed
+libraries/bn_web/src/web/server.rs	prose	server is stopping or closed
+libraries/bn_web/src/web/server.rs	prose	server listener is already installed
+libraries/bn_web/src/web/server.rs	prose	server options are outside the configured bounds
+libraries/bn_web/src/web/server.rs	prose	server request queue is full
+libraries/bn_web/src/web/server.rs	prose	server request queue is full
+libraries/bn_web/src/web/server.rs	prose	server worker pool is already installed
+libraries/bn_web/src/web/server.rs	prose	server worker pool is unavailable
+libraries/bn_web/src/web/server.rs	prose	server worker pool is unavailable
+libraries/bn_web/src/web/server.rs	prose	server worker queue is full
+libraries/bn_web/src/web/server.rs	prose	stop timeout is outside 1..60000 ms
+libraries/bn_web/src/web/sessions.rs	prose	invalid session capacity
+libraries/bn_web/src/web/sessions.rs	prose	invalid session idle timeout
+libraries/bn_web/src/web/sessions.rs	prose	session not found
+libraries/bn_web/src/web/static_files.rs	prose	application/javascript; charset=utf-8
+libraries/bn_web/src/web/static_files.rs	prose	directory cannot be empty
+libraries/bn_web/src/web/static_files.rs	prose	encoded separator or NUL is rejected
+libraries/bn_web/src/web/static_files.rs	prose	invalid path segment
+libraries/bn_web/src/web/static_files.rs	prose	path traversal is rejected
+libraries/bn_web/src/web/static_files.rs	prose	prefix must start with /
+libraries/bn_web/src/web/static_files.rs	prose	static directory not found or invalid
+libraries/bn_web/src/web/static_files.rs	prose	static path is not a directory
+libraries/bn_web/src/web/static_files.rs	prose	text/css; charset=utf-8
+libraries/bn_web/src/web/static_files.rs	prose	text/html; charset=utf-8
+libraries/bn_web/src/web/static_files.rs	prose	text/plain; charset=utf-8
+libraries/bn_stdlib/src/crypto_file.rs	identifier	BNCrypto.EncryptFile

@@ -5,6 +5,16 @@
 
 //! Integration test suite for the `bnr` interactive REPL executable.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 use std::{
     fmt::Write as _,
     io::Write,
@@ -486,7 +496,8 @@ fn bnr_all_transcript_fixtures() {
 #[test]
 fn bnr_history_retains_last_error_and_subsequent_successes() {
     use bnr::history::BnrHistory;
-    use rustyline::history::{History as _, SearchDirection};
+    use rustyline::history::History as _;
+    use rustyline::history::SearchDirection;
 
     let mut history = BnrHistory::new();
     assert!(history.record_success("LET a = 10").unwrap());

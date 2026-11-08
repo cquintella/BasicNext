@@ -373,6 +373,7 @@ pub(crate) fn lower_static_init(
         return_type: Type::Named("VOID".into()),
         entry: BlockId(0),
         blocks: builder.finish()?,
+        symbol_names: HashMap::new(),
         span,
     }))
 }
@@ -414,6 +415,7 @@ pub(crate) fn lower_instance_fields(
         return_type: Type::Named("VOID".into()),
         entry: BlockId(0),
         blocks: builder.finish()?,
+        symbol_names: HashMap::from([(SYNTHETIC_SELF, "SELF".into())]),
         span,
     })
 }
@@ -510,6 +512,7 @@ pub(crate) fn lower_field_release(
         return_type: Type::Named("VOID".into()),
         entry: BlockId(0),
         blocks: builder.finish()?,
+        symbol_names: HashMap::from([(SYNTHETIC_SELF, "SELF".into())]),
         span,
     })
 }
@@ -529,6 +532,11 @@ pub(crate) fn lower_inherited_constructor(
         class_model: bn_types::class_model::ClassModel::new(),
         bnmath_modules: HashSet::new(),
         bnlog_modules: HashSet::new(),
+        bncrypto_modules: HashSet::new(),
+        bnjson_modules: HashSet::new(),
+        bndata_modules: HashSet::new(),
+        bnsqlite_modules: HashSet::new(),
+        bncompress_modules: HashSet::new(),
         standard_modules: HashSet::new(),
         module_constants: std::collections::HashMap::new(),
         record_members: std::collections::HashMap::new(),
@@ -552,6 +560,7 @@ pub(crate) fn lower_inherited_constructor(
         return_type: Type::Named("VOID".into()),
         entry: BlockId(0),
         blocks: builder.finish()?,
+        symbol_names: HashMap::from([(SYNTHETIC_SELF, "SELF".into())]),
         span,
     })
 }
@@ -571,6 +580,11 @@ pub(crate) fn lower_inherited_destructor(
         class_model: bn_types::class_model::ClassModel::new(),
         bnmath_modules: HashSet::new(),
         bnlog_modules: HashSet::new(),
+        bncrypto_modules: HashSet::new(),
+        bnjson_modules: HashSet::new(),
+        bndata_modules: HashSet::new(),
+        bnsqlite_modules: HashSet::new(),
+        bncompress_modules: HashSet::new(),
         standard_modules: HashSet::new(),
         module_constants: std::collections::HashMap::new(),
         record_members: std::collections::HashMap::new(),
@@ -606,6 +620,7 @@ pub(crate) fn lower_inherited_destructor(
         return_type: Type::Named("VOID".into()),
         entry: BlockId(0),
         blocks: builder.finish()?,
+        symbol_names: HashMap::from([(SYNTHETIC_SELF, "SELF".into())]),
         span,
     })
 }
@@ -651,6 +666,7 @@ pub(crate) fn lower_struct_default(
         return_type: storage_ty,
         entry: BlockId(0),
         blocks: builder.finish()?,
+        symbol_names: HashMap::new(),
         span,
     })
 }

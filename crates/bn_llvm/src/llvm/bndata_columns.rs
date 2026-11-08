@@ -196,6 +196,7 @@ pub(crate) fn lower_bndata_column_name(
     let index_value = arguments[1];
     let index = coerce_to_type(
         text,
+        analysis.module,
         index_value,
         analysis
             .values
@@ -224,6 +225,7 @@ pub(crate) fn lower_bndata_status_call(
     let receiver = arguments[0];
     let first = coerce_to_type(
         text,
+        analysis.module,
         arguments[1],
         analysis
             .values

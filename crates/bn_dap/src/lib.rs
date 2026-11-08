@@ -1,6 +1,16 @@
 //! Debug Adapter Protocol adapter: stdio framing, launch validation,
 //! breakpoints/stepping over the interpreter's debug control hook, and the
 //! HOST environment composed by `bn_interpret_driver`.
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
+
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     io::{self, BufRead, Write},
@@ -329,11 +339,12 @@ fn execute_program(
             line: cur_line,
             view: view.clone(),
         });
-        let at_breakpoint = breakpoints
-            .lock()
-            .ok()
-            .and_then(|registry| registry.get(path).cloned())
-            .is_some_and(|lines| lines.contains(&cur_line));
+        let at_breakpoint = line_changed
+            && breakpoints
+                .lock()
+                .ok()
+                .and_then(|registry| registry.get(path).cloned())
+                .is_some_and(|lines| lines.contains(&cur_line));
         let pause_requested = state.pause_requested;
         let step_pause = match state.step {
             Some(StepMode::Next(target)) => (depth < target) || (depth <= target && line_changed),

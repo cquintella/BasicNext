@@ -7,6 +7,16 @@
 //! (rejection sampling, not reduction modulo n): the acceptance rule at the curve-order
 //! boundary, and generated keys that always sign.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 use bn_stdlib::crypto::{ALG_ECDSA_P256, generate_key_material, is_p256_scalar, p256_sign};
 
 /// The P-256 group order n, big-endian (SEC 2, section 2.4.2).

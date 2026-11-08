@@ -6,6 +6,16 @@
 
 //! `BNFfi` integration, parity, and compliance tests.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 use std::{
     env, fs,
     path::{Path, PathBuf},

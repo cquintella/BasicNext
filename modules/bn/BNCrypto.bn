@@ -45,6 +45,12 @@
 EXPORT CONST INVALID_ARGUMENT AS INTEGER = 1
 EXPORT CONST AUTHENTICATION_FAILED AS INTEGER = 2
 EXPORT CONST UNAVAILABLE AS INTEGER = 3
+EXPORT CONST UNSUPPORTED_ALGORITHM AS INTEGER = 4
+EXPORT CONST LEGACY_DISABLED AS INTEGER = 5
+EXPORT CONST PARSE_ERROR AS INTEGER = 6
+EXPORT CONST WRONG_KEY_TYPE AS INTEGER = 7
+EXPORT CONST IO_ERROR AS INTEGER = 8
+EXPORT CONST WRONG_PASSWORD AS INTEGER = 9
 
 // Algorithm identifiers for Key and Nonce operations.
 EXPORT CONST ALG_AES_GCM_256 AS INTEGER = 1
@@ -56,6 +62,74 @@ EXPORT CONST ALG_ECDSA_P256 AS INTEGER = 5
 EXPORT CONST ALG_ML_KEM_768 AS INTEGER = 6
 EXPORT CONST ALG_ML_DSA_65 AS INTEGER = 7
 
+EXPORT CLASS Alg
+    PUBLIC STATIC SHA256 AS INTEGER = 1
+    PUBLIC STATIC SHA384 AS INTEGER = 2
+    PUBLIC STATIC SHA512 AS INTEGER = 3
+    PUBLIC STATIC SHA512_256 AS INTEGER = 4
+    PUBLIC STATIC SHA3_256 AS INTEGER = 5
+    PUBLIC STATIC SHA3_512 AS INTEGER = 6
+    PUBLIC STATIC BLAKE2B AS INTEGER = 7
+    PUBLIC STATIC BLAKE3 AS INTEGER = 8
+    PUBLIC STATIC MD5 AS INTEGER = 9
+    PUBLIC STATIC SHA1 AS INTEGER = 10
+    PUBLIC STATIC HMAC_SHA256 AS INTEGER = 11
+    PUBLIC STATIC HMAC_SHA384 AS INTEGER = 12
+    PUBLIC STATIC HMAC_SHA512 AS INTEGER = 13
+    PUBLIC STATIC BLAKE3_KEYED AS INTEGER = 14
+
+    PUBLIC STATIC AES_256_GCM AS INTEGER = 20
+    PUBLIC STATIC CHACHA20_POLY1305 AS INTEGER = 21
+    PUBLIC STATIC XCHACHA20_POLY1305 AS INTEGER = 22
+
+    PUBLIC STATIC ED25519 AS INT32 = 30
+    PUBLIC STATIC X25519 AS INT32 = 31
+    PUBLIC STATIC ECDSA_P256 AS INT32 = 32
+    PUBLIC STATIC ML_KEM_768 AS INTEGER = 40
+    PUBLIC STATIC ML_DSA_65 AS INTEGER = 41
+END CLASS
+
+// Per-call policy: a field of the options record of the call (bncrypto.md,
+// "Per-Call Cryptographic Policy"). allowLegacy is reserved in this version.
+EXPORT STRUCT Policy
+    allowLegacy AS BOOLEAN = FALSE
+    fipsOnly AS BOOLEAN = FALSE
+END STRUCT
+
+EXPORT STRUCT HashOptions
+    alg AS INTEGER = 1
+    policy AS Policy
+END STRUCT
+
+EXPORT CLASS Hasher
+    PUBLIC STATIC FUNCTION New(alg AS INTEGER) AS Hasher OR Error
+    END FUNCTION
+    PUBLIC STATIC FUNCTION NewWith(opts AS HashOptions) AS Hasher OR Error
+    END FUNCTION
+    PUBLIC FUNCTION Update(data AS Bytes) AS VOID
+    END FUNCTION
+    PUBLIC FUNCTION Finish() AS Bytes
+    END FUNCTION
+END CLASS
+
+EXPORT STRUCT MacOptions
+    alg AS INTEGER = 11
+    policy AS Policy
+END STRUCT
+
+EXPORT CLASS MacStream
+    PUBLIC STATIC FUNCTION New(key AS SecretKey) AS MacStream OR Error
+    END FUNCTION
+    PUBLIC STATIC FUNCTION NewWith(key AS SecretKey, opts AS MacOptions) AS MacStream OR Error
+    END FUNCTION
+    PUBLIC FUNCTION Update(data AS Bytes) AS VOID
+    END FUNCTION
+    PUBLIC FUNCTION Finish() AS Bytes
+    END FUNCTION
+    PUBLIC FUNCTION Verify(tag AS Bytes) AS BOOLEAN
+    END FUNCTION
+END CLASS
+
 EXPORT CLASS Bytes
     PUBLIC FUNCTION CONSTRUCTOR()
     END FUNCTION
@@ -64,6 +138,35 @@ EXPORT CLASS Bytes
     END FUNCTION
     PUBLIC FUNCTION ToHex() AS STRING
         RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION ToText() AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION ToBase64() AS STRING
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION ToBase64Url() AS STRING
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION Zeroize() AS VOID
+    END FUNCTION
+    PUBLIC FUNCTION ConstantTimeEquals(other AS Bytes) AS BOOLEAN
+        RETURN FALSE
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS Secret
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Length() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION ToBytes() AS Bytes
+    END FUNCTION
+    PUBLIC FUNCTION ConstantTimeEquals(other AS Secret) AS BOOLEAN
+        RETURN FALSE
+    END FUNCTION
+    PUBLIC FUNCTION Zeroize() AS VOID
     END FUNCTION
 END CLASS
 
@@ -80,7 +183,130 @@ EXPORT CLASS Key
     END FUNCTION
 END CLASS
 
+EXPORT STRUCT KeyOptions
+    bits AS INTEGER = 256
+    purpose AS STRING = "AEAD"
+    alg AS STRING = "AES256"
+END STRUCT
+
+EXPORT CLASS SecretKey
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Id() AS STRING
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION Bits() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION Length() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION Purpose() AS STRING
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION Algorithm() AS STRING
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION ExportSecret(format AS STRING) AS Bytes
+    END FUNCTION
+    PUBLIC FUNCTION Zeroize() AS VOID
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS PublicKey
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Id() AS STRING
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION Algorithm() AS INT32
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION Fingerprint(hashAlg AS INTEGER) AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION ExportPem() AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS PrivateKey
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Id() AS STRING
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION Algorithm() AS INT32
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION PublicKey() AS PublicKey
+    END FUNCTION
+    PUBLIC FUNCTION ExportPem(format AS INT32, password AS STRING) AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION ExportPemUnencrypted(format AS INT32) AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION Zeroize() AS VOID
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS PemFormat
+    PUBLIC STATIC PKCS8 AS INT32 = 1
+END CLASS
+
+EXPORT STRUCT KeyPairOptions
+    alg AS INT32 = 30
+    policy AS Policy
+END STRUCT
+
+EXPORT STRUCT KeyPair
+    PublicKey AS PublicKey = NEW PublicKey()
+    PrivateKey AS PrivateKey = NEW PrivateKey()
+END STRUCT
+
+EXPORT STRUCT PasswordGenOptions
+    length AS INTEGER = 20
+    includeUppercase AS BOOLEAN = TRUE
+    includeLowercase AS BOOLEAN = TRUE
+    includeDigits AS BOOLEAN = TRUE
+    includeSymbols AS BOOLEAN = TRUE
+END STRUCT
+
+EXPORT CLASS Checksum
+    PUBLIC STATIC FUNCTION Crc32(data AS Bytes) AS INT64
+        RETURN 0
+    END FUNCTION
+    PUBLIC STATIC FUNCTION Crc32c(data AS Bytes) AS INT64
+        RETURN 0
+    END FUNCTION
+    PUBLIC STATIC FUNCTION Adler32(data AS Bytes) AS INT64
+        RETURN 0
+    END FUNCTION
+    PUBLIC STATIC FUNCTION XxHash64(data AS Bytes) AS INT64
+        RETURN 0
+    END FUNCTION
+    PUBLIC STATIC FUNCTION VerifyFileChecksum(path AS STRING, expected AS STRING) AS BOOLEAN
+        RETURN FALSE
+    END FUNCTION
+END CLASS
+
 EXPORT FUNCTION RandomBytes(length AS INTEGER) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION RandomInt(min AS INTEGER, max AS INTEGER) AS INTEGER OR Error
+END FUNCTION
+
+EXPORT FUNCTION RandomToken(nBytes AS INTEGER) AS STRING OR Error
+END FUNCTION
+
+EXPORT FUNCTION RandomUuidV4() AS STRING
+END FUNCTION
+
+EXPORT FUNCTION UuidV7() AS STRING
+END FUNCTION
+
+EXPORT FUNCTION RandomPassword(opts AS PasswordGenOptions) AS STRING OR Error
 END FUNCTION
 
 EXPORT FUNCTION GenerateNonce(cipherAlgorithm AS INTEGER) AS Bytes OR Error
@@ -98,24 +324,143 @@ END FUNCTION
 EXPORT FUNCTION SHA512(data AS STRING) AS STRING
 END FUNCTION
 
+EXPORT FUNCTION Hash(data AS Bytes) AS Bytes
+END FUNCTION
+
+EXPORT FUNCTION HashText(text AS STRING) AS STRING
+END FUNCTION
+
+EXPORT FUNCTION HashFile(path AS STRING) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION HashWith(data AS Bytes, opts AS HashOptions) AS Bytes OR Error
+END FUNCTION
+
 EXPORT FUNCTION FromHex(text AS STRING) AS Bytes OR Error
 END FUNCTION
 
 EXPORT FUNCTION FromText(text AS STRING) AS Bytes
 END FUNCTION
 
+EXPORT FUNCTION ToText(data AS Bytes) AS STRING OR Error
+END FUNCTION
+
+EXPORT FUNCTION ToBase64(data AS Bytes) AS STRING
+END FUNCTION
+
+EXPORT FUNCTION FromBase64(text AS STRING) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION ToBase64Url(data AS Bytes) AS STRING
+END FUNCTION
+
+EXPORT FUNCTION FromBase64Url(text AS STRING) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION Concat(a AS Bytes, b AS Bytes) AS Bytes
+END FUNCTION
+
+EXPORT FUNCTION ToPem(label AS STRING, der AS Bytes) AS STRING
+END FUNCTION
+
+EXPORT FUNCTION FromPem(pem AS STRING) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION NewSecret(text AS STRING) AS Secret
+END FUNCTION
+
+EXPORT FUNCTION SecretFromText(text AS STRING) AS Secret
+END FUNCTION
+
+EXPORT FUNCTION NewSecretKey() AS SecretKey
+END FUNCTION
+
+EXPORT FUNCTION NewSecretKeyWith(opts AS KeyOptions) AS SecretKey
+END FUNCTION
+
+EXPORT FUNCTION SecretKeyFromBytes(bytes AS Bytes, purpose AS STRING) AS SecretKey
+END FUNCTION
+
+EXPORT FUNCTION WrapKey(kek AS SecretKey, key AS SecretKey) AS Bytes
+END FUNCTION
+
+EXPORT FUNCTION UnwrapKey(kek AS SecretKey, wrapped AS Bytes) AS SecretKey
+END FUNCTION
+
+EXPORT FUNCTION UnwrapKeyWith(kek AS SecretKey, wrapped AS Bytes, opts AS KeyOptions) AS SecretKey
+END FUNCTION
+
+EXPORT FUNCTION Encrypt(key AS SecretKey, plaintext AS Bytes) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION Decrypt(key AS SecretKey, sealed AS Bytes) AS Bytes OR Error
+END FUNCTION
+
+// Layer B of the sealed envelope: `alg` accepts XCHACHA20_POLY1305 only in this
+// version; `aad` is authenticated, not stored, and DecryptWith needs the same one.
+EXPORT STRUCT AeadOptions
+    alg AS INTEGER = 22
+    aad AS Bytes = FromText("")
+    includeKeyId AS BOOLEAN = FALSE
+END STRUCT
+
+EXPORT FUNCTION EncryptWith(key AS SecretKey, plaintext AS Bytes, opts AS AeadOptions) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION DecryptWith(key AS SecretKey, sealed AS Bytes, opts AS AeadOptions) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION EncryptText(key AS SecretKey, text AS STRING) AS STRING OR Error
+END FUNCTION
+
+EXPORT FUNCTION DecryptText(key AS SecretKey, sealedText AS STRING) AS STRING OR Error
+END FUNCTION
+
+EXPORT FUNCTION EncryptFile(key AS SecretKey, inPath AS STRING, outPath AS STRING) AS VOID OR Error
+END FUNCTION
+
+EXPORT FUNCTION DecryptFile(key AS SecretKey, inPath AS STRING, outPath AS STRING) AS VOID OR Error
+END FUNCTION
+
+// The key is DeriveKey of the password and a random 16-byte salt; the stream records
+// the floor Argon2id cost and the salt. A wrong password is WRONG_PASSWORD.
+EXPORT FUNCTION EncryptFileWithPassword(inPath AS STRING, outPath AS STRING, password AS STRING) AS VOID OR Error
+END FUNCTION
+
+EXPORT FUNCTION DecryptFileWithPassword(inPath AS STRING, outPath AS STRING, password AS STRING) AS VOID OR Error
+END FUNCTION
+
+EXPORT FUNCTION ConstantTimeEquals(a AS Bytes, b AS Bytes) AS BOOLEAN
+END FUNCTION
+
+EXPORT FUNCTION Zeroize(b AS Bytes) AS VOID
+END FUNCTION
+
 EXPORT FUNCTION Slice(data AS Bytes, start AS INTEGER, length AS INTEGER) AS Bytes OR Error
 END FUNCTION
 
+// DANGEROUS / EXPERT API: SealAesGcm uses an explicit caller nonce (12 bytes).
+// Nonce reuse catastrophically compromises confidentiality and authenticity.
+// With random 96-bit nonces, rotate the key before 2^32 encryptions.
+// Prefer high-level Encrypt / EncryptWith which manage safe internal nonces.
+// Unauthenticated modes (ECB, unauthenticated CBC/CTR, RC4, DES/3DES) are rejected.
 EXPORT FUNCTION SealAesGcm(key AS Key, nonce AS Bytes, plaintext AS Bytes, aad AS Bytes) AS Bytes OR Error
 END FUNCTION
 
+// DANGEROUS / EXPERT API: OpenAesGcm verifies and decrypts with an explicit nonce.
+// Fails closed with AUTHENTICATION_FAILED if ciphertext or AAD has been tampered with.
 EXPORT FUNCTION OpenAesGcm(key AS Key, nonce AS Bytes, ciphertext AS Bytes, aad AS Bytes) AS Bytes OR Error
 END FUNCTION
 
+// DANGEROUS / EXPERT API: SealChaCha20 uses an explicit caller nonce (12 bytes).
+// Nonce reuse catastrophically compromises confidentiality and authenticity.
+// Prefer high-level Encrypt / EncryptWith which manage safe internal nonces.
+// Unauthenticated modes (ECB, unauthenticated CBC/CTR, RC4, DES/3DES) are rejected.
 EXPORT FUNCTION SealChaCha20(key AS Key, nonce AS Bytes, plaintext AS Bytes, aad AS Bytes) AS Bytes OR Error
 END FUNCTION
 
+// DANGEROUS / EXPERT API: OpenChaCha20 verifies and decrypts with an explicit nonce.
+// Fails closed with AUTHENTICATION_FAILED if ciphertext or AAD has been tampered with.
 EXPORT FUNCTION OpenChaCha20(key AS Key, nonce AS Bytes, ciphertext AS Bytes, aad AS Bytes) AS Bytes OR Error
 END FUNCTION
 
@@ -125,7 +470,74 @@ END FUNCTION
 EXPORT FUNCTION VerifyHmacSha256(key AS Key, data AS Bytes, tag AS Bytes) AS BOOLEAN
 END FUNCTION
 
+EXPORT FUNCTION Mac(key AS SecretKey, data AS Bytes) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION VerifyMac(key AS SecretKey, data AS Bytes, tag AS Bytes) AS BOOLEAN
+END FUNCTION
+
+EXPORT FUNCTION MacWith(key AS SecretKey, data AS Bytes, opts AS MacOptions) AS Bytes OR Error
+END FUNCTION
+
 EXPORT FUNCTION Argon2id(password AS Bytes, salt AS Bytes, memoryKiB AS INTEGER, iterations AS INTEGER, parallelism AS INTEGER) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION HashPassword(password AS STRING) AS STRING
+END FUNCTION
+
+EXPORT FUNCTION VerifyPassword(password AS STRING, phc AS STRING) AS BOOLEAN
+END FUNCTION
+
+// Argon2id cost of HashPasswordWith and the target of NeedsRehash. A cost below
+// the floor of HashPassword (m=19456 KiB, t=2, p=1) is INVALID_ARGUMENT.
+EXPORT STRUCT PasswordOptions
+    memoryKiB AS INTEGER = 19456
+    iterations AS INTEGER = 2
+    parallelism AS INTEGER = 1
+END STRUCT
+
+EXPORT FUNCTION HashPasswordWith(password AS STRING, opts AS PasswordOptions) AS STRING OR Error
+END FUNCTION
+
+EXPORT FUNCTION NeedsRehash(phc AS STRING, opts AS PasswordOptions) AS BOOLEAN
+END FUNCTION
+
+// Deterministic: Argon2id at the floor cost, 32 bytes; the salt holds 16 bytes or more.
+EXPORT FUNCTION DeriveKey(password AS STRING, salt AS Bytes) AS SecretKey OR Error
+END FUNCTION
+
+EXPORT FUNCTION Hkdf(ikm AS SecretKey, salt AS Bytes, info AS Bytes, len AS INTEGER) AS SecretKey OR Error
+END FUNCTION
+
+// Deterministic: HKDF-SHA256, empty salt, info "BNC-SUBKEY\0" + context, 32 bytes.
+EXPORT FUNCTION DeriveSubkey(master AS SecretKey, context AS STRING) AS SecretKey OR Error
+END FUNCTION
+
+EXPORT FUNCTION NewKeyPair() AS KeyPair OR Error
+END FUNCTION
+
+EXPORT FUNCTION NewKeyPairFor(alg AS INT32) AS KeyPair OR Error
+END FUNCTION
+
+EXPORT FUNCTION NewKeyPairWith(opts AS KeyPairOptions) AS KeyPair OR Error
+END FUNCTION
+
+EXPORT FUNCTION Sign(key AS PrivateKey, message AS Bytes) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION Verify(key AS PublicKey, message AS Bytes, signature AS Bytes) AS BOOLEAN
+END FUNCTION
+
+EXPORT FUNCTION SignFile(key AS PrivateKey, path AS STRING) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION VerifyFile(key AS PublicKey, path AS STRING, signature AS Bytes) AS BOOLEAN
+END FUNCTION
+
+EXPORT FUNCTION LoadPrivateKey(pem AS STRING, password AS STRING OR NULL) AS PrivateKey OR Error
+END FUNCTION
+
+EXPORT FUNCTION LoadPublicKey(pem AS STRING) AS PublicKey OR Error
 END FUNCTION
 
 EXPORT FUNCTION Ed25519PublicKey(key AS Key) AS Bytes OR Error

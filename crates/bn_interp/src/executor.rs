@@ -219,14 +219,16 @@ mod diagnostic_tests {
 
 fn shift(value: i128, count: i128, ty: &Type, left: bool, span: Span) -> Result<Value, Diagnostic> {
     let width = integer_width(integer_kind(ty).unwrap_or(IntegerType::Int32));
-    if count < 0 || count >= i128::from(width) {
+    let Some(count) = u32::try_from(count)
+        .ok()
+        .filter(|count| *count < u32::from(width))
+    else {
         return Err(runtime_error(
             bn_diag::DiagId::INVALID_SHIFT_COUNT,
             format!("shift count must be in 0..{width}"),
             span,
         ));
-    }
-    let count = u32::try_from(count).expect("validated shift count");
+    };
     if left {
         checked_integer(value.checked_shl(count), ty, span)
     } else {
@@ -365,6 +367,8 @@ pub(super) fn coerce(value: Value, ty: &Type, span: Span) -> Result<Value, Diagn
             | Value::Json(_)
             | Value::CryptoBytes(_)
             | Value::CryptoKey(_)
+            | Value::CryptoSecret(_)
+            | Value::CryptoSecretKey(_)
             | Value::CompressBytes(_)
             | Value::CompressZip(_),
             Type::Named(_)

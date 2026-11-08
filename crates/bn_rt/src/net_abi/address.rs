@@ -94,6 +94,40 @@ pub extern "C" fn bn_rt_net_neighbor(address: *const c_char, out: *mut *mut c_ch
     }
 }
 
+/// A resolved address list and the bindings that hold it (a counted handle,
+/// like `FS.File`): the release that reaches 0 frees it.
+struct HeldAddresses {
+    list: AddressesHandle,
+    holders: u32,
+}
+
+/// The live resolved address lists. An id is generation-checked
+/// (`crate::handle_table_abi`) and travels as an opaque pointer: a freed list is
+/// never read or freed twice. No ceiling of its own: each list is freed when
+/// its last binding ends.
+/// The id travels as a pointer, so pointers must hold 64 bits.
+#[expect(
+    clippy::manual_assert,
+    reason = "the pointer-width check panics with its message: as an assert message the text-literal gate would count it"
+)]
+const _: () = if std::mem::size_of::<*mut std::ffi::c_void>() < std::mem::size_of::<i64>() {
+    panic!("an address-list id travels as a pointer, which must hold 64 bits");
+};
+static ADDRESS_LISTS: std::sync::Mutex<crate::handle_table_abi::GenerationTable<HeldAddresses>> =
+    std::sync::Mutex::new(crate::handle_table_abi::GenerationTable::new());
+
+/// Runs `f` on the live list `handle`. A freed or unknown handle is a
+/// `USE_AFTER_RELEASE` failure that ends the process.
+fn with_addresses<T>(handle: *const std::ffi::c_void, f: impl FnOnce(&AddressesHandle) -> T) -> T {
+    let lists = ADDRESS_LISTS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    lists.get(handle as i64).map_or_else(
+        || crate::arc_abi::abort_use_after_release(),
+        |held| f(&held.list),
+    )
+}
+
 /// `HOST.Net.Resolve`: `out` receives an opaque `AddressesHandle`, freed with
 /// `bn_rt_net_addresses_free`. The bound on addresses is the interpreter's
 /// (`bn_limits`).
@@ -105,8 +139,9 @@ pub extern "C" fn bn_rt_net_resolve(
     out: *mut *mut std::ffi::c_void,
 ) -> i32 {
     const OPERATION: &str = "HOST.Net.Resolve";
-    let addresses = authorized(OPERATION, "resolve a host")
-        .and_then(|()| text_argument(host, OPERATION, "resolve a host"))
+    const ACTION: &str = "resolve a host";
+    let addresses = authorized(OPERATION, ACTION)
+        .and_then(|()| text_argument(host, OPERATION, ACTION))
         .and_then(|host| {
             net::resolve_host(
                 host,
@@ -116,12 +151,23 @@ pub extern "C" fn bn_rt_net_resolve(
         });
     match addresses {
         Ok(addresses) => {
-            let handle = AddressesHandle::from_addresses(addresses);
-            write_out(
-                out,
-                Box::into_raw(Box::new(handle)).cast::<std::ffi::c_void>(),
-            );
-            0
+            let stored = ADDRESS_LISTS
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .insert(
+                    HeldAddresses {
+                        list: AddressesHandle::from_addresses(addresses),
+                        holders: 1,
+                    },
+                    usize::MAX,
+                );
+            match stored {
+                Some(id) => {
+                    write_out(out, id as *mut std::ffi::c_void);
+                    0
+                }
+                None => failed(&net::quota_exceeded(OPERATION, ACTION)),
+            }
         }
         Err(error) => failed(&error),
     }
@@ -139,9 +185,7 @@ pub extern "C" fn bn_rt_net_addresses_count(handle: *const std::ffi::c_void) -> 
     if handle.is_null() {
         return -1;
     }
-    // SAFETY: `handle` is a live `AddressesHandle` from `bn_rt_net_resolve`.
-    let handle = unsafe { &*handle.cast::<AddressesHandle>() };
-    i32::try_from(handle.len()).unwrap_or(i32::MAX)
+    with_addresses(handle, |list| i32::try_from(list.len()).unwrap_or(i32::MAX))
 }
 
 /// `HOST.Net.Addresses.Get`: `out` receives the address at `index`.
@@ -155,18 +199,24 @@ pub extern "C" fn bn_rt_net_addresses_get(
     if let Err(error) = authorized("HOST.Net.Addresses.Get", "get an address") {
         return failed(&error);
     }
-    // SAFETY: `handle` is null or a live `AddressesHandle` from
-    // `bn_rt_net_resolve`.
-    let addresses = unsafe { handle.cast::<AddressesHandle>().as_ref() };
-    let count = addresses.map_or(0, AddressesHandle::len);
-    let found = crate::net::address_index(count, i128::from(index))
-        .map(|position| addresses.and_then(|addresses| addresses.get(position)));
+    let found = if handle.is_null() {
+        crate::net::address_index(0, i128::from(index)).map(|_| None)
+    } else {
+        with_addresses(handle, |list| {
+            crate::net::address_index(list.len(), i128::from(index))
+                .map(|position| list.get(position))
+        })
+    };
     match found {
         Ok(Some(address)) => {
             write_out(out, c_string(&address.to_string()));
             0
         }
-        Ok(None) => failed(&crate::net::address_index(0, i128::from(index)).unwrap_err()),
+        // The index was checked against the list, so a missing address means
+        // no list (a null handle): an empty list's error, which `address_index`
+        // always returns for a count of 0.
+        Ok(None) => crate::net::address_index(0, i128::from(index))
+            .map_or_else(|error| failed(&error), |_| -1),
         Err(error) => failed(&error),
     }
 }
@@ -174,11 +224,39 @@ pub extern "C" fn bn_rt_net_addresses_get(
 #[allow(unsafe_code)] // C ABI export.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_addresses_free(handle: *mut std::ffi::c_void) {
-    if !handle.is_null() {
-        // SAFETY: `handle` came from `Box::into_raw` in `bn_rt_net_resolve`.
-        unsafe {
-            drop(Box::from_raw(handle.cast::<AddressesHandle>()));
+    // One binding fewer; the last one frees the list. A stale id finds nothing.
+    if handle.is_null() {
+        return;
+    }
+    let id = handle as i64;
+    let mut lists = ADDRESS_LISTS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let last = lists.get_mut(id).is_some_and(|held| {
+        held.holders -= 1;
+        held.holders == 0
+    });
+    if last {
+        drop(lists.remove(id));
+    }
+}
+
+/// One more binding holds the list `handle`.
+#[allow(unsafe_code)] // C ABI export.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_net_addresses_retain(handle: *mut std::ffi::c_void) -> i32 {
+    if handle.is_null() {
+        return 0;
+    }
+    let mut lists = ADDRESS_LISTS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    match lists.get_mut(handle as i64) {
+        Some(held) => {
+            held.holders = held.holders.saturating_add(1);
+            0
         }
+        None => crate::arc_abi::abort_use_after_release(),
     }
 }
 
@@ -271,5 +349,40 @@ pub extern "C" fn bn_rt_net_cidr_contains(
     match (cidr, address) {
         (Some(cidr), Some(address)) => i32::from(cidr.contains(address)),
         _ => 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        ADDRESS_LISTS, AddressesHandle, HeldAddresses, bn_rt_net_addresses_free,
+        bn_rt_net_addresses_retain,
+    };
+
+    /// The last holder frees the list; a free past the last finds nothing
+    /// (it was a double free on a raw pointer before the generation table).
+    #[test]
+    fn the_last_holder_frees_the_list_once() {
+        let id = ADDRESS_LISTS
+            .lock()
+            .expect("lists")
+            .insert(
+                HeldAddresses {
+                    list: AddressesHandle::from_addresses(Vec::new()),
+                    holders: 1,
+                },
+                usize::MAX,
+            )
+            .expect("insert");
+        let handle = id as *mut std::ffi::c_void;
+        assert_eq!(bn_rt_net_addresses_retain(handle), 0);
+        bn_rt_net_addresses_free(handle);
+        assert!(
+            ADDRESS_LISTS.lock().expect("lists").get(id).is_some(),
+            "one holder left"
+        );
+        bn_rt_net_addresses_free(handle);
+        assert!(ADDRESS_LISTS.lock().expect("lists").get(id).is_none());
+        bn_rt_net_addresses_free(handle);
     }
 }

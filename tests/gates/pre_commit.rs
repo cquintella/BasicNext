@@ -10,6 +10,10 @@
 //! forbidden-dependency gate is a stub (the real one reads the whole
 //! workspace and is checked on the index by `repository-gates.sh` users).
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests read back the fixture files they write"
+)]
 use std::{fs, path::Path, process::Command};
 
 use super::support::{TestDir, git};

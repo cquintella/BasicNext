@@ -137,6 +137,8 @@ pub enum Value {
     Json(u64),
     CryptoBytes(u64),
     CryptoKey(u64),
+    CryptoSecret(u64),
+    CryptoSecretKey(u64),
     CompressBytes(u64),
     CompressZip(u64),
     DispatchQueue(u64),
@@ -214,9 +216,9 @@ pub fn error_detail_field(detail: Option<&ErrorDetail>, cause: bool) -> SharedSt
         || SharedString::from(""),
         |detail| {
             if cause {
-                detail.cause.clone()
+                std::sync::Arc::clone(&detail.cause)
             } else {
-                detail.operation.clone()
+                std::sync::Arc::clone(&detail.operation)
             }
         },
     )
