@@ -53,6 +53,7 @@ mod vector_abi;
 pub use stack_abi::bn_rt_stack_check;
 pub use vector_abi::{Row, bn_rt_vector_nest};
 
+pub use bn_core_fs::FsEntryPolicy;
 pub use console::{ConsoleError, beep, cls, num_cols, num_rows, print_at};
 pub use error_abi::{
     bn_rt_error_code, bn_rt_error_field, bn_rt_error_print, bn_rt_error_take, bn_rt_error_wrap,

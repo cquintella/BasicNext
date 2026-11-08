@@ -13,17 +13,97 @@ use std::fs::File;
 use std::io::{self, Read, Write};
 use std::path::Path;
 
+use bn_core_fs::FsEntryPolicy as _;
+
 use super::file_error::FsOperation;
 pub use super::file_error::{Failure, FileError};
 use super::policy::FsPolicy;
 use super::secure_fs::OpenMode;
 
-#[path = "file_entries.rs"]
-mod entries;
-pub use entries::{
-    copy, create_directory, get_current_directory, is_directory, move_entry, open_new,
-    remove_directory, set_current_directory,
-};
+pub fn get_current_directory(policy: &FsPolicy) -> Result<String, FileError> {
+    bn_core_fs::get_current_directory(policy)
+        .map_err(|failure| FileError::on_process(FsOperation::GetCurrentDirectory, failure.into()))
+}
+
+pub fn set_current_directory(policy: &FsPolicy, path: &Path) -> Result<(), FileError> {
+    bn_core_fs::set_current_directory(policy, path).map_err(|failure| {
+        FileError::on_path(
+            FsOperation::SetCurrentDirectory,
+            &text(path),
+            None,
+            failure.into(),
+        )
+    })
+}
+
+pub fn create_directory(policy: &FsPolicy, path: &Path) -> Result<(), FileError> {
+    bn_core_fs::create_directory(policy, path).map_err(|failure| {
+        FileError::on_path(
+            FsOperation::CreateDirectory,
+            &text(path),
+            None,
+            failure.into(),
+        )
+    })
+}
+
+/// `FS.OpenNew(path)`: one owner-only file, open for writing.
+///
+/// # Errors
+///
+/// As [`create_directory`].
+pub fn open_new(policy: &FsPolicy, path: &Path) -> Result<OpenFile, FileError> {
+    let file = bn_core_fs::open_new(policy, path).map_err(|failure| {
+        FileError::on_path(FsOperation::OpenNew, &text(path), None, failure.into())
+    })?;
+    Ok(OpenFile {
+        file: Some(file),
+        path: Some(text(path)),
+        writable: true,
+        family: None,
+        buffer: Vec::new(),
+        buffer_pos: 0,
+    })
+}
+
+pub fn remove_directory(policy: &FsPolicy, path: &Path) -> Result<(), FileError> {
+    bn_core_fs::remove_directory(policy, path).map_err(|failure| {
+        FileError::on_path(
+            FsOperation::RemoveDirectory,
+            &text(path),
+            None,
+            failure.into(),
+        )
+    })
+}
+
+pub fn is_directory(policy: &FsPolicy, path: &Path) -> Result<bool, FileError> {
+    bn_core_fs::is_directory(policy, path).map_err(|failure| {
+        FileError::on_path(FsOperation::IsDirectory, &text(path), None, failure.into())
+    })
+}
+
+pub fn copy(policy: &FsPolicy, source: &Path, destination: &Path) -> Result<(), FileError> {
+    bn_core_fs::copy(policy, source, destination).map_err(|failure| {
+        FileError::on_pair(
+            FsOperation::Copy,
+            &text(source),
+            &text(destination),
+            failure.into(),
+        )
+    })
+}
+
+pub fn move_entry(policy: &FsPolicy, source: &Path, destination: &Path) -> Result<(), FileError> {
+    bn_core_fs::move_entry(policy, source, destination).map_err(|failure| {
+        FileError::on_pair(
+            FsOperation::Move,
+            &text(source),
+            &text(destination),
+            failure.into(),
+        )
+    })
+}
 
 /// Text or binary use (host.md: the first successful method picks it).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

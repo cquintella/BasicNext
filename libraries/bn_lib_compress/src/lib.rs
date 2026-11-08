@@ -25,6 +25,7 @@ use bn_interp::{
     name_not_found, require_arity_pub as require_arity, runtime_error_pub as runtime_error,
     type_mismatch,
 };
+use bn_rt::FsEntryPolicy as _;
 use bn_rt::secure_fs::OpenMode;
 
 pub const NAME: &str = "BNCompress";

@@ -7,12 +7,7 @@ use std::io;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum OpenMode {
-    Read,
-    Write,
-    Append,
-}
+pub use bn_core_fs::OpenMode;
 
 #[derive(Clone, Debug)]
 pub struct RootedDir {
@@ -323,20 +318,36 @@ impl RootedDir {
 mod windows;
 
 #[cfg(unix)]
-#[path = "secure_fs_entries.rs"]
-mod entries;
-#[cfg(unix)]
-pub(crate) use entries::{Anchor, anchor_unrooted};
+pub(crate) use bn_core_fs::secure::{Anchor, anchor_unrooted};
 #[cfg(windows)]
 pub(crate) use windows::{Anchor, anchor_unrooted};
 
-/// What a path names, read without following a final symbolic link.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum EntryKind {
-    File,
-    Directory,
-    Symlink,
-    Other,
+pub use bn_core_fs::EntryKind;
+
+#[cfg(unix)]
+impl RootedDir {
+    pub(crate) fn anchor(&self, path: &Path) -> io::Result<Anchor> {
+        if self.is_root(path)? {
+            return Ok(Anchor::root(self.directory.try_clone()?));
+        }
+        let relative = self.relative(path)?;
+        let mut directory = self.directory.try_clone()?;
+        let mut names = relative
+            .components()
+            .filter_map(|component| match component {
+                Component::Normal(name) => Some(name),
+                _ => None,
+            })
+            .peekable();
+        while let Some(name) = names.next() {
+            let name = c_name(name)?;
+            if names.peek().is_none() {
+                return Ok(Anchor::named(directory, name));
+            }
+            directory = open_directory_at(&directory, &name)?;
+        }
+        Ok(Anchor::root(directory))
+    }
 }
 
 /// The refusal on a platform without descriptor-relative traversal.
@@ -347,29 +358,7 @@ const ROOTED_ACCESS_UNAVAILABLE: &str = "rooted filesystem access is unavailable
 /// `PermissionDenied` the operating system reports: a caller that has no
 /// separate permission code (`BNCompress`) reports only this one as a policy
 /// denial.
-#[derive(Debug)]
-struct PolicyRefusal(&'static str);
-
-impl std::fmt::Display for PolicyRefusal {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(self.0)
-    }
-}
-
-impl std::error::Error for PolicyRefusal {}
-
-pub(crate) fn denied(message: &'static str) -> io::Error {
-    io::Error::new(io::ErrorKind::PermissionDenied, PolicyRefusal(message))
-}
-
-/// Whether `error` is a refusal of the execution policy or of the rooted
-/// walk (a symlink, a path outside the root), not an operating-system error.
-#[must_use]
-pub fn is_policy_refusal(error: &io::Error) -> bool {
-    error
-        .get_ref()
-        .is_some_and(<dyn std::error::Error + Send + Sync>::is::<PolicyRefusal>)
-}
+pub use bn_core_fs::{PolicyRefusal, denied, is_policy_refusal};
 
 /// Opens the directory `name` inside `parent` without following a symlink.
 #[cfg(unix)]

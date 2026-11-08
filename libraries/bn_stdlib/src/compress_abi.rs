@@ -22,6 +22,7 @@ use bn_core_compress::{
     CompressError, FileAccess, ZipArchiveHandle, decode_hex, deflate, encode_hex, gunzip, gzip,
     inflate,
 };
+use bn_rt::FsEntryPolicy as _;
 
 pub(crate) const BN_COMPRESS_OK: i32 = 0;
 pub(crate) const BN_COMPRESS_INVALID_ARGUMENT: i32 = 1;

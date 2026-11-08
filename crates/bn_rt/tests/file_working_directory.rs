@@ -10,9 +10,9 @@
 
 #![cfg(unix)]
 
-use bn_rt::FsPolicy;
 use bn_rt::file::{get_current_directory, open_new, set_current_directory};
 use bn_rt::secure_fs::RootedDir;
+use bn_rt::{FsEntryPolicy as _, FsPolicy};
 use bn_types::error_codes::fs;
 use std::fs as stdfs;
 use std::io::ErrorKind;

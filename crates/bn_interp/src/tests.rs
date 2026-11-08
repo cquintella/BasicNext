@@ -1,6 +1,8 @@
 use std::sync::atomic::Ordering;
 use std::time::{Duration, UNIX_EPOCH};
 
+use bn_rt::FsEntryPolicy as _;
+
 use super::{
     Executor, HostEnv, Instance, Module, Value, default_span, host_random_seed,
     integer_from_i128_count, is_value, shared_string,

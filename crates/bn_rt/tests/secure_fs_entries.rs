@@ -11,8 +11,8 @@
 
 #![cfg(unix)]
 
-use bn_rt::FsPolicy;
 use bn_rt::secure_fs::{EntryKind, RootedDir, is_policy_refusal};
+use bn_rt::{FsEntryPolicy as _, FsPolicy};
 use std::fs;
 use std::io::{ErrorKind, Write as _};
 use std::os::unix::fs::{PermissionsExt as _, symlink};

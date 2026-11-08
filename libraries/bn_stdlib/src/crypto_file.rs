@@ -14,6 +14,8 @@ use std::ffi::c_char;
 use std::io::{Read, Write};
 use std::path::Path;
 
+use bn_rt::FsEntryPolicy as _;
+
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
 use chacha20poly1305::{XChaCha20Poly1305, XNonce};
 

@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use super::super::{OpenMode, RootedDir};
+use super::super::{FsEntryPolicy as _, OpenMode, RootedDir};
 use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
 

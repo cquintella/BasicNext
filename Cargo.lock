@@ -232,6 +232,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bn_core_fs"
+version = "0.6.12"
+dependencies = [
+ "bn_catalog",
+ "bn_types",
+ "libc",
+]
+
+[[package]]
 name = "bn_core_json"
 version = "0.6.12"
 dependencies = [
@@ -338,6 +347,7 @@ name = "bn_host_fs"
 version = "0.6.12"
 dependencies = [
  "bn_catalog",
+ "bn_core_fs",
  "bn_diag",
  "bn_interp",
  "bn_rt",
@@ -613,6 +623,7 @@ version = "0.6.12"
 dependencies = [
  "bn_catalog",
  "bn_core_copy",
+ "bn_core_fs",
  "bn_core_net",
  "bn_core_text",
  "bn_host_env",

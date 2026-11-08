@@ -16,6 +16,8 @@
 use std::io::Read as _;
 use std::path::Path;
 
+use bn_core_fs::FsEntryPolicy as _;
+
 use super::policy::FsPolicy;
 
 /// Why a static file was not served.

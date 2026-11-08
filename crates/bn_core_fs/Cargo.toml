@@ -1,0 +1,21 @@
+[package]
+name = "bn_core_fs"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.97"
+description = "Basic Next HOST.FileSystem core: entry operations, Unix secure anchor, error classification"
+license.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+bn_catalog = { path = "../bn_catalog" }
+bn_types = { path = "../bn_types" }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[lints]
+workspace = true

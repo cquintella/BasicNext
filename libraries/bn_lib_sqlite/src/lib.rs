@@ -23,7 +23,7 @@ use bn_interp::{name_not_found, require_arity_pub as require_arity, type_mismatc
 use bn_lib_data::DataProvider;
 use bn_runtime::Handle;
 use bn_source::Span;
-use bn_stdlib::{DataFrameColumn, DataFrameResource};
+use bn_stdlib::{DataFrameColumn, DataFrameResource, FsEntryPolicy as _};
 use bn_types::error_codes::sqlite as sqlite_err;
 use bn_types::{FloatType, IntegerType};
 use bn_value::{Value, shared_string};

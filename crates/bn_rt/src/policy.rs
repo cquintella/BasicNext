@@ -16,6 +16,7 @@ use std::{
 };
 
 use super::secure_fs::{Anchor, EntryKind, OpenMode, RootedDir, anchor_unrooted, denied};
+pub use bn_core_fs::FsEntryPolicy;
 
 pub(crate) const POLICY_CLOCK: u64 = 1 << 0;
 pub const POLICY_CONSOLE: u64 = 1 << 1;
@@ -159,31 +160,6 @@ impl FsPolicy {
         !self.read.denies_everything() || !(self.read_only || self.write.denies_everything())
     }
 
-    /// Why the policy denies a `write` (or read) of a path it does not allow:
-    /// the `Cause` of the resulting BN `Error`.
-    #[must_use]
-    pub fn denial_reason(&self, write: bool) -> &'static str {
-        let scope = if write { &self.write } else { &self.read };
-        if write && self.read_only {
-            "the execution policy allows reads only"
-        } else if scope.denies_everything() {
-            "the execution policy denies file access"
-        } else {
-            "the path is outside the directories the execution policy allows"
-        }
-    }
-
-    #[must_use]
-    pub fn allows_path(&self, path: &Path, write: bool) -> bool {
-        if write && self.read_only {
-            return false;
-        }
-        match if write { &self.write } else { &self.read } {
-            Scope::Unrestricted => true,
-            Scope::Rooted(roots) => roots.iter().any(|root| root.contains_resolved(path)),
-        }
-    }
-
     /// Opens `path` for reading only when it is a regular file. The open never
     /// waits (a FIFO would block until a writer appears), and the type is read
     /// from the opened descriptor, so a swap after a path check changes
@@ -242,20 +218,6 @@ impl FsPolicy {
         }
     }
 
-    /// # Errors
-    ///
-    /// Propagates the I/O error; `PermissionDenied` when writes are denied or
-    /// the path is outside the write roots.
-    pub fn remove_file(&self, path: &Path) -> io::Result<()> {
-        if self.read_only {
-            return Err(denied(FS_WRITES_DENIED));
-        }
-        match self.write.root_for(path)? {
-            Some(root) => root.remove_file(path),
-            None => std::fs::remove_file(path),
-        }
-    }
-
     /// Creates the directory `path` and its missing ancestors inside the write
     /// roots, never through a symlink (`RootedDir::create_dir_all`).
     ///
@@ -285,95 +247,78 @@ impl FsPolicy {
             None => anchor_unrooted(path),
         }
     }
+}
 
-    /// What `path` names, without following a final symbolic link (a read).
-    ///
-    /// # Errors
-    ///
-    /// A refusal outside the read roots, `NotFound`, or the system error.
-    pub fn entry_kind(&self, path: &Path) -> io::Result<EntryKind> {
+impl bn_core_fs::FsEntryPolicy for FsPolicy {
+    fn allows_path(&self, path: &Path, write: bool) -> bool {
+        if write && self.read_only {
+            return false;
+        }
+        match if write { &self.write } else { &self.read } {
+            Scope::Unrestricted => true,
+            Scope::Rooted(roots) => roots.iter().any(|root| root.contains_resolved(path)),
+        }
+    }
+
+    fn denial_reason(&self, write: bool) -> &'static str {
+        let scope = if write { &self.write } else { &self.read };
+        if write && self.read_only {
+            "the execution policy allows reads only"
+        } else if scope.denies_everything() {
+            "the execution policy denies file access"
+        } else {
+            "the path is outside the directories the execution policy allows"
+        }
+    }
+
+    fn entry_kind(&self, path: &Path) -> io::Result<EntryKind> {
         self.anchor(path, false)?.kind()
     }
 
-    /// What `path` names, checked against the write roots: the kind a write
-    /// (a removal, a rename) acts on, without requiring a read root.
-    ///
-    /// # Errors
-    ///
-    /// A refusal outside the write roots, `NotFound`, or the system error.
-    pub fn writable_entry_kind(&self, path: &Path) -> io::Result<EntryKind> {
+    fn writable_entry_kind(&self, path: &Path) -> io::Result<EntryKind> {
         self.anchor(path, true)?.kind()
     }
 
-    /// Whether `path` names a policy root itself, which is never a write
-    /// target.
-    #[must_use]
-    pub fn names_a_root(&self, path: &Path) -> bool {
-        [&self.read, &self.write]
-            .into_iter()
-            .any(|scope| scope.names_a_root(path))
+    fn change_directory(&self, path: &Path) -> io::Result<()> {
+        self.anchor(path, false)?.change_directory()
     }
 
-    /// Creates the owner-only directory `path` (a write).
-    ///
-    /// # Errors
-    ///
-    /// A refusal outside the write roots; `AlreadyExists`, `NotFound` for a
-    /// missing parent, `PermissionDenied` when not owner-only.
-    pub fn create_private_directory(&self, path: &Path) -> io::Result<()> {
+    fn create_private_directory(&self, path: &Path) -> io::Result<()> {
         self.anchor(path, true)?.create_private_directory()
     }
 
-    /// Creates the owner-only file `path`, open for writing (a write).
-    ///
-    /// # Errors
-    ///
-    /// As [`Self::create_private_directory`].
-    pub fn create_private_file(&self, path: &Path) -> io::Result<File> {
+    fn create_private_file(&self, path: &Path) -> io::Result<File> {
         self.anchor(path, true)?.create_private_file()
     }
 
-    /// Opens `path` for reading without following a final symbolic link.
-    ///
-    /// # Errors
-    ///
-    /// A refusal outside the read roots, or the system error.
-    pub fn open_entry(&self, path: &Path) -> io::Result<File> {
-        self.anchor(path, false)?.open_read()
-    }
-
-    /// Removes the empty directory `path` (a write); a symbolic link or a
-    /// file is not removed.
-    ///
-    /// # Errors
-    ///
-    /// A refusal outside the write roots or for a root itself;
-    /// `NotADirectory`, `DirectoryNotEmpty`, `NotFound`.
-    pub fn remove_empty_directory(&self, path: &Path) -> io::Result<()> {
+    fn remove_empty_directory(&self, path: &Path) -> io::Result<()> {
         self.anchor(path, true)?.remove_empty_directory()
     }
 
-    /// Renames `from` to `to` (both writes), replacing a regular file only.
-    ///
-    /// # Errors
-    ///
-    /// A refusal outside the write roots or for a root itself;
-    /// `AlreadyExists` for a directory or a symbolic link at `to`;
-    /// `CrossesDevices` across file systems.
-    pub fn rename_entry(&self, from: &Path, to: &Path) -> io::Result<()> {
-        let source = self.anchor(from, true)?;
-        let target = self.anchor(to, true)?;
-        source.rename_to(&target)
+    fn open_entry(&self, path: &Path) -> io::Result<File> {
+        self.anchor(path, false)?.open_read()
     }
 
-    /// Makes `path` the working directory of the process (a read of that
-    /// directory), never through a symbolic link.
-    ///
-    /// # Errors
-    ///
-    /// A refusal outside the read roots, or the system error.
-    pub fn change_directory(&self, path: &Path) -> io::Result<()> {
-        self.anchor(path, false)?.change_directory()
+    fn remove_file(&self, path: &Path) -> io::Result<()> {
+        if self.read_only {
+            return Err(denied(FS_WRITES_DENIED));
+        }
+        match self.write.root_for(path)? {
+            Some(root) => root.remove_file(path),
+            None => std::fs::remove_file(path),
+        }
+    }
+
+    fn rename_entry(&self, source: &Path, destination: &Path) -> io::Result<()> {
+        let src = self.anchor(source, true)?;
+        let target = self.anchor(destination, true)?;
+        src.rename_to(&target)
+    }
+
+    fn names_a_root(&self, path: &Path) -> bool {
+        [&self.read, &self.write]
+            .into_iter()
+            .any(|scope| scope.names_a_root(path))
     }
 }
 

@@ -136,6 +136,21 @@ impl From<io::Error> for Failure {
     }
 }
 
+impl From<bn_core_fs::EntryFailure> for Failure {
+    fn from(failure: bn_core_fs::EntryFailure) -> Self {
+        match failure {
+            bn_core_fs::EntryFailure::AlreadyExists => Self::AlreadyExists,
+            bn_core_fs::EntryFailure::NotDirectory { symlink } => Self::NotDirectory { symlink },
+            bn_core_fs::EntryFailure::NotEmpty => Self::NotEmpty,
+            bn_core_fs::EntryFailure::CrossDevice => Self::CrossDevice,
+            bn_core_fs::EntryFailure::PolicyDenied(reason) => Self::PolicyDenied(reason),
+            bn_core_fs::EntryFailure::Directory => Self::Directory,
+            bn_core_fs::EntryFailure::NotRegularSource => Self::NotRegularSource,
+            bn_core_fs::EntryFailure::Io(error) => Self::Io(error),
+        }
+    }
+}
+
 /// What the operation acted on, for the message.
 #[derive(Debug)]
 enum Subject {

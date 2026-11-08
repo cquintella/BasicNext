@@ -21,6 +21,7 @@ net = ["dep:bn_core_net"]
 [dependencies]
 bn_catalog = { path = "../bn_catalog" }
 bn_core_copy = { path = "../bn_core_copy" } # handle tables of one module copy
+bn_core_fs = { path = "../bn_core_fs" }
 bn_core_net = { path = "../bn_core_net", optional = true }
 bn_core_text = { path = "../bn_core_text" }
 bn_host_env = { path = "../bn_host_env" }
