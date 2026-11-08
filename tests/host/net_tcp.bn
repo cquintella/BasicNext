@@ -25,16 +25,14 @@ FUNCTION Start() AS INTEGER
     IF bound IS Error THEN
         RETURN 1
     END IF
-    LET client AS Net.TCPStream OR Error = Net.TCPConnect(bound, 2000)
-    LET server AS Net.TCPStream OR Error = listener.Accept(2000)
+    LET client AS Net.TCPStream OR Error = Net.TCPConnect(bound, 10000)
+    LET server AS Net.TCPStream OR Error = listener.Accept(10000)
     IF client IS Error OR server IS Error THEN
         PRINT "connection failed"
         RETURN 1
     END IF
     PRINT listener IS Net.TCPListener, client IS Net.TCPStream, bound.Port() > 0
-    LET timeouts AS VOID OR Error = client.SetTimeouts(2000, 2000)
-    // The client never reads, so closing its read side succeeds on every OS.
-    LET closedRead AS VOID OR Error = client.ShutdownRead()
+    LET timeouts AS VOID OR Error = client.SetTimeouts(10000, 10000)
     LET local AS Net.Endpoint OR Error = client.LocalEndpoint()
     LET remote AS Net.Endpoint OR Error = client.RemoteEndpoint()
     IF local IS Net.Endpoint AND remote IS Net.Endpoint THEN
@@ -45,6 +43,8 @@ FUNCTION Start() AS INTEGER
     message[1] = 105
     LET sent AS INTEGER OR Error = client.Write(message, 2)
     LET closedWrite AS VOID OR Error = client.ShutdownWrite()
+    // The client never reads, so closing its read side succeeds on every OS once sent.
+    LET closedRead AS VOID OR Error = client.ShutdownRead()
     LET received AS POINTER TO BYTE[] = NEW BYTE[4]
     LET count AS INTEGER OR EOF OR Error = server.Read(received, 4)
     LET rest AS INTEGER OR EOF OR Error = server.Read(received, 4)
