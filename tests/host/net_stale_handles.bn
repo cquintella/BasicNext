@@ -62,11 +62,55 @@ FUNCTION Start() AS INTEGER
     END IF
     LET staleListener AS Net.Endpoint OR Error = oldListener.LocalEndpoint()
     IF staleListener IS Error THEN
-        PRINT "tcp", staleListener.Code = Net.CLOSED
+        PRINT "tcp listener", staleListener.Code = Net.CLOSED
     ELSE
-        PRINT "tcp reached another listener"
+        PRINT "tcp listener reached another listener"
     END IF
     LET liveListener AS Net.Endpoint OR Error = newListener.LocalEndpoint()
-    PRINT "tcp live", liveListener IS Net.Endpoint
+    PRINT "tcp listener live", liveListener IS Net.Endpoint
+
+    LET bound AS Net.Endpoint OR Error = newListener.LocalEndpoint()
+    IF bound IS Error THEN
+        RETURN 1
+    END IF
+    LET stream1 AS Net.TCPStream OR Error = Net.TCPConnect(bound, 2000)
+    IF stream1 IS Error THEN
+        RETURN 1
+    END IF
+    LET server1 AS Net.TCPStream OR Error = newListener.Accept(2000)
+    IF server1 IS Error THEN
+        RETURN 1
+    END IF
+    LET stream1Closed AS VOID OR Error = stream1.Close()
+    IF stream1Closed IS Error THEN
+        RETURN 1
+    END IF
+    LET stream2 AS Net.TCPStream OR Error = Net.TCPConnect(bound, 2000)
+    IF stream2 IS Error THEN
+        RETURN 1
+    END IF
+    LET server2 AS Net.TCPStream OR Error = newListener.Accept(2000)
+    IF server2 IS Error THEN
+        RETURN 1
+    END IF
+    LET staleStream AS Net.Endpoint OR Error = stream1.LocalEndpoint()
+    IF staleStream IS Error THEN
+        PRINT "tcp stream", staleStream.Code = Net.CLOSED
+    ELSE
+        PRINT "tcp stream reached another stream"
+    END IF
+    LET liveStream AS Net.Endpoint OR Error = stream2.LocalEndpoint()
+    PRINT "tcp stream live", liveStream IS Net.Endpoint
+    LET staleStreamClose AS VOID OR Error = stream1.Close()
+    IF staleStreamClose IS Error THEN
+        RETURN 1
+    END IF
+    LET stillLiveStream AS Net.Endpoint OR Error = stream2.LocalEndpoint()
+    PRINT "tcp stream stale close keeps the live stream", stillLiveStream IS Net.Endpoint
+
+    stream2.Close()
+    server1.Close()
+    server2.Close()
+    newListener.Close()
     RETURN 0
 END FUNCTION

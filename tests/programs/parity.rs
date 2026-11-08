@@ -1002,7 +1002,7 @@ fn stale_net_handles_stay_closed_across_backends() {
     assert_eq!(output.status.code(), Some(0));
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "udp TRUE\nudp live TRUE\nudp stale close keeps the live socket TRUE\ntcp TRUE\ntcp live TRUE\n"
+        "udp TRUE\nudp live TRUE\nudp stale close keeps the live socket TRUE\ntcp listener TRUE\ntcp listener live TRUE\ntcp stream TRUE\ntcp stream live TRUE\ntcp stream stale close keeps the live stream TRUE\n"
     );
     native_matches_interpreter(path);
 }

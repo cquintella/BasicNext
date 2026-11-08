@@ -21,17 +21,21 @@
 use bn_stdlib::crypto_abi::{
     bn_rt_crypto_bytes_from_hex, bn_rt_crypto_bytes_from_text, bn_rt_crypto_bytes_length,
 };
-use bn_stdlib::crypto_secret_abi::bn_rt_crypto_secret_from_text;
+use bn_stdlib::crypto_secret_abi::{bn_rt_crypto_secret_from_text, bn_rt_crypto_secret_length};
 use bn_types::error_codes::crypto::INVALID_ARGUMENT;
 
 #[test]
 fn a_null_text_makes_no_buffer() {
-    assert_eq!(bn_rt_crypto_bytes_from_text(std::ptr::null()), 0);
+    let handle = bn_rt_crypto_bytes_from_text(std::ptr::null());
+    assert_eq!(handle, 0);
+    assert_eq!(bn_rt_crypto_bytes_length(handle), -1);
 }
 
 #[test]
 fn a_null_text_makes_no_secret() {
-    assert_eq!(bn_rt_crypto_secret_from_text(std::ptr::null()), 0);
+    let handle = bn_rt_crypto_secret_from_text(std::ptr::null());
+    assert_eq!(handle, 0);
+    assert_eq!(bn_rt_crypto_secret_length(handle), -1);
 }
 
 #[test]
@@ -42,6 +46,50 @@ fn a_null_hex_text_is_invalid_argument() {
         INVALID_ARGUMENT
     );
     assert_eq!(handle, 0);
+    assert_eq!(bn_rt_crypto_bytes_length(handle), -1);
+}
+
+#[test]
+fn a_non_bn_pointer_makes_no_buffer_or_secret() {
+    let raw = b"not a bn string\0";
+    let ptr = raw.as_ptr().cast::<std::ffi::c_char>();
+    let handle = bn_rt_crypto_bytes_from_text(ptr);
+    assert_eq!(handle, 0);
+    assert_eq!(bn_rt_crypto_bytes_length(handle), -1);
+
+    let secret_handle = bn_rt_crypto_secret_from_text(ptr);
+    assert_eq!(secret_handle, 0);
+    assert_eq!(bn_rt_crypto_secret_length(secret_handle), -1);
+
+    let mut hex_handle = 0_u64;
+    assert_eq!(
+        bn_rt_crypto_bytes_from_hex(ptr, &raw mut hex_handle),
+        INVALID_ARGUMENT
+    );
+    assert_eq!(hex_handle, 0);
+    assert_eq!(bn_rt_crypto_bytes_length(hex_handle), -1);
+}
+
+#[test]
+fn an_invalid_utf8_text_makes_no_buffer_or_secret() {
+    let bad_utf8 = bn_stdlib::string::c_string_from_bytes(b"\xff\xfe\xfd");
+    let handle = bn_rt_crypto_bytes_from_text(bad_utf8);
+    assert_eq!(handle, 0);
+    assert_eq!(bn_rt_crypto_bytes_length(handle), -1);
+
+    let secret_handle = bn_rt_crypto_secret_from_text(bad_utf8);
+    assert_eq!(secret_handle, 0);
+    assert_eq!(bn_rt_crypto_secret_length(secret_handle), -1);
+
+    let mut hex_handle = 0_u64;
+    assert_eq!(
+        bn_rt_crypto_bytes_from_hex(bad_utf8, &raw mut hex_handle),
+        INVALID_ARGUMENT
+    );
+    assert_eq!(hex_handle, 0);
+    assert_eq!(bn_rt_crypto_bytes_length(hex_handle), -1);
+
+    bn_stdlib::string::bn_rt_str_release(bad_utf8);
 }
 
 #[test]
