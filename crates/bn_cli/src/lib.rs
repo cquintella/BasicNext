@@ -4,6 +4,12 @@
 //! No backend (interpreter, LLVM) or concrete HOST provider is reachable
 //! from this crate.
 
+#![expect(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    reason = "command-line interface presents output and diagnostics on stdout and stderr"
+)]
+
 pub mod check;
 mod config;
 pub mod diagnostics;

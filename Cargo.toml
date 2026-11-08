@@ -67,6 +67,9 @@ missing_assert_message = "deny"
 same_name_method = "deny"
 verbose_file_reads = "deny"
 unneeded_field_pattern = "deny"
+# Tier 3 (DEC-55): printing outside CLIs and drivers is denied.
+print_stdout = "deny"
+print_stderr = "deny"
 
 [lints]
 workspace = true

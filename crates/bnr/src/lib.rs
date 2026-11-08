@@ -5,6 +5,12 @@
 
 //! `bnr`: Basic Next interactive Read-Eval-Print Loop library and drivers.
 
+#![expect(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    reason = "REPL executable interacts directly with user terminal via stdout and stderr"
+)]
+
 pub mod cli;
 pub mod commands;
 pub mod format;

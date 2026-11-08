@@ -590,6 +590,10 @@ pub fn open_path(path: &Path, mode: OpenMode) -> io::Result<File> {
 /// inputs. A malformed input is reported on stderr, returns `POLICY_INVALID`
 /// and applies **nothing**; emitted `Start` then calls
 /// [`bn_rt_policy_check`], which stops the process.
+#[expect(
+    clippy::print_stderr,
+    reason = "execution policy init failure is reported on stderr before immediate process exit"
+)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_policy_init(version: u32, ceiling: u64) -> i32 {
     if version != POLICY_VERSION || ceiling & !POLICY_ALL != 0 {

@@ -7,7 +7,8 @@ use std::process;
 
 #[expect(
     clippy::exit,
-    reason = "a runtime trap ends the program: the language's defined outcome of this failure"
+    clippy::print_stderr,
+    reason = "a runtime trap ends the program and prints failure message: the language's defined outcome of this failure"
 )]
 pub(crate) fn fail(code: &str, message: &str) -> ! {
     eprintln!("{}", format_failure(code, message));

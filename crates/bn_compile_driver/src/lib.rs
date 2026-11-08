@@ -3,6 +3,12 @@
 //! linking. Executables (`bn`, future `bnc`) call `build::build`.
 //! No interpreter crate is reachable from here.
 
+#![expect(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    reason = "compiler driver presents build progress and artifact output on stdout and stderr"
+)]
+
 pub mod artifact;
 pub mod build;
 pub mod cli;

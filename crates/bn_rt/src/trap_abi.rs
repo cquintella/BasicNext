@@ -161,7 +161,8 @@ pub fn report(text: *const c_char, [first, second]: [i128; 2]) {
 
 #[expect(
     clippy::exit,
-    reason = "a runtime trap ends the program: the language's defined outcome of this failure"
+    clippy::print_stderr,
+    reason = "a runtime trap ends the program and prints diagnostic to stderr: the language's defined outcome of this failure"
 )]
 pub fn fail(code: &str, message: &str) -> ! {
     eprintln!("error[{code}]: {message}");

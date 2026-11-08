@@ -3,6 +3,12 @@
 //! HOST capabilities and `BN*` libraries (behind `lib-*` features).
 //! Executables (`bn`, future `bni`) and DAP compose from here.
 
+#![expect(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    reason = "interpreter driver runs interactive CLI execution and session responses"
+)]
+
 pub mod cli;
 pub mod environment;
 pub(crate) mod eval;
