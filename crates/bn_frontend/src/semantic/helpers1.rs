@@ -91,12 +91,34 @@ pub(crate) fn integer_range(target: IntegerType) -> (i128, i128) {
 }
 
 pub(crate) fn parse_integer(value: &str) -> Option<i128> {
-    if let Some(value) = value.strip_prefix("0b") {
+    let (negative, value) = if let Some(rest) = value.strip_prefix('-') {
+        (true, rest)
+    } else {
+        (false, value)
+    };
+    let parsed = if let Some(value) = value.strip_prefix("0b") {
         i128::from_str_radix(value, 2).ok()
     } else if let Some(value) = value.strip_prefix("0x") {
         i128::from_str_radix(value, 16).ok()
     } else {
         value.parse().ok()
+    }?;
+    Some(if negative { -parsed } else { parsed })
+}
+
+pub(crate) fn integer_literal_type_name(value: &str) -> &'static str {
+    if let Some(parsed) = parse_integer(value) {
+        if i128::from(i32::MIN) <= parsed && parsed <= i128::from(i32::MAX) {
+            crate::types::integer_type_name(crate::types::IntegerType::Int32)
+        } else if i128::from(i64::MIN) <= parsed && parsed <= i128::from(i64::MAX) {
+            crate::types::integer_type_name(crate::types::IntegerType::Int64)
+        } else if parsed <= i128::from(u64::MAX) {
+            crate::types::integer_type_name(crate::types::IntegerType::UInt64)
+        } else {
+            crate::types::integer_type_name(crate::types::IntegerType::Int64)
+        }
+    } else {
+        crate::types::integer_type_name(crate::types::IntegerType::Int32)
     }
 }
 
@@ -501,7 +523,7 @@ pub fn display(ty: &Type) -> String {
         }
         Type::Boolean => "BOOLEAN".into(),
         Type::Integer(kind) => crate::types::integer_type_name(*kind).into(),
-        Type::IntegerLiteral(_) => "INT32".into(),
+        Type::IntegerLiteral(value) => integer_literal_type_name(value).into(),
         Type::Float(FloatType::Float32) => "FLOAT32".into(),
         Type::Float(FloatType::Float64) | Type::FloatLiteral => "FLOAT64".into(),
         Type::String => "STRING".into(),

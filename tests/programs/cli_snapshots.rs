@@ -179,3 +179,24 @@ fn mixed_numeric_vector_literal_is_a_type_mismatch() {
         );
     }
 }
+
+/// An integer literal past `INT32` is named by its type (`INT64`), not as
+/// `INT32` in type-mismatch diagnostics.
+#[test]
+fn integer_literal_past_int32_is_named_by_its_type_in_diagnostics() {
+    let output = bni()
+        .args([
+            "check",
+            "tests/grammar/invalid/string-multiplication-large-integer.bn",
+        ])
+        .current_dir(workspace_root())
+        .output()
+        .expect("run bni");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(
+        stderr.contains("found STRING and INT64 in binary operator Star"),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("found STRING and INT32"), "{stderr}");
+}
