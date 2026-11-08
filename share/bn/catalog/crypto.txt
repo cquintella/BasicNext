@@ -155,3 +155,7 @@ op.mac = BNCrypto.Mac
 op.verify_mac = BNCrypto.VerifyMac
 op.mac_stream_new = BNCrypto.MacStream.New
 op.hkdf = BNCrypto.Hkdf
+hkdf.length.message = derived key length must be 16, 24, 32, or 64 bytes
+hkdf.length.cause = HKDF-SHA256 only produces keys of length 16, 24, 32, or 64 bytes
+hkdf.expand.message = HKDF key expansion failed
+hkdf.expand.cause = HKDF counter overflow or expansion error

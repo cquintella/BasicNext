@@ -1029,3 +1029,40 @@ END FUNCTION
         );
     }
 }
+
+/// HKDF with an unsupported output key length returns `INVALID_ARGUMENT`
+/// with the `BNCrypto.Hkdf` operation and specific catalog message.
+#[test]
+fn hkdf_invalid_length_reports_operation_and_message_on_both_backends() {
+    let directory = TestDir::new("hkdf-invalid-len").expect("create directory");
+    let source_path = directory.join("main.bn");
+    fs::write(
+        &source_path,
+        r#"IMPORT BNCrypto AS Crypto
+FUNCTION Start() AS INTEGER
+    LET key AS Crypto.SecretKey = Crypto.NewSecretKey()
+    LET salt AS Crypto.Bytes = Crypto.FromText("salt")
+    LET info AS Crypto.Bytes = Crypto.FromText("info")
+    LET res AS Crypto.SecretKey OR Error = Crypto.Hkdf(key, salt, info, 13)
+    IF res IS Error THEN
+        PRINT res.Code = Crypto.INVALID_ARGUMENT, res.Operation, res.Message
+    END IF
+    RETURN 0
+END FUNCTION
+"#,
+    )
+    .expect("write hkdf source");
+
+    let artifact = compile_native(&source_path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&source_path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "TRUE BNCrypto.Hkdf derived key length must be 16, 24, 32, or 64 bytes\n",
+            "{backend}"
+        );
+    }
+}

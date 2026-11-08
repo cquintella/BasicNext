@@ -101,6 +101,10 @@ pub enum CryptoFailure {
     SaltLength { operation: &'static str },
     /// A `DeriveSubkey` with an empty context (`INVALID_ARGUMENT`).
     EmptyContext { operation: &'static str },
+    /// An HKDF requested length outside {16, 24, 32, 64} (`INVALID_ARGUMENT`).
+    HkdfLength { operation: &'static str },
+    /// An HKDF extraction or expansion failure (`INVALID_ARGUMENT`).
+    HkdfExpand { operation: &'static str },
 }
 
 /// Catalog domain of every `BNCrypto` failure text.
@@ -149,7 +153,9 @@ impl CryptoFailure {
             | Self::Format { operation }
             | Self::PasswordCost { operation }
             | Self::SaltLength { operation }
-            | Self::EmptyContext { operation } => operation,
+            | Self::EmptyContext { operation }
+            | Self::HkdfLength { operation }
+            | Self::HkdfExpand { operation } => operation,
             Self::Hex(_) => text("op.from_hex"),
             Self::Seal(Aead::Aes256Gcm) => text("op.seal_aes_gcm"),
             Self::Seal(Aead::ChaCha20Poly1305) => text("op.seal_chacha20"),
@@ -255,6 +261,8 @@ impl CryptoFailure {
             Self::PasswordCost { .. } => owned("password.cost.message"),
             Self::SaltLength { .. } => owned("derive.salt.message"),
             Self::EmptyContext { .. } => owned("derive.context.message"),
+            Self::HkdfLength { .. } => owned("hkdf.length.message"),
+            Self::HkdfExpand { .. } => owned("hkdf.expand.message"),
         }
     }
 
@@ -323,6 +331,8 @@ impl CryptoFailure {
             Self::PasswordCost { .. } => owned("password.cost.cause"),
             Self::SaltLength { .. } => owned("derive.salt.cause"),
             Self::EmptyContext { .. } => owned("derive.context.cause"),
+            Self::HkdfLength { .. } => owned("hkdf.length.cause"),
+            Self::HkdfExpand { .. } => owned("hkdf.expand.cause"),
         }
     }
 }

@@ -64,8 +64,14 @@ fn test_hkdf_key_derivation() {
     let okm_repeat = bn_hkdf_sha256(&ikm, salt, info, 32).expect("hkdf repeat");
     assert_eq!(okm, okm_repeat);
 
-    // Invalid length rejected
-    assert!(bn_hkdf_sha256(&ikm, salt, info, 13).is_err());
+    // Invalid length rejected with catalog operation and message
+    let err = bn_hkdf_sha256(&ikm, salt, info, 13).unwrap_err();
+    assert_eq!(err.code(), bn_types::error_codes::crypto::INVALID_ARGUMENT);
+    assert_eq!(err.operation(), "BNCrypto.Hkdf");
+    assert_eq!(
+        err.message(),
+        "derived key length must be 16, 24, 32, or 64 bytes"
+    );
 }
 
 #[test]

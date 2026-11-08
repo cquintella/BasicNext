@@ -215,8 +215,9 @@ pub fn bn_hkdf_sha256(
     info: &[u8],
     len: usize,
 ) -> Result<Vec<u8>, CryptoFailure> {
+    let operation = bn_catalog::text(CATALOG, "op.hkdf");
     if len != 16 && len != 24 && len != 32 && len != 64 {
-        return Err(CryptoFailure::Key("invalid HKDF key length"));
+        return Err(CryptoFailure::HkdfLength { operation });
     }
 
     // 1. Extract: PRK = HMAC-Hash(salt, IKM)
@@ -227,7 +228,7 @@ pub fn bn_hkdf_sha256(
         salt
     };
     let mut extractor = SimpleHmac::<Sha256>::new_from_slice(actual_salt)
-        .map_err(|_| CryptoFailure::Key("extract failed"))?;
+        .map_err(|_| CryptoFailure::HkdfExpand { operation })?;
     extractor.update(ikm);
     let prk = extractor.finalize().into_bytes();
 
@@ -238,7 +239,7 @@ pub fn bn_hkdf_sha256(
 
     while okm.len() < len {
         let mut expander = SimpleHmac::<Sha256>::new_from_slice(&prk)
-            .map_err(|_| CryptoFailure::Key("expand failed"))?;
+            .map_err(|_| CryptoFailure::HkdfExpand { operation })?;
         if !previous_t.is_empty() {
             expander.update(&previous_t);
         }
@@ -251,7 +252,7 @@ pub fn bn_hkdf_sha256(
         previous_t = t;
         counter = counter
             .checked_add(1)
-            .ok_or(CryptoFailure::Key("counter overflow"))?;
+            .ok_or(CryptoFailure::HkdfExpand { operation })?;
     }
 
     Ok(okm)
@@ -335,7 +336,9 @@ pub extern "C" fn bn_rt_crypto_hkdf(
             .unwrap_or_default()
     };
     let Ok(key_len) = usize::try_from(len) else {
-        return BN_CRYPTO_INVALID_ARGUMENT;
+        return failed(&CryptoFailure::HkdfLength {
+            operation: bn_catalog::text(CATALOG, "op.hkdf"),
+        });
     };
 
     match bn_hkdf_sha256(&ikm_bytes, &salt_bytes, &info_bytes, key_len) {

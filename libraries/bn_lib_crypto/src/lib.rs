@@ -1798,7 +1798,9 @@ impl CryptoProvider {
                     return Err(type_mismatch("INTEGER", "non-INTEGER value", member, span));
                 };
                 let Ok(len) = usize::try_from(*len_val) else {
-                    return failure(&CryptoFailure::Key("invalid HKDF length"));
+                    return failure(&CryptoFailure::HkdfLength {
+                        operation: bn_catalog::text("crypto", "op.hkdf"),
+                    });
                 };
                 match bn_stdlib::crypto::bn_hkdf_sha256(&ikm, &salt, &info, len) {
                     Ok(derived) => Ok(self.insert_secret_key(SecretKeyEntry {
