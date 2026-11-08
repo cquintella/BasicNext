@@ -10,6 +10,7 @@ use std::{
     io::{self, BufRead, IsTerminal},
     path::PathBuf,
     process::ExitCode,
+    sync::{Arc, Mutex},
 };
 
 use bn_cli::{
@@ -39,6 +40,8 @@ pub const PROMPT_COLLECTING: &str = "...> ";
 struct ReplHelper {
     commands: Vec<String>,
     keywords: Vec<String>,
+    context: Arc<Mutex<String>>,
+    workspace_root: Option<PathBuf>,
 }
 
 impl Completer for ReplHelper {
@@ -76,7 +79,31 @@ impl Completer for ReplHelper {
                     });
                 }
             }
-        } else if !word.is_empty() {
+            return Ok((word_start, matches));
+        }
+
+        let ctx = self
+            .context
+            .lock()
+            .map_or_else(|e| e.into_inner().clone(), |g| g.clone());
+        let (repl_start, items) = bn_lsp::completion::complete_interactive(
+            line,
+            safe_pos,
+            Some(&ctx),
+            self.workspace_root.as_deref(),
+        );
+
+        if !items.is_empty() {
+            for item in items {
+                matches.push(Pair {
+                    display: item.clone(),
+                    replacement: item,
+                });
+            }
+            return Ok((repl_start, matches));
+        }
+
+        if !word.is_empty() {
             for kw in &self.keywords {
                 if kw.starts_with(word) {
                     matches.push(Pair {
@@ -182,6 +209,8 @@ pub fn run_repl(options: &Options, interpreter: &InterpreterOptions, version: &s
         helper_keywords.push(m.to_string());
     }
 
+    let repl_context = Arc::new(Mutex::new(session.export_program()));
+    let workspace_root = options.module_paths.first().map(|m| m.path.clone());
     let helper = ReplHelper {
         commands: vec![
             ":help".to_string(),
@@ -202,8 +231,16 @@ pub fn run_repl(options: &Options, interpreter: &InterpreterOptions, version: &s
             ":export".to_string(),
         ],
         keywords: helper_keywords,
+        context: Arc::clone(&repl_context),
+        workspace_root,
     };
     rl.set_helper(Some(helper));
+
+    let update_context = |ctx: &Arc<Mutex<String>>, s: &ReplSession| {
+        if let Ok(mut lock) = ctx.lock() {
+            *lock = s.export_program();
+        }
+    };
 
     let history_file = resolve_history_path();
     if let Some(ref path) = history_file {
@@ -228,6 +265,7 @@ pub fn run_repl(options: &Options, interpreter: &InterpreterOptions, version: &s
                         }
                         CommandAction::Continue => {
                             let _ = rl.add_history_entry(&line);
+                            update_context(&repl_context, &session);
                             continue;
                         }
                         CommandAction::Failure => {
@@ -264,6 +302,7 @@ pub fn run_repl(options: &Options, interpreter: &InterpreterOptions, version: &s
                                 structured_preview,
                             } => {
                                 let _ = rl.add_history_entry(&submission);
+                                update_context(&repl_context, &session);
                                 if let Some(preview) = structured_preview {
                                     if let Some(ty) = result_type {
                                         println!("{preview} : {ty}");
@@ -391,5 +430,41 @@ fn run_non_interactive(session: &mut ReplSession, options: &Options) -> ExitCode
         tool_error()
     } else {
         ExitCode::SUCCESS
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_repl_helper_completion() {
+        let context = Arc::new(Mutex::new(
+            "CLASS Person\n    PUBLIC name AS STRING\n    PUBLIC FUNCTION Greet() AS VOID\n    END FUNCTION\n    PUBLIC FUNCTION CONSTRUCTOR()\n    END FUNCTION\nEND CLASS\nFUNCTION Start() AS VOID\n    LET p AS Person = NEW Person()\nEND FUNCTION\n".to_string(),
+        ));
+        let helper = ReplHelper {
+            commands: vec![":quit".to_string(), ":reset".to_string()],
+            keywords: vec!["PRINT".to_string()],
+            context,
+            workspace_root: None,
+        };
+        let history = rustyline::history::DefaultHistory::new();
+        let rl_ctx = rustyline::Context::new(&history);
+
+        let (pos, candidates) = helper.complete(":q", 2, &rl_ctx).expect("completion");
+        assert_eq!(pos, 0);
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].display, ":quit");
+
+        let (pos, candidates) = helper.complete("p.", 2, &rl_ctx).expect("completion");
+        assert_eq!(pos, 2);
+        let displays: Vec<_> = candidates.iter().map(|c| c.display.as_str()).collect();
+        assert!(displays.contains(&"Greet"), "{displays:?}");
+        assert!(displays.contains(&"name"), "{displays:?}");
+
+        let (pos, candidates) = helper.complete("PRI", 3, &rl_ctx).expect("completion");
+        assert_eq!(pos, 0);
+        let displays: Vec<_> = candidates.iter().map(|c| c.display.as_str()).collect();
+        assert!(displays.contains(&"PRINT"), "{displays:?}");
     }
 }

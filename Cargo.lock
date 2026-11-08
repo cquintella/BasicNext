@@ -764,6 +764,7 @@ dependencies = [
  "bn_interp",
  "bn_interpret_driver",
  "bn_ir",
+ "bn_lsp",
  "bn_source",
  "bn_value",
  "rustyline",

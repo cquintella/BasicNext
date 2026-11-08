@@ -715,3 +715,18 @@ fn diagnostics_and_spans_with_emojis_use_utf16_offsets() {
     assert_eq!(range.start.character, 4);
     assert_eq!(range.end.character, 6);
 }
+
+#[test]
+fn completion_lists_class_and_variable_members_after_a_dot() {
+    let source = "CLASS Person\n    PUBLIC name AS STRING\n    PUBLIC FUNCTION Greet() AS VOID\n    END FUNCTION\n    PUBLIC FUNCTION CONSTRUCTOR()\n    END FUNCTION\nEND CLASS\nFUNCTION Start() AS INTEGER\n    LET p AS Person = NEW Person()\n    RETURN 0\nEND FUNCTION\n";
+    let (start1, items1) = super::completion::complete_interactive("p.", 2, Some(source), None);
+    assert_eq!(start1, 2);
+    assert!(items1.contains(&"name".to_string()), "{items1:?}");
+    assert!(items1.contains(&"Greet".to_string()), "{items1:?}");
+
+    let (start2, items2) =
+        super::completion::complete_interactive("Person.", 7, Some(source), None);
+    assert_eq!(start2, 7);
+    assert!(items2.contains(&"name".to_string()), "{items2:?}");
+    assert!(items2.contains(&"Greet".to_string()), "{items2:?}");
+}
