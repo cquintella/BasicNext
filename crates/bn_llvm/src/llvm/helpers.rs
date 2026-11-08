@@ -90,6 +90,8 @@ pub(crate) fn region_element_label(element: &Type) -> String {
     }
 }
 
+const HOST_PREFIX: &str = "HOST.";
+
 fn is_provider_handle(module: &Module, id: bn_ir::ModuleId, name: &str) -> bool {
     if module.bncrypto_providers.contains(&id) {
         matches!(
@@ -145,45 +147,20 @@ pub(crate) fn is_integer_handle_type(module: &Module, ty: &Type) -> bool {
                     return is_provider_handle(module, bn_ir::ModuleId(id), base);
                 }
             }
-            matches!(
-                name.as_str(),
-                "FS.File"
-                    | "HOST.Net.TCPStream"
-                    | "HOST.Net.TCPListener"
-                    | "HOST.Net.UDPSocket"
-                    | "HOST.Net.UDPPacket"
-                    | "HOST.Exec.Result"
-                    | "BNCrypto.Bytes"
-                    | "BNCrypto.Key"
-                    | "BNCrypto.SecretKey"
-                    | "BNCrypto.PublicKey"
-                    | "BNCrypto.PrivateKey"
-                    | "BNCrypto.Secret"
-                    | "BNCrypto.Hasher"
-                    | "BNCrypto.MacStream"
-                    | "BNSqlite.Connection"
-                    | "BNData.DataFrame"
-                    | "BNCompress.Bytes"
-                    | "BNCompress.ZipArchive"
-                    | "BNJson.Json"
-                    | "BNLog.Logger"
-                    | "BNDispatch.Queue"
-                    | "BNDispatch.Ticket"
-                    | "BNDispatch.Group"
-                    | "BNDispatch.Barrier"
-                    | "BNDispatch.Semaphore"
-                    | "BNDispatch.Mutex"
-                    | "BNWeb.SessionStore"
-                    | "BNWeb.CookieJar"
-                    | "BNWeb.Scraper"
-                    | "BNWeb.ACL"
-                    | "BNWeb.Client"
-                    | "BNWeb.Server"
-                    | "BNWeb.EgressPolicy"
-                    | "BNWeb.TLSConfig"
-                    | "BNWeb.Response"
-                    | "BNWeb.Request"
-            )
+            if name == "FS.File" {
+                return true;
+            }
+            if let Some(rest) = name.strip_prefix(HOST_PREFIX) {
+                return matches!(
+                    rest,
+                    "Net.TCPStream"
+                        | "Net.TCPListener"
+                        | "Net.UDPSocket"
+                        | "Net.UDPPacket"
+                        | "Exec.Result"
+                );
+            }
+            false
         }
         Type::ImportedNamed {
             module: mod_id,
@@ -623,7 +600,7 @@ pub(crate) fn unsupported_call_detail(module: &Module, name: &str) -> String {
     if let Some(provider) = provider_name(module, name) {
         return format!("{provider} calls");
     }
-    if name.starts_with("HOST.") {
+    if name.starts_with(HOST_PREFIX) {
         return format!("unsupported HOST call {name}");
     }
     bn_catalog::fill("llvm", "call.user_function.unsupported", &[("name", &name)])

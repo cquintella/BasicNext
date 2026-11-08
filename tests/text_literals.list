@@ -2386,7 +2386,6 @@ libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.SecretKey is invalid
 libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.SecretKey is invalid
 libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.SecretKey was already released
 libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.SecretKey was already released
-libraries/bn_lib_crypto/src/lib.rs	prose	invalid HKDF length
 libraries/bn_lib_crypto/src/lib.rs	prose	Key was already released
 libraries/bn_lib_crypto/src/lib.rs	prose	Key was already released
 libraries/bn_lib_crypto/src/lib.rs	prose	Key was already released
@@ -2923,10 +2922,6 @@ libraries/bn_stdlib/src/crypto_mac.rs	prose	BLAKE3 keyed MAC requires a 32-byte 
 libraries/bn_stdlib/src/crypto_mac.rs	prose	invalid key for HMAC-SHA256
 libraries/bn_stdlib/src/crypto_mac.rs	prose	invalid key for HMAC-SHA384
 libraries/bn_stdlib/src/crypto_mac.rs	prose	invalid key for HMAC-SHA512
-libraries/bn_stdlib/src/crypto_password.rs	prose	counter overflow
-libraries/bn_stdlib/src/crypto_password.rs	prose	expand failed
-libraries/bn_stdlib/src/crypto_password.rs	prose	extract failed
-libraries/bn_stdlib/src/crypto_password.rs	prose	invalid HKDF key length
 libraries/bn_stdlib/src/crypto_policy.rs	identifier	BNCrypto.HashWith
 libraries/bn_stdlib/src/crypto_policy.rs	identifier	BNCrypto.MacWith
 libraries/bn_stdlib/src/crypto_policy.rs	identifier	BNCrypto.NewKeyPairWith
