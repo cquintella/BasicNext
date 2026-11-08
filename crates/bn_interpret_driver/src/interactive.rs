@@ -253,10 +253,7 @@ mod tests {
 
         let out = InteractiveCoordinator::execute_turn(&mut accumulator, &mut session, "10 DIV 0");
         match out {
-            TurnOutcome::RuntimeFailure {
-                stdout: _,
-                diagnostic,
-            } => {
+            TurnOutcome::RuntimeFailure { diagnostic, .. } => {
                 assert_eq!(diagnostic.code, "DIVISION_BY_ZERO");
             }
             other => panic!("expected runtime failure, got {other:?}"),

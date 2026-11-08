@@ -142,10 +142,10 @@ fn is_provider_handle(module: &Module, id: bn_ir::ModuleId, name: &str) -> bool 
 pub(crate) fn is_integer_handle_type(module: &Module, ty: &Type) -> bool {
     match ty {
         Type::Named(name) | Type::TypeName(name) => {
-            if let Some((id_str, base)) = name.strip_prefix('#').and_then(|r| r.split_once('.')) {
-                if let Ok(id) = id_str.parse::<u32>() {
-                    return is_provider_handle(module, bn_ir::ModuleId(id), base);
-                }
+            if let Some((id_str, base)) = name.strip_prefix('#').and_then(|r| r.split_once('.'))
+                && let Ok(id) = id_str.parse::<u32>()
+            {
+                return is_provider_handle(module, bn_ir::ModuleId(id), base);
             }
             if name == "FS.File" {
                 return true;

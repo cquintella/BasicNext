@@ -1078,7 +1078,7 @@ fn user_classes_and_imported_classes_in_alternatives_match_across_backends() {
     let lib_path = lib_dir.join("Things.bn");
     fs::write(
         &lib_path,
-        r#"EXPORT CLASS Thing
+        r"EXPORT CLASS Thing
     PUBLIC value AS INTEGER = 77
     PUBLIC FUNCTION CONSTRUCTOR()
     END FUNCTION
@@ -1095,14 +1095,14 @@ EXPORT CLASS Key
     PUBLIC FUNCTION CONSTRUCTOR()
     END FUNCTION
 END CLASS
-"#,
+",
     )
     .expect("write Lib/Things.bn");
 
     let main_path = directory.join("main.bn");
     fs::write(
         &main_path,
-        r#"IMPORT Lib.Things AS Lib
+        r"IMPORT Lib.Things AS Lib
 
 CLASS Result
     PUBLIC value AS INTEGER = 10
@@ -1166,7 +1166,7 @@ FUNCTION Start() AS INTEGER
 
     RETURN 0
 END FUNCTION
-"#,
+",
     )
     .expect("write main.bn");
 
