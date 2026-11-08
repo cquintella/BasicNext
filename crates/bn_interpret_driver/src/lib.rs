@@ -22,6 +22,7 @@ pub mod cli;
 pub mod environment;
 pub(crate) mod eval;
 pub(crate) mod hosts;
+pub mod interactive;
 pub mod libraries;
 pub mod options;
 pub mod run;

@@ -88,6 +88,16 @@ pub trait OptionExtension {
     ) -> Result<bool, String>;
 }
 
+/// Requirement for positional source path in CLI option parsing.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum PathRequirement {
+    /// Positional path is mandatory (default for file-oriented commands).
+    #[default]
+    Required,
+    /// Positional path is optional (used by interactive environments).
+    Optional,
+}
+
 /// No extension flags.
 impl OptionExtension for () {
     fn accept(&mut self, _: &str, _: &mut dyn Iterator<Item = String>) -> Result<bool, String> {
@@ -101,10 +111,23 @@ impl OptionExtension for () {
 /// # Errors
 ///
 /// Returns the usage message; `CONFIG_INVALID: ` prefixes configuration errors.
-#[allow(clippy::too_many_lines)] // CLI options remain auditable in one parser.
 pub fn parse_options(
     arguments: impl Iterator<Item = String>,
     extension: &mut dyn OptionExtension,
+) -> Result<Options, String> {
+    parse_options_with_mode(arguments, extension, PathRequirement::Required)
+}
+
+/// Parses the common options with a configurable path requirement.
+///
+/// # Errors
+///
+/// Returns the usage message; `CONFIG_INVALID: ` prefixes configuration errors.
+#[allow(clippy::too_many_lines)] // CLI options remain auditable in one parser.
+pub fn parse_options_with_mode(
+    arguments: impl Iterator<Item = String>,
+    extension: &mut dyn OptionExtension,
+    requirement: PathRequirement,
 ) -> Result<Options, String> {
     let arguments = arguments.collect::<Vec<_>>();
     let config_path = config_path_from_arguments(&arguments)?;
@@ -241,7 +264,13 @@ pub fn parse_options(
     if (!read_roots.is_empty() || !write_roots.is_empty()) && !sandbox {
         return Err("--read-root/--write-root require --sandbox".into());
     }
-    path.map(|path| Options {
+    let path = match (path, requirement) {
+        (Some(p), _) => p,
+        (None, PathRequirement::Optional) => String::new(),
+        (None, PathRequirement::Required) => return Err("missing source file".into()),
+    };
+
+    Ok(Options {
         path,
         verbosity,
         emit: None,
@@ -263,7 +292,6 @@ pub fn parse_options(
         log_file,
         no_log,
     })
-    .ok_or_else(|| "missing source file".into())
 }
 
 #[cfg(test)]
@@ -382,5 +410,23 @@ mod tests {
         assert!(disabled.no_log);
 
         std::fs::remove_file(path).expect("remove config fixture");
+    }
+
+    #[test]
+    fn parse_options_with_mode_supports_optional_path() {
+        let res = super::parse_options_with_mode(
+            std::iter::empty(),
+            &mut (),
+            super::PathRequirement::Optional,
+        )
+        .expect("optional path without args");
+        assert_eq!(res.path, "");
+
+        let err = super::parse_options_with_mode(
+            std::iter::empty(),
+            &mut (),
+            super::PathRequirement::Required,
+        );
+        assert!(err.is_err());
     }
 }

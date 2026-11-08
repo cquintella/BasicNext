@@ -2045,6 +2045,14 @@ END FUNCTION
 
 FUNCTION Start() AS INTEGER
     LET bookDir AS STRING = ArgumentOr(1, DEFAULT_BOOK_DIR)
+    LET hasDefaultToc AS BOOLEAN OR Error = FS.Exists(bookDir + "/toc.md")
+    IF bookDir = DEFAULT_BOOK_DIR AND NOT (hasDefaultToc IS BOOLEAN AND hasDefaultToc) THEN
+        LET siblingBookDir AS STRING = "../" + DEFAULT_BOOK_DIR
+        LET hasSiblingToc AS BOOLEAN OR Error = FS.Exists(siblingBookDir + "/toc.md")
+        IF hasSiblingToc IS BOOLEAN AND hasSiblingToc THEN
+            bookDir = siblingBookDir
+        END IF
+    END IF
     LET outputDir AS STRING = ArgumentOr(2, DEFAULT_OUTPUT_DIR)
     LET detected AS STRING OR Error = WorkspaceVersion(VERSION_FILE)
     LET version AS STRING = "unknown"

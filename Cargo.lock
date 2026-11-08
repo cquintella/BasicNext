@@ -157,7 +157,7 @@ dependencies = [
 
 [[package]]
 name = "bn"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "bn_diag",
@@ -184,11 +184,11 @@ dependencies = [
 
 [[package]]
 name = "bn_catalog"
-version = "0.6.12"
+version = "0.6.14"
 
 [[package]]
 name = "bn_cli"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "bn_diag",
@@ -200,7 +200,7 @@ dependencies = [
 
 [[package]]
 name = "bn_compile_driver"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "bn_cli",
@@ -211,7 +211,7 @@ dependencies = [
 
 [[package]]
 name = "bn_core_compress"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "flate2",
@@ -220,11 +220,11 @@ dependencies = [
 
 [[package]]
 name = "bn_core_copy"
-version = "0.6.12"
+version = "0.6.14"
 
 [[package]]
 name = "bn_core_dispatch"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_limits",
  "bn_types",
@@ -233,7 +233,7 @@ dependencies = [
 
 [[package]]
 name = "bn_core_fs"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "bn_types",
@@ -242,7 +242,7 @@ dependencies = [
 
 [[package]]
 name = "bn_core_json"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "bn_core_copy",
@@ -253,7 +253,7 @@ dependencies = [
 
 [[package]]
 name = "bn_core_log"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "bn_core_text",
@@ -263,11 +263,11 @@ dependencies = [
 
 [[package]]
 name = "bn_core_math"
-version = "0.6.12"
+version = "0.6.14"
 
 [[package]]
 name = "bn_core_net"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "bn_limits",
@@ -278,7 +278,7 @@ dependencies = [
 
 [[package]]
 name = "bn_core_sqlite"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "bn_core_copy",
@@ -288,7 +288,7 @@ dependencies = [
 
 [[package]]
 name = "bn_core_text"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "bn_types",
@@ -296,7 +296,7 @@ dependencies = [
 
 [[package]]
 name = "bn_dap"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_frontend",
  "bn_interp",
@@ -308,7 +308,7 @@ dependencies = [
 
 [[package]]
 name = "bn_diag"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "bn_source",
@@ -316,7 +316,7 @@ dependencies = [
 
 [[package]]
 name = "bn_frontend"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "bn_diag",
@@ -327,7 +327,7 @@ dependencies = [
 
 [[package]]
 name = "bn_host_env"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "bn_types",
@@ -336,7 +336,7 @@ dependencies = [
 
 [[package]]
 name = "bn_host_exec"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "bn_types",
@@ -344,7 +344,7 @@ dependencies = [
 
 [[package]]
 name = "bn_host_fs"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "bn_core_fs",
@@ -358,7 +358,7 @@ dependencies = [
 
 [[package]]
 name = "bn_host_net"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_diag",
  "bn_interp",
@@ -371,7 +371,7 @@ dependencies = [
 
 [[package]]
 name = "bn_interp"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "bn_core_copy",
@@ -388,7 +388,7 @@ dependencies = [
 
 [[package]]
 name = "bn_interpret_driver"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "bn_cli",
@@ -421,7 +421,7 @@ dependencies = [
 
 [[package]]
 name = "bn_ir"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "bn_diag",
@@ -431,7 +431,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_compress"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "bn_core_compress",
@@ -445,7 +445,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_crypto"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "bn_diag",
@@ -459,7 +459,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_data"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "bn_diag",
@@ -472,7 +472,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_dispatch"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_core_dispatch",
  "bn_diag",
@@ -487,7 +487,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_ffi"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_diag",
  "bn_interp",
@@ -500,7 +500,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_json"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "bn_core_json",
@@ -514,7 +514,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_log"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "bn_core_log",
@@ -528,7 +528,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_math"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_core_math",
  "bn_core_text",
@@ -542,7 +542,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_sqlite"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_core_sqlite",
  "bn_diag",
@@ -557,7 +557,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_web"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "bn_core_dispatch",
@@ -580,11 +580,11 @@ dependencies = [
 
 [[package]]
 name = "bn_limits"
-version = "0.6.12"
+version = "0.6.14"
 
 [[package]]
 name = "bn_llvm"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "bn_core_text",
@@ -596,7 +596,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lsp"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_diag",
  "bn_frontend",
@@ -610,7 +610,7 @@ dependencies = [
 
 [[package]]
 name = "bn_os_process"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_host_exec",
  "libc",
@@ -619,7 +619,7 @@ dependencies = [
 
 [[package]]
 name = "bn_rt"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "bn_core_copy",
@@ -636,7 +636,7 @@ dependencies = [
 
 [[package]]
 name = "bn_runtime"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_diag",
  "bn_source",
@@ -645,7 +645,7 @@ dependencies = [
 
 [[package]]
 name = "bn_runtime_instrumentation"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_source",
  "serde_json",
@@ -653,11 +653,11 @@ dependencies = [
 
 [[package]]
 name = "bn_source"
-version = "0.6.12"
+version = "0.6.14"
 
 [[package]]
 name = "bn_stdlib"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -696,11 +696,11 @@ dependencies = [
 
 [[package]]
 name = "bn_types"
-version = "0.6.12"
+version = "0.6.14"
 
 [[package]]
 name = "bn_value"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_source",
  "bn_types",
@@ -708,7 +708,7 @@ dependencies = [
 
 [[package]]
 name = "bn_web"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "bn_core_copy",
@@ -735,14 +735,14 @@ dependencies = [
 
 [[package]]
 name = "bnc"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_compile_driver",
 ]
 
 [[package]]
 name = "bni"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_dap",
  "bn_frontend",
@@ -755,7 +755,7 @@ dependencies = [
 
 [[package]]
 name = "bnr"
-version = "0.6.12"
+version = "0.6.14"
 dependencies = [
  "bn_catalog",
  "bn_cli",
@@ -764,6 +764,7 @@ dependencies = [
  "bn_interp",
  "bn_interpret_driver",
  "bn_ir",
+ "bn_lsp",
  "bn_source",
  "bn_value",
  "rustyline",

@@ -17,7 +17,11 @@ const STANDARD_MODULES: &[&str] = &[
     "BNWeb",
 ];
 
-pub(super) fn completion_items(
+#[allow(
+    clippy::implicit_hasher,
+    reason = "Standard hasher used across LSP documents map"
+)]
+pub fn completion_items(
     source: &SourceFile,
     position: Position,
     documents: &HashMap<String, SourceFile>,
@@ -92,6 +96,9 @@ pub(super) fn completion_items(
                 &path,
                 &prefix,
             );
+            if items.is_empty() {
+                add_semantic_members(source, &path, &mut items, &prefix);
+            }
         } else {
             add_filtered(
                 &mut items,
@@ -361,6 +368,7 @@ fn find_standard_module(
     let mut candidates = Vec::new();
     if let Some(root) = workspace_root {
         candidates.push(root.join("modules/bn").join(&file));
+        candidates.push(root.join(&file));
     }
     if let Some(path) = file_path(document_uri) {
         let mut dir = path.parent();
@@ -371,6 +379,7 @@ fn find_standard_module(
     }
     if let Ok(cwd) = std::env::current_dir() {
         candidates.push(cwd.join("modules/bn").join(&file));
+        candidates.push(cwd.join("basicnext/modules/bn").join(&file));
     }
     candidates.into_iter().find(|path| path.is_file())
 }
@@ -389,7 +398,13 @@ fn export_names(source: &SourceFile) -> Vec<String> {
             i += 1;
         }
         match kinds.get(i) {
-            Some(TokenKind::Keyword(word)) if *word == "FUNCTION" || *word == "STATIC" => {
+            Some(TokenKind::Keyword(word))
+                if *word == "FUNCTION"
+                    || *word == "STATIC"
+                    || *word == "CLASS"
+                    || *word == "STRUCT"
+                    || *word == "CONST" =>
+            {
                 i += 1;
                 if let Some(name) = ident_or_host(kinds.get(i)) {
                     names.push(name);
@@ -472,6 +487,136 @@ fn trailing_ident(text: &str) -> &str {
     } else {
         &text[start..]
     }
+}
+
+fn add_semantic_members(
+    source: &SourceFile,
+    path: &str,
+    items: &mut BTreeMap<String, CompletionItem>,
+    prefix: &str,
+) {
+    let parsed = if let Ok(tokens) = lex(source)
+        && let Ok(prog) = parse_named(&tokens, source.name.clone())
+    {
+        Some(prog)
+    } else {
+        let lines: Vec<&str> = source.text.lines().collect();
+        if lines.len() > 1 {
+            let prior = lines[..lines.len() - 1].join("\n");
+            let prior_source = SourceFile::new(source.name.clone(), prior);
+            lex(&prior_source)
+                .ok()
+                .and_then(|tokens| parse_named(&tokens, prior_source.name.clone()).ok())
+        } else {
+            None
+        }
+    };
+
+    let Some(program) = parsed else {
+        return;
+    };
+
+    let mut target_type = path.to_string();
+    if let Ok(model) = analyze(&program)
+        && let Some(sym) = model.symbols.iter().find(|s| s.name == path)
+    {
+        target_type.clone_from(&sym.type_name);
+    }
+    if target_type == path {
+        // Fallback: search AST for a binding named `path` to get its type name
+        for item in &program.items {
+            if let bn_frontend::ast::Item::Declaration { statements, .. } = item {
+                for stmt in statements {
+                    if let bn_frontend::ast::Statement::Binding { name, type_ref, .. } = stmt
+                        && name == path
+                        && let Some(atom) = type_ref.alternatives.first()
+                    {
+                        target_type.clone_from(&atom.name);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    for item in &program.items {
+        if let bn_frontend::ast::Item::Declaration {
+            kind,
+            name,
+            statements,
+            ..
+        } = item
+        {
+            let is_target = name == &target_type;
+            let is_struct = matches!(kind, bn_frontend::ast::DeclarationKind::Struct);
+            if is_target {
+                for stmt in statements {
+                    match stmt {
+                        bn_frontend::ast::Statement::MemberFunction {
+                            name: member_name,
+                            visibility: Some(bn_frontend::ast::Visibility::Public),
+                            ..
+                        } => {
+                            add(
+                                items,
+                                member_name,
+                                CompletionItemKind::METHOD,
+                                &target_type,
+                                prefix,
+                            );
+                        }
+                        bn_frontend::ast::Statement::Binding {
+                            name: member_name,
+                            visibility,
+                            ..
+                        } if matches!(visibility, Some(bn_frontend::ast::Visibility::Public))
+                            || (is_struct && visibility.is_none()) =>
+                        {
+                            add(
+                                items,
+                                member_name,
+                                CompletionItemKind::FIELD,
+                                &target_type,
+                                prefix,
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Autocomplete helper for interactive line editors (such as `bnr`).
+///
+/// Returns `(replacement_start_byte_offset, candidate_labels)`.
+#[must_use]
+pub fn complete_interactive(
+    line: &str,
+    char_pos: usize,
+    context: Option<&str>,
+    workspace_root: Option<&Path>,
+) -> (usize, Vec<String>) {
+    let (full_source, line_offset) = match context {
+        Some(ctx) if !ctx.trim().is_empty() => {
+            let trimmed = ctx.trim_end_matches(['\r', '\n']);
+            let count = u32::try_from(trimmed.lines().count()).unwrap_or(0);
+            (format!("{trimmed}\n{line}"), count)
+        }
+        _ => (line.to_string(), 0),
+    };
+    let source_file = SourceFile::new("<interactive>", full_source);
+    let position = Position::new(line_offset, u32::try_from(char_pos).unwrap_or(0));
+    let documents = HashMap::new();
+    let items = completion_items(&source_file, position, &documents, workspace_root);
+
+    let before = text_before(&source_file, position);
+    let (_, prefix) = dotted_query(&before);
+    let word_start = char_pos.saturating_sub(prefix.len());
+
+    let candidates = items.into_iter().map(|item| item.label).collect();
+    (word_start, candidates)
 }
 
 fn file_path(uri: &str) -> Option<PathBuf> {

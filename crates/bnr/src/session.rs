@@ -6,7 +6,7 @@
 //! Interactive session engine adapter for `bnr`.
 
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     fmt::Write as _,
     io,
     sync::{Arc, atomic::AtomicBool},
@@ -18,7 +18,11 @@ use bn_frontend::{
     token::reserved_words,
 };
 use bn_interp::{ArcInspection, InteractiveSession};
-use bn_interpret_driver::{environment::host_env, options::InterpreterOptions};
+use bn_interpret_driver::{
+    environment::host_env,
+    interactive::{InteractiveCoordinator, TurnOutcome},
+    options::InterpreterOptions,
+};
 use bn_ir::SymbolId;
 use bn_source::SourceFile;
 
@@ -98,104 +102,31 @@ impl ReplSession {
         self.accumulator.export_program()
     }
 
-    #[allow(clippy::too_many_lines)]
     pub fn execute(&mut self, source: &str, options: &Options) -> ExecutionOutcome {
-        let prepared_sub = match self.accumulator.compile_submission(source) {
-            Ok(sub) => sub,
-            Err(diag) => {
+        let outcome =
+            InteractiveCoordinator::execute_turn(&mut self.accumulator, &mut self.session, source);
+
+        match outcome {
+            TurnOutcome::CompilationFailure(diag) => {
                 let source_file = SourceFile::new("<session>", source);
                 let formatted = present_diagnostic(&diag, &source_file, None, options);
-                return ExecutionOutcome::Failure {
+                ExecutionOutcome::Failure {
                     stdout: String::new(),
                     diagnostic: Some(formatted),
-                };
+                }
             }
-        };
-
-        if prepared_sub.kind == SubmissionKind::Expression {
-            let uses_underscore = source.contains('_')
-                && {
-                    let sf = SourceFile::new("check_underscore.bn", source);
-                    bn_frontend::lexer::lex(&sf).is_ok_and(|toks| {
-                        toks.iter().any(|t| {
-                            matches!(&t.kind, bn_frontend::token::TokenKind::Identifier(name) if name == "_")
-                        })
-                    })
-                };
-            if !uses_underscore {
-                self.session.remove_variable("_");
-            }
-        }
-
-        let mut var_symbol_map = HashMap::new();
-        if let Some(model) = prepared_sub.prepared.root_model() {
-            for sym in &model.symbols {
-                var_symbol_map.insert(sym.name.clone(), SymbolId::from_raw(sym.id.value()));
-            }
-        }
-
-        let input = io::empty();
-        let mut stdout_buf = Vec::new();
-        let exec_res = self.session.execute_submission(
-            &prepared_sub.prepared.validated,
-            &var_symbol_map,
-            &mut io::BufReader::new(input),
-            &mut stdout_buf,
-        );
-
-        let stdout = String::from_utf8_lossy(&stdout_buf).to_string();
-        match exec_res {
-            Err(diag) => {
+            TurnOutcome::RuntimeFailure { stdout, diagnostic } => {
                 let source_file = SourceFile::new("<session>", source);
-                let formatted = present_diagnostic(&diag, &source_file, None, options);
+                let formatted = present_diagnostic(&diagnostic, &source_file, None, options);
                 ExecutionOutcome::Failure {
                     stdout,
                     diagnostic: Some(formatted),
                 }
             }
-            Ok(res) => {
-                let mut new_var_types = BTreeMap::new();
-                if let Some(model) = prepared_sub.prepared.root_model() {
-                    for name in res.updated_variables.keys() {
-                        if let Some(sym) = model.symbols.iter().rev().find(|s| &s.name == name) {
-                            new_var_types.insert(name.clone(), sym.type_name.clone());
-                        }
-                    }
-                    for sym in &model.symbols {
-                        if !res.updated_variables.contains_key(&sym.name) {
-                            self.accumulator.remove_variable(&sym.name);
-                        }
-                    }
-                }
-                self.accumulator.commit_turn(source, new_var_types);
-
-                let result_type = if prepared_sub.kind == SubmissionKind::Expression {
-                    prepared_sub.prepared.root_model().and_then(|m| {
-                        m.expressions
-                            .last()
-                            .map(|e| bn_frontend::semantic::display(&e.ty))
-                    })
-                } else {
-                    None
-                };
-                let result_value = if prepared_sub.kind == SubmissionKind::Expression {
-                    res.updated_variables
-                        .get("_")
-                        .map(bn_interp::render_pub)
-                        .or_else(|| {
-                            if stdout.is_empty() {
-                                None
-                            } else {
-                                Some(stdout.trim_end_matches(['\r', '\n']).to_string())
-                            }
-                        })
-                } else {
-                    None
-                };
-
+            TurnOutcome::Success(res) => {
                 let mut structured_preview = None;
-                if prepared_sub.kind == SubmissionKind::Expression
-                    && let Some(ty) = result_type.as_deref()
+                if res.submission_kind == SubmissionKind::Expression
+                    && let Some(ty) = res.result_type.as_deref()
                 {
                     if let Some(val) = res.updated_variables.get("_") {
                         structured_preview = crate::format::format_structured_value(val, ty);
@@ -209,9 +140,9 @@ impl ReplSession {
                 }
 
                 ExecutionOutcome::Success {
-                    stdout,
-                    result_value,
-                    result_type,
+                    stdout: res.stdout,
+                    result_value: res.result_value,
+                    result_type: res.result_type,
                     structured_preview,
                 }
             }

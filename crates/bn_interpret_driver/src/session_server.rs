@@ -8,7 +8,7 @@
 //! and compiler/ARC introspection queries over stdio.
 
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     io::{self, BufRead, Write},
     process::ExitCode,
 };
@@ -24,6 +24,8 @@ use bn_ir::SymbolId;
 use bn_source::SourceFile;
 use bn_value::Value;
 use serde_json::{Value as JsonValue, json};
+
+use crate::interactive::{InteractiveCoordinator, TurnOutcome};
 
 fn classified_kind_str(kind: ClassifiedTokenKind) -> &'static str {
     match kind {
@@ -154,7 +156,6 @@ fn handle_classify(req: &JsonValue, options: &Options) -> JsonValue {
     }
 }
 
-#[allow(clippy::too_many_lines)]
 fn handle_submit(
     req: &JsonValue,
     options: &Options,
@@ -162,11 +163,12 @@ fn handle_submit(
     session: &mut InteractiveSession,
 ) -> JsonValue {
     let source = req["source"].as_str().unwrap_or("");
-    let prepared_sub = match accumulator.compile_submission(source) {
-        Ok(sub) => sub,
-        Err(diag) => {
-            let source_file = SourceFile::new("<session>", source);
-            return json!({
+    let outcome = InteractiveCoordinator::execute_turn(accumulator, session, source);
+    let source_file = SourceFile::new("<session>", source);
+
+    match outcome {
+        TurnOutcome::CompilationFailure(diag) => {
+            json!({
                 "ok": false,
                 "exit_code": 1,
                 "stdout": "",
@@ -175,80 +177,21 @@ fn handle_submit(
                 "result_type": null,
                 "structured_data": null,
                 "diagnostics": [diagnostic_json(&diag, &source_file, options, "semantic", None)],
-            });
+            })
         }
-    };
-
-    let mut var_symbol_map = HashMap::new();
-    if let Some(model) = prepared_sub.prepared.root_model() {
-        for sym in &model.symbols {
-            var_symbol_map.insert(sym.name.clone(), SymbolId::from_raw(sym.id.value()));
-        }
-    }
-
-    let input = io::empty();
-    let mut stdout_buf = Vec::new();
-    let exec_res = session.execute_submission(
-        &prepared_sub.prepared.validated,
-        &var_symbol_map,
-        &mut io::BufReader::new(input),
-        &mut stdout_buf,
-    );
-
-    match exec_res {
-        Err(diag) => {
-            let source_file = SourceFile::new("<session>", source);
+        TurnOutcome::RuntimeFailure { stdout, diagnostic } => {
             json!({
                 "ok": false,
                 "exit_code": 1,
-                "stdout": String::from_utf8_lossy(&stdout_buf).to_string(),
+                "stdout": stdout,
                 "stderr": "",
                 "result_value": null,
                 "result_type": null,
                 "structured_data": null,
-                "diagnostics": [diagnostic_json(&diag, &source_file, options, "runtime", None)],
+                "diagnostics": [diagnostic_json(&diagnostic, &source_file, options, "runtime", None)],
             })
         }
-        Ok(res) => {
-            let mut new_var_types = BTreeMap::new();
-            if let Some(model) = prepared_sub.prepared.root_model() {
-                for name in res.updated_variables.keys() {
-                    if let Some(sym) = model.symbols.iter().rev().find(|s| &s.name == name) {
-                        new_var_types.insert(name.clone(), sym.type_name.clone());
-                    }
-                }
-                for sym in &model.symbols {
-                    if !res.updated_variables.contains_key(&sym.name) {
-                        accumulator.remove_variable(&sym.name);
-                    }
-                }
-            }
-            accumulator.commit_turn(source, new_var_types);
-
-            let stdout = String::from_utf8_lossy(&stdout_buf).to_string();
-            let result_type = if prepared_sub.kind == SubmissionKind::Expression {
-                prepared_sub.prepared.root_model().and_then(|m| {
-                    m.expressions
-                        .last()
-                        .map(|e| bn_frontend::semantic::display(&e.ty))
-                })
-            } else {
-                None
-            };
-            let result_value = if prepared_sub.kind == SubmissionKind::Expression {
-                res.updated_variables
-                    .get("_")
-                    .map(bn_interp::render_pub)
-                    .or_else(|| {
-                        if stdout.is_empty() {
-                            None
-                        } else {
-                            Some(stdout.trim_end_matches(['\r', '\n']).to_string())
-                        }
-                    })
-            } else {
-                None
-            };
+        TurnOutcome::Success(res) => {
             let structured_data = res
                 .returned_value
                 .as_ref()
@@ -267,10 +210,10 @@ fn handle_submit(
             json!({
                 "ok": true,
                 "exit_code": res.exit_code,
-                "stdout": stdout,
+                "stdout": res.stdout,
                 "stderr": "",
-                "result_value": result_value,
-                "result_type": result_type,
+                "result_value": res.result_value,
+                "result_type": res.result_type,
                 "structured_data": structured_data,
                 "diagnostics": [],
             })

@@ -9,7 +9,7 @@ use std::process::ExitCode;
 
 use bn_cli::{
     help::{BOOK_URL, COMMON_OPTIONS, option_error},
-    options::parse_options,
+    options::{PathRequirement, parse_options_with_mode},
 };
 use bn_interpret_driver::options::InterpreterOptions;
 
@@ -49,26 +49,12 @@ pub fn main(version: &str, arguments: Vec<String>) -> ExitCode {
         _ => {}
     }
     let mut interpreter_options = InterpreterOptions::default();
-    let options = match parse_options(arguments.clone().into_iter(), &mut interpreter_options) {
+    let options = match parse_options_with_mode(
+        arguments.into_iter(),
+        &mut interpreter_options,
+        PathRequirement::Optional,
+    ) {
         Ok(options) => options,
-        Err(message) if message.starts_with("missing") => {
-            let mut fallback_args = arguments;
-            let separator = fallback_args.iter().position(|a| a == "--");
-            if let Some(idx) = separator {
-                fallback_args.insert(idx, "<repl>".to_string());
-            } else {
-                fallback_args.push("<repl>".to_string());
-            }
-            let mut fallback_interp = InterpreterOptions::default();
-            match parse_options(fallback_args.into_iter(), &mut fallback_interp) {
-                Ok(mut opts) => {
-                    interpreter_options = fallback_interp;
-                    opts.path.clear();
-                    opts
-                }
-                Err(msg) => return option_error(&msg, &help_text(version)),
-            }
-        }
         Err(message) => return option_error(&message, &help_text(version)),
     };
     let version_string = version.to_string();

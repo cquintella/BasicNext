@@ -28,8 +28,8 @@ use bn_frontend::{
 use bn_source::{SourceFile, SourceId};
 
 #[path = "lsp/completion.rs"]
-mod completion;
-use completion::completion_items;
+pub mod completion;
+pub use completion::completion_items;
 
 #[path = "lsp/file_uri.rs"]
 mod file_uri;
