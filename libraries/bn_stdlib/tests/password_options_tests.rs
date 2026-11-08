@@ -6,6 +6,16 @@
 // `HashPasswordWith`, `NeedsRehash`, `DeriveKey` and `DeriveSubkey`
 // (bncrypto.md, "Passwords and Key Derivation").
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 use bn_stdlib::crypto_error::CryptoFailure;
 use bn_stdlib::crypto_password::{
     PasswordCost, bn_derive_key, bn_derive_subkey, bn_hash_password, bn_hash_password_with,

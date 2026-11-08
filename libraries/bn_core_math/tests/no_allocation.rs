@@ -8,6 +8,16 @@
 //! global allocator proves it; its `unsafe` is the
 //! test-only use Carlos approved on 2026-10-26.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 use std::hint::black_box;

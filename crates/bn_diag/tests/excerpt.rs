@@ -7,6 +7,16 @@
 //! number, every `|` lines up, and the `^` sits under the reported column,
 //! in both renderers.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 use bn_diag::{Catalog, Diagnostic};
 use bn_source::{Position, SourceFile, Span};
 

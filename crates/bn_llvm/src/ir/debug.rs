@@ -118,7 +118,7 @@ pub(crate) struct DebugMetadata {
 impl DebugMetadata {
     /// Starts a table whose compile unit belongs to the entry file.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         filename: &str,
         directory: &str,
         producer: &str,
@@ -150,7 +150,7 @@ impl DebugMetadata {
     }
 
     /// Interns a `DIFile`.
-    pub fn file(&mut self, filename: &str, directory: &str) -> MdRef {
+    pub(crate) fn file(&mut self, filename: &str, directory: &str) -> MdRef {
         let key = (filename.to_owned(), directory.to_owned());
         if let Some(id) = self.files.get(&key) {
             return *id;

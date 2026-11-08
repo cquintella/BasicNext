@@ -8,7 +8,7 @@ use crate::handle_table_abi::GenerationTable;
 use crate::net::{TcpListener, TcpStream, UdpPacket, UdpSocket};
 use std::sync::{Arc, Mutex};
 
-pub enum Handle {
+pub(super) enum Handle {
     TcpStream(TcpStream),
     TcpListener(TcpListener),
     UdpSocket(UdpSocket),
@@ -24,7 +24,7 @@ fn table() -> Arc<Sockets> {
     bn_core_copy::table::<Sockets>()
 }
 
-pub fn insert(handle: Handle) -> Result<i64, &'static str> {
+pub(super) fn insert(handle: Handle) -> Result<i64, &'static str> {
     let sockets = table();
     let mut table = sockets
         .0
@@ -37,7 +37,7 @@ pub fn insert(handle: Handle) -> Result<i64, &'static str> {
 }
 
 /// Closes `id`; a stale or unknown id is `None` (close is idempotent).
-pub fn remove(id: i64) -> Result<Option<Handle>, &'static str> {
+pub(super) fn remove(id: i64) -> Result<Option<Handle>, &'static str> {
     let sockets = table();
     let mut table = sockets
         .0
@@ -46,7 +46,10 @@ pub fn remove(id: i64) -> Result<Option<Handle>, &'static str> {
     Ok(table.remove(id))
 }
 
-pub fn with<T>(id: i64, operation: impl FnOnce(&Handle) -> T) -> Result<Option<T>, &'static str> {
+pub(super) fn with<T>(
+    id: i64,
+    operation: impl FnOnce(&Handle) -> T,
+) -> Result<Option<T>, &'static str> {
     let sockets = table();
     let table = sockets
         .0

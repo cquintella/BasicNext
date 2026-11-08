@@ -1,6 +1,16 @@
 //! Debug Adapter Protocol adapter: stdio framing, launch validation,
 //! breakpoints/stepping over the interpreter's debug control hook, and the
 //! HOST environment composed by `bn_interpret_driver`.
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
+
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     io::{self, BufRead, Write},

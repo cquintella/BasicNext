@@ -96,7 +96,7 @@ mod tests {
         *table::<Counter>().0.lock().unwrap() = 7;
         let inner = run(|| {
             let fresh = *table::<Counter>().0.lock().unwrap();
-            let _ = table::<Resource>();
+            let _resource = table::<Resource>();
             *table::<Counter>().0.lock().unwrap() = 9;
             fresh
         });

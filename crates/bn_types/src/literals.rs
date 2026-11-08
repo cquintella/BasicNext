@@ -37,7 +37,11 @@ pub fn integer_literal_as_float(text: &str, kind: FloatType) -> Option<String> {
     let magnitude = parse_integer(digits)?;
     let value = if negative { -magnitude } else { magnitude };
     // Round-trip through the target width: equal only when no bits were lost.
-    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        reason = "round-trip test specifically checks whether casting loses precision or truncates"
+    )]
     let exact = match kind {
         FloatType::Float32 => (value as f32) as i128 == value,
         FloatType::Float64 => (value as f64) as i128 == value,

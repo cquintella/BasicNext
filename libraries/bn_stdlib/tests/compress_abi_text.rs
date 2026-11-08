@@ -7,6 +7,16 @@
 //! is `INVALID_ARGUMENT` naming the operation, never an empty path or name
 //! (an empty text would silently address the wrong entry).
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 use std::ffi::c_char;
 
 use bn_core_compress::{CODE_INVALID_ARGUMENT, CODE_NOT_FOUND};

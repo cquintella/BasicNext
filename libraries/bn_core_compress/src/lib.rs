@@ -15,6 +15,16 @@
 //! through it, not only asking it, keeps a symlink from redirecting a
 //! write outside a `--write-root`.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
+
 use flate2::Compression;
 use flate2::read::{DeflateDecoder, GzDecoder};
 use flate2::write::{DeflateEncoder, GzEncoder};

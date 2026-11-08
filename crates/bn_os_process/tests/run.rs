@@ -7,7 +7,17 @@
 //! and argument rules, capture, ceilings, timeouts and pipes held open by
 //! descendants.
 
-#[cfg(unix)]
+#![cfg(unix)]
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 use bn_host_exec::{CAPTURE_LIMIT, TIMEOUT};
 use bn_host_exec::{INVALID_ARGUMENT, Output, POLICY_DENIED, PROGRAM_NOT_FOUND, Policy};
 use bn_os_process::OsProcessControl;

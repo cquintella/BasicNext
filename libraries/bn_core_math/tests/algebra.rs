@@ -6,6 +6,15 @@
 //! `Sum`, `Product` and `Dot` (math.md, "Algebraic reductions").
 
 #![allow(clippy::float_cmp)] // exact totals are the contract
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
 
 use bn_core_math::{LengthMismatch, dot, product, sum};
 

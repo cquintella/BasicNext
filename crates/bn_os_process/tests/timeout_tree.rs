@@ -8,6 +8,15 @@
 //! process, so the thread count is not disturbed by another test.
 
 #![cfg(unix)]
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
 
 use bn_host_exec::{Policy, TIMEOUT, live_reader_threads};
 use bn_os_process::OsProcessControl;

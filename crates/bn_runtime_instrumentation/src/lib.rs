@@ -5,6 +5,16 @@
 
 //! Runtime execution observability, event instrumentation, debugger, tracer and profiler.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
+
 pub mod consumer;
 pub mod context;
 pub mod debugger;

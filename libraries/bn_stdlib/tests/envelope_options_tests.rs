@@ -6,6 +6,16 @@
 // `EncryptWith` / `DecryptWith`: the `BNC1` flags byte, the KEYID section and
 // the caller's AAD (bncrypto.md, "Envelope Format").
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 use bn_stdlib::crypto::{bn_decrypt_envelope, bn_encrypt_envelope};
 use bn_stdlib::crypto_envelope::{
     ENVELOPE_FLAG_KEYID, ENVELOPE_FLAG_PASSWORD, ENVELOPE_FLAG_STREAM, EnvelopeOptions,

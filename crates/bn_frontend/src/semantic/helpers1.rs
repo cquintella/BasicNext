@@ -515,7 +515,7 @@ pub(crate) fn is_valid_async_parameter_type(
     }
 }
 
-pub fn display(ty: &Type) -> String {
+pub(super) fn display(ty: &Type) -> String {
     match ty {
         Type::Named(name) | Type::TypeName(name) => name.clone(),
         Type::ImportedNamed { module, name } | Type::ImportedTypeName { module, name } => {

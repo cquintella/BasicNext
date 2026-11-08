@@ -1,5 +1,15 @@
 //! Integration tests simulating LSP client sessions over JSON-RPC.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 use lsp_server::{Connection, Message, Notification, Request, RequestId, Response};
 use lsp_types::{
     ClientCapabilities, FoldingRangeParams, InitializeParams, TextDocumentIdentifier, Uri,

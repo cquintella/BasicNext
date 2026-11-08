@@ -59,7 +59,7 @@ impl<const N: usize> RuntimeFn<N> {
     /// A call whose arity the compiler checks and whose argument types come
     /// from the signature.
     #[must_use]
-    pub fn call(&self, args: [LlvmOperand; N]) -> LlvmInst {
+    pub(crate) fn call(&self, args: [LlvmOperand; N]) -> LlvmInst {
         LlvmInst::call(
             self.ret.into(),
             self.name,

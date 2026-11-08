@@ -10,6 +10,15 @@
 //! an isolated executor over a clone of the module (`execute_callback`).
 
 #![allow(clippy::too_many_lines, clippy::too_many_arguments)] // Moved verbatim from the core; one arm per BNWeb member.
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
 
 pub use bn_web::web;
 use bn_web::web::drain_server;

@@ -14,6 +14,16 @@
 // ML-DSA-65 (FIPS 204): the verifying key derived from the seed xi matches the
 // vector; the vector's modified-message signature does not verify.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 use bn_stdlib::crypto::{
     ml_dsa_keypair, ml_dsa_sign, ml_dsa_verify, ml_kem_decapsulate, ml_kem_encapsulate,
     ml_kem_keypair,

@@ -9,6 +9,15 @@
 //! through `bn_rt::sqlite_abi`; this adapter does not.
 
 #![allow(clippy::similar_names)]
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
 
 use std::collections::HashMap;
 use std::ffi::CString;

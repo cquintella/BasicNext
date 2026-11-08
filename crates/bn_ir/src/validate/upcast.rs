@@ -125,7 +125,7 @@ pub(crate) fn upcast_compatible(module: &Module, actual: &Type, expected: &Type)
 /// nominal type `expected` (`ClassModel::is_upcast`). Shared by the argument
 /// and result boundaries.
 #[must_use]
-pub fn is_upcast(module: &Module, actual: &Type, expected: &Type) -> bool {
+pub(crate) fn is_upcast(module: &Module, actual: &Type, expected: &Type) -> bool {
     matches!(
         (nominal_name(actual), nominal_name(expected)),
         (Some(actual), Some(expected)) if module.class_model.is_upcast(&actual, &expected)

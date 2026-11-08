@@ -8,6 +8,15 @@
 // algorithm reporting, public key derivation from private key, and zeroization.
 
 #![allow(unsafe_code)]
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
 
 use bn_stdlib::crypto::{
     PEM_FORMAT_PKCS8, bn_ed25519_keypair_generate, bn_export_private_pem,

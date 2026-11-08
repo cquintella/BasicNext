@@ -1,6 +1,18 @@
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    reason = "build script generates code at compile time"
+)]
+
 use std::{env, fmt::Write as _, fs, path::PathBuf};
 
 #[path = "src/keyword_registry.rs"]
+#[allow(
+    unreachable_pub,
+    reason = "only a subset of keyword_registry is reachable from build script"
+)]
 mod keyword_registry;
 
 use keyword_registry::{SPEC_EBNF, SPEC_KEYWORDS};

@@ -4,6 +4,16 @@
 
 //! Language-owned BN IR model, validation, and backend handoff proof.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
+
 use bn_diag::{DiagId, Diagnostic, Label, LabelStyle};
 use bn_source::Span;
 

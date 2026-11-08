@@ -11,6 +11,16 @@
 //! turns the result into BN values; `bn_rt::exec` turns it into a C-ABI
 //! handle. Neither re-implements any of it.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
+
 use std::{
     io::{self, Read},
     process::{Child, Command, Stdio},

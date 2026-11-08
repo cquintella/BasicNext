@@ -8,6 +8,16 @@
 //! Shared by `bn_lib_math` (interpreter adapter) and `bn_rt` (native runtime C ABI).
 //! Implements safe mathematical functions with exact parity across backends.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
+
 pub mod algebra;
 pub mod association;
 pub(crate) mod binary64;

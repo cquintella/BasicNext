@@ -30,6 +30,8 @@ unsafe_op_in_unsafe_fn = "deny"
 elided_lifetimes_in_paths = "warn"
 # A cast that changes nothing is noise that hides the casts that matter.
 trivial_casts = "deny"
+# Tier 3 (DEC-55): unreachable pub items must be pub(crate).
+unreachable_pub = "deny"
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
@@ -70,6 +72,11 @@ unneeded_field_pattern = "deny"
 # Tier 3 (DEC-55): printing outside CLIs and drivers is denied.
 print_stdout = "deny"
 print_stderr = "deny"
+panic = "deny"
+string_slice = "deny"
+let_underscore_must_use = "deny"
+expect_used = "deny"
+allow_attributes_without_reason = "deny"
 
 [lints]
 workspace = true

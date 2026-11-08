@@ -3,11 +3,21 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3: interp"
+)]
+
 use std::{
     collections::HashMap,
     io::{BufRead, Write},
     path::PathBuf,
-    sync::atomic::AtomicU64,
+    sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -31,21 +41,23 @@ pub use session::{ArcInspection, ExecutionResult, InteractiveSession};
 
 // Helpers a provider (the `bn` crate's `libraries`/`hosts`) may use. They are the
 // core's value/diagnostic vocabulary, not language semantics.
-pub use collections::{
-    collect_indices as collect_indices_pub, dataframe_index_error as dataframe_index_error_pub,
-    unsigned_indices as unsigned_indices_pub,
+pub use {
+    collections::{
+        collect_indices as collect_indices_pub, dataframe_index_error as dataframe_index_error_pub,
+        unsigned_indices as unsigned_indices_pub,
+    },
+    compare::equals as equals_pub,
+    executor::{integer_from_count_pub, numeric_overflow},
+    helpers::require_arity as require_arity_pub,
+    index_out_of_bounds as index_out_of_bounds_pub,
+    integer_from_i128_count as integer_from_i128_count_pub,
+    is_not_available as is_not_available_pub,
+    numeric::{
+        integer as integer_pub, number_as_float as number_as_float_pub, parse_val as parse_val_pub,
+    },
+    render::render as render_pub,
+    runtime_error as runtime_error_pub,
 };
-pub use compare::equals as equals_pub;
-pub use executor::integer_from_count_pub;
-pub use executor::numeric_overflow;
-pub use helpers::require_arity as require_arity_pub;
-pub use integer_from_i128_count as integer_from_i128_count_pub;
-pub use is_not_available as is_not_available_pub;
-pub use numeric::{
-    integer as integer_pub, number_as_float as number_as_float_pub, parse_val as parse_val_pub,
-};
-pub use render::render as render_pub;
-pub use {index_out_of_bounds as index_out_of_bounds_pub, runtime_error as runtime_error_pub};
 
 use allocation::{add_sizes, display_element, pointer_element_default, pointer_element_size};
 use compare::{equals, is_host_file_method, is_host_file_type, is_value, value_matches_type};
@@ -79,18 +91,10 @@ pub struct HostEnv {
     arguments: Vec<String>,
     clock: ClockKind,
     random_state: AtomicU64,
-    /// Execution policy: capability bits, HOST.Exec ceilings (D-H1-02) and the
-    /// filesystem scope — the one type shared with the native runtime (0.5.2a).
+    /// Execution policy: capability bits, HOST.Exec ceilings and filesystem scope.
     policy: bn_rt::Policy,
     libraries: provider::Providers,
     hosts: provider::Providers,
-}
-
-fn sandbox_policy() -> bn_rt::Policy {
-    let mut policy = bn_rt::Policy::unrestricted();
-    policy.deny_filesystem();
-    policy.deny_exec();
-    policy
 }
 
 impl std::fmt::Debug for HostEnv {
@@ -110,9 +114,7 @@ impl Clone for HostEnv {
         Self {
             arguments: self.arguments.clone(),
             clock: self.clock.clone(),
-            random_state: AtomicU64::new(
-                self.random_state.load(std::sync::atomic::Ordering::Relaxed),
-            ),
+            random_state: AtomicU64::new(self.random_state.load(Ordering::Relaxed)),
             policy: self.policy.clone(),
             libraries: self.libraries.clone(),
             hosts: self.hosts.clone(),
@@ -161,11 +163,14 @@ impl HostEnv {
     /// filesystem access is completely denied unless explicitly configured with roots.
     #[must_use]
     pub fn sandbox(arguments: Vec<String>) -> Self {
+        let mut policy = bn_rt::Policy::unrestricted();
+        policy.deny_filesystem();
+        policy.deny_exec();
         Self {
             arguments,
             clock: ClockKind::System,
             random_state: AtomicU64::new(host_random_seed()),
-            policy: sandbox_policy(),
+            policy,
             libraries: provider::Providers::default(),
             hosts: provider::Providers::default(),
         }

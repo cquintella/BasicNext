@@ -5,6 +5,15 @@
 
 //! Unit tests for memory zeroization and safe crypto buffer lifecycle (MEM-1).
 #![allow(unsafe_code, clippy::similar_names, clippy::borrow_as_ptr)]
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
 
 use bn_stdlib::crypto_abi::{
     bn_rt_crypto_bytes_from_text, bn_rt_crypto_bytes_length, bn_rt_crypto_bytes_release,

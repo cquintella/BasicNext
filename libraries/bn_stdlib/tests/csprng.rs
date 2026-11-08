@@ -6,6 +6,16 @@
 //! Unit tests for CSPRNG utilities in `BNCrypto` (`bncrypto.md`):
 //! `RandomInt`, `RandomToken`, `RandomUuidV4`, `UuidV7`, and `RandomPassword`.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 use std::collections::HashSet;
 
 use bn_stdlib::crypto::{

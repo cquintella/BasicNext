@@ -12,6 +12,8 @@
 //!
 //! `tests/catalog_keys.rs` checks that every entry of a file is used.
 
+#![expect(clippy::panic, clippy::string_slice, reason = "DEC-55 tier 3")]
+
 mod entry_format;
 
 use std::fmt::Display;

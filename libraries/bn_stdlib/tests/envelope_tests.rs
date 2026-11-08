@@ -4,6 +4,15 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 #![allow(unsafe_code)]
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
 
 use bn_stdlib::crypto::{bn_decrypt_envelope, bn_encrypt_envelope};
 use bn_stdlib::crypto_abi::{

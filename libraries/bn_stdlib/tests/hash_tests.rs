@@ -2,6 +2,15 @@
 // Checks SHA-2, SHA-3, BLAKE2b, BLAKE3, Hasher streaming, and file streaming.
 
 #![allow(unsafe_code)]
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
 
 use bn_stdlib::crypto::{
     Alg, HASH_BLAKE2B, HASH_BLAKE3, HASH_MD5, HASH_SHA1, HASH_SHA3_256, HASH_SHA3_512, HASH_SHA256,

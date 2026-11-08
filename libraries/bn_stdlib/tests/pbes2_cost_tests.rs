@@ -8,6 +8,16 @@
 // file is PARSE_ERROR instead of an abort (scrypt memory) or a hang (PBKDF2
 // iterations).
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 use bn_stdlib::crypto::bn_load_private_pem;
 use bn_types::error_codes::crypto::PARSE_ERROR;
 use pkcs8::der::Encode as _;

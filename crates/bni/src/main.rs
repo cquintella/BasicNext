@@ -5,6 +5,16 @@
 //! `bni`: the Basic Next interpreter executable. Its command line lives in
 //! `bn_interpret_driver::cli`; this file names the version and the protocol
 //! servers (`bn_lsp`, `bn_dap`) and calls it.
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
+
 use std::process::ExitCode;
 
 use bn_interpret_driver::cli::{Protocols, main as bni};

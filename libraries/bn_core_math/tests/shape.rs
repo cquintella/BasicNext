@@ -9,7 +9,17 @@
 //! except that it cancels digits in the kurtosis (`-0.21200000000000019`
 //! where the exact value is `-0.212`).
 
-#![allow(clippy::float_cmp, clippy::excessive_precision)] // exact bc digits
+#![allow(
+    clippy::float_cmp,
+    clippy::excessive_precision,
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
 
 use bn_core_math::{Reduction, Statistic, reduce, reduce_f64};
 

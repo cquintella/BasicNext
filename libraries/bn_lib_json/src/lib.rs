@@ -11,6 +11,16 @@
 //! `bn_core_json`, the single table both backends share, so a handle means
 //! the same thing interpreted and compiled (W3).
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
+
 use bn_diag::Diagnostic;
 use bn_source::Span;
 use bn_types::{FloatType, IntegerType};

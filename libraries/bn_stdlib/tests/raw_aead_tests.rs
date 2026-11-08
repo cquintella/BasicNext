@@ -1,6 +1,16 @@
 // Basic Next crypto raw AEAD tests
 // Checks that forbidden unauthenticated modes are rejected and raw AEAD requires exact lengths.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 use bn_stdlib::crypto::{Aead, generate_key_material, open, required_key_length, seal};
 
 #[test]

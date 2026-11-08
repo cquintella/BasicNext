@@ -24,6 +24,16 @@
 //! is outside it; its inherited pipe ends keep the capture threads alive
 //! until it exits (recorded as an open issue).
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
+
 use std::io;
 use std::process::Child;
 
@@ -128,7 +138,7 @@ mod unix {
     }
 
     /// The process group a child leads, registered while the call lives.
-    pub struct ProcessTree {
+    pub(crate) struct ProcessTree {
         group: libc::pid_t,
         slot: Option<usize>,
     }
@@ -148,7 +158,7 @@ mod unix {
         ///
         /// Never fails on Unix; the signature matches Windows, where the
         /// child must be assigned to a job.
-        pub fn adopt(child: &Child) -> io::Result<Self> {
+        pub(crate) fn adopt(child: &Child) -> io::Result<Self> {
             let group = libc::pid_t::try_from(child.id())
                 .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
             INSTALL.call_once(install_handler);
@@ -166,7 +176,7 @@ mod unix {
         /// The operating-system error, except that an empty group (`ESRCH`)
         /// is success.
         #[allow(unsafe_code)]
-        pub fn kill_tree(&self) -> KillResult {
+        pub(crate) fn kill_tree(&self) -> KillResult {
             // SAFETY: `killpg` takes two integers and touches no memory of
             // ours. `group` is the id of a group this call created, which
             // the kernel does not reuse while a member lives.
@@ -214,7 +224,7 @@ mod windows {
         /// The operating-system error when the job cannot be created or the
         /// child cannot be assigned to it.
         #[allow(unsafe_code)]
-        pub fn adopt(child: &Child) -> io::Result<Self> {
+        pub(crate) fn adopt(child: &Child) -> io::Result<Self> {
             // SAFETY: both arguments may be null: no security attributes and
             // an unnamed job. The returned handle is checked and closed in
             // `Drop`.
@@ -240,7 +250,7 @@ mod windows {
         ///
         /// The operating-system error.
         #[allow(unsafe_code)]
-        pub fn kill_tree(&self) -> KillResult {
+        pub(crate) fn kill_tree(&self) -> KillResult {
             // SAFETY: `job` is a live job handle owned by `self`.
             if unsafe { TerminateJobObject(self.job, TERMINATED_EXIT_CODE) } == 0 {
                 Err(io::Error::last_os_error())

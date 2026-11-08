@@ -1,3 +1,13 @@
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 use bn_frontend::{lexer::lex, parser::parse, semantic::analyze, source::SourceFile};
 use bn_ir::Instruction;
 

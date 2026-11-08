@@ -10,6 +10,15 @@
     clippy::print_stderr,
     reason = "REPL executable interacts directly with user terminal via stdout and stderr"
 )]
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
 
 pub mod cli;
 pub mod commands;

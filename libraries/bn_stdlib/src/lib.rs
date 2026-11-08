@@ -13,6 +13,16 @@
 //! (`BNCrypto`, `BNData`, `BNDispatch`, `BNFfi`, `BNJson`, `BNLog`, `BNMath`,
 //! `BNSqlite`), isolated from the language core (`crates/bn_rt`).
 
+#![allow(
+    unreachable_pub,
+    clippy::allow_attributes_without_reason,
+    clippy::let_underscore_must_use,
+    clippy::string_slice,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "DEC-55: native"
+)]
+
 use std::ffi::c_char;
 
 pub use bn_rt::*;

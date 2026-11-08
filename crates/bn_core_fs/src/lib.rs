@@ -6,6 +6,16 @@
 //! `HOST.FileSystem` shared core: directory operations, entry error classification,
 //! and descriptor-relative Unix entry operations.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
+
 pub mod entry;
 mod kind;
 #[cfg(unix)]

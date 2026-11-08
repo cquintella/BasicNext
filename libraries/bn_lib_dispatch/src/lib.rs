@@ -10,8 +10,15 @@
 #![allow(
     clippy::too_many_lines,
     clippy::needless_return,
-    clippy::ignored_unit_patterns
-)] // Moved verbatim from the core; one arm per BNDispatch member.
+    clippy::ignored_unit_patterns,
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
 
 mod dispatch;
 

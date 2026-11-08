@@ -6,6 +6,16 @@
 //! The missing-value rule both backends share (bndata.md, "Missing
 //! values"): `CountNA`, `DropNA`, `FillNA` on a cell type of the test's own.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 use bn_stdlib::data_error::DataFailure;
 use bn_stdlib::{
     CellKind, DataFrameColumn, DataFrameResource, FillCells, count_not_available,

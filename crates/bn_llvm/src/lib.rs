@@ -5,8 +5,20 @@
 
 //! Dependency-free LLVM backend and typed IR builder. Unsupported IR is rejected explicitly.
 
-#![allow(clippy::match_same_arms)]
-#![allow(clippy::too_many_lines)]
+#![allow(
+    clippy::match_same_arms,
+    clippy::too_many_lines,
+    reason = "compiler internals"
+)]
+#![allow(
+    unreachable_pub,
+    clippy::allow_attributes_without_reason,
+    clippy::let_underscore_must_use,
+    clippy::string_slice,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "DEC-55: native"
+)]
 
 use std::{
     collections::{BTreeSet, HashMap, HashSet},

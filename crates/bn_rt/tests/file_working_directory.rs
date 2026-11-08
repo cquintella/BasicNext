@@ -9,6 +9,15 @@
 //! directory.
 
 #![cfg(unix)]
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
 
 use bn_rt::file::{get_current_directory, open_new, set_current_directory};
 use bn_rt::secure_fs::RootedDir;

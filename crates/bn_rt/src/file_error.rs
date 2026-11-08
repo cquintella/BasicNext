@@ -42,7 +42,7 @@ pub(crate) enum FsOperation {
 impl FsOperation {
     /// The `Error.Operation` text.
     #[must_use]
-    pub fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Self::Open => "HOST.FileSystem.Open",
             Self::Exists => "HOST.FileSystem.Exists",

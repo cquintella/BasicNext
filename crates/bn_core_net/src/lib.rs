@@ -8,6 +8,16 @@
 //! resolve/reverse, ICMP ping, trusted-path ARP/NDP neighbor lookup, sockets.
 //! Moved out of `bn_rt` so the `BNWeb` core can use it.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
+
 mod addressing;
 mod cidr;
 pub mod error;

@@ -8,6 +8,16 @@
 // boundary failure. A BN program cannot reach this (every STRING is valid
 // UTF-8 and emitted code never passes null); FFI or an emitter defect could.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 use bn_stdlib::crypto_abi::{
     bn_rt_crypto_bytes_from_hex, bn_rt_crypto_bytes_from_text, bn_rt_crypto_bytes_length,
 };

@@ -1,3 +1,13 @@
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 use bn_ir::{BasicBlock, BlockId, Constant, Function, Instruction, Module, Terminator, ValueId};
 use bn_source::{Position, Revision, SourceId, Span};
 use bn_types::{IntegerType, Type};

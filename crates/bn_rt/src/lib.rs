@@ -17,6 +17,16 @@
 //! Interpreter and native `bn build` binaries share these implementations.
 //! LLVM emits calls to the `bn_rt_*` C ABI; `bn run` uses the Rust API.
 
+#![allow(
+    unreachable_pub,
+    clippy::allow_attributes_without_reason,
+    clippy::let_underscore_must_use,
+    clippy::string_slice,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "DEC-55: native"
+)]
+
 use std::{
     ffi::c_char,
     io::{self, Write},

@@ -1,5 +1,15 @@
 //! Repository gates and their in-process regression checks.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 #[path = "support/migration_target.rs"]
 mod migration_target;
 mod support;

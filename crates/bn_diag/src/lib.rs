@@ -4,7 +4,15 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! Stable diagnostic facts shared by frontend, IR and backend crates.
-
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::path::Path;
@@ -2060,24 +2068,11 @@ mod tests {
                 .expect("render")
                 .title
         };
-        assert_eq!(
-            title(
-                Catalog::selected_from_paths(
-                    Some(&environment),
-                    Some(&configured),
-                    Some(&installed)
-                )
-                .expect("environment")
-            ),
-            "Environment"
-        );
-        assert_eq!(
-            title(
-                Catalog::selected_from_paths(None, Some(&configured), Some(&installed))
-                    .expect("configured")
-            ),
-            "Configured"
-        );
+        let p1 =
+            Catalog::selected_from_paths(Some(&environment), Some(&configured), Some(&installed));
+        assert_eq!(title(p1.expect("environment")), "Environment");
+        let p2 = Catalog::selected_from_paths(None, Some(&configured), Some(&installed));
+        assert_eq!(title(p2.expect("configured")), "Configured");
         assert_eq!(
             title(Catalog::selected_from_paths(None, None, Some(&installed)).expect("installed")),
             "Installed"

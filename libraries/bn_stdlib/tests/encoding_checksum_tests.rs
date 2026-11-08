@@ -3,6 +3,15 @@
 // CRC32, CRC32c, Adler32, XxHash64, and file checksum verification.
 
 #![allow(unsafe_code, clippy::similar_names)]
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
 
 use bn_stdlib::crypto::{
     bn_adler32, bn_base64_decode, bn_base64_encode, bn_base64url_decode, bn_base64url_encode,

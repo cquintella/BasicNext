@@ -6,6 +6,16 @@
 // `BNCrypto.Policy`: fipsOnly refuses exactly the non-approved algorithm of
 // each family; the default policy and allowLegacy refuse nothing.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 use bn_stdlib::crypto_asymmetric::{KEY_ALG_ECDSA_P256, KEY_ALG_ED25519, KEY_ALG_X25519};
 use bn_stdlib::crypto_hash::{
     HASH_BLAKE2B, HASH_BLAKE3, HASH_SHA3_256, HASH_SHA3_512, HASH_SHA256, HASH_SHA384, HASH_SHA512,

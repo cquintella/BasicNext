@@ -9,6 +9,16 @@
 //! program output through [`CoreContext::output`]; a file goes through the
 //! host filesystem policy.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
+
 use std::collections::HashMap;
 
 use bn_core_log::{Apache, Event, FieldMap, Imports, Level, LogFailure, Operation};

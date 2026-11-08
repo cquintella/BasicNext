@@ -7,7 +7,14 @@
     unsafe_code,
     unused_unsafe,
     clippy::similar_names,
-    clippy::borrow_as_ptr
+    clippy::borrow_as_ptr,
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
 )]
 
 use bn_stdlib::crypto_abi::{

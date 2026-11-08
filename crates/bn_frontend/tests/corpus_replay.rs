@@ -7,6 +7,16 @@
 //! Contract: no `.bn` input may panic; malformed input yields `Err(Diagnostic)`.
 //! The fuzzer itself (`fuzz/`) runs offline on nightly; this test is the CI gate.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 use std::path::{Path, PathBuf};
 
 fn repo_root() -> PathBuf {

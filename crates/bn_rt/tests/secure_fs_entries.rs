@@ -10,6 +10,15 @@
 //! rules with junctions in `secure_fs_windows_tests.rs`.
 
 #![cfg(unix)]
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
 
 use bn_rt::secure_fs::{EntryKind, RootedDir, is_policy_refusal};
 use bn_rt::{FsEntryPolicy as _, FsPolicy};

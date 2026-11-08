@@ -9,7 +9,16 @@
 //! the `HOST.Net` core (`bn_core_net`). It holds no BN value: each adapter
 //! converts at its boundary.
 
-#![allow(clippy::missing_errors_doc)] // Errors are plain `String` / `&str` messages the adapters map.
+#![allow(
+    clippy::missing_errors_doc,
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
 
 // The C ABI calls `bn_rt_*` symbols. The staticlib leaves them for the
 // final link with `libbn_rt.a` / `libbn_stdlib.a`; the Rust test harness has to link the crates.

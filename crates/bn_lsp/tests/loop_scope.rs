@@ -7,6 +7,16 @@
 //! bindings"; ide-tooling.md baseline): the editor reports exactly the
 //! language diagnostics of each loop-scope grammar fixture.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "integration tests and test helpers"
+)]
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 

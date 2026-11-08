@@ -8,6 +8,16 @@
 //! and [`get`] / [`has`]. It contains no `unsafe` code and reads the process
 //! environment via `std::env::var_os`.
 
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    unreachable_pub,
+    reason = "DEC-55 tier 3"
+)]
+
 use std::{env, ffi::OsString};
 
 pub use bn_types::error_codes::env::*;

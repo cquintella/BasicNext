@@ -8,6 +8,14 @@
 //! released.
 
 #![cfg(unix)]
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::string_slice,
+    clippy::let_underscore_must_use,
+    clippy::allow_attributes_without_reason,
+    reason = "integration tests and test helpers"
+)]
 
 use bn_web::{ServerOptions, ServerState, drain_server};
 use std::sync::{Arc, Mutex};
