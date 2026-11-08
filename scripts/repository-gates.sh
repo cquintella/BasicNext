@@ -7,6 +7,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 REPOSITORY_GATES=(
+    tests/check-advisories.sh
     tests/check-forbidden-deps.sh
     tests/check-licenses.sh
     tests/check-shared-cores.sh
