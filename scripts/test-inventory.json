@@ -175,6 +175,7 @@
     "bn_core_text::lib/bn_core_text::timezone::tests::etc_gmt_offset_parsing",
     "bn_core_text::lib/bn_core_text::timezone::tests::europe_london_summer_and_winter",
     "bn_core_text::lib/bn_core_text::timezone::tests::utc_offset_and_formatting",
+    "bn_cli::lib/bn_cli::options::tests::parse_options_with_mode_supports_optional_path",
     "bn_dap::lib/bn_dap::tests::line_breakpoint_stops_once_per_iteration_in_a_loop",
     "bn_dap::lib/bn_dap::tests::variables_response_shows_bindings_by_source_name_and_hides_ssa",
     "bn_diag::test/excerpt::excerpt_gutter_follows_a_four_digit_line",
