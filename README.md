@@ -158,12 +158,21 @@ From a checkout, `cargo run -p bni -- run <file>` uses this tree's toolchain.
 | [`examples/exec-demo.bn`](examples/exec-demo.bn) | `HOST.Exec` |
 | [`examples/bnlog_tour.bn`](examples/bnlog_tour.bn) | `BNLog` console and file transports |
 | [`examples/bnstring_tour.bn`](examples/bnstring_tour.bn) | `BNString` |
+| [`examples/bncrypto_tour.bn`](examples/bncrypto_tour.bn) | `BNCrypto` two-layer API, envelopes, signatures, passwords and post-quantum |
 | [`examples/bndata_tour.bn`](examples/bndata_tour.bn) | `BNData` and CSV |
 | [`examples/sqlite.bn`](examples/sqlite.bn) | `BNSqlite` database operations and transactions |
 | [`examples/ffi.bn`](examples/ffi.bn) | `BNFfi` C foreign function calls |
 | [`examples/parallel-examples.md`](examples/parallel-examples.md) | `BNDispatch`, including a parallel computation of pi |
 
 ## Release notes
+
+### 0.6.14
+
+- **`BNCrypto` two-layer API**: safe-default operations and explicit options (`X` and `XWith`) across OS-backed CSPRNG (`RandomBytes`, `RandomInt`, `RandomToken`, `RandomUuidV4`, `UuidV7`, `RandomPassword`), typed keys (`SecretKey`, `PrivateKey`, `PublicKey`, `KeyPair`), authenticated `BNC1` envelopes (`Encrypt`, `Decrypt`, `EncryptWith`, `DecryptWith`, `EncryptText`, `DecryptText`, `EncryptFile`, `DecryptFile`, `EncryptFileWithPassword`, `DecryptFileWithPassword`), streaming hash and MAC (`Hasher`, `MacStream`), Argon2id passwords and key derivation (`HashPassword`, `HashPasswordWith`, `VerifyPassword`, `NeedsRehash`, `DeriveKey`, `DeriveSubkey`, `Hkdf`), Ed25519/ECDSA-P256/X25519 keys with encrypted PKCS#8 PEM and OpenSSH-style `Fingerprint`, FIPS 203/204 post-quantum primitives `ML-KEM-768` and `ML-DSA-65`, and per-call `Crypto.Policy`.
+- **Native handle lifetimes and generation-checked tables**: `BNCrypto`, `BNJson`, `BNData`, `BNSqlite`, `BNCompress`, `HOST.Exec` results, and `HOST.Net` sockets/addresses release deterministically at scope exit in compiled code and carry generation-checked handles.
+- **Process trees, bounded DNS, and HTTPS trust roots**: `HOST.Exec` timeouts and signals terminate the full process tree (POSIX process groups, Windows Job Objects); `HOST.Net.Resolve` and `Reverse` run on a bounded pool; `BNWeb` HTTPS clients load the OS trust store plus at most one configured PEM (`BN_CA_FILE`, `bn-cacert.pem`, or `bn-ca.pem`).
+- **Interactive REPL (`bnr`) and session server**: unified `InteractiveTurnCoordinator` with W1–W5 IR validation and transactional rollback on failed turns, path-optional CLI parsing, and live context-aware autocompletion delegated to the `bn_lsp` engine.
+- **Diagnostics, DAP, and frontend checks**: mandatory field initializers on `STRUCT` and `CLASS` declarations without defaults, source-level variable names and single-stop line stepping in DAP, and workspace-wide Clippy safety lints plus `cargo deny` license and advisory gates.
 
 ### 0.6.12 (carries 0.6.11)
 

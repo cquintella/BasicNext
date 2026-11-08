@@ -94,5 +94,9 @@ FUNCTION Start() AS VOID
     inn.Close()
     RELEASE inn
     LET done AS VOID OR Error = app.Close(1000)
+    IF done IS Error THEN
+        Fail("Close console", done)
+        RETURN
+    END IF
     PRINT "PASS  BNLog tour complete"
 END FUNCTION

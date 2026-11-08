@@ -178,6 +178,10 @@ FUNCTION Start() AS INTEGER
     END IF
     LET logger AS Log.Logger = made
     LET level AS VOID OR Error = logger.SetLevel(Log.Level.HTTP)
+    IF level IS Error THEN
+        PRINT level
+        RETURN 1
+    END IF
     LET serverResult AS Web.Server OR Error = Web.Server.New(logger)
     IF serverResult IS Error THEN
         PRINT serverResult

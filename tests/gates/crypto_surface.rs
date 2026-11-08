@@ -15,6 +15,7 @@ use std::fs;
 
 const CONTRACT: &str = "language/0.6/bncrypto.md";
 const MODULE: &str = "modules/bn/BNCrypto.bn";
+const TOUR: &str = "examples/bncrypto_tour.bn";
 
 /// The words that declare a name in a module, each followed by that name.
 const DECLARATIONS: [&str; 4] = [
@@ -100,7 +101,26 @@ fn missing(contract: &str, module: &str) -> Vec<String> {
 fn every_function_the_contract_names_is_declared() {
     let contract = fs::read_to_string(CONTRACT).expect("read the BNCrypto contract");
     let module = fs::read_to_string(MODULE).expect("read the BNCrypto module");
+    let tour = fs::read_to_string(TOUR).expect("read the BNCrypto tour");
     assert_eq!(missing(&contract, &module), Vec::<String>::new());
+
+    let missing_in_tour: Vec<String> = module
+        .lines()
+        .map(str::trim_start)
+        .filter_map(|line| {
+            let line = line
+                .strip_prefix("EXPORT FUNCTION ")
+                .or_else(|| line.strip_prefix("PUBLIC STATIC FUNCTION "))
+                .or_else(|| line.strip_prefix("PUBLIC FUNCTION "))?;
+            let name = line.split('(').next()?.trim();
+            (name != "CONSTRUCTOR" && !tour.contains(&format!("{name}("))).then(|| name.to_owned())
+        })
+        .collect();
+    assert_eq!(
+        missing_in_tour,
+        Vec::<String>::new(),
+        "examples/bncrypto_tour.bn must call every public BNCrypto function and method"
+    );
 }
 
 #[test]

@@ -352,6 +352,17 @@ FUNCTION Envelopes() AS VOID
         Check("EncryptWith binds the AAD", FALSE)
     END IF
 
+    LET keyIdOpts AS Crypto.AeadOptions
+    keyIdOpts.includeKeyId = TRUE
+    LET withKeyId AS Crypto.Bytes OR Error = Crypto.EncryptWith(key, plain, keyIdOpts)
+    IF withKeyId IS Crypto.Bytes THEN
+        LET openedKeyId AS Crypto.Bytes OR Error = Crypto.DecryptWith(key, withKeyId, keyIdOpts)
+        LET wrongKeyId AS Crypto.Bytes OR Error = Crypto.DecryptWith(stranger, withKeyId, keyIdOpts)
+        Check("EncryptWith includeKeyId", openedKeyId IS Crypto.Bytes AND wrongKeyId IS Error)
+    ELSE
+        Check("EncryptWith includeKeyId", FALSE)
+    END IF
+
     IF WriteFile("bncrypto-tour-plain.txt", "file contents") THEN
         LET enc AS VOID OR Error = Crypto.EncryptFile(key, "bncrypto-tour-plain.txt", "bncrypto-tour-sealed.bin")
         LET dec AS VOID OR Error = Crypto.DecryptFile(key, "bncrypto-tour-sealed.bin", "bncrypto-tour-plain.txt.out")
@@ -361,6 +372,18 @@ FUNCTION Envelopes() AS VOID
         DeleteFile("bncrypto-tour-plain.txt.out")
     ELSE
         Check("EncryptFile and DecryptFile", FALSE)
+    END IF
+
+    IF WriteFile("bncrypto-tour-pw.txt", "password file contents") THEN
+        LET encPw AS VOID OR Error = Crypto.EncryptFileWithPassword("bncrypto-tour-pw.txt", "bncrypto-tour-pw.bin", "correct horse")
+        LET decPw AS VOID OR Error = Crypto.DecryptFileWithPassword("bncrypto-tour-pw.bin", "bncrypto-tour-pw.txt.out", "correct horse")
+        LET badPw AS VOID OR Error = Crypto.DecryptFileWithPassword("bncrypto-tour-pw.bin", "bncrypto-tour-pw.txt.bad", "wrong horse")
+        Check("EncryptFileWithPassword and DecryptFileWithPassword", NOT (encPw IS Error) AND NOT (decPw IS Error) AND badPw IS Error AND Crypto.Checksum.VerifyFileChecksum("bncrypto-tour-pw.txt.out", "sha256:" + Crypto.SHA256("password file contents")))
+        DeleteFile("bncrypto-tour-pw.txt")
+        DeleteFile("bncrypto-tour-pw.bin")
+        DeleteFile("bncrypto-tour-pw.txt.out")
+    ELSE
+        Check("EncryptFileWithPassword and DecryptFileWithPassword", FALSE)
     END IF
 END FUNCTION
 
@@ -476,6 +499,19 @@ FUNCTION Passwords() AS VOID
     Check("HashPassword is an Argon2id PHC string", TextPart(phc, 0, 10) = "$argon2id$")
     Check("VerifyPassword accepts the password", Crypto.VerifyPassword("hunter2", phc))
     Check("VerifyPassword refuses another password", NOT Crypto.VerifyPassword("hunter3", phc))
+
+    LET pwOpts AS Crypto.PasswordOptions
+    LET phcWith AS STRING OR Error = Crypto.HashPasswordWith("hunter2", pwOpts)
+    IF phcWith IS STRING THEN
+        Check("HashPasswordWith and NeedsRehash at floor", Crypto.VerifyPassword("hunter2", phcWith) AND NOT Crypto.NeedsRehash(phcWith, pwOpts))
+        LET stronger AS Crypto.PasswordOptions
+        stronger.iterations = 3
+        Check("NeedsRehash detects higher target cost", Crypto.NeedsRehash(phcWith, stronger))
+    ELSE
+        Check("HashPasswordWith and NeedsRehash at floor", FALSE)
+        Check("NeedsRehash detects higher target cost", FALSE)
+    END IF
+
     LET salt AS Crypto.Bytes = Crypto.FromText("sixteen byte salt")
     LET derived AS Crypto.Bytes OR Error = Crypto.Argon2id(Crypto.FromText("hunter2"), salt, 19456, 2, 1)
     LET again AS Crypto.Bytes OR Error = Crypto.Argon2id(Crypto.FromText("hunter2"), salt, 19456, 2, 1)
@@ -484,6 +520,23 @@ FUNCTION Passwords() AS VOID
     ELSE
         Check("Argon2id is deterministic for one salt", FALSE)
     END IF
+
+    LET dk1 AS Crypto.SecretKey OR Error = Crypto.DeriveKey("hunter2", salt)
+    LET dk2 AS Crypto.SecretKey OR Error = Crypto.DeriveKey("hunter2", salt)
+    IF dk1 IS Crypto.SecretKey AND dk2 IS Crypto.SecretKey THEN
+        Check("DeriveKey is deterministic for one salt", dk1.Bits() = 256 AND dk1.Id() = dk2.Id())
+        LET subA AS Crypto.SecretKey OR Error = Crypto.DeriveSubkey(dk1, "storage")
+        LET subB AS Crypto.SecretKey OR Error = Crypto.DeriveSubkey(dk1, "session")
+        IF subA IS Crypto.SecretKey AND subB IS Crypto.SecretKey THEN
+            Check("DeriveSubkey separates keys by context", subA.Bits() = 256 AND subA.Id() <> subB.Id())
+        ELSE
+            Check("DeriveSubkey separates keys by context", FALSE)
+        END IF
+    ELSE
+        Check("DeriveKey is deterministic for one salt", FALSE)
+        Check("DeriveSubkey separates keys by context", FALSE)
+    END IF
+
     LET ikm AS Crypto.SecretKey = Crypto.NewSecretKey()
     LET k1 AS Crypto.SecretKey OR Error = Crypto.Hkdf(ikm, salt, Crypto.FromText("encryption"), 32)
     LET k2 AS Crypto.SecretKey OR Error = Crypto.Hkdf(ikm, salt, Crypto.FromText("signing"), 32)
@@ -506,6 +559,12 @@ FUNCTION KeyPairs() AS VOID
     Check("Both halves share the Id", kp.PublicKey.Id() = kp.PrivateKey.Id())
     Check("PrivateKey.PublicKey derives the same key", kp.PrivateKey.PublicKey().Id() = kp.PublicKey.Id())
     Check("PrivateKey.Algorithm", kp.PrivateKey.Algorithm() = Crypto.Alg.ED25519)
+    LET fp AS STRING OR Error = kp.PublicKey.Fingerprint(Crypto.Alg.SHA256)
+    IF fp IS STRING THEN
+        Check("PublicKey.Fingerprint SHA-256 prefix", TextPart(fp, 0, 7) = "SHA256:")
+    ELSE
+        Check("PublicKey.Fingerprint SHA-256 prefix", FALSE)
+    END IF
 
     LET signature AS Crypto.Bytes OR Error = Crypto.Sign(kp.PrivateKey, message)
     IF signature IS Crypto.Bytes THEN
