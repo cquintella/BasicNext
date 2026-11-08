@@ -26,6 +26,22 @@ fn with_socket<T>(
     f(socket.as_ref())
 }
 
+/// Runs `f` on the socket behind `handle` by reference under the lock:
+/// non-blocking metadata operations must not clone the socket descriptor.
+fn with_socket_ref<T>(
+    handle: i64,
+    f: impl FnOnce(Option<&net::UdpSocket>) -> Result<T, NetError>,
+) -> Result<T, NetError> {
+    let mut f = Some(f);
+    if let Ok(Some(Some(result))) = handles::with(handle, |value| match value {
+        Handle::UdpSocket(socket) => f.take().map(|f| f(Some(socket))),
+        _ => None,
+    }) {
+        return result;
+    }
+    f.take().expect("socket operation not yet run")(None)
+}
+
 /// Runs `f` on the packet behind `handle` (packets do no I/O).
 fn with_packet<T>(handle: i64, f: impl FnOnce(&net::UdpPacket) -> T) -> Option<T> {
     handles::with(handle, |value| match value {
@@ -97,7 +113,7 @@ pub extern "C" fn bn_rt_net_udp_local_endpoint(
     out_port: *mut i32,
 ) -> i32 {
     status(
-        with_socket(handle, net::udp_local_endpoint)
+        with_socket_ref(handle, net::udp_local_endpoint)
             .map(|endpoint| write_endpoint(endpoint, out_address, out_port)),
     )
 }

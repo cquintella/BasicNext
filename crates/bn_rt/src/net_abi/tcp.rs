@@ -12,8 +12,8 @@ use super::*;
 
 /// Runs `f` on the stream behind `handle`; a closed or unknown handle is
 /// `None` (`Net.CLOSED` in the core). `f` runs on a clone, outside the
-/// handle-table lock: a blocking read in one thread must not stall every
-/// other socket (dispatch workers share the table).
+/// handle-table lock: a blocking read or write in one thread must not stall
+/// every other socket (dispatch workers share the table).
 fn with_stream<T>(
     handle: i64,
     f: impl FnOnce(Option<&mut net::TcpStream>) -> Result<T, NetError>,
@@ -35,6 +35,25 @@ fn with_stream<T>(
     f.take().expect("stream operation not yet run")(None)
 }
 
+/// Runs `f` on the stream behind `handle` by reference under the lock:
+/// fast, non-blocking metadata, timeout and shutdown operations must not
+/// clone the underlying socket descriptor, avoiding OS state side-effects
+/// (e.g. Winsock aborting unaccepted connections when a cloned descriptor is
+/// closed) and matching `bni`.
+fn with_stream_ref<T>(
+    handle: i64,
+    f: impl FnOnce(Option<&net::TcpStream>) -> Result<T, NetError>,
+) -> Result<T, NetError> {
+    let mut f = Some(f);
+    if let Ok(Some(Some(result))) = handles::with(handle, |value| match value {
+        Handle::TcpStream(stream) => f.take().map(|f| f(Some(stream))),
+        _ => None,
+    }) {
+        return result;
+    }
+    f.take().expect("stream operation not yet run")(None)
+}
+
 /// Runs `f` on the listener behind `handle`, as a one-listener set, on a
 /// clone outside the handle-table lock (see `with_stream`).
 fn with_listener<T>(
@@ -47,6 +66,22 @@ fn with_listener<T>(
     }) {
         return f(Some(std::slice::from_ref(&listener)));
     }
+    let mut f = Some(f);
+    if let Ok(Some(Some(result))) = handles::with(handle, |value| match value {
+        Handle::TcpListener(listener) => f.take().map(|f| f(Some(std::slice::from_ref(listener)))),
+        _ => None,
+    }) {
+        return result;
+    }
+    f.take().expect("listener operation not yet run")(None)
+}
+
+/// Runs `f` on the listener behind `handle` by reference under the lock
+/// (see `with_stream_ref`).
+fn with_listener_ref<T>(
+    handle: i64,
+    f: impl FnOnce(Option<&[net::TcpListener]>) -> Result<T, NetError>,
+) -> Result<T, NetError> {
     let mut f = Some(f);
     if let Ok(Some(Some(result))) = handles::with(handle, |value| match value {
         Handle::TcpListener(listener) => f.take().map(|f| f(Some(std::slice::from_ref(listener)))),
@@ -128,7 +163,7 @@ pub extern "C" fn bn_rt_net_tcp_listener_local_endpoint(
     out_port: *mut i32,
 ) -> i32 {
     status(
-        with_listener(handle, net::listener_endpoint)
+        with_listener_ref(handle, net::listener_endpoint)
             .map(|endpoint| write_endpoint(endpoint, out_address, out_port)),
     )
 }
@@ -142,10 +177,8 @@ pub extern "C" fn bn_rt_net_tcp_stream_local_endpoint(
     out_port: *mut i32,
 ) -> i32 {
     status(
-        with_stream(handle, |stream| {
-            net::tcp_endpoint(stream.map(|stream| &*stream), false)
-        })
-        .map(|endpoint| write_endpoint(endpoint, out_address, out_port)),
+        with_stream_ref(handle, |stream| net::tcp_endpoint(stream, false))
+            .map(|endpoint| write_endpoint(endpoint, out_address, out_port)),
     )
 }
 
@@ -158,10 +191,8 @@ pub extern "C" fn bn_rt_net_tcp_stream_remote_endpoint(
     out_port: *mut i32,
 ) -> i32 {
     status(
-        with_stream(handle, |stream| {
-            net::tcp_endpoint(stream.map(|stream| &*stream), true)
-        })
-        .map(|endpoint| write_endpoint(endpoint, out_address, out_port)),
+        with_stream_ref(handle, |stream| net::tcp_endpoint(stream, true))
+            .map(|endpoint| write_endpoint(endpoint, out_address, out_port)),
     )
 }
 
@@ -227,12 +258,8 @@ pub extern "C" fn bn_rt_net_tcp_write(
 #[allow(unsafe_code)] // C ABI export.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_tcp_set_timeouts(handle: i64, read_ms: i32, write_ms: i32) -> i32 {
-    status(with_stream(handle, |stream| {
-        net::tcp_set_timeouts(
-            stream.map(|stream| &*stream),
-            read_ms.into(),
-            write_ms.into(),
-        )
+    status(with_stream_ref(handle, |stream| {
+        net::tcp_set_timeouts(stream, read_ms.into(), write_ms.into())
     }))
 }
 
@@ -240,8 +267,8 @@ pub extern "C" fn bn_rt_net_tcp_set_timeouts(handle: i64, read_ms: i32, write_ms
 #[allow(unsafe_code)] // C ABI export.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_tcp_shutdown_read(handle: i64) -> i32 {
-    status(with_stream(handle, |stream| {
-        net::tcp_shutdown(stream.map(|stream| &*stream), true)
+    status(with_stream_ref(handle, |stream| {
+        net::tcp_shutdown(stream, true)
     }))
 }
 
@@ -249,7 +276,7 @@ pub extern "C" fn bn_rt_net_tcp_shutdown_read(handle: i64) -> i32 {
 #[allow(unsafe_code)] // C ABI export.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_tcp_shutdown_write(handle: i64) -> i32 {
-    status(with_stream(handle, |stream| {
-        net::tcp_shutdown(stream.map(|stream| &*stream), false)
+    status(with_stream_ref(handle, |stream| {
+        net::tcp_shutdown(stream, false)
     }))
 }
