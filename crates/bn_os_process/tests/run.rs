@@ -7,7 +7,6 @@
 //! and argument rules, capture, ceilings, timeouts and pipes held open by
 //! descendants.
 
-#![cfg(unix)]
 #![allow(
     clippy::panic,
     clippy::expect_used,
@@ -18,6 +17,7 @@
     reason = "integration tests and test helpers"
 )]
 
+#[cfg(unix)]
 use bn_host_exec::{CAPTURE_LIMIT, TIMEOUT};
 use bn_host_exec::{INVALID_ARGUMENT, Output, POLICY_DENIED, PROGRAM_NOT_FOUND, Policy};
 use bn_os_process::OsProcessControl;
@@ -134,4 +134,11 @@ fn output_held_open_past_the_deadline_is_timeout() {
     let failure = run("/bin/sh", &["-c", "printf hello; sleep 3 &"], &short).unwrap_err();
     assert_eq!(failure.code, TIMEOUT);
     assert!(start.elapsed() < Duration::from_secs(2));
+}
+
+#[cfg(windows)]
+#[test]
+fn captures_streams_status_windows() {
+    let ok = run("cmd.exe", &["/c", "cmd.exe /c exit 7"], &policy()).unwrap();
+    assert_eq!(ok.return_code, 7);
 }

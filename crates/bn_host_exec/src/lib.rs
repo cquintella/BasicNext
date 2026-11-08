@@ -334,6 +334,13 @@ fn run_checked(
     // timeout can end the child and everything it starts.
     #[cfg(unix)]
     std::os::unix::process::CommandExt::process_group(&mut command, 0);
+    // Starts suspended on Windows so the child cannot start any process
+    // before it is assigned to its job object.
+    #[cfg(windows)]
+    std::os::windows::process::CommandExt::creation_flags(
+        &mut command,
+        0x0000_0004, // CREATE_SUSPENDED
+    );
     let mut child = match command.spawn() {
         Ok(child) => child,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {

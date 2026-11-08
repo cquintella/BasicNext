@@ -201,10 +201,14 @@ mod windows {
     use std::io;
     use std::os::windows::io::AsRawHandle;
     use std::ptr;
-    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, TH32CS_SNAPTHREAD, THREADENTRY32, Thread32First, Thread32Next,
+    };
     use windows_sys::Win32::System::JobObjects::{
         AssignProcessToJobObject, CreateJobObjectW, TerminateJobObject,
     };
+    use windows_sys::Win32::System::Threading::{OpenThread, ResumeThread, THREAD_SUSPEND_RESUME};
 
     /// The exit code of a process the job terminates.
     const TERMINATED_EXIT_CODE: u32 = 1;
@@ -215,14 +219,14 @@ mod windows {
     }
 
     impl ProcessTree {
-        /// Puts a spawned child in a new job. The child runs for a moment
-        /// before the assignment; a process it starts in that moment is
-        /// outside the job (recorded as an open issue).
+        /// Puts a spawned child in a new job. The child was created suspended
+        /// (`CREATE_SUSPENDED`); after the assignment, its thread is resumed,
+        /// ensuring no descendant can escape containment.
         ///
         /// # Errors
         ///
-        /// The operating-system error when the job cannot be created or the
-        /// child cannot be assigned to it.
+        /// The operating-system error when the job cannot be created, the
+        /// child cannot be assigned to it, or the thread cannot be resumed.
         #[allow(unsafe_code)]
         pub(crate) fn adopt(child: &Child) -> io::Result<Self> {
             // SAFETY: both arguments may be null: no security attributes and
@@ -241,6 +245,10 @@ mod windows {
             if assigned == 0 {
                 return Err(io::Error::last_os_error());
             }
+            // SAFETY: `child.id()` is the live process ID. We resume its
+            // thread after assigning it to the job object so nothing it
+            // starts can escape the job.
+            unsafe { resume_process(child.id()) }?;
             Ok(tree)
         }
 
@@ -257,6 +265,54 @@ mod windows {
             } else {
                 Ok(())
             }
+        }
+    }
+
+    #[allow(unsafe_code)]
+    unsafe fn resume_process(pid: u32) -> io::Result<()> {
+        // SAFETY: `TH32CS_SNAPTHREAD` creates a snapshot of all threads.
+        let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) };
+        if snapshot == INVALID_HANDLE_VALUE {
+            return Err(io::Error::last_os_error());
+        }
+        let Ok(dw_size) = u32::try_from(std::mem::size_of::<THREADENTRY32>()) else {
+            return Err(io::Error::from(io::ErrorKind::InvalidData));
+        };
+        let mut entry = THREADENTRY32 {
+            dwSize: dw_size,
+            cntUsage: 0,
+            th32ThreadID: 0,
+            th32OwnerProcessID: 0,
+            tpBasePri: 0,
+            tpDeltaPri: 0,
+            dwFlags: 0,
+        };
+        // SAFETY: `snapshot` is valid; `entry` size is initialized.
+        let mut success = unsafe { Thread32First(snapshot, &raw mut entry) };
+        let mut resumed = false;
+        while success != 0 {
+            if entry.th32OwnerProcessID == pid {
+                // SAFETY: thread handle opened for resume rights.
+                let thread = unsafe { OpenThread(THREAD_SUSPEND_RESUME, 0, entry.th32ThreadID) };
+                if !thread.is_null() {
+                    // SAFETY: valid thread handle.
+                    let count = unsafe { ResumeThread(thread) };
+                    // SAFETY: valid thread handle.
+                    unsafe { CloseHandle(thread) };
+                    if count != u32::MAX {
+                        resumed = true;
+                    }
+                }
+            }
+            // SAFETY: `snapshot` is valid.
+            success = unsafe { Thread32Next(snapshot, &raw mut entry) };
+        }
+        // SAFETY: closing snapshot handle.
+        unsafe { CloseHandle(snapshot) };
+        if resumed {
+            Ok(())
+        } else {
+            Err(io::Error::last_os_error())
         }
     }
 
