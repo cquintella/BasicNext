@@ -137,6 +137,7 @@ pub(crate) fn alternative_is(value_ty: &Type, test: &str) -> bool {
 /// `{ i1, ptr, i64 }` slot.
 pub(crate) fn emit_narrowed_load(
     text: &mut crate::ir::LlvmModule,
+    module: &Module,
     destination: ValueId,
     slot: usize,
     stored: Option<&Type>,
@@ -222,7 +223,7 @@ pub(crate) fn emit_narrowed_load(
         format!("narrowload{dest}"),
         I::load(union.clone(), O::reg(format!("s{slot}"))),
     );
-    if *loaded == Type::String {
+    if llvm_type(loaded) == Some(T::Ptr) && !helpers::is_integer_handle_type(module, loaded) {
         text.assign(format!("v{dest}"), I::extract(union, reg("narrowload"), 1));
         return;
     }
@@ -374,6 +375,7 @@ pub(crate) fn opaque_or_error(alternatives: &[Type]) -> bool {
 /// construction helper. `None` when `to` needs no conversion from `from`.
 pub(crate) fn construct(
     text: &mut crate::ir::LlvmModule,
+    module: &Module,
     value: ValueId,
     from: &Type,
     to: &Type,
@@ -421,7 +423,7 @@ pub(crate) fn construct(
                 T::I1 | T::I8 | T::I16 | T::I32 | T::I64 | T::Float | T::Double
             );
             (scalar || *from == Type::String || string_or_eof || from_llvm == T::Ptr)
-                .then(|| wrap_success(text, value, from, from_llvm))
+                .then(|| wrap_success(text, module, value, from, from_llvm))
         }
         // An `Error` into `Endpoint OR Error` or `Addresses OR Error`: the
         // error flag and the runtime record, which carries the code (the
@@ -631,6 +633,7 @@ fn emit_status(
 /// (floats as their `double` bits), as `RETURN` builds it.
 fn wrap_success(
     text: &mut crate::ir::LlvmModule,
+    module: &Module,
     value: ValueId,
     from: &Type,
     from_llvm: T,
@@ -640,7 +643,7 @@ fn wrap_success(
     let bits = O::reg(format!("wrapbits{v}"));
     let (pointer, payload) = match from_llvm {
         T::Ptr => {
-            if helpers::is_integer_handle_type(from) {
+            if helpers::is_integer_handle_type(module, from) {
                 let htag = format!("handlecast{v}_{}", text.fresh_tag());
                 text.assign(htag.clone(), I::cast(CastOp::PtrToInt, T::Ptr, own, T::I64));
                 (O::null(), O::reg(&htag))

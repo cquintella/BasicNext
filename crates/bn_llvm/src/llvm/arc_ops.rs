@@ -704,6 +704,7 @@ pub(crate) fn lower_ownership_instruction(
             // yields its narrowed value), then the slot is emptied.
             lower_load(
                 text,
+                module,
                 block_id,
                 function,
                 analysis,

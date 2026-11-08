@@ -215,6 +215,7 @@ pub(crate) fn lower_fs_call(
                 .expect("validated byte count");
             let count = coerce_to_type(
                 text,
+                analysis.module,
                 arguments[2],
                 count_ty,
                 &Type::Integer(IntegerType::Int64),

@@ -241,7 +241,7 @@ fn lower_constructor(
             .values
             .get(&arg_id)
             .expect("validated argument type");
-        coerce_to_type(text, arg_id, arg_ty, target_ty)
+        coerce_to_type(text, analysis.module, arg_id, arg_ty, target_ty)
     };
     let r = |name: &str| O::reg(format!("{name}{dest}"));
     match class {

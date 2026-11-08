@@ -47,6 +47,7 @@ pub(crate) fn emit_runtime_binary(
     {
         emit_integer_union_compare(
             text,
+            module,
             destination,
             operator,
             left,
@@ -64,6 +65,7 @@ pub(crate) fn emit_runtime_binary(
     {
         emit_integer_union_compare(
             text,
+            module,
             destination,
             operator,
             right,
@@ -105,6 +107,7 @@ pub(crate) fn emit_runtime_binary(
         {
             emit_checked_integer_op(
                 text,
+                module,
                 block_id,
                 destination,
                 operator,
@@ -122,6 +125,7 @@ pub(crate) fn emit_runtime_binary(
         {
             emit_euclidean_integer_op(
                 text,
+                module,
                 block_id,
                 destination,
                 operator,
@@ -173,8 +177,8 @@ pub(crate) fn emit_runtime_binary(
         ("AND" | "OR" | "XOR", LlvmType::I8 | LlvmType::I16 | LlvmType::I32 | LlvmType::I64)
             if left_llvm.is_integer() && right_llvm.is_integer() =>
         {
-            let left_op = coerce_to_type(text, left, left_ty, ty);
-            let right_op = coerce_to_type(text, right, right_ty, ty);
+            let left_op = coerce_to_type(text, module, left, left_ty, ty);
+            let right_op = coerce_to_type(text, module, right, right_ty, ty);
             text.assign(
                 format!("v{}", destination.0),
                 LlvmInst::binary(logic_op(operator), result_llvm, left_op, right_op),
@@ -293,8 +297,8 @@ pub(crate) fn emit_runtime_binary(
                 "Star" | "Multiply" => BinaryOp::FMul,
                 _ => BinaryOp::FDiv,
             };
-            let left = coerce_to_type(text, left, left_ty, ty);
-            let right = coerce_to_type(text, right, right_ty, ty);
+            let left = coerce_to_type(text, module, left, left_ty, ty);
+            let right = coerce_to_type(text, module, right, right_ty, ty);
             text.assign(
                 format!("v{}", destination.0),
                 LlvmInst::binary(op, result_llvm, left, right),
@@ -309,8 +313,8 @@ pub(crate) fn emit_runtime_binary(
             LlvmType::I8 | LlvmType::I16 | LlvmType::I32 | LlvmType::I64,
         ) if left_llvm.is_integer() && right_llvm.is_integer() => {
             let cmp_ty = wider_integer_type(left_ty, right_ty);
-            let left_op = coerce_to_type(text, left, left_ty, cmp_ty);
-            let right_op = coerce_to_type(text, right, right_ty, cmp_ty);
+            let left_op = coerce_to_type(text, module, left, left_ty, cmp_ty);
+            let right_op = coerce_to_type(text, module, right, right_ty, cmp_ty);
             text.assign(
                 format!("v{}", destination.0),
                 LlvmInst::icmp(
@@ -361,6 +365,7 @@ fn logic_op(operator: &str) -> BinaryOp {
 #[allow(clippy::too_many_arguments)]
 fn emit_integer_union_compare(
     text: &mut crate::ir::LlvmModule,
+    module: &Module,
     destination: ValueId,
     operator: &str,
     union: ValueId,
@@ -375,7 +380,13 @@ fn emit_integer_union_compare(
         LlvmInst::extract(handle_result_ty(), value_reg(union), 2),
     );
     let payload = LlvmOperand::reg(format!("unioncmp{dest}"));
-    let scalar_i64 = coerce_to_type(text, scalar, scalar_ty, &Type::Integer(IntegerType::Int64));
+    let scalar_i64 = coerce_to_type(
+        text,
+        module,
+        scalar,
+        scalar_ty,
+        &Type::Integer(IntegerType::Int64),
+    );
     let (left, right) = if union_on_left {
         (payload, scalar_i64)
     } else {

@@ -157,7 +157,8 @@ enum ConstantValue {
 }
 
 #[allow(clippy::struct_excessive_bools)]
-struct LoweringAnalysis<'a> {
+pub(crate) struct LoweringAnalysis<'a> {
+    pub(crate) module: &'a Module,
     values: HashMap<ValueId, Type>,
     symbols: HashMap<SymbolId, Type>,
     functions: HashMap<ValueId, &'a str>,

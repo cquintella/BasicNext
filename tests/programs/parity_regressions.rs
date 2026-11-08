@@ -1066,3 +1066,120 @@ END FUNCTION
         );
     }
 }
+
+/// User classes named like runtime handles (`Result`, `Client`, `Group`, `Key`)
+/// and imported classes widened into `T OR Error` are object pointers in the
+/// alternative union on both backends, not integer handles or lost nulls.
+#[test]
+fn user_classes_and_imported_classes_in_alternatives_match_across_backends() {
+    let directory = TestDir::new("user-class-alternatives").expect("create directory");
+    let lib_dir = directory.join("Lib");
+    fs::create_dir_all(&lib_dir).expect("create Lib dir");
+    let lib_path = lib_dir.join("Things.bn");
+    fs::write(
+        &lib_path,
+        r#"EXPORT CLASS Thing
+    PUBLIC value AS INTEGER = 77
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS Result
+    PUBLIC code AS INTEGER = 88
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS Key
+    PUBLIC id AS INTEGER = 99
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+"#,
+    )
+    .expect("write Lib/Things.bn");
+
+    let main_path = directory.join("main.bn");
+    fs::write(
+        &main_path,
+        r#"IMPORT Lib.Things AS Lib
+
+CLASS Result
+    PUBLIC value AS INTEGER = 10
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+CLASS Client
+    PUBLIC value AS INTEGER = 20
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+CLASS Group
+    PUBLIC value AS INTEGER = 30
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+CLASS Key
+    PUBLIC value AS INTEGER = 40
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS INTEGER
+    LET r AS Result OR Error = NEW Result()
+    IF r IS Result THEN
+        PRINT r.value
+    END IF
+
+    LET c AS Client OR Error = NEW Client()
+    IF c IS Client THEN
+        PRINT c.value
+    END IF
+
+    LET g AS Group OR Error = NEW Group()
+    IF g IS Group THEN
+        PRINT g.value
+    END IF
+
+    LET k AS Key OR Error = NEW Key()
+    IF k IS Key THEN
+        PRINT k.value
+    END IF
+
+    LET t AS Lib.Thing OR Error = NEW Lib.Thing()
+    IF t IS Lib.Thing THEN
+        PRINT t.value
+    END IF
+
+    LET lr AS Lib.Result OR Error = NEW Lib.Result()
+    IF lr IS Lib.Result THEN
+        PRINT lr.code
+    END IF
+
+    LET lk AS Lib.Key OR Error = NEW Lib.Key()
+    IF lk IS Lib.Key THEN
+        PRINT lk.id
+    END IF
+
+    RETURN 0
+END FUNCTION
+"#,
+    )
+    .expect("write main.bn");
+
+    let artifact = compile_native(&main_path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&main_path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "10\n20\n30\n40\n77\n88\n99\n",
+            "{backend}"
+        );
+    }
+}

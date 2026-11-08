@@ -199,7 +199,7 @@ fn call_operand(
         );
         return reg(tag);
     }
-    coerce_to_type(text, argument, arg_ty, param_ty)
+    coerce_to_type(text, analysis.module, argument, arg_ty, param_ty)
 }
 
 pub(crate) fn lower_user_call(

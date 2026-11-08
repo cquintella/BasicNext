@@ -24,7 +24,7 @@ pub(crate) fn emit_pointer_set_index(
 ) {
     let tag = state.continuation_count;
     let index_op = lower_index(text, index, index_ty);
-    let value_op = coerce_to_type(text, value, value_ty, elem_ty);
+    let value_op = coerce_to_type(text, module, value, value_ty, elem_ty);
     let ok = take_continuation(block_id, state);
     let llvm_elem = llvm_type(elem_ty).expect("validated indexed-store element");
     let slot = O::reg(format!("s{symbol_slot}"));
@@ -141,7 +141,7 @@ pub(crate) fn emit_vector_set_indices(
     state: &mut EmissionState,
 ) {
     let base_tag = state.continuation_count;
-    let value_op = coerce_to_type(text, value, value_ty, elem_ty);
+    let value_op = coerce_to_type(text, module, value, value_ty, elem_ty);
     let llvm_elem = llvm_type(elem_ty).expect("validated indexed-store element");
     let first_row = format!("mdsetfat{base_tag}_0");
     let mut fat_pointer = O::reg(&first_row);
@@ -204,7 +204,7 @@ pub(crate) fn emit_field_set_index(
 ) {
     let tag = state.continuation_count;
     let index_op = lower_index(text, index, index_ty);
-    let value_op = coerce_to_type(text, value, value_ty, elem_ty);
+    let value_op = coerce_to_type(text, module, value, value_ty, elem_ty);
     let ok = take_continuation(block_id, state);
     let llvm_elem = llvm_type(elem_ty).expect("validated indexed-field element");
     let r = |name: &str| O::reg(format!("fieldset{name}{tag}"));
@@ -249,7 +249,7 @@ pub(crate) fn emit_member_set_index(
 ) {
     let tag = state.continuation_count;
     let index_op = lower_index(text, index, index_ty);
-    let value_op = coerce_to_type(text, value, value_ty, elem_ty);
+    let value_op = coerce_to_type(text, module, value, value_ty, elem_ty);
     let ok = take_continuation(block_id, state);
     let llvm_elem = llvm_type(elem_ty).unwrap_or_else(|| {
         panic!(
@@ -295,7 +295,7 @@ pub(crate) fn emit_static_set_index(
 ) {
     let tag = state.continuation_count;
     let index_op = lower_index(text, index, index_ty);
-    let value_op = coerce_to_type(text, value, value_ty, elem_ty);
+    let value_op = coerce_to_type(text, module, value, value_ty, elem_ty);
     let ok = take_continuation(block_id, state);
     let llvm_elem = llvm_type(elem_ty).unwrap_or_else(|| {
         panic!(

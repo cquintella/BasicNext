@@ -10,7 +10,7 @@ use super::*;
 use crate::ir::LlvmType;
 
 pub(crate) fn analyze_function<'a>(
-    module: &Module,
+    module: &'a Module,
     function: &'a Function,
     module_functions: &std::collections::HashSet<&str>,
 ) -> Result<LoweringAnalysis<'a>, String> {
@@ -577,6 +577,7 @@ pub(crate) fn analyze_function<'a>(
             _ => false,
         });
     Ok(LoweringAnalysis {
+        module,
         values,
         symbols,
         functions,

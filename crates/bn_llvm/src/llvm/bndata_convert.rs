@@ -40,7 +40,13 @@ pub(crate) fn lower_bndata_slice(
             .values
             .get(argument)
             .expect("validated slice bound");
-        let bound = coerce_to_type(text, *argument, ty, &Type::Integer(IntegerType::Int32));
+        let bound = coerce_to_type(
+            text,
+            analysis.module,
+            *argument,
+            ty,
+            &Type::Integer(IntegerType::Int32),
+        );
         args.push((T::I32, bound));
     }
     text.assign(format!("dfsliceout{dest}"), I::alloca(T::I64));
@@ -109,6 +115,7 @@ pub(crate) fn lower_bndata_fill_na(
     );
     let value = coerce_to_type(
         text,
+        analysis.module,
         arguments[2],
         analysis
             .values

@@ -188,7 +188,7 @@ pub(crate) fn lower_ownership_emission(
                 .values
                 .get(value)
                 .expect("validated static value type");
-            let operand = coerce_to_type(text, *value, value_ty, ty);
+            let operand = coerce_to_type(text, module, *value, value_ty, ty);
             let global = static_global_name(class, field);
             let storage = global.replacen("@bn_st_", "@bn_sv_", 1);
             if previous.is_some() && arc_ops::holds_references(module, ty) {
@@ -283,7 +283,7 @@ pub(crate) fn lower_ownership_emission(
             );
             // Reuse SetMember emitter with a synthetic object value id name via temp.
             let llvm_ty = llvm_type(ty).expect("validated field type");
-            let value_op = coerce_to_type(text, *value, value_ty, ty);
+            let value_op = coerce_to_type(text, module, *value, value_ty, ty);
             let gep = I::gep(
                 T::I8,
                 O::reg(format!("fieldobj{}", value.0)),
