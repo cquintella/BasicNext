@@ -1,0 +1,89 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Virtual Roulette Wheel selection module for Genetic Algorithms (minimization problem).
+
+IMPORT HOST.Random AS Random
+
+// Virtual Roulette Wheel implementation for fitness-proportionate selection.
+// In TSP (a minimization problem), smaller costs correspond to larger roulette slices.
+EXPORT CLASS RouletteWheel
+    PUBLIC popSize AS INTEGER = 0
+    PUBLIC totalFitness AS FLOAT = 0.0
+    PUBLIC minCost AS FLOAT = 0.0
+    PUBLIC maxCost AS FLOAT = 0.0
+
+    PRIVATE cumulative AS POINTER TO FLOAT[] = NEW FLOAT[0]
+
+    PUBLIC FUNCTION CONSTRUCTOR(populationSize AS INTEGER)
+        SELF.popSize = populationSize
+        SELF.cumulative = NEW FLOAT[populationSize]
+        LET c AS POINTER TO FLOAT[] = SELF.cumulative
+        FOR i AS INTEGER = 0 TO populationSize - 1
+            c[i] = 0.0
+        END FOR
+    END FUNCTION
+
+    // Builds the roulette wheel by converting minimization costs into proportionate fitness slices.
+    PUBLIC FUNCTION Build(costs AS POINTER TO FLOAT[]) AS VOID
+        SELF.minCost = costs[0]
+        SELF.maxCost = costs[0]
+
+        // Find minimum and maximum cost in current population
+        FOR i AS INTEGER = 1 TO SELF.popSize - 1
+            IF costs[i] < SELF.minCost THEN
+                SELF.minCost = costs[i]
+            END IF
+            IF costs[i] > SELF.maxCost THEN
+                SELF.maxCost = costs[i]
+            END IF
+        END FOR
+
+        // Baseline offset delta ensures even the worst candidate has non-zero selection chance
+        LET spread AS FLOAT = SELF.maxCost - SELF.minCost
+        LET delta AS FLOAT = spread * 0.05 + 1.0
+
+        // Build cumulative fitness distribution
+        LET runningSum AS FLOAT = 0.0
+        LET c AS POINTER TO FLOAT[] = SELF.cumulative
+        FOR i AS INTEGER = 0 TO SELF.popSize - 1
+            LET fitness AS FLOAT = (SELF.maxCost - costs[i]) + delta
+            runningSum += fitness
+            c[i] = runningSum
+        END FOR
+
+        SELF.totalFitness = runningSum
+    END FUNCTION
+
+    // Spins the virtual wheel and returns the index of the selected individual.
+    PUBLIC FUNCTION Spin() AS INTEGER
+        IF SELF.totalFitness <= 0.0 THEN
+            // Fallback: uniform random choice if fitness sum is degenerate
+            LET fallback AS INTEGER = (Random.Random() * (SELF.popSize AS FLOAT)) AS INTEGER
+            IF fallback >= SELF.popSize THEN
+                fallback = SELF.popSize - 1
+            END IF
+            RETURN fallback
+        END IF
+
+        LET ball AS FLOAT = Random.Random() * SELF.totalFitness
+        LET c AS POINTER TO FLOAT[] = SELF.cumulative
+
+        // Linear scan over cumulative slices
+        FOR i AS INTEGER = 0 TO SELF.popSize - 1
+            IF ball <= c[i] THEN
+                RETURN i
+            END IF
+        END FOR
+
+        RETURN SELF.popSize - 1
+    END FUNCTION
+
+    // Releases heap memory allocated for cumulative probabilities.
+    PUBLIC FUNCTION Dispose() AS VOID
+        LET c AS POINTER TO FLOAT[] = SELF.cumulative
+        RELEASE c
+    END FUNCTION
+END CLASS

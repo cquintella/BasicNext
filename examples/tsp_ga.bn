@@ -1,0 +1,444 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Genetic Algorithm for the Traveling Salesperson Problem (TSP) in Basic Next.
+// Features stochastic graph generation with degree-based normal distribution,
+// integer edge distances sampled uniformly from 1 to N, and parent selection via Virtual Roulette Wheel.
+
+IMPORT graph_generator AS GraphGen
+IMPORT roulette_wheel AS Roulette
+IMPORT HOST.Random AS Random
+IMPORT BNMath AS Math
+
+// Pauses execution and waits for the user to press a key / ENTER to continue.
+FUNCTION Pause() AS VOID
+    LET dummy AS STRING OR EOF = ""
+    INPUT "Press ENTER to continue... ", dummy
+    PRINT ""
+END FUNCTION
+
+// Evaluates the total circuit cost for an individual tour.
+FUNCTION EvaluateTour(graph AS GraphGen.Graph, genes AS POINTER TO INTEGER[], offset AS INTEGER, numVertices AS INTEGER) AS FLOAT
+    LET totalCost AS FLOAT = 0.0
+    FOR i AS INTEGER = 0 TO numVertices - 1
+        LET u AS INTEGER = genes[offset + i]
+        LET nextPos AS INTEGER = (i + 1) % numVertices
+        LET v AS INTEGER = genes[offset + nextPos]
+        totalCost += graph.GetCost(u, v)
+    END FOR
+    RETURN totalCost
+END FUNCTION
+
+// Counts how many edges along the tour correspond to actual edges present in the graph.
+FUNCTION CountValidEdges(graph AS GraphGen.Graph, genes AS POINTER TO INTEGER[], offset AS INTEGER, numVertices AS INTEGER) AS INTEGER
+    LET validCount AS INTEGER = 0
+    FOR i AS INTEGER = 0 TO numVertices - 1
+        LET u AS INTEGER = genes[offset + i]
+        LET nextPos AS INTEGER = (i + 1) % numVertices
+        LET v AS INTEGER = genes[offset + nextPos]
+        IF graph.HasEdge(u, v) = 1 THEN
+            validCount += 1
+        END IF
+    END FOR
+    RETURN validCount
+END FUNCTION
+
+// Formats a tour chromosome as a string for display.
+FUNCTION FormatTour(genes AS POINTER TO INTEGER[], offset AS INTEGER, numVertices AS INTEGER) AS STRING
+    LET s AS STRING = "["
+    FOR i AS INTEGER = 0 TO numVertices - 1
+        s = s + (genes[offset + i] AS STRING)
+        IF i < numVertices - 1 THEN
+            s = s + ", "
+        END IF
+    END FOR
+    s = s + "]"
+    RETURN s
+END FUNCTION
+
+// Executes the Genetic Algorithm using Virtual Roulette Wheel selection, OX1 crossover, and 2-opt mutation.
+FUNCTION RunGeneticAlgorithm(graph AS GraphGen.Graph, popSize AS INTEGER, generations AS INTEGER, mutationRate AS FLOAT) AS VOID
+    LET numV AS INTEGER = graph.numVertices
+    LET totalGenes AS INTEGER = popSize * numV
+
+    PRINT "================================================================================"
+    PRINT "[Stage 3/5] Initializing population and evaluating baseline fitness..."
+    PRINT "================================================================================"
+
+    LET popGenes AS POINTER TO INTEGER[] = NEW INTEGER[totalGenes]
+    LET nextGenes AS POINTER TO INTEGER[] = NEW INTEGER[totalGenes]
+    LET popCost AS POINTER TO FLOAT[] = NEW FLOAT[popSize]
+    LET nextCost AS POINTER TO FLOAT[] = NEW FLOAT[popSize]
+
+    // Initialize population with random vertex permutations (Fisher-Yates shuffle)
+    FOR i AS INTEGER = 0 TO popSize - 1
+        LET offset AS INTEGER = i * numV
+        FOR j AS INTEGER = 0 TO numV - 1
+            popGenes[offset + j] = j
+        END FOR
+        FOR j AS INTEGER = numV - 1 TO 1 STEP -1
+            LET randIdx AS INTEGER = (Random.Random() * ((j + 1) AS FLOAT)) AS INTEGER
+            IF randIdx > j THEN
+                randIdx = j
+            END IF
+            LET tmp AS INTEGER = popGenes[offset + j]
+            popGenes[offset + j] = popGenes[offset + randIdx]
+            popGenes[offset + randIdx] = tmp
+        END FOR
+        popCost[i] = EvaluateTour(graph, popGenes, offset, numV)
+    END FOR
+
+    // Identify initial best solution
+    LET bestOverallIdx AS INTEGER = 0
+    LET bestOverallCost AS FLOAT = popCost[0]
+    FOR i AS INTEGER = 1 TO popSize - 1
+        IF popCost[i] < bestOverallCost THEN
+            bestOverallCost = popCost[i]
+            bestOverallIdx = i
+        END IF
+    END FOR
+
+    LET initialValid AS INTEGER = CountValidEdges(graph, popGenes, bestOverallIdx * numV, numV)
+    PRINT "[Population] Population size: ", popSize, " individuals (chromosome length: ", numV, " vertices)"
+    PRINT "[Population] Generation 0 Best Tour Cost: ", bestOverallCost, " (Valid Edges: ", initialValid, "/", numV, ")"
+    PRINT ""
+
+    PRINT "================================================================================"
+    PRINT "[Stage 4/5] Running evolutionary generational loop..."
+    PRINT "  - Parent Selection: Virtual Roulette Wheel (fitness-proportionate for minimization)"
+    PRINT "  - Recombination:    Order Crossover (OX1)"
+    PRINT "  - Mutation:         2-opt Segment Inversion"
+    PRINT "  - Elitism:          Preserving the best individual into next generation"
+    PRINT "================================================================================"
+
+    // Instantiate Virtual Roulette Wheel from imported module
+    LET wheel AS Roulette.RouletteWheel = NEW Roulette.RouletteWheel(popSize)
+
+    // Lookup buffer for OX1 crossover
+    LET inChild AS POINTER TO INTEGER[] = NEW INTEGER[numV]
+
+    FOR gen AS INTEGER = 1 TO generations
+        // Construct the Virtual Roulette Wheel from current costs
+        wheel.Build(popCost)
+
+        PRINT "--------------------------------------------------------------------------------"
+        PRINT "[Generation " + (gen AS STRING) + "/" + (generations AS STRING) + "] Selected Parents and Generated Offspring:"
+        PRINT "--------------------------------------------------------------------------------"
+
+        // Elitism: carry forward the fittest individual to index 0
+        LET bestCurrentIdx AS INTEGER = 0
+        LET bestCurrentCost AS FLOAT = popCost[0]
+        FOR i AS INTEGER = 1 TO popSize - 1
+            IF popCost[i] < bestCurrentCost THEN
+                bestCurrentCost = popCost[i]
+                bestCurrentIdx = i
+            END IF
+        END FOR
+
+        LET bestOffset AS INTEGER = bestCurrentIdx * numV
+        FOR j AS INTEGER = 0 TO numV - 1
+            nextGenes[j] = popGenes[bestOffset + j]
+        END FOR
+        nextCost[0] = bestCurrentCost
+
+        PRINT "  Offspring 0 [Elitism - Copy of Best Index " + (bestCurrentIdx AS STRING) + "]:"
+        PRINT "    Chromosome: " + FormatTour(nextGenes, 0, numV) + " | Cost: " + (nextCost[0] AS STRING)
+
+        // Produce next generation offspring
+        FOR ind AS INTEGER = 1 TO popSize - 1
+            // Select parents using the Virtual Roulette Wheel
+            LET p1 AS INTEGER = wheel.Spin()
+            LET p2 AS INTEGER = wheel.Spin()
+
+            // If same individual chosen twice, spin again for diversity
+            IF p1 = p2 THEN
+                p2 = wheel.Spin()
+            END IF
+
+            LET p1Off AS INTEGER = p1 * numV
+            LET p2Off AS INTEGER = p2 * numV
+            LET childOff AS INTEGER = ind * numV
+
+            // Order Crossover (OX1)
+            LET cut1 AS INTEGER = (Random.Random() * (numV AS FLOAT)) AS INTEGER
+            LET cut2 AS INTEGER = (Random.Random() * (numV AS FLOAT)) AS INTEGER
+            IF cut1 >= numV THEN
+                cut1 = numV - 1
+            END IF
+            IF cut2 >= numV THEN
+                cut2 = numV - 1
+            END IF
+            IF cut1 > cut2 THEN
+                LET tempCut AS INTEGER = cut1
+                cut1 = cut2
+                cut2 = tempCut
+            END IF
+
+            FOR k AS INTEGER = 0 TO numV - 1
+                inChild[k] = 0
+            END FOR
+
+            // Copy slice from Parent 1
+            FOR k AS INTEGER = cut1 TO cut2
+                LET gene AS INTEGER = popGenes[p1Off + k]
+                nextGenes[childOff + k] = gene
+                inChild[gene] = 1
+            END FOR
+
+            // Fill remaining genes from Parent 2 in cyclical order
+            LET childPos AS INTEGER = (cut2 + 1) % numV
+            LET p2Pos AS INTEGER = (cut2 + 1) % numV
+            LET filled AS INTEGER = cut2 - cut1 + 1
+
+            WHILE filled < numV
+                LET gene AS INTEGER = popGenes[p2Off + p2Pos]
+                IF inChild[gene] = 0 THEN
+                    nextGenes[childOff + childPos] = gene
+                    inChild[gene] = 1
+                    childPos = (childPos + 1) % numV
+                    filled += 1
+                END IF
+                p2Pos = (p2Pos + 1) % numV
+            END WHILE
+
+            // Mutation: 2-opt subsegment reversal
+            IF Random.Random() < mutationRate THEN
+                LET m1 AS INTEGER = (Random.Random() * (numV AS FLOAT)) AS INTEGER
+                LET m2 AS INTEGER = (Random.Random() * (numV AS FLOAT)) AS INTEGER
+                IF m1 >= numV THEN
+                    m1 = numV - 1
+                END IF
+                IF m2 >= numV THEN
+                    m2 = numV - 1
+                END IF
+                IF m1 > m2 THEN
+                    LET tmpM AS INTEGER = m1
+                    m1 = m2
+                    m2 = tmpM
+                END IF
+                WHILE m1 < m2
+                    LET tmpGene AS INTEGER = nextGenes[childOff + m1]
+                    nextGenes[childOff + m1] = nextGenes[childOff + m2]
+                    nextGenes[childOff + m2] = tmpGene
+                    m1 += 1
+                    m2 -= 1
+                END WHILE
+            END IF
+
+            nextCost[ind] = EvaluateTour(graph, nextGenes, childOff, numV)
+
+            PRINT "  Offspring " + (ind AS STRING) + ":"
+            PRINT "    Parent 1 Selected (Index " + (p1 AS STRING) + "): " + FormatTour(popGenes, p1Off, numV) + " | Cost: " + (popCost[p1] AS STRING)
+            PRINT "    Parent 2 Selected (Index " + (p2 AS STRING) + "): " + FormatTour(popGenes, p2Off, numV) + " | Cost: " + (popCost[p2] AS STRING)
+            PRINT "    Generated Offspring:                " + FormatTour(nextGenes, childOff, numV) + " | Cost: " + (nextCost[ind] AS STRING)
+        END FOR
+
+        // Swap population buffers
+        FOR i AS INTEGER = 0 TO totalGenes - 1
+            popGenes[i] = nextGenes[i]
+        END FOR
+        FOR i AS INTEGER = 0 TO popSize - 1
+            popCost[i] = nextCost[i]
+        END FOR
+
+        // Report progress for this generation
+        LET bestGenIdx AS INTEGER = 0
+        LET bestGenCost AS FLOAT = popCost[0]
+        FOR i AS INTEGER = 1 TO popSize - 1
+            IF popCost[i] < bestGenCost THEN
+                bestGenCost = popCost[i]
+                bestGenIdx = i
+            END IF
+        END FOR
+        LET validCount AS INTEGER = CountValidEdges(graph, popGenes, bestGenIdx * numV, numV)
+        PRINT "[Generation " + (gen AS STRING) + "/" + (generations AS STRING) + " Summary] Best Cost: " + (bestGenCost AS STRING) + " | Valid Edges: " + (validCount AS STRING) + "/" + (numV AS STRING)
+        PRINT ""
+        Pause()
+    END FOR
+
+    PRINT ""
+    PRINT "================================================================================"
+    PRINT "[Stage 5/5] Finalizing search and extracting optimal route..."
+    PRINT "================================================================================"
+
+    LET finalBestIdx AS INTEGER = 0
+    LET finalBestCost AS FLOAT = popCost[0]
+    FOR i AS INTEGER = 1 TO popSize - 1
+        IF popCost[i] < finalBestCost THEN
+            finalBestCost = popCost[i]
+            finalBestIdx = i
+        END IF
+    END FOR
+
+    LET finalOffset AS INTEGER = finalBestIdx * numV
+    LET finalValid AS INTEGER = CountValidEdges(graph, popGenes, finalOffset, numV)
+    LET missingEdges AS INTEGER = numV - finalValid
+    LET penaltyTotal AS FLOAT = (missingEdges AS FLOAT) * graph.penalty
+    LET pureDistance AS FLOAT = finalBestCost - penaltyTotal
+
+    PRINT "Final Summary:"
+    PRINT "  Total Optimized Cost:             ", finalBestCost
+    PRINT "  Traversed Valid Graph Edges:      ", finalValid, " of ", numV
+    PRINT "  Missing Connections (Penalized):  ", missingEdges
+    PRINT "  Pure Traversed Edges Distance:    ", pureDistance
+    PRINT "  Total Disconnection Penalty:      ", penaltyTotal
+    PRINT ""
+    PRINT "Best Tour Path Sequence:"
+    LET pathStr AS STRING = ""
+    FOR j AS INTEGER = 0 TO numV - 1
+        LET vert AS INTEGER = popGenes[finalOffset + j]
+        pathStr = pathStr + (vert AS STRING)
+        IF j < numV - 1 THEN
+            pathStr = pathStr + " -> "
+        END IF
+    END FOR
+    pathStr = pathStr + " -> " + (popGenes[finalOffset] AS STRING)
+    PRINT pathStr
+
+    // Cleanup allocated memory
+    wheel.Dispose()
+    RELEASE inChild
+    RELEASE popCost
+    RELEASE nextCost
+    RELEASE popGenes
+    RELEASE nextGenes
+END FUNCTION
+
+// Prints formatted command-line help instructions.
+FUNCTION PrintHelp() AS VOID
+    PRINT "Usage: bni run examples/tsp_ga.bn [-- options]"
+    PRINT ""
+    PRINT "Description:"
+    PRINT "  Solves the Traveling Salesperson Problem (TSP) in Basic Next using Genetic Algorithms."
+    PRINT "  The graph is generated stochastically with a user-specified average vertex degree,"
+    PRINT "  using a normal distribution to decide the total number of edges."
+    PRINT "  Edge distances are integers uniformly distributed from 1 to N."
+    PRINT "  Parents are selected using an imported Virtual Roulette Wheel selection module."
+    PRINT ""
+    PRINT "Options:"
+    PRINT "  -h, --help                 Display this help message and exit."
+    PRINT "  -g, --generations <N>      Number of GA generations to run (default: 300)."
+    PRINT "  -d, --degree <D>           Average degree of vertices in the graph (default: 4.0)."
+    PRINT "  -v, --vertices <V>         Number of vertices in the graph (default: 50)."
+    PRINT "  -n, --max-distance <N>     Maximum edge distance from 1 to N (default: 100)."
+    PRINT "  -p, --pop-size <P>         Population size for the genetic algorithm (default: 100)."
+    PRINT "  -m, --mutation <M>         2-opt mutation probability (default: 0.10)."
+    PRINT "  -s, --seed <S>             Random seed for reproducible executions (default: 42)."
+    PRINT ""
+    PRINT "Positional Syntax:"
+    PRINT "  bni run examples/tsp_ga.bn -- <generations> [degree] [vertices] [maxDistance]"
+    PRINT ""
+    PRINT "Examples:"
+    PRINT "  bni run examples/tsp_ga.bn -- --help"
+    PRINT "  bni run examples/tsp_ga.bn -- -g 250 -d 2.0 -v 50 -n 100"
+    PRINT "  bni run examples/tsp_ga.bn -- --generations 500 --degree 5.0 --vertices 50 --max-distance 20"
+    PRINT "  bni run examples/tsp_ga.bn -- 200 2 50 100"
+END FUNCTION
+
+FUNCTION Start() AS INTEGER
+    LET generations AS INTEGER = 300
+    LET averageDegree AS FLOAT = 4.0
+    LET numVertices AS INTEGER = 50
+    LET maxDistance AS INTEGER = 100
+    LET popSize AS INTEGER = 100
+    LET mutationRate AS FLOAT = 0.10
+    LET seed AS INTEGER = 42
+
+    PRINT "================================================================================"
+    PRINT "[Stage 1/5] Parsing command line arguments and configuring GA parameters..."
+    PRINT "================================================================================"
+
+    LET argCount AS INTEGER = LEN(HOST.Args)
+    LET argIdx AS INTEGER = 1
+
+    WHILE argIdx < argCount
+        LET arg AS STRING = HOST.Args[argIdx]
+
+        IF arg = "-h" OR arg = "--help" OR arg = "-help" OR arg = "--h" THEN
+            PrintHelp()
+            RETURN 0
+        ELSE IF arg = "-g" OR arg = "--generations" THEN
+            argIdx += 1
+            IF argIdx < argCount THEN
+                generations = Math.VAL(HOST.Args[argIdx]) AS INTEGER
+            END IF
+        ELSE IF arg = "-d" OR arg = "--degree" THEN
+            argIdx += 1
+            IF argIdx < argCount THEN
+                averageDegree = Math.VAL(HOST.Args[argIdx])
+            END IF
+        ELSE IF arg = "-v" OR arg = "--vertices" THEN
+            argIdx += 1
+            IF argIdx < argCount THEN
+                numVertices = Math.VAL(HOST.Args[argIdx]) AS INTEGER
+            END IF
+        ELSE IF arg = "-n" OR arg = "--max-dist" OR arg = "--max-distance" OR arg = "-N" THEN
+            argIdx += 1
+            IF argIdx < argCount THEN
+                maxDistance = Math.VAL(HOST.Args[argIdx]) AS INTEGER
+            END IF
+        ELSE IF arg = "-p" OR arg = "--pop-size" THEN
+            argIdx += 1
+            IF argIdx < argCount THEN
+                popSize = Math.VAL(HOST.Args[argIdx]) AS INTEGER
+            END IF
+        ELSE IF arg = "-m" OR arg = "--mutation" THEN
+            argIdx += 1
+            IF argIdx < argCount THEN
+                mutationRate = Math.VAL(HOST.Args[argIdx])
+            END IF
+        ELSE IF arg = "-s" OR arg = "--seed" THEN
+            argIdx += 1
+            IF argIdx < argCount THEN
+                seed = Math.VAL(HOST.Args[argIdx]) AS INTEGER
+            END IF
+        ELSE
+            // Support positional arguments: generations [degree [vertices [maxDistance]]]
+            IF argIdx = 1 THEN
+                generations = Math.VAL(arg) AS INTEGER
+            ELSE IF argIdx = 2 THEN
+                averageDegree = Math.VAL(arg)
+            ELSE IF argIdx = 3 THEN
+                numVertices = Math.VAL(arg) AS INTEGER
+            ELSE IF argIdx = 4 THEN
+                maxDistance = Math.VAL(arg) AS INTEGER
+            END IF
+        END IF
+
+        argIdx += 1
+    END WHILE
+
+    Random.Seed(seed)
+
+    PRINT "Configuration:"
+    PRINT "  Vertices:         ", numVertices
+    PRINT "  Average Degree:   ", averageDegree
+    PRINT "  Generations:      ", generations
+    PRINT "  Population Size:  ", popSize
+    PRINT "  Mutation Rate:    ", mutationRate
+    PRINT "  Max Edge Dist (N):", maxDistance
+    PRINT "  RNG Seed:         ", seed
+    PRINT ""
+
+    PRINT "================================================================================"
+    PRINT "[Stage 2/5] Generating random graph using normal distribution..."
+    PRINT "================================================================================"
+
+    // Call graph generator module: GRAFO = GenerateGraph(averageDegree, numVertices, maxDistance)
+    LET GRAFO AS GraphGen.Graph = GraphGen.GenerateGraph(averageDegree, numVertices, maxDistance)
+
+    PRINT "[Graph] Vertices: ", GRAFO.numVertices, " | Actual Edges Created: ", GRAFO.numEdges
+    PRINT ""
+    Pause()
+
+    // Run Genetic Algorithm
+    RunGeneticAlgorithm(GRAFO, popSize, generations, mutationRate)
+
+    // Dispose graph resources
+    GRAFO.Dispose()
+    PRINT ""
+    PRINT "[Done] Execution finished successfully."
+    RETURN 0
+END FUNCTION
