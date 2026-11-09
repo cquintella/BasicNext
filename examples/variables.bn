@@ -1,36 +1,42 @@
+IMPORT BNMath AS Math
+
 FUNCTION Start() AS VOID
-    LET b_min AS BYTE = 0
-    LET b_max AS BYTE = 255
-    LET i8_min AS INT8 = -128
-    LET i8_max AS INT8 = 127
-    LET i16_min AS INT16 = -32768
-    LET i16_max AS INT16 = 32767
-    LET u16_min AS UINT16 = 0
-    LET u16_max AS UINT16 = 65535
-    LET i32_min AS INT32 = -2147483648
-    LET i32_max AS INT32 = 2147483647
-    LET u32_min AS UINT32 = 0
-    LET u32_max AS UINT32 = 4294967295
-    LET i64_max AS INT64 = 9223372036854775807
-    LET u64_min AS UINT64 = 0
-    LET u64_max AS UINT64 = 18446744073709551615
-    LET f32_val AS FLOAT32 = 1.25
-    LET f64_val AS FLOAT64 = 3.141592653589793
+    LET b_min AS BYTE = Math.Limits.MIN_BYTE
+    LET b_max AS BYTE = Math.Limits.MAX_BYTE
+    LET i8_min AS INT8 = Math.Limits.MIN_INT8
+    LET i8_max AS INT8 = Math.Limits.MAX_INT8
+    LET i16_min AS INT16 = Math.Limits.MIN_INT16
+    LET i16_max AS INT16 = Math.Limits.MAX_INT16
+    LET u16_min AS UINT16 = Math.Limits.MIN_UINT16
+    LET u16_max AS UINT16 = Math.Limits.MAX_UINT16
+    LET i32_min AS INT32 = Math.Limits.MIN_INT32
+    LET i32_max AS INT32 = Math.Limits.MAX_INT32
+    LET u32_min AS UINT32 = Math.Limits.MIN_UINT32
+    LET u32_max AS UINT32 = Math.Limits.MAX_UINT32
+    LET i64_min AS INT64 = Math.Limits.MIN_INT64
+    LET i64_max AS INT64 = Math.Limits.MAX_INT64
+    LET u64_min AS UINT64 = Math.Limits.MIN_UINT64
+    LET u64_max AS UINT64 = Math.Limits.MAX_UINT64
+    LET f32_min AS FLOAT32 = Math.Limits.MIN_FLOAT32
+    LET f32_max AS FLOAT32 = Math.Limits.MAX_FLOAT32
+    LET f64_min AS FLOAT64 = Math.Limits.MIN_FLOAT64
+    LET f64_max AS FLOAT64 = Math.Limits.MAX_FLOAT64
     LET flag_f AS BOOLEAN = FALSE
     LET flag_t AS BOOLEAN = TRUE
     LET text_val AS STRING = "BasicNext"
 
-    PRINT b_min, b_max
-    PRINT i8_min, i8_max
-    PRINT i16_min, i16_max
-    PRINT u16_min, u16_max
-    PRINT i32_min, i32_max
-    PRINT u32_min, u32_max
-    PRINT i64_max
-    PRINT u64_min, u64_max
-    PRINT f32_val, f64_val
-    PRINT flag_f, flag_t
-    PRINT text_val
+    PRINT "BYTE, MIN: ", b_min, " MAX: ", b_max
+    PRINT "INT8, MIN: ", i8_min, " MAX: ", i8_max
+    PRINT "INT16, MIN: ", i16_min, " MAX: ", i16_max
+    PRINT "UINT16, MIN: ", u16_min, " MAX: ", u16_max
+    PRINT "INT32, MIN: ", i32_min, " MAX: ", i32_max
+    PRINT "UINT32, MIN: ", u32_min, " MAX: ", u32_max
+    PRINT "INT64, MIN: ", i64_min, " MAX: ", i64_max
+    PRINT "UINT64, MIN: ", u64_min, " MAX: ", u64_max
+    PRINT "FLOAT32, MIN: ", f32_min, " MAX: ", f32_max
+    PRINT "FLOAT64, MIN: ", f64_min, " MAX: ", f64_max
+    PRINT "BOOLEAN: ", flag_f, flag_t
+    PRINT "STRING: ", text_val
 
     LET v50 AS INTEGER[50]
     FOR i AS INTEGER = 0 TO 49
@@ -42,19 +48,19 @@ FUNCTION Start() AS VOID
     LET cast_byte AS BYTE = cast_source AS BYTE
     LET cast_float AS FLOAT64 = cast_source AS FLOAT64
     LET cast_bool AS BOOLEAN = cast_source AS BOOLEAN
-    PRINT cast_source, cast_byte, cast_float, cast_bool
+    PRINT "CAST: ", cast_source, cast_byte, cast_float, cast_bool
 
-    PRINT LEN(b_min), SIZEOF(b_min)
-    PRINT LEN(i8_min), SIZEOF(i8_min)
-    PRINT LEN(i16_min), SIZEOF(i16_min)
-    PRINT LEN(u16_min), SIZEOF(u16_min)
-    PRINT LEN(i32_min), SIZEOF(i32_min)
-    PRINT LEN(u32_min), SIZEOF(u32_min)
-    PRINT LEN(i64_max), SIZEOF(i64_max)
-    PRINT LEN(u64_max), SIZEOF(u64_max)
-    PRINT LEN(f32_val), SIZEOF(f32_val)
-    PRINT LEN(f64_val), SIZEOF(f64_val)
-    PRINT SIZEOF(flag_t)
-    PRINT LEN(text_val), SIZEOF(text_val)
-    PRINT LEN(v50), SIZEOF(v50)
+    PRINT "BYTE - LEN: ", LEN(b_max), " SIZEOF: ", SIZEOF(b_min)
+    PRINT "INT8 - LEN: ", LEN(i8_max), " SIZEOF: ", SIZEOF(i8_min)
+    PRINT "INT16 - LEN: ", LEN(i16_max), " SIZEOF: ", SIZEOF(i16_min)
+    PRINT "UINT16 - LEN: ", LEN(u16_max), " SIZEOF: ", SIZEOF(u16_min)
+    PRINT "INT32 - LEN: ", LEN(i32_max), " SIZEOF: ", SIZEOF(i32_min)
+    PRINT "UINT32 - LEN: ", LEN(u32_min), " SIZEOF: ", SIZEOF(u32_min)
+    PRINT "INT64 - LEN: ", LEN(i64_max), " SIZEOF: ", SIZEOF(i64_min)
+    PRINT "UINT64 - LEN: ", LEN(u64_max), " SIZEOF: ", SIZEOF(u64_min)
+    PRINT "FLOAT32 - LEN: ", LEN(f32_max), " SIZEOF: ", SIZEOF(f32_min)
+    PRINT "FLOAT64 - LEN: ", LEN(f64_max), " SIZEOF: ", SIZEOF(f64_min)
+    PRINT "BOOLEAN - SIZEOF: ", SIZEOF(flag_t)
+    PRINT "STRING - LEN: ", LEN(text_val), " SIZEOF: ", SIZEOF(text_val)
+    PRINT "ARRAY v50 - LEN: ", LEN(v50), " SIZEOF: ", SIZEOF(v50)
 END FUNCTION

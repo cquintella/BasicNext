@@ -1,0 +1,282 @@
+// Conway's Game of Life (32x32) in BasicNext
+// Tabuleiro 32x32 em ASCII, limpando a tela a cada rodada e aguardando 2 segundos.
+//
+// Execucao:
+//   bni run examples/game_of_life.bn
+//   bni run examples/game_of_life.bn -- 30 2
+//   bni run examples/game_of_life.bn -- --pattern acorn --delay 2 --rounds 40
+
+IMPORT HOST.Console AS Console
+IMPORT HOST.Clock AS Clock
+IMPORT HOST.Random AS Random
+IMPORT BNMath AS Math
+
+FUNCTION SleepSeconds(seconds AS INTEGER) AS VOID
+    IF seconds <= 0 THEN
+        RETURN
+    END IF
+    LET target AS INT64 = (Clock.Now() AS INT64) + ((seconds AS INT64) * 1000)
+    WHILE (Clock.Now() AS INT64) < target
+    END WHILE
+END FUNCTION
+
+FUNCTION SetCell(grid AS POINTER TO INTEGER[], x AS INTEGER, y AS INTEGER) AS VOID
+    LET wx AS INTEGER = (x + 32) % 32
+    LET wy AS INTEGER = (y + 32) % 32
+    grid[wy * 32 + wx] = 1
+END FUNCTION
+
+FUNCTION AddGlider(grid AS POINTER TO INTEGER[], x AS INTEGER, y AS INTEGER) AS VOID
+    SetCell(grid, x + 1, y + 0)
+    SetCell(grid, x + 2, y + 1)
+    SetCell(grid, x + 0, y + 2)
+    SetCell(grid, x + 1, y + 2)
+    SetCell(grid, x + 2, y + 2)
+END FUNCTION
+
+FUNCTION AddLWSS(grid AS POINTER TO INTEGER[], x AS INTEGER, y AS INTEGER) AS VOID
+    SetCell(grid, x + 1, y + 0)
+    SetCell(grid, x + 4, y + 0)
+    SetCell(grid, x + 0, y + 1)
+    SetCell(grid, x + 0, y + 2)
+    SetCell(grid, x + 4, y + 2)
+    SetCell(grid, x + 0, y + 3)
+    SetCell(grid, x + 1, y + 3)
+    SetCell(grid, x + 2, y + 3)
+    SetCell(grid, x + 3, y + 3)
+END FUNCTION
+
+FUNCTION AddAcorn(grid AS POINTER TO INTEGER[], x AS INTEGER, y AS INTEGER) AS VOID
+    SetCell(grid, x + 1, y + 0)
+    SetCell(grid, x + 3, y + 1)
+    SetCell(grid, x + 0, y + 2)
+    SetCell(grid, x + 1, y + 2)
+    SetCell(grid, x + 4, y + 2)
+    SetCell(grid, x + 5, y + 2)
+    SetCell(grid, x + 6, y + 2)
+END FUNCTION
+
+FUNCTION AddPulsar(grid AS POINTER TO INTEGER[], cx AS INTEGER, cy AS INTEGER) AS VOID
+    LET d1 AS INTEGER[4] = [-4, -2, 2, 4]
+    LET d2 AS INTEGER[3] = [-3, -2, -1]
+    LET d3 AS INTEGER[3] = [1, 2, 3]
+
+    FOR i AS INTEGER = 0 TO 3
+        LET dy AS INTEGER = d1[i]
+        FOR j AS INTEGER = 0 TO 2
+            SetCell(grid, cx + d2[j], cy + dy)
+            SetCell(grid, cx + d3[j], cy + dy)
+        END FOR
+    END FOR
+
+    FOR i AS INTEGER = 0 TO 3
+        LET dx AS INTEGER = d1[i]
+        FOR j AS INTEGER = 0 TO 2
+            SetCell(grid, cx + dx, cy + d2[j])
+            SetCell(grid, cx + dx, cy + d3[j])
+        END FOR
+    END FOR
+END FUNCTION
+
+FUNCTION InitRandom(grid AS POINTER TO INTEGER[], density AS FLOAT) AS VOID
+    FOR i AS INTEGER = 0 TO 1023
+        IF Random.Random() < density THEN
+            grid[i] = 1
+        ELSE
+            grid[i] = 0
+        END IF
+    END FOR
+END FUNCTION
+
+FUNCTION InitPreset(grid AS POINTER TO INTEGER[], preset AS STRING) AS VOID
+    FOR i AS INTEGER = 0 TO 1023
+        grid[i] = 0
+    END FOR
+
+    IF preset = "acorn" THEN
+        AddAcorn(grid, 13, 14)
+    ELSE IF preset = "gliders" THEN
+        AddGlider(grid, 2, 2)
+        AddGlider(grid, 14, 2)
+        AddGlider(grid, 2, 16)
+        AddGlider(grid, 20, 20)
+    ELSE IF preset = "pulsar" THEN
+        AddPulsar(grid, 16, 16)
+    ELSE IF preset = "spaceships" THEN
+        AddLWSS(grid, 2, 5)
+        AddLWSS(grid, 10, 15)
+        AddLWSS(grid, 18, 25)
+    ELSE IF preset = "random" THEN
+        InitRandom(grid, 0.22)
+    ELSE
+        // Padrao "demo": combinacao rica de osciladores, naves e metusalens
+        AddAcorn(grid, 12, 14)
+        AddGlider(grid, 2, 2)
+        AddGlider(grid, 25, 2)
+        AddLWSS(grid, 4, 24)
+    END IF
+END FUNCTION
+
+FUNCTION CountNeighbors(grid AS POINTER TO INTEGER[], x AS INTEGER, y AS INTEGER) AS INTEGER
+    LET count AS INTEGER = 0
+    FOR dy AS INTEGER = -1 TO 1
+        FOR dx AS INTEGER = -1 TO 1
+            IF NOT (dx = 0 AND dy = 0) THEN
+                LET nx AS INTEGER = (x + dx + 32) % 32
+                LET ny AS INTEGER = (y + dy + 32) % 32
+                count += grid[ny * 32 + nx]
+            END IF
+        END FOR
+    END FOR
+    RETURN count
+END FUNCTION
+
+FUNCTION NextGeneration(currentGrid AS POINTER TO INTEGER[], nextGrid AS POINTER TO INTEGER[]) AS INTEGER
+    LET liveCount AS INTEGER = 0
+    FOR y AS INTEGER = 0 TO 31
+        FOR x AS INTEGER = 0 TO 31
+            LET neighbors AS INTEGER = CountNeighbors(currentGrid, x, y)
+            LET idx AS INTEGER = y * 32 + x
+            LET alive AS INTEGER = currentGrid[idx]
+            IF alive = 1 THEN
+                IF neighbors = 2 OR neighbors = 3 THEN
+                    nextGrid[idx] = 1
+                    liveCount += 1
+                ELSE
+                    nextGrid[idx] = 0
+                END IF
+            ELSE
+                IF neighbors = 3 THEN
+                    nextGrid[idx] = 1
+                    liveCount += 1
+                ELSE
+                    nextGrid[idx] = 0
+                END IF
+            END IF
+        END FOR
+    END FOR
+    RETURN liveCount
+END FUNCTION
+
+FUNCTION CopyGrid(src AS POINTER TO INTEGER[], dst AS POINTER TO INTEGER[]) AS VOID
+    FOR i AS INTEGER = 0 TO 1023
+        dst[i] = src[i]
+    END FOR
+END FUNCTION
+
+FUNCTION IsEqual(a AS POINTER TO INTEGER[], b AS POINTER TO INTEGER[]) AS BOOLEAN
+    FOR i AS INTEGER = 0 TO 1023
+        IF a[i] <> b[i] THEN
+            RETURN FALSE
+        END IF
+    END FOR
+    RETURN TRUE
+END FUNCTION
+
+FUNCTION CountLive(grid AS POINTER TO INTEGER[]) AS INTEGER
+    LET count AS INTEGER = 0
+    FOR i AS INTEGER = 0 TO 1023
+        count += grid[i]
+    END FOR
+    RETURN count
+END FUNCTION
+
+FUNCTION RenderBoard(grid AS POINTER TO INTEGER[], round AS INTEGER, liveCount AS INTEGER, maxRounds AS INTEGER, delaySeconds AS INTEGER, preset AS STRING) AS VOID
+    Console.Cls()
+    PRINT "================ JOGO DA VIDA DE CONWAY (32x32) ================"
+    LET info AS STRING = "Rodada: " + (round AS STRING)
+    IF maxRounds > 0 THEN
+        info = info + "/" + (maxRounds AS STRING)
+    ELSE
+        info = info + " (infinito)"
+    END IF
+    info = info + " | Celulas vivas: " + (liveCount AS STRING) + " | Padrao: " + preset + " | Espera: " + (delaySeconds AS STRING) + "s"
+    PRINT info
+    PRINT "+----------------------------------------------------------------+"
+    FOR y AS INTEGER = 0 TO 31
+        LET line AS STRING = "|"
+        FOR x AS INTEGER = 0 TO 31
+            IF grid[y * 32 + x] = 1 THEN
+                line = line + "# "
+            ELSE
+                line = line + ". "
+            END IF
+        END FOR
+        line = line + "|"
+        PRINT line
+    END FOR
+    PRINT "+----------------------------------------------------------------+"
+    PRINT "Pressione Ctrl+C para encerrar a simulacao."
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET rounds AS INTEGER = 50
+    LET delaySeconds AS INTEGER = 2
+    LET preset AS STRING = "demo"
+
+    LET argCount AS INTEGER = LEN(HOST.Args)
+    LET i AS INTEGER = 1
+    WHILE i < argCount
+        LET arg AS STRING = HOST.Args[i]
+        IF arg = "-d" OR arg = "--delay" THEN
+            IF i + 1 < argCount THEN
+                i += 1
+                delaySeconds = Math.VAL(HOST.Args[i]) AS INTEGER
+            END IF
+        ELSE IF arg = "-r" OR arg = "-g" OR arg = "--rounds" OR arg = "--generations" THEN
+            IF i + 1 < argCount THEN
+                i += 1
+                rounds = Math.VAL(HOST.Args[i]) AS INTEGER
+            END IF
+        ELSE IF arg = "-p" OR arg = "--pattern" THEN
+            IF i + 1 < argCount THEN
+                i += 1
+                preset = HOST.Args[i]
+            END IF
+        ELSE IF arg = "--infinite" THEN
+            rounds = 0
+        ELSE
+            IF i = 1 THEN
+                rounds = Math.VAL(arg) AS INTEGER
+            ELSE IF i = 2 THEN
+                delaySeconds = Math.VAL(arg) AS INTEGER
+            ELSE IF i = 3 THEN
+                preset = arg
+            END IF
+        END IF
+        i += 1
+    END WHILE
+
+    LET currentGrid AS POINTER TO INTEGER[] = NEW INTEGER[1024]
+    LET nextGrid AS POINTER TO INTEGER[] = NEW INTEGER[1024]
+
+    InitPreset(currentGrid, preset)
+    LET liveCount AS INTEGER = CountLive(currentGrid)
+
+    LET round AS INTEGER = 0
+    RenderBoard(currentGrid, round, liveCount, rounds, delaySeconds, preset)
+    SleepSeconds(delaySeconds)
+
+    WHILE rounds = 0 OR round < rounds
+        round += 1
+        liveCount = NextGeneration(currentGrid, nextGrid)
+
+        IF IsEqual(currentGrid, nextGrid) THEN
+            RenderBoard(nextGrid, round, liveCount, rounds, delaySeconds, preset)
+            PRINT "Simulacao estabilizada (sem alteracoes na geracao " + (round AS STRING) + ")."
+            RETURN
+        END IF
+
+        CopyGrid(nextGrid, currentGrid)
+        RenderBoard(currentGrid, round, liveCount, rounds, delaySeconds, preset)
+
+        IF liveCount = 0 THEN
+            PRINT "Populacao extinta na geracao " + (round AS STRING) + "."
+            RETURN
+        END IF
+
+        SleepSeconds(delaySeconds)
+    END WHILE
+
+    PRINT "Fim da simulacao apos " + (round AS STRING) + " rodadas."
+END FUNCTION
