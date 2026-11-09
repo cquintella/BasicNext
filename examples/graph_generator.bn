@@ -25,16 +25,16 @@ END FUNCTION
 
 // Weighted graph representation storing connectivity and integer edge distances.
 EXPORT CLASS Graph
-    PUBLIC numVertices AS INTEGER = 0
-    PUBLIC numEdges AS INTEGER = 0
+    PUBLIC vertexCount AS INTEGER = 0
+    PUBLIC edgeCount AS INTEGER = 0
     PUBLIC penalty AS FLOAT = DEFAULT_PENALTY
 
     PRIVATE hasEdge AS POINTER TO INTEGER[] = NEW INTEGER[0]
     PRIVATE weight AS POINTER TO FLOAT[] = NEW FLOAT[0]
 
-    PUBLIC FUNCTION CONSTRUCTOR(vertices AS INTEGER)
-        SELF.numVertices = vertices
-        LET totalCells AS INTEGER = vertices * vertices
+    PUBLIC FUNCTION CONSTRUCTOR(nodeCount AS INTEGER)
+        SELF.vertexCount = nodeCount
+        LET totalCells AS INTEGER = nodeCount * nodeCount
         SELF.hasEdge = NEW INTEGER[totalCells]
         SELF.weight = NEW FLOAT[totalCells]
 
@@ -51,8 +51,8 @@ EXPORT CLASS Graph
         IF u = v THEN
             RETURN
         END IF
-        LET idx1 AS INTEGER = u * SELF.numVertices + v
-        LET idx2 AS INTEGER = v * SELF.numVertices + u
+        LET idx1 AS INTEGER = u * SELF.vertexCount + v
+        LET idx2 AS INTEGER = v * SELF.vertexCount + u
         LET h AS POINTER TO INTEGER[] = SELF.hasEdge
         IF h[idx1] = 0 THEN
             h[idx1] = 1
@@ -60,20 +60,20 @@ EXPORT CLASS Graph
             LET w AS POINTER TO FLOAT[] = SELF.weight
             w[idx1] = edgeWeight
             w[idx2] = edgeWeight
-            SELF.numEdges += 1
+            SELF.edgeCount += 1
         END IF
     END FUNCTION
 
     // Checks whether an edge exists between vertex u and vertex v.
     PUBLIC FUNCTION HasEdge(u AS INTEGER, v AS INTEGER) AS INTEGER
         LET h AS POINTER TO INTEGER[] = SELF.hasEdge
-        RETURN h[u * SELF.numVertices + v]
+        RETURN h[u * SELF.vertexCount + v]
     END FUNCTION
 
     // Gets the weight/distance of the edge between u and v.
     PUBLIC FUNCTION GetWeight(u AS INTEGER, v AS INTEGER) AS FLOAT
         LET w AS POINTER TO FLOAT[] = SELF.weight
-        RETURN w[u * SELF.numVertices + v]
+        RETURN w[u * SELF.vertexCount + v]
     END FUNCTION
 
     // Gets the distance between vertex u and vertex v.
@@ -95,12 +95,12 @@ EXPORT CLASS Graph
 
     // Prints the adjacency matrix of the graph.
     PUBLIC FUNCTION PrintAdjacencyMatrix() AS VOID
-        PRINT "[GraphGenerator] Adjacency Matrix (" + (SELF.numVertices AS STRING) + "x" + (SELF.numVertices AS STRING) + "):"
-        FOR i AS INTEGER = 0 TO SELF.numVertices - 1
+        PRINT "[GraphGenerator] Adjacency Matrix (" + (SELF.vertexCount AS STRING) + "x" + (SELF.vertexCount AS STRING) + "):"
+        FOR i AS INTEGER = 0 TO SELF.vertexCount - 1
             LET rowStr AS STRING = ""
-            FOR j AS INTEGER = 0 TO SELF.numVertices - 1
+            FOR j AS INTEGER = 0 TO SELF.vertexCount - 1
                 rowStr = rowStr + (SELF.HasEdge(i, j) AS STRING)
-                IF j < SELF.numVertices - 1 THEN
+                IF j < SELF.vertexCount - 1 THEN
                     rowStr = rowStr + " "
                 END IF
             END FOR
@@ -110,12 +110,12 @@ EXPORT CLASS Graph
 
     // Prints the weight / distance matrix of the graph.
     PUBLIC FUNCTION PrintWeightMatrix() AS VOID
-        PRINT "[GraphGenerator] Weight/Distance Matrix (" + (SELF.numVertices AS STRING) + "x" + (SELF.numVertices AS STRING) + "):"
-        FOR i AS INTEGER = 0 TO SELF.numVertices - 1
+        PRINT "[GraphGenerator] Weight/Distance Matrix (" + (SELF.vertexCount AS STRING) + "x" + (SELF.vertexCount AS STRING) + "):"
+        FOR i AS INTEGER = 0 TO SELF.vertexCount - 1
             LET rowStr AS STRING = ""
-            FOR j AS INTEGER = 0 TO SELF.numVertices - 1
+            FOR j AS INTEGER = 0 TO SELF.vertexCount - 1
                 rowStr = rowStr + (SELF.GetWeight(i, j) AS INTEGER AS STRING)
-                IF j < SELF.numVertices - 1 THEN
+                IF j < SELF.vertexCount - 1 THEN
                     rowStr = rowStr + " "
                 END IF
             END FOR
@@ -132,15 +132,15 @@ EXPORT CLASS Graph
     END FUNCTION
 END CLASS
 
-// Generates a random graph of V vertices with target edges decided by a normal distribution,
+// Generates a random graph with target edges decided by a normal distribution,
 // and edge weights/distances uniformly sampled as integers from 1 to maxDistance (N).
-EXPORT FUNCTION GenerateGraph(averageDegree AS FLOAT OR INTEGER, numVertices AS INTEGER, maxDistance AS INTEGER) AS Graph
-    LET graph AS Graph = NEW Graph(numVertices)
+EXPORT FUNCTION GenerateGraph(averageDegree AS FLOAT OR INTEGER, vertexCount AS INTEGER, maxDistance AS INTEGER) AS Graph
+    LET graph AS Graph = NEW Graph(vertexCount)
     LET maxD AS INTEGER = maxDistance
     IF maxD < 1 THEN
         maxD = 1
     END IF
-    graph.penalty = Math.MAX(DEFAULT_PENALTY, ((maxD * numVertices) AS FLOAT) * 2.0)
+    graph.penalty = Math.MAX(DEFAULT_PENALTY, ((maxD * vertexCount) AS FLOAT) * 2.0)
 
     LET d AS FLOAT = 0.0
     IF averageDegree IS INTEGER THEN
@@ -150,12 +150,12 @@ EXPORT FUNCTION GenerateGraph(averageDegree AS FLOAT OR INTEGER, numVertices AS 
     END IF
 
     // In an undirected graph: sum(degrees) = 2 * E => E = (d * V) / 2
-    LET meanEdges AS FLOAT = (d * (numVertices AS FLOAT)) / 2.0
+    LET meanEdges AS FLOAT = (d * (vertexCount AS FLOAT)) / 2.0
     LET stddev AS FLOAT = Math.MAX(1.0, Math.SQRT(meanEdges))
     LET sampledEdges AS FLOAT = RandomNormal(meanEdges, stddev)
     LET targetEdges AS INTEGER = Math.ROUND(sampledEdges, 0) AS INTEGER
 
-    LET maxEdges AS INTEGER = (numVertices * (numVertices - 1)) DIV 2
+    LET maxEdges AS INTEGER = (vertexCount * (vertexCount - 1)) DIV 2
     IF targetEdges < 0 THEN
         targetEdges = 0
     END IF
@@ -173,13 +173,13 @@ EXPORT FUNCTION GenerateGraph(averageDegree AS FLOAT OR INTEGER, numVertices AS 
 
     WHILE added < targetEdges AND attempts < maxAttempts
         attempts += 1
-        LET u AS INTEGER = (Random.Random() * (numVertices AS FLOAT)) AS INTEGER
-        LET v AS INTEGER = (Random.Random() * (numVertices AS FLOAT)) AS INTEGER
-        IF u >= numVertices THEN
-            u = numVertices - 1
+        LET u AS INTEGER = (Random.Random() * (vertexCount AS FLOAT)) AS INTEGER
+        LET v AS INTEGER = (Random.Random() * (vertexCount AS FLOAT)) AS INTEGER
+        IF u >= vertexCount THEN
+            u = vertexCount - 1
         END IF
-        IF v >= numVertices THEN
-            v = numVertices - 1
+        IF v >= vertexCount THEN
+            v = vertexCount - 1
         END IF
 
         IF u <> v AND graph.HasEdge(u, v) = 0 THEN
@@ -195,14 +195,9 @@ EXPORT FUNCTION GenerateGraph(averageDegree AS FLOAT OR INTEGER, numVertices AS 
         END IF
     END WHILE
 
-    PRINT "[GraphGenerator] Random connections created successfully: ", graph.numEdges
+    PRINT "[GraphGenerator] Random connections created successfully: ", graph.edgeCount
     PRINT ""
     graph.PrintAdjacencyMatrix()
     PRINT ""
     RETURN graph
-END FUNCTION
-
-// Alias for compatibility
-EXPORT FUNCTION geraGrafo(averageDegree AS FLOAT OR INTEGER, numVertices AS INTEGER, maxDistance AS INTEGER) AS Graph
-    RETURN GenerateGraph(averageDegree, numVertices, maxDistance)
 END FUNCTION

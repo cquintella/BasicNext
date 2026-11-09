@@ -20,11 +20,11 @@ FUNCTION Pause() AS VOID
 END FUNCTION
 
 // Evaluates the total circuit cost for an individual tour.
-FUNCTION EvaluateTour(graph AS GraphGen.Graph, genes AS POINTER TO INTEGER[], offset AS INTEGER, numVertices AS INTEGER) AS FLOAT
+FUNCTION EvaluateTour(graph AS GraphGen.Graph, genes AS POINTER TO INTEGER[], offset AS INTEGER, vertexCount AS INTEGER) AS FLOAT
     LET totalCost AS FLOAT = 0.0
-    FOR i AS INTEGER = 0 TO numVertices - 1
+    FOR i AS INTEGER = 0 TO vertexCount - 1
         LET u AS INTEGER = genes[offset + i]
-        LET nextPos AS INTEGER = (i + 1) % numVertices
+        LET nextPos AS INTEGER = (i + 1) % vertexCount
         LET v AS INTEGER = genes[offset + nextPos]
         totalCost += graph.GetCost(u, v)
     END FOR
@@ -32,11 +32,11 @@ FUNCTION EvaluateTour(graph AS GraphGen.Graph, genes AS POINTER TO INTEGER[], of
 END FUNCTION
 
 // Counts how many edges along the tour correspond to actual edges present in the graph.
-FUNCTION CountValidEdges(graph AS GraphGen.Graph, genes AS POINTER TO INTEGER[], offset AS INTEGER, numVertices AS INTEGER) AS INTEGER
+FUNCTION CountValidEdges(graph AS GraphGen.Graph, genes AS POINTER TO INTEGER[], offset AS INTEGER, vertexCount AS INTEGER) AS INTEGER
     LET validCount AS INTEGER = 0
-    FOR i AS INTEGER = 0 TO numVertices - 1
+    FOR i AS INTEGER = 0 TO vertexCount - 1
         LET u AS INTEGER = genes[offset + i]
-        LET nextPos AS INTEGER = (i + 1) % numVertices
+        LET nextPos AS INTEGER = (i + 1) % vertexCount
         LET v AS INTEGER = genes[offset + nextPos]
         IF graph.HasEdge(u, v) = 1 THEN
             validCount += 1
@@ -46,11 +46,11 @@ FUNCTION CountValidEdges(graph AS GraphGen.Graph, genes AS POINTER TO INTEGER[],
 END FUNCTION
 
 // Formats a tour chromosome as a string for display.
-FUNCTION FormatTour(genes AS POINTER TO INTEGER[], offset AS INTEGER, numVertices AS INTEGER) AS STRING
+FUNCTION FormatTour(genes AS POINTER TO INTEGER[], offset AS INTEGER, vertexCount AS INTEGER) AS STRING
     LET s AS STRING = "["
-    FOR i AS INTEGER = 0 TO numVertices - 1
+    FOR i AS INTEGER = 0 TO vertexCount - 1
         s = s + (genes[offset + i] AS STRING)
-        IF i < numVertices - 1 THEN
+        IF i < vertexCount - 1 THEN
             s = s + ", "
         END IF
     END FOR
@@ -60,8 +60,8 @@ END FUNCTION
 
 // Executes the Genetic Algorithm using Virtual Roulette Wheel selection, OX1 crossover, and 2-opt mutation.
 FUNCTION RunGeneticAlgorithm(graph AS GraphGen.Graph, popSize AS INTEGER, generations AS INTEGER, mutationRate AS FLOAT) AS VOID
-    LET numV AS INTEGER = graph.numVertices
-    LET totalGenes AS INTEGER = popSize * numV
+    LET vertexCount AS INTEGER = graph.vertexCount
+    LET totalGenes AS INTEGER = popSize * vertexCount
 
     PRINT "================================================================================"
     PRINT "[Stage 3/5] Initializing population and evaluating baseline fitness..."
@@ -74,11 +74,11 @@ FUNCTION RunGeneticAlgorithm(graph AS GraphGen.Graph, popSize AS INTEGER, genera
 
     // Initialize population with random vertex permutations (Fisher-Yates shuffle)
     FOR i AS INTEGER = 0 TO popSize - 1
-        LET offset AS INTEGER = i * numV
-        FOR j AS INTEGER = 0 TO numV - 1
+        LET offset AS INTEGER = i * vertexCount
+        FOR j AS INTEGER = 0 TO vertexCount - 1
             popGenes[offset + j] = j
         END FOR
-        FOR j AS INTEGER = numV - 1 TO 1 STEP -1
+        FOR j AS INTEGER = vertexCount - 1 TO 1 STEP -1
             LET randIdx AS INTEGER = (Random.Random() * ((j + 1) AS FLOAT)) AS INTEGER
             IF randIdx > j THEN
                 randIdx = j
@@ -87,7 +87,7 @@ FUNCTION RunGeneticAlgorithm(graph AS GraphGen.Graph, popSize AS INTEGER, genera
             popGenes[offset + j] = popGenes[offset + randIdx]
             popGenes[offset + randIdx] = tmp
         END FOR
-        popCost[i] = EvaluateTour(graph, popGenes, offset, numV)
+        popCost[i] = EvaluateTour(graph, popGenes, offset, vertexCount)
     END FOR
 
     // Identify initial best solution
@@ -100,9 +100,9 @@ FUNCTION RunGeneticAlgorithm(graph AS GraphGen.Graph, popSize AS INTEGER, genera
         END IF
     END FOR
 
-    LET initialValid AS INTEGER = CountValidEdges(graph, popGenes, bestOverallIdx * numV, numV)
-    PRINT "[Population] Population size: ", popSize, " individuals (chromosome length: ", numV, " vertices)"
-    PRINT "[Population] Generation 0 Best Tour Cost: ", bestOverallCost, " (Valid Edges: ", initialValid, "/", numV, ")"
+    LET initialValid AS INTEGER = CountValidEdges(graph, popGenes, bestOverallIdx * vertexCount, vertexCount)
+    PRINT "[Population] Population size: ", popSize, " individuals (chromosome length: ", vertexCount, " vertices)"
+    PRINT "[Population] Generation 0 Best Tour Cost: ", bestOverallCost, " (Valid Edges: ", initialValid, "/", vertexCount, ")"
     PRINT ""
 
     PRINT "================================================================================"
@@ -117,7 +117,7 @@ FUNCTION RunGeneticAlgorithm(graph AS GraphGen.Graph, popSize AS INTEGER, genera
     LET wheel AS Roulette.RouletteWheel = NEW Roulette.RouletteWheel(popSize)
 
     // Lookup buffer for OX1 crossover
-    LET inChild AS POINTER TO INTEGER[] = NEW INTEGER[numV]
+    LET inChild AS POINTER TO INTEGER[] = NEW INTEGER[vertexCount]
 
     FOR gen AS INTEGER = 1 TO generations
         // Construct the Virtual Roulette Wheel from current costs
@@ -137,14 +137,14 @@ FUNCTION RunGeneticAlgorithm(graph AS GraphGen.Graph, popSize AS INTEGER, genera
             END IF
         END FOR
 
-        LET bestOffset AS INTEGER = bestCurrentIdx * numV
-        FOR j AS INTEGER = 0 TO numV - 1
+        LET bestOffset AS INTEGER = bestCurrentIdx * vertexCount
+        FOR j AS INTEGER = 0 TO vertexCount - 1
             nextGenes[j] = popGenes[bestOffset + j]
         END FOR
         nextCost[0] = bestCurrentCost
 
         PRINT "  Offspring 0 [Elitism - Copy of Best Index " + (bestCurrentIdx AS STRING) + "]:"
-        PRINT "    Chromosome: " + FormatTour(nextGenes, 0, numV) + " | Cost: " + (nextCost[0] AS STRING)
+        PRINT "    Chromosome: " + FormatTour(nextGenes, 0, vertexCount) + " | Cost: " + (nextCost[0] AS STRING)
 
         // Produce next generation offspring
         FOR ind AS INTEGER = 1 TO popSize - 1
@@ -157,18 +157,18 @@ FUNCTION RunGeneticAlgorithm(graph AS GraphGen.Graph, popSize AS INTEGER, genera
                 p2 = wheel.Spin()
             END IF
 
-            LET p1Off AS INTEGER = p1 * numV
-            LET p2Off AS INTEGER = p2 * numV
-            LET childOff AS INTEGER = ind * numV
+            LET p1Off AS INTEGER = p1 * vertexCount
+            LET p2Off AS INTEGER = p2 * vertexCount
+            LET childOff AS INTEGER = ind * vertexCount
 
             // Order Crossover (OX1)
-            LET cut1 AS INTEGER = (Random.Random() * (numV AS FLOAT)) AS INTEGER
-            LET cut2 AS INTEGER = (Random.Random() * (numV AS FLOAT)) AS INTEGER
-            IF cut1 >= numV THEN
-                cut1 = numV - 1
+            LET cut1 AS INTEGER = (Random.Random() * (vertexCount AS FLOAT)) AS INTEGER
+            LET cut2 AS INTEGER = (Random.Random() * (vertexCount AS FLOAT)) AS INTEGER
+            IF cut1 >= vertexCount THEN
+                cut1 = vertexCount - 1
             END IF
-            IF cut2 >= numV THEN
-                cut2 = numV - 1
+            IF cut2 >= vertexCount THEN
+                cut2 = vertexCount - 1
             END IF
             IF cut1 > cut2 THEN
                 LET tempCut AS INTEGER = cut1
@@ -176,7 +176,7 @@ FUNCTION RunGeneticAlgorithm(graph AS GraphGen.Graph, popSize AS INTEGER, genera
                 cut2 = tempCut
             END IF
 
-            FOR k AS INTEGER = 0 TO numV - 1
+            FOR k AS INTEGER = 0 TO vertexCount - 1
                 inChild[k] = 0
             END FOR
 
@@ -188,30 +188,30 @@ FUNCTION RunGeneticAlgorithm(graph AS GraphGen.Graph, popSize AS INTEGER, genera
             END FOR
 
             // Fill remaining genes from Parent 2 in cyclical order
-            LET childPos AS INTEGER = (cut2 + 1) % numV
-            LET p2Pos AS INTEGER = (cut2 + 1) % numV
+            LET childPos AS INTEGER = (cut2 + 1) % vertexCount
+            LET p2Pos AS INTEGER = (cut2 + 1) % vertexCount
             LET filled AS INTEGER = cut2 - cut1 + 1
 
-            WHILE filled < numV
+            WHILE filled < vertexCount
                 LET gene AS INTEGER = popGenes[p2Off + p2Pos]
                 IF inChild[gene] = 0 THEN
                     nextGenes[childOff + childPos] = gene
                     inChild[gene] = 1
-                    childPos = (childPos + 1) % numV
+                    childPos = (childPos + 1) % vertexCount
                     filled += 1
                 END IF
-                p2Pos = (p2Pos + 1) % numV
+                p2Pos = (p2Pos + 1) % vertexCount
             END WHILE
 
             // Mutation: 2-opt subsegment reversal
             IF Random.Random() < mutationRate THEN
-                LET m1 AS INTEGER = (Random.Random() * (numV AS FLOAT)) AS INTEGER
-                LET m2 AS INTEGER = (Random.Random() * (numV AS FLOAT)) AS INTEGER
-                IF m1 >= numV THEN
-                    m1 = numV - 1
+                LET m1 AS INTEGER = (Random.Random() * (vertexCount AS FLOAT)) AS INTEGER
+                LET m2 AS INTEGER = (Random.Random() * (vertexCount AS FLOAT)) AS INTEGER
+                IF m1 >= vertexCount THEN
+                    m1 = vertexCount - 1
                 END IF
-                IF m2 >= numV THEN
-                    m2 = numV - 1
+                IF m2 >= vertexCount THEN
+                    m2 = vertexCount - 1
                 END IF
                 IF m1 > m2 THEN
                     LET tmpM AS INTEGER = m1
@@ -227,12 +227,12 @@ FUNCTION RunGeneticAlgorithm(graph AS GraphGen.Graph, popSize AS INTEGER, genera
                 END WHILE
             END IF
 
-            nextCost[ind] = EvaluateTour(graph, nextGenes, childOff, numV)
+            nextCost[ind] = EvaluateTour(graph, nextGenes, childOff, vertexCount)
 
             PRINT "  Offspring " + (ind AS STRING) + ":"
-            PRINT "    Parent 1 Selected (Index " + (p1 AS STRING) + "): " + FormatTour(popGenes, p1Off, numV) + " | Cost: " + (popCost[p1] AS STRING)
-            PRINT "    Parent 2 Selected (Index " + (p2 AS STRING) + "): " + FormatTour(popGenes, p2Off, numV) + " | Cost: " + (popCost[p2] AS STRING)
-            PRINT "    Generated Offspring:                " + FormatTour(nextGenes, childOff, numV) + " | Cost: " + (nextCost[ind] AS STRING)
+            PRINT "    Parent 1 Selected (Index " + (p1 AS STRING) + "): " + FormatTour(popGenes, p1Off, vertexCount) + " | Cost: " + (popCost[p1] AS STRING)
+            PRINT "    Parent 2 Selected (Index " + (p2 AS STRING) + "): " + FormatTour(popGenes, p2Off, vertexCount) + " | Cost: " + (popCost[p2] AS STRING)
+            PRINT "    Generated Offspring:                " + FormatTour(nextGenes, childOff, vertexCount) + " | Cost: " + (nextCost[ind] AS STRING)
         END FOR
 
         // Swap population buffers
@@ -252,8 +252,8 @@ FUNCTION RunGeneticAlgorithm(graph AS GraphGen.Graph, popSize AS INTEGER, genera
                 bestGenIdx = i
             END IF
         END FOR
-        LET validCount AS INTEGER = CountValidEdges(graph, popGenes, bestGenIdx * numV, numV)
-        PRINT "[Generation " + (gen AS STRING) + "/" + (generations AS STRING) + " Summary] Best Cost: " + (bestGenCost AS STRING) + " | Valid Edges: " + (validCount AS STRING) + "/" + (numV AS STRING)
+        LET validCount AS INTEGER = CountValidEdges(graph, popGenes, bestGenIdx * vertexCount, vertexCount)
+        PRINT "[Generation " + (gen AS STRING) + "/" + (generations AS STRING) + " Summary] Best Cost: " + (bestGenCost AS STRING) + " | Valid Edges: " + (validCount AS STRING) + "/" + (vertexCount AS STRING)
         PRINT ""
         Pause()
     END FOR
@@ -272,25 +272,25 @@ FUNCTION RunGeneticAlgorithm(graph AS GraphGen.Graph, popSize AS INTEGER, genera
         END IF
     END FOR
 
-    LET finalOffset AS INTEGER = finalBestIdx * numV
-    LET finalValid AS INTEGER = CountValidEdges(graph, popGenes, finalOffset, numV)
-    LET missingEdges AS INTEGER = numV - finalValid
+    LET finalOffset AS INTEGER = finalBestIdx * vertexCount
+    LET finalValid AS INTEGER = CountValidEdges(graph, popGenes, finalOffset, vertexCount)
+    LET missingEdges AS INTEGER = vertexCount - finalValid
     LET penaltyTotal AS FLOAT = (missingEdges AS FLOAT) * graph.penalty
     LET pureDistance AS FLOAT = finalBestCost - penaltyTotal
 
     PRINT "Final Summary:"
     PRINT "  Total Optimized Cost:             ", finalBestCost
-    PRINT "  Traversed Valid Graph Edges:      ", finalValid, " of ", numV
+    PRINT "  Traversed Valid Graph Edges:      ", finalValid, " of ", vertexCount
     PRINT "  Missing Connections (Penalized):  ", missingEdges
     PRINT "  Pure Traversed Edges Distance:    ", pureDistance
     PRINT "  Total Disconnection Penalty:      ", penaltyTotal
     PRINT ""
     PRINT "Best Tour Path Sequence:"
     LET pathStr AS STRING = ""
-    FOR j AS INTEGER = 0 TO numV - 1
-        LET vert AS INTEGER = popGenes[finalOffset + j]
-        pathStr = pathStr + (vert AS STRING)
-        IF j < numV - 1 THEN
+    FOR j AS INTEGER = 0 TO vertexCount - 1
+        LET vertex AS INTEGER = popGenes[finalOffset + j]
+        pathStr = pathStr + (vertex AS STRING)
+        IF j < vertexCount - 1 THEN
             pathStr = pathStr + " -> "
         END IF
     END FOR
@@ -340,7 +340,7 @@ END FUNCTION
 FUNCTION Start() AS INTEGER
     LET generations AS INTEGER = 300
     LET averageDegree AS FLOAT = 4.0
-    LET numVertices AS INTEGER = 50
+    LET vertexCount AS INTEGER = 50
     LET maxDistance AS INTEGER = 100
     LET popSize AS INTEGER = 100
     LET mutationRate AS FLOAT = 0.10
@@ -372,7 +372,7 @@ FUNCTION Start() AS INTEGER
         ELSE IF arg = "-v" OR arg = "--vertices" THEN
             argIdx += 1
             IF argIdx < argCount THEN
-                numVertices = Math.VAL(HOST.Args[argIdx]) AS INTEGER
+                vertexCount = Math.VAL(HOST.Args[argIdx]) AS INTEGER
             END IF
         ELSE IF arg = "-n" OR arg = "--max-dist" OR arg = "--max-distance" OR arg = "-N" THEN
             argIdx += 1
@@ -401,7 +401,7 @@ FUNCTION Start() AS INTEGER
             ELSE IF argIdx = 2 THEN
                 averageDegree = Math.VAL(arg)
             ELSE IF argIdx = 3 THEN
-                numVertices = Math.VAL(arg) AS INTEGER
+                vertexCount = Math.VAL(arg) AS INTEGER
             ELSE IF argIdx = 4 THEN
                 maxDistance = Math.VAL(arg) AS INTEGER
             END IF
@@ -413,7 +413,7 @@ FUNCTION Start() AS INTEGER
     Random.Seed(seed)
 
     PRINT "Configuration:"
-    PRINT "  Vertices:         ", numVertices
+    PRINT "  Vertices:         ", vertexCount
     PRINT "  Average Degree:   ", averageDegree
     PRINT "  Generations:      ", generations
     PRINT "  Population Size:  ", popSize
@@ -426,18 +426,18 @@ FUNCTION Start() AS INTEGER
     PRINT "[Stage 2/5] Generating random graph using normal distribution..."
     PRINT "================================================================================"
 
-    // Call graph generator module: GRAFO = GenerateGraph(averageDegree, numVertices, maxDistance)
-    LET GRAFO AS GraphGen.Graph = GraphGen.GenerateGraph(averageDegree, numVertices, maxDistance)
+    // Call graph generator module: graph = GenerateGraph(averageDegree, vertexCount, maxDistance)
+    LET graph AS GraphGen.Graph = GraphGen.GenerateGraph(averageDegree, vertexCount, maxDistance)
 
-    PRINT "[Graph] Vertices: ", GRAFO.numVertices, " | Actual Edges Created: ", GRAFO.numEdges
+    PRINT "[Graph] Vertices: ", graph.vertexCount, " | Actual Edges Created: ", graph.edgeCount
     PRINT ""
     Pause()
 
     // Run Genetic Algorithm
-    RunGeneticAlgorithm(GRAFO, popSize, generations, mutationRate)
+    RunGeneticAlgorithm(graph, popSize, generations, mutationRate)
 
     // Dispose graph resources
-    GRAFO.Dispose()
+    graph.Dispose()
     PRINT ""
     PRINT "[Done] Execution finished successfully."
     RETURN 0
