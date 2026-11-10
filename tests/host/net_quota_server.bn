@@ -1,0 +1,41 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Exhausting the socket quota causes BNWeb.Server.Start to return Web.LIMIT.
+IMPORT HOST.Net AS Net
+IMPORT BNWeb AS Web
+
+FUNCTION Fill(endpoint AS Net.Endpoint, count AS INTEGER) AS VOID
+    IF count = 0 THEN
+        LET server AS Web.Server = NEW Web.Server()
+        LET started AS VOID OR Error = server.Start(endpoint)
+        IF started IS Error THEN
+            PRINT "server limit:", started.Code = Web.LIMIT, started.Code
+        ELSE
+            PRINT "unexpected server success"
+        END IF
+        RETURN
+    END IF
+    LET s AS Net.UDPSocket OR Error = Net.UDPBind(endpoint)
+    IF s IS Error THEN
+        PRINT "s is error:", s
+        RETURN
+    END IF
+    Fill(endpoint, count - 1)
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET addr AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+    IF addr IS Error THEN
+        PRINT "addr error"
+        RETURN
+    END IF
+    LET anyPort AS Net.Endpoint OR Error = Net.Endpoint.Create(addr, 0)
+    IF anyPort IS Error THEN
+        PRINT "endpoint error"
+        RETURN
+    END IF
+    Fill(anyPort, 256)
+END FUNCTION

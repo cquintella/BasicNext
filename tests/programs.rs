@@ -62,6 +62,8 @@ mod loop_scope;
 mod math_expressions;
 #[path = "programs/narrowing.rs"]
 mod narrowing;
+#[path = "programs/net_quota.rs"]
+mod net_quota;
 #[path = "programs/parity.rs"]
 mod parity;
 #[path = "programs/parity_regressions.rs"]
