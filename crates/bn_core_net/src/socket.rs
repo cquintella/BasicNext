@@ -471,4 +471,29 @@ mod tests {
             "binding must succeed after releasing a socket"
         );
     }
+
+    #[test]
+    fn into_std_returns_socket_and_permit_without_releasing_quota() {
+        let _lock = SOCKET_TEST_LOCK.lock().unwrap();
+        let listener = super::TcpListener::bind(Endpoint::new(
+            Address::parse("127.0.0.1").expect("loopback"),
+            0,
+        ))
+        .expect("bind listener");
+        let endpoint = listener.local_endpoint().expect("local endpoint");
+        let stream = super::TcpStream::connect(endpoint, Duration::from_secs(1)).expect("connect");
+        let before_count = SocketPermit::active_count();
+        let (_std_stream, permit) = stream.into_std();
+        assert_eq!(
+            SocketPermit::active_count(),
+            before_count,
+            "into_std must not release the socket quota"
+        );
+        drop(permit);
+        assert_eq!(
+            SocketPermit::active_count(),
+            before_count - 1,
+            "dropping permit releases the socket quota"
+        );
+    }
 }
