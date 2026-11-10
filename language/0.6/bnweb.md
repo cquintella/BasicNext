@@ -227,8 +227,8 @@ EgressPolicy OR Error` narrows where `Client.RequestWithPolicy` may connect.
 items each: the schemes `http` and `https`, IPv4 or IPv6 CIDR blocks, and
 ports `1..65535`. A request is allowed only when its scheme, its port and
 one resolved address are in the lists; an empty `cidrs` or `ports` list
-allows nothing. Loopback and private-network addresses stay refused
-whatever the CIDRs. `maxRedirects` is `0..10`; 0 follows no redirect.
+allows nothing (BDFL decision, 2026-11-06). A client without an explicit
+policy connects to any resolved destination. `maxRedirects` is `0..10`; 0 follows no redirect.
 `totalDeadlineMs` is `1..600000` and bounds the whole request with its
 redirects. A setting outside these bounds, an empty or unsupported scheme
 list, port 0, an unparsable CIDR, or a list of more than 64 items returns

@@ -354,11 +354,6 @@ fn client_request_once(
     } else {
         None
     };
-    // A literal private or loopback address is refused before any socket is
-    // opened, on both backends alike.
-    if let Ok(address) = host.parse::<std::net::IpAddr>() {
-        crate::web::validate_ssrf_destinations(&[address], false).map_err(str::to_owned)?;
-    }
     let deadline = std::time::Duration::from_millis(policy.total_deadline_ms());
     let addresses =
         resolve_validated_addresses_with_policy(host.as_str(), port, resolver, policy, scheme)?;

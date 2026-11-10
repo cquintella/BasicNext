@@ -363,6 +363,7 @@
     "bn_web::rlib/bn_web::http::tests::client_connect_failure_due_to_socket_quota_returns_web_limit",
     "bn_web::rlib/bn_web::http::tests::client_dns_deadline_expiry_returns_web_timeout",
     "bn_web::rlib/bn_web::http::tests::client_dns_pool_saturation_returns_web_limit",
+    "bn_web::rlib/bn_web::http::tests::safe_address_binding_connects_to_exact_validated_address_without_dns_rebinding",
     "bn_web::test/drain_idle_cpu::a_drain_ends_when_the_last_connection_is_released",
     "bn_web::test/drain_idle_cpu::an_idle_drain_uses_almost_no_cpu",
     "bnc::test/cli::compiled_bncrypto_aead_options_matches_the_interpreter",

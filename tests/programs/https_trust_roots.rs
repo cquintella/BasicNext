@@ -82,13 +82,11 @@ impl TestServer {
                             if let Ok(connection) = rustls::ServerConnection::new(config) {
                                 let mut tls = rustls::StreamOwned::new(connection, stream);
                                 let mut buf = [0u8; 1024];
-                                if let Ok(n) = tls.read(&mut buf) {
-                                    if n > 0 {
-                                        let _ = tls.write_all(
-                                            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
-                                        );
-                                        let _ = tls.flush();
-                                    }
+                                if tls.read(&mut buf).is_ok_and(|n| n > 0) {
+                                    let _ = tls.write_all(
+                                        b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
+                                    );
+                                    let _ = tls.flush();
                                 }
                             }
                         });

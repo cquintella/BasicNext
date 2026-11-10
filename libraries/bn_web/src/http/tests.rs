@@ -522,17 +522,49 @@ fn client_resolver_filters_mixed_dns_answers_under_rule_i() {
             ),
         ]),
     };
-    // Under Rule I, mixed candidates are filtered: private IP is rejected, public IP survives
+    // Without policy restriction, resolved destinations are allowed by default.
     assert_eq!(
         super::resolve_validated_addresses("mixed.test", 80, &resolver).unwrap(),
+        vec![
+            "8.8.8.8".parse::<std::net::IpAddr>().unwrap(),
+            "::ffff:127.0.0.1".parse::<std::net::IpAddr>().unwrap(),
+        ]
+    );
+    // Under configured EgressPolicy, candidates outside the allowed CIDRs are filtered.
+    let policy = crate::web::EgressPolicy::from_csv("http", "8.8.8.0/24", "80", 2, 1000).unwrap();
+    assert_eq!(
+        super::resolve_validated_addresses_with_policy(
+            "mixed.test",
+            80,
+            &resolver,
+            &policy,
+            "http"
+        )
+        .unwrap(),
         vec!["8.8.8.8".parse::<std::net::IpAddr>().unwrap()]
     );
     assert_eq!(
-        super::resolve_validated_addresses("public.test", 80, &resolver).unwrap(),
+        super::resolve_validated_addresses_with_policy(
+            "public.test",
+            80,
+            &resolver,
+            &policy,
+            "http"
+        )
+        .unwrap(),
         vec!["8.8.8.8".parse::<std::net::IpAddr>().unwrap()]
     );
-    // If all candidates are blocked, resolve_validated_addresses fails closed
-    assert!(super::resolve_validated_addresses("blocked.test", 80, &resolver).is_err());
+    // If all candidates are outside CIDR, resolve_validated_addresses_with_policy fails closed.
+    assert!(
+        super::resolve_validated_addresses_with_policy(
+            "blocked.test",
+            80,
+            &resolver,
+            &policy,
+            "http"
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -1177,8 +1209,27 @@ fn redirect_destination_is_revalidated_with_the_same_resolver_policy() {
         super::resolve_redirect("http://public.test/start", "http://blocked.test/metadata")
             .unwrap();
     assert_eq!(redirect, "http://blocked.test/metadata");
-    assert!(super::resolve_validated_addresses("public.test", 80, &resolver).is_ok());
-    assert!(super::resolve_validated_addresses("blocked.test", 80, &resolver).is_err());
+    let policy = crate::web::EgressPolicy::from_csv("http", "8.8.8.0/24", "80", 2, 1000).unwrap();
+    assert!(
+        super::resolve_validated_addresses_with_policy(
+            "public.test",
+            80,
+            &resolver,
+            &policy,
+            "http"
+        )
+        .is_ok()
+    );
+    assert!(
+        super::resolve_validated_addresses_with_policy(
+            "blocked.test",
+            80,
+            &resolver,
+            &policy,
+            "http"
+        )
+        .is_err()
+    );
 }
 
 fn assert_static_refusals_and_conditional(send_raw: &impl Fn(&str) -> String, etag_val: &str) {
@@ -1327,4 +1378,65 @@ fn serves_static_files_with_mime_etag_conditional_and_sanitization() {
 
     server.join().expect("server thread");
     let _ = std::fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn safe_address_binding_connects_to_exact_validated_address_without_dns_rebinding() {
+    struct CountingResolver {
+        calls: std::sync::atomic::AtomicUsize,
+        addresses: Vec<bn_core_net::Address>,
+    }
+
+    impl super::AddressResolver for CountingResolver {
+        fn resolve(
+            &self,
+            _host: &str,
+            _port: u16,
+            maximum: usize,
+            _timeout: std::time::Duration,
+        ) -> Result<Vec<bn_core_net::Address>, String> {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(self.addresses.iter().copied().take(maximum).collect())
+        }
+    }
+
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind listener");
+    let port = listener.local_addr().expect("local addr").port();
+    let server = std::thread::spawn(move || {
+        if let Ok((mut stream, _)) = listener.accept() {
+            let mut buf = [0u8; 1024];
+            let _ = stream.read(&mut buf);
+            let _ = stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok");
+            let _ = stream.flush();
+        }
+    });
+
+    let resolver = CountingResolver {
+        calls: std::sync::atomic::AtomicUsize::new(0),
+        addresses: vec![bn_core_net::Address::parse("127.0.0.1").unwrap()],
+    };
+
+    // 1. Policy allows 127.0.0.0/8: exactly one DNS resolution occurs, and connect dials the validated address.
+    let allowed_policy =
+        crate::web::EgressPolicy::from_csv("http", "127.0.0.0/8", &port.to_string(), 0, 5000)
+            .unwrap();
+    let url = format!("http://rebind.test:{port}/");
+    let res =
+        super::client_request_with_resolver_and_policy("GET", &url, "", &resolver, &allowed_policy)
+            .expect("request success");
+    assert_eq!(res.status, 200);
+    assert_eq!(resolver.calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+    // 2. Policy rejecting destination: fails before connect without any second lookup or stream dial.
+    let denied_policy =
+        crate::web::EgressPolicy::from_csv("http", "192.168.0.0/16", &port.to_string(), 0, 5000)
+            .unwrap();
+    let err =
+        super::client_request_with_resolver_and_policy("GET", &url, "", &resolver, &denied_policy)
+            .expect_err("policy rejection");
+    assert!(err.contains("outside the egress policy"));
+    assert_eq!(resolver.calls.load(std::sync::atomic::Ordering::SeqCst), 2);
+
+    server.join().expect("server thread join");
 }

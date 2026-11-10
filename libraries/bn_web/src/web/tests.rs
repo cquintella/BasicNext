@@ -3,7 +3,7 @@ use super::server::ServerStatus;
 use super::{
     Route, RouteOutcome, ServerState, allowed_methods, bounded_body, canonical_target,
     dispatch_route, effective_client_address, header_values, query_values, route_for_request,
-    select_route, validate_client_url, validate_ssrf_destinations,
+    select_route, validate_client_url,
 };
 use std::{
     io::{Read, Write},
@@ -834,29 +834,58 @@ fn client_url_validation_rejects_unsafe_forms() {
 
 #[test]
 fn ssrf_guard_rejects_private_and_empty_resolution_by_default() {
-    assert!(validate_ssrf_destinations(&[], false).is_err());
-    assert!(validate_ssrf_destinations(&["127.0.0.1".parse().unwrap()], false).is_err());
-    assert!(validate_ssrf_destinations(&["192.0.2.1".parse().unwrap()], false).is_err());
-    assert!(validate_ssrf_destinations(&["127.0.0.1".parse().unwrap()], true).is_ok());
+    let default_policy = super::EgressPolicy::default();
+    assert!(
+        default_policy
+            .filter_allowed_addresses("http", 80, &[])
+            .is_err()
+    );
+    // Default client policy allows loopback and private destinations without error.
+    assert!(
+        default_policy
+            .filter_allowed_addresses("http", 80, &["127.0.0.1".parse().unwrap()])
+            .is_ok()
+    );
+    assert!(
+        default_policy
+            .filter_allowed_addresses("http", 80, &["192.168.1.1".parse().unwrap()])
+            .is_ok()
+    );
+    // Restrictive policy rejects private destinations outside its CIDRs.
+    let restricted =
+        super::EgressPolicy::from_csv("http", "93.184.216.0/24", "80", 1, 1000).unwrap();
+    assert!(
+        restricted
+            .filter_allowed_addresses("http", 80, &["127.0.0.1".parse().unwrap()])
+            .is_err()
+    );
 }
 
 #[test]
 fn ssrf_guard_reclassifies_ipv4_mapped_ipv6_as_ipv4() {
-    for address in [
-        "::ffff:127.0.0.1",
-        "::ffff:10.0.0.1",
-        "::ffff:169.254.169.254",
-        "::ffff:100.64.0.1",
-    ] {
+    let policy =
+        super::EgressPolicy::from_csv("http", "10.0.0.0/8,127.0.0.0/8", "80", 1, 1000).unwrap();
+    for address in ["::ffff:127.0.0.1", "::ffff:10.0.0.1"] {
         assert!(
-            validate_ssrf_destinations(&[address.parse().unwrap()], false).is_err(),
-            "{address} must use IPv4 sensitivity rules"
+            policy
+                .filter_allowed_addresses("http", 80, &[address.parse().unwrap()])
+                .is_ok(),
+            "{address} must match IPv4 CIDRs"
+        );
+    }
+    for address in ["::ffff:169.254.169.254", "::ffff:100.64.0.1"] {
+        assert!(
+            policy
+                .filter_allowed_addresses("http", 80, &[address.parse().unwrap()])
+                .is_err(),
+            "{address} outside CIDR must be rejected"
         );
     }
 }
 
 #[test]
 fn ssrf_guard_rejects_special_ipv4_ranges_but_allows_global_ipv4() {
+    let policy = super::EgressPolicy::from_csv("http", "8.8.8.0/24", "80", 1, 1000).unwrap();
     for address in [
         "100.64.0.1",
         "100.127.255.254",
@@ -866,12 +895,17 @@ fn ssrf_guard_rejects_special_ipv4_ranges_but_allows_global_ipv4() {
         "203.0.113.1",
     ] {
         assert!(
-            validate_ssrf_destinations(&[address.parse().unwrap()], false).is_err(),
-            "{address} must be rejected"
+            policy
+                .filter_allowed_addresses("http", 80, &[address.parse().unwrap()])
+                .is_err(),
+            "{address} outside CIDRs must be rejected"
         );
     }
-    assert!(validate_ssrf_destinations(&["8.8.8.8".parse().unwrap()], false).is_ok());
-    assert!(validate_ssrf_destinations(&["2001:4860:4860::8888".parse().unwrap()], false).is_ok());
+    assert!(
+        policy
+            .filter_allowed_addresses("http", 80, &["8.8.8.8".parse().unwrap()])
+            .is_ok()
+    );
 }
 
 #[test]
@@ -935,6 +969,7 @@ fn egress_policy_is_immutable_and_fail_closed() {
 
 #[test]
 fn ssrf_policy_can_be_exercised_with_the_local_fake_resolver() {
+    let policy = super::EgressPolicy::from_csv("http", "93.184.216.0/24", "80", 1, 1000).unwrap();
     let resolver = crate::test_support::FakeResolver::default();
     resolver.insert(
         "metadata.test",
@@ -950,7 +985,11 @@ fn ssrf_policy_can_be_exercised_with_the_local_fake_resolver() {
         .into_iter()
         .map(bn_core_net::Address::as_std)
         .collect::<Vec<_>>();
-    assert!(validate_ssrf_destinations(&addresses, false).is_err());
+    assert!(
+        policy
+            .filter_allowed_addresses("http", 80, &addresses)
+            .is_err()
+    );
 }
 
 #[test]

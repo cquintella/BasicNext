@@ -7,9 +7,7 @@
 // SSL_CERT_FILE and SSL_CERT_DIR are not read. An extra file that cannot be
 // read, or that holds no certificate, fails the request before any name is
 // resolved; it is never skipped.
-//
-// The client still refuses loopback and private-network destinations, so the
-// server must have a public address. Put your CA beside the program:
+// Put your CA beside the program:
 //
 //   cp my-ca.pem bn-cacert.pem
 //   bni run https_private_ca.bn -- https://intranet.example.com/

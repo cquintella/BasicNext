@@ -3497,7 +3497,6 @@ libraries/bn_web/src/web.rs	prose	invalid UTF-8 in target
 libraries/bn_web/src/web.rs	prose	malformed percent escape
 libraries/bn_web/src/web.rs	prose	malformed percent escape
 libraries/bn_web/src/web.rs	prose	malformed percent escape
-libraries/bn_web/src/web.rs	prose	private or local destination requires explicit opt-in
 libraries/bn_web/src/web.rs	prose	query exceeds 8 KiB
 libraries/bn_web/src/web.rs	prose	query fields exceed bounds
 libraries/bn_web/src/web.rs	prose	query key or value exceeds bounds
@@ -3513,7 +3512,6 @@ libraries/bn_web/src/web.rs	prose	response is closed
 libraries/bn_web/src/web.rs	prose	Secure cookies cannot be sent over cleartext HTTP
 libraries/bn_web/src/web.rs	prose	unsupported or ambiguous URL
 libraries/bn_web/src/web.rs	prose	URL requires an authority
-libraries/bn_web/src/web.rs	prose	URL resolved to no addresses
 libraries/bn_web/src/web.rs	prose	URL resolved to no addresses
 libraries/bn_web/src/web/drain.rs	prose	server drain timed out with active connections
 libraries/bn_web/src/web/drain.rs	prose	server drain timed out with active connections

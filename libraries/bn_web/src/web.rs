@@ -126,9 +126,6 @@ impl EgressPolicy {
     }
 
     fn allows_candidate(&self, address: IpAddr) -> bool {
-        if validate_ssrf_destinations(&[address], false).is_err() {
-            return false;
-        }
         if let Some(cidrs) = &self.cidrs {
             if cidrs.is_empty() {
                 return false;
@@ -595,48 +592,6 @@ pub fn bounded_body(body: &str, maximum: i128) -> Result<&str, &'static str> {
         return Err("request body exceeds declared limit");
     }
     Ok(body)
-}
-
-pub fn validate_ssrf_destinations(
-    addresses: &[IpAddr],
-    allow_private: bool,
-) -> Result<(), &'static str> {
-    if allow_private {
-        return Ok(());
-    }
-    if addresses.is_empty() {
-        return Err("URL resolved to no addresses");
-    }
-    if addresses.iter().any(|address| match address {
-        IpAddr::V4(address) => is_sensitive_ipv4(*address),
-        IpAddr::V6(address) => {
-            address.to_ipv4().is_some_and(is_sensitive_ipv4)
-                || address.is_loopback()
-                || address.is_unicast_link_local()
-                || address.is_multicast()
-                || address.is_unspecified()
-                || address.segments()[0] & 0xfe00 == 0xfc00
-        }
-    }) {
-        return Err("private or local destination requires explicit opt-in");
-    }
-    Ok(())
-}
-
-fn is_sensitive_ipv4(address: std::net::Ipv4Addr) -> bool {
-    let octets = address.octets();
-    let first = octets[0];
-    let second = octets[1];
-    address.is_private()
-        || address.is_loopback()
-        || address.is_link_local()
-        || address.is_multicast()
-        || address.is_unspecified()
-        || (first == 100 && (64..=127).contains(&second))
-        || (first == 192 && second == 0 && octets[2] == 2)
-        || (first == 198 && second == 51 && octets[2] == 100)
-        || (first == 203 && second == 0 && octets[2] == 113)
-        || (first == 198 && (18..=19).contains(&second))
 }
 
 pub(crate) fn effective_client_address(
