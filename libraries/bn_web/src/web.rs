@@ -708,7 +708,9 @@ pub(crate) mod policy_opener;
 mod server;
 pub mod sessions;
 pub(crate) mod static_files;
-pub use server::{ConnectionWork, ServerOptions, ServerState, ServerStats, ServerStatus};
+pub use server::{
+    ConnectionWork, ServerOptions, ServerState, ServerStats, ServerStatus, spawn_listener_thread,
+};
 pub use static_files::{
     StaticFileContent, StaticFileError, StaticFileOpener, StaticMount, StaticServeOutcome,
     serve_static_file,

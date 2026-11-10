@@ -25,6 +25,13 @@ session.key_limit.cause = a session holds at most 64 keys
 session.entropy_unavailable = session entropy provider unavailable
 response.session_cookie_failed = session cookie failed
 queue.closed = handler queue closed
+server.listener_spawn_failed = failed to spawn listener thread
+server.state_unavailable = server state unavailable
+server.options_not_live = ServerOptions handle is not live
+server.tls_config_not_live = BNWeb.TLSConfig handle is not live
+server.invalid_address = invalid address
+server.port_out_of_range = port out of range
+server.options_non_negative = server option must be non-negative
 
 # Contract names and type-mismatch contexts (bn_lib_web).
 op.response.set_cookie = BNWeb.Response.SetCookie

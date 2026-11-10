@@ -979,11 +979,12 @@ use host_results::{
     declare_error_abi, emit_buffer_bound, emit_endpoint_result, emit_handle_result,
     emit_status_result, emit_void_call_result, emit_void_result,
 };
+#[path = "llvm/web_helpers.rs"]
+mod web_helpers;
 #[path = "llvm/web_ops.rs"]
 mod web_ops;
-pub(crate) use web_ops::{
-    bnweb_arguments_supported, bnweb_method, is_bnweb_resource_type, lower_bnweb_call,
-};
+pub(crate) use web_helpers::{bnweb_arguments_supported, bnweb_method, is_bnweb_resource_type};
+pub(crate) use web_ops::lower_bnweb_call;
 #[path = "llvm/math.rs"]
 mod math;
 use math::{bnmath_call_supported, bnmath_method, lower_bnmath_call};

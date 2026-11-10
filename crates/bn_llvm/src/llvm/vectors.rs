@@ -183,6 +183,7 @@ pub(crate) fn emit_allocate(
             "Response" => ("bn_web_response_create", vec![]),
             "Request" => ("bn_web_request_create", vec![]),
             "Server" => ("bn_web_server_create", vec![]),
+            "ServerOptions" => ("bn_web_server_options_create", vec![]),
             "CookieJar" => ("bn_web_cookie_jar_create", vec![]),
             "SessionStore" => ("bn_web_session_store_create", vec![]),
             "Scraper" => {

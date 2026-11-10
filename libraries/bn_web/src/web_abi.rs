@@ -780,21 +780,249 @@ pub extern "C" fn bn_web_server_use_sessions(handle: u64, capacity: i64, idle_ms
     }
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_server_start(handle: u64, _addr_ptr: *const c_char, _port: i32) -> i32 {
-    let wrapper = table();
-    let guard = wrapper.lock_table();
-    let Some(entry) = guard.servers.get(&handle) else {
-        return record_failure("Server.Start", &WebFailure::Closed("server closed".into()));
+#[allow(clippy::too_many_lines)]
+fn start_server_internal(
+    handle: u64,
+    addr_ptr: *const c_char,
+    port: i32,
+    tls_handle: Option<u64>,
+    options_handle: Option<u64>,
+    operation: &str,
+) -> i32 {
+    let (filters, routes, state_arc, tls_config, options) = {
+        let wrapper = table();
+        let guard = wrapper.lock_table();
+        let Some(entry) = guard.servers.get(&handle) else {
+            return record_failure(operation, &WebFailure::Closed("server closed".into()));
+        };
+        let options = if let Some(opt_h) = options_handle {
+            match guard.server_options.get(&opt_h) {
+                Some(opts) => opts.clone(),
+                None => {
+                    return record_failure(
+                        operation,
+                        &WebFailure::InvalidArgument(
+                            bn_catalog::text("web", "server.options_not_live").into(),
+                        ),
+                    );
+                }
+            }
+        } else {
+            crate::web::ServerOptions::default()
+        };
+        let tls_config = if let Some(tls_h) = tls_handle {
+            match guard.tls_configs.get(&tls_h) {
+                Some(cfg) => Some(Arc::clone(cfg)),
+                None => {
+                    return record_failure(
+                        operation,
+                        &WebFailure::InvalidArgument(
+                            bn_catalog::text("web", "server.tls_config_not_live").into(),
+                        ),
+                    );
+                }
+            }
+        } else {
+            None
+        };
+        (
+            entry.filters.clone(),
+            entry.routes.clone(),
+            Arc::clone(&entry.state),
+            tls_config,
+            options,
+        )
     };
-    let mut state = entry
-        .state
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    match state.start_with_options(crate::web::ServerOptions::default()) {
-        Ok(()) => BN_WEB_OK,
-        Err(err) => record_failure("Server.Start", &WebFailure::from_message(err)),
+
+    if let Err(message) = options.validate() {
+        return record_failure(operation, &WebFailure::from_message(message));
     }
+
+    let Some(address_text) = string_text(addr_ptr) else {
+        return record_failure(
+            operation,
+            &WebFailure::InvalidArgument(bn_catalog::text("web", "server.invalid_address").into()),
+        );
+    };
+    let Ok(address) = bn_core_net::Address::parse(&address_text) else {
+        return record_failure(
+            operation,
+            &WebFailure::InvalidArgument(bn_catalog::text("web", "server.invalid_address").into()),
+        );
+    };
+    let Ok(port_u16) = u16::try_from(port) else {
+        return record_failure(
+            operation,
+            &WebFailure::InvalidArgument(
+                bn_catalog::text("web", "server.port_out_of_range").into(),
+            ),
+        );
+    };
+    let endpoint = bn_core_net::Endpoint::new(address, port_u16);
+
+    let listener = match bn_core_net::TcpListener::bind_with_backlog(endpoint, options.backlog) {
+        Ok(listener) => listener,
+        Err(error) => {
+            return record_failure(operation, &WebFailure::from_message(&error.to_string()));
+        }
+    };
+
+    {
+        let mut state = state_arc
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Err(message) = state.start_with_options(options) {
+            return record_failure(operation, &WebFailure::from_message(message));
+        }
+        if let Err(message) = state.install_worker_pool() {
+            return record_failure(operation, &WebFailure::from_message(message));
+        }
+    }
+
+    let handler_state = Arc::clone(&state_arc);
+    let request_handler: crate::http::Handler = Arc::new(move |req, resp| {
+        let req_handle = alloc_handle();
+        let resp_handle = alloc_handle();
+        {
+            let wrapper = table();
+            let mut guard = wrapper.lock_table();
+            guard.requests.insert(req_handle, req.clone());
+            guard.responses.insert(resp_handle, resp.clone());
+        }
+
+        for filter in &filters {
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                filter(req_handle, resp_handle);
+            }));
+            let committed = {
+                let wrapper = table();
+                let guard = wrapper.lock_table();
+                guard
+                    .responses
+                    .get(&resp_handle)
+                    .is_some_and(crate::web::Response::is_committed)
+            };
+            if committed {
+                break;
+            }
+        }
+
+        let is_committed = {
+            let wrapper = table();
+            let guard = wrapper.lock_table();
+            guard
+                .responses
+                .get(&resp_handle)
+                .is_some_and(crate::web::Response::is_committed)
+        };
+
+        if !is_committed {
+            let matched_pattern = {
+                let state = handler_state.lock().ok();
+                state.and_then(|s| s.matched_route_pattern(&req.method, &req.target.path))
+            };
+            if let Some(pattern) = matched_pattern {
+                let handler_fn = routes
+                    .iter()
+                    .find(|(m, p, _)| m == &req.method && p == &pattern)
+                    .map(|(_, _, f)| *f);
+                if let Some(handler_fn) = handler_fn {
+                    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        handler_fn(req_handle, resp_handle);
+                    }));
+                    if outcome.is_err() {
+                        let wrapper = table();
+                        let mut guard = wrapper.lock_table();
+                        if let Some(r) = guard.responses.get_mut(&resp_handle) {
+                            let _ = r.set_status(500);
+                        }
+                    }
+                } else {
+                    let wrapper = table();
+                    let mut guard = wrapper.lock_table();
+                    if let Some(r) = guard.responses.get_mut(&resp_handle) {
+                        let _ = r.set_status(404);
+                    }
+                }
+            }
+        }
+
+        let wrapper = table();
+        let mut guard = wrapper.lock_table();
+        if let Some(modified_resp) = guard.responses.remove(&resp_handle) {
+            *resp = modified_resp;
+        }
+        guard.requests.remove(&req_handle);
+        guard.values.remove(&req_handle);
+        guard.values.remove(&resp_handle);
+
+        Ok(())
+    });
+
+    if let Err(message) =
+        crate::web::spawn_listener_thread(&state_arc, listener, request_handler, tls_config)
+    {
+        return record_failure(operation, &WebFailure::from_message(message));
+    }
+
+    BN_WEB_OK
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_web_server_start(handle: u64, addr_ptr: *const c_char, port: i32) -> i32 {
+    start_server_internal(handle, addr_ptr, port, None, None, "Server.Start")
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_web_server_start_with_options(
+    handle: u64,
+    addr_ptr: *const c_char,
+    port: i32,
+    options_handle: u64,
+) -> i32 {
+    start_server_internal(
+        handle,
+        addr_ptr,
+        port,
+        None,
+        Some(options_handle),
+        "Server.StartWithOptions",
+    )
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_web_server_start_tls(
+    handle: u64,
+    addr_ptr: *const c_char,
+    port: i32,
+    tls_handle: u64,
+) -> i32 {
+    start_server_internal(
+        handle,
+        addr_ptr,
+        port,
+        Some(tls_handle),
+        None,
+        "Server.StartTLS",
+    )
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_web_server_start_tls_with_options(
+    handle: u64,
+    addr_ptr: *const c_char,
+    port: i32,
+    tls_handle: u64,
+    options_handle: u64,
+) -> i32 {
+    start_server_internal(
+        handle,
+        addr_ptr,
+        port,
+        Some(tls_handle),
+        Some(options_handle),
+        "Server.StartTLSWithOptions",
+    )
 }
 
 #[unsafe(no_mangle)]
@@ -932,6 +1160,141 @@ pub extern "C" fn bn_web_server_close(handle: u64, timeout_ms: i64) -> i32 {
         Ok(()) => BN_WEB_OK,
         Err(err) => record_failure("Server.Close", &WebFailure::from_message(err)),
     }
+}
+
+// ---- ServerOptions C ABI -------------------------------------------------
+
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_web_server_options_create() -> u64 {
+    let handle = alloc_handle();
+    let wrapper = table();
+    let mut guard = wrapper.lock_table();
+    guard
+        .server_options
+        .insert(handle, crate::web::ServerOptions::default());
+    handle
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_web_server_options_new(
+    active_connections: i64,
+    backlog: i64,
+    pending_work: i64,
+    worker_count: i64,
+    max_header_bytes: i64,
+    max_header_fields: i64,
+    max_target_bytes: i64,
+    max_body_bytes: i64,
+    tls_handshake_ms: i64,
+    header_read_ms: i64,
+    body_read_ms: i64,
+    idle_keep_alive_ms: i64,
+    connection_total_ms: i64,
+    stop_drain_ms: i64,
+    rate_limit_burst: i64,
+    rate_limit_refill_per_second: i64,
+    rate_limit_key_capacity: i64,
+    trusted_proxy: bool,
+    out_handle: *mut u64,
+) -> i32 {
+    let non_neg = |val: i64| usize::try_from(val).ok();
+    let non_neg_u64 = |val: i64| u64::try_from(val).ok();
+    let Some(options) = (|| {
+        Some(crate::web::ServerOptions {
+            active_connections: non_neg(active_connections)?,
+            backlog: non_neg(backlog)?,
+            pending_work: non_neg(pending_work)?,
+            worker_count: non_neg(worker_count)?,
+            max_header_bytes: non_neg(max_header_bytes)?,
+            max_header_fields: non_neg(max_header_fields)?,
+            max_target_bytes: non_neg(max_target_bytes)?,
+            max_body_bytes: non_neg(max_body_bytes)?,
+            trusted_proxy,
+            tls_handshake_ms: non_neg_u64(tls_handshake_ms)?,
+            header_read_ms: non_neg_u64(header_read_ms)?,
+            body_read_ms: non_neg_u64(body_read_ms)?,
+            idle_keep_alive_ms: non_neg_u64(idle_keep_alive_ms)?,
+            connection_total_ms: non_neg_u64(connection_total_ms)?,
+            stop_drain_ms: non_neg_u64(stop_drain_ms)?,
+            rate_limit_burst: non_neg(rate_limit_burst)?,
+            rate_limit_refill_per_second: non_neg(rate_limit_refill_per_second)?,
+            rate_limit_key_capacity: non_neg(rate_limit_key_capacity)?,
+        })
+    })() else {
+        return record_failure(
+            "ServerOptions.New",
+            &WebFailure::InvalidArgument(
+                bn_catalog::text("web", "server.options_non_negative").into(),
+            ),
+        );
+    };
+
+    if let Err(err) = options.validate() {
+        return record_failure("ServerOptions.New", &WebFailure::from_message(err));
+    }
+    let handle = alloc_handle();
+    let wrapper = table();
+    let mut guard = wrapper.lock_table();
+    guard.server_options.insert(handle, options);
+    if !out_handle.is_null() {
+        // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
+        unsafe { *out_handle = handle };
+    }
+    BN_WEB_OK
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_web_server_options_init(
+    handle: u64,
+    active_connections: i64,
+    backlog: i64,
+    pending_work: i64,
+    worker_count: i64,
+    max_header_bytes: i64,
+    max_header_fields: i64,
+    max_target_bytes: i64,
+    max_body_bytes: i64,
+    tls_handshake_ms: i64,
+    header_read_ms: i64,
+    body_read_ms: i64,
+    idle_keep_alive_ms: i64,
+    connection_total_ms: i64,
+    stop_drain_ms: i64,
+    rate_limit_burst: i64,
+    rate_limit_refill_per_second: i64,
+    rate_limit_key_capacity: i64,
+    trusted_proxy: bool,
+) -> i32 {
+    let mut out = 0u64;
+    let res = bn_web_server_options_new(
+        active_connections,
+        backlog,
+        pending_work,
+        worker_count,
+        max_header_bytes,
+        max_header_fields,
+        max_target_bytes,
+        max_body_bytes,
+        tls_handshake_ms,
+        header_read_ms,
+        body_read_ms,
+        idle_keep_alive_ms,
+        connection_total_ms,
+        stop_drain_ms,
+        rate_limit_burst,
+        rate_limit_refill_per_second,
+        rate_limit_key_capacity,
+        trusted_proxy,
+        &raw mut out,
+    );
+    if res == BN_WEB_OK {
+        let wrapper = table();
+        let mut guard = wrapper.lock_table();
+        if let Some(opts) = guard.server_options.remove(&out) {
+            guard.server_options.insert(handle, opts);
+        }
+    }
+    res
 }
 
 // ---- TLSConfig C ABI -----------------------------------------------------
@@ -1576,5 +1939,112 @@ mod string_contract_tests {
         assert_eq!(super::string_text(pointer), None);
         let real = super::c_string("plain");
         assert_eq!(super::string_text(real).as_deref(), Some("plain"));
+    }
+}
+
+#[cfg(test)]
+mod server_abi_tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+
+    extern "C" fn test_route_handler(_req: u64, resp: u64) {
+        let msg = c_string("native ok");
+        assert_eq!(bn_web_response_write(resp, msg), BN_WEB_OK);
+    }
+
+    fn free_port() -> u16 {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("free port");
+        listener.local_addr().expect("port").port()
+    }
+
+    #[test]
+    fn compiled_server_binds_listener_serves_request_and_stops() {
+        let handle = bn_web_server_create();
+        let method = c_string("GET");
+        let pattern = c_string("/test");
+        assert_eq!(
+            bn_web_server_route(handle, method, pattern, test_route_handler),
+            BN_WEB_OK
+        );
+        let port = free_port();
+        let addr = c_string("127.0.0.1");
+        assert_eq!(
+            bn_web_server_start(handle, addr, i32::from(port)),
+            BN_WEB_OK
+        );
+
+        let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect");
+        stream
+            .write_all(b"GET /test HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            .expect("write request");
+        let mut response = String::new();
+        stream.read_to_string(&mut response).expect("read response");
+        assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+        assert!(response.contains("native ok"), "{response}");
+
+        assert_eq!(bn_web_server_stop(handle, 1000), BN_WEB_OK);
+    }
+
+    #[test]
+    fn compiled_server_start_with_options_and_start_tls() {
+        let handle = bn_web_server_create();
+        let mut opt_handle = 0u64;
+        assert_eq!(
+            bn_web_server_options_new(
+                10,
+                64,
+                10,
+                2,
+                8192,
+                64,
+                4096,
+                65536,
+                5000,
+                5000,
+                5000,
+                10000,
+                30000,
+                1000,
+                10,
+                10,
+                100,
+                false,
+                &raw mut opt_handle,
+            ),
+            BN_WEB_OK
+        );
+        let port = free_port();
+        let addr = c_string("127.0.0.1");
+        assert_eq!(
+            bn_web_server_start_with_options(handle, addr, i32::from(port), opt_handle),
+            BN_WEB_OK
+        );
+        assert_eq!(bn_web_server_stop(handle, 1000), BN_WEB_OK);
+
+        let cert_str = include_str!("../../../tests/fixtures/tls/server.pem");
+        let key_str = include_str!("../../../tests/fixtures/tls/server-key.pem");
+        let cert_c = c_string(cert_str);
+        let key_c = c_string(key_str);
+        let mut tls_handle = 0u64;
+        assert_eq!(
+            bn_web_tls_from_pem(cert_c, key_c, &raw mut tls_handle),
+            BN_WEB_OK
+        );
+
+        let tls_server = bn_web_server_create();
+        let tls_port = free_port();
+        let tls_addr = c_string("127.0.0.1");
+        assert_eq!(
+            bn_web_server_start_tls_with_options(
+                tls_server,
+                tls_addr,
+                i32::from(tls_port),
+                tls_handle,
+                opt_handle
+            ),
+            BN_WEB_OK
+        );
+        assert_eq!(bn_web_server_stop(tls_server, 1000), BN_WEB_OK);
     }
 }

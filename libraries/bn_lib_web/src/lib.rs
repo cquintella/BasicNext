@@ -828,83 +828,7 @@ impl WebProvider {
                         self.filters.get(handle).cloned().unwrap_or_default(),
                         std::sync::Arc::clone(&state),
                     );
-                    let accept_state = std::sync::Arc::clone(&state);
-                    let exit_notice = accept_state
-                        .lock()
-                        .ok()
-                        .map(|server| server.drain_signal().notify_on_drop());
-                    let listener_handle = std::thread::Builder::new()
-                        .name("bnweb-listener".into())
-                        .spawn(move || {
-                            let _exit_notice = exit_notice;
-                            loop {
-                                let stopped = accept_state
-                                    .lock()
-                                    .map_or(true, |state| state.is_stopping() || state.is_closed());
-                                if stopped {
-                                    break;
-                                }
-                                match listener.accept_timeout(std::time::Duration::from_millis(25))
-                                {
-                                    Ok(Some(stream)) => {
-                                        let admitted = accept_state.lock().is_ok_and(|mut server| {
-                                            server.admit_connection().is_ok()
-                                                && server.track_connection_socket(&stream)
-                                        });
-                                        if !admitted {
-                                            continue;
-                                        }
-                                        let Some(http_runtime) = accept_state
-                                            .lock()
-                                            .ok()
-                                            .and_then(|server| server.http_runtime())
-                                        else {
-                                            if let Ok(mut server) = accept_state.lock() {
-                                                server.release_connection();
-                                            }
-                                            continue;
-                                        };
-                                        let connection_state = std::sync::Arc::clone(&accept_state);
-                                        let connection_handler = std::sync::Arc::clone(&request_handler);
-                                        let work: crate::web::ConnectionWork = Box::new(move || {
-                                            crate::web::ServerState::run_connection_worker(
-                                                &connection_state,
-                                                || {
-                                                    if let Err(error) = crate::http::serve_connection_with_runtime(
-                                                        stream,
-                                                        std::sync::Arc::clone(&connection_state),
-                                                        Some(connection_handler),
-                                                        &http_runtime,
-                                                    ) && let Ok(mut server) = connection_state.lock() {
-                                                        server.record_connection_error(
-                                                            error.kind() == std::io::ErrorKind::TimedOut,
-                                                        );
-                                                    }
-                                                },
-                                            );
-                                        });
-                                        if !accept_state.lock().is_ok_and(|server| {
-                                            server.submit_connection_work(work).is_ok()
-                                        }) && let Ok(mut server) = accept_state.lock() {
-                                            server.release_connection();
-                                        }
-                                    }
-                                    Ok(None) => {}
-                                    Err(_) => break,
-                                }
-                            }
-                        })
-                        .map_err(|error| runtime_error(bn_diag::DiagId::WEB_LISTEN, error.to_string(), span))?;
-                    state
-                        .lock()
-                        .map_err(|_| {
-                            runtime_error(
-                                bn_diag::DiagId::SERVER_STATE,
-                                "server state unavailable",
-                                span,
-                            )
-                        })?
-                        .install_listener(listener_handle)
+                    crate::web::spawn_listener_thread(&state, listener, request_handler, None)
                         .map_err(|message| {
                             runtime_error(bn_diag::DiagId::WEB_LISTEN, message, span)
                         })?;
@@ -1000,88 +924,13 @@ impl WebProvider {
                         self.filters.get(handle).cloned().unwrap_or_default(),
                         std::sync::Arc::clone(&state),
                     );
-                    let accept_state = std::sync::Arc::clone(&state);
-                    let exit_notice = accept_state
-                        .lock()
-                        .ok()
-                        .map(|server| server.drain_signal().notify_on_drop());
-                    let listener_handle = std::thread::Builder::new()
-                        .name("bnweb-tls-listener".into())
-                        .spawn(move || {
-                            let _exit_notice = exit_notice;
-                            loop {
-                                let stopped = accept_state.lock().map_or(true, |server| {
-                                    server.is_stopping() || server.is_closed()
-                                });
-                                if stopped {
-                                    break;
-                                }
-                                match listener.accept_timeout(std::time::Duration::from_millis(25))
-                                {
-                                    Ok(Some(stream)) => {
-                                        let admitted = accept_state.lock().is_ok_and(|mut server| {
-                                            server.admit_connection().is_ok()
-                                                && server.track_connection_socket(&stream)
-                                        });
-                                        if !admitted {
-                                            continue;
-                                        }
-                                        let Some(http_runtime) = accept_state
-                                            .lock()
-                                            .ok()
-                                            .and_then(|server| server.http_runtime())
-                                        else {
-                                            if let Ok(mut server) = accept_state.lock() {
-                                                server.release_connection();
-                                            }
-                                            continue;
-                                        };
-                                        let connection_state = std::sync::Arc::clone(&accept_state);
-                                        let tls_config = std::sync::Arc::clone(&config);
-                                        let connection_handler = std::sync::Arc::clone(&request_handler);
-                                        let work: crate::web::ConnectionWork = Box::new(move || {
-                                            crate::web::ServerState::run_connection_worker(
-                                                &connection_state,
-                                                || {
-                                                    if let Err(error) = crate::http::serve_tls_connection_with_runtime(
-                                                        stream,
-                                                        std::sync::Arc::clone(&connection_state),
-                                                        tls_config,
-                                                        Some(connection_handler),
-                                                        &http_runtime,
-                                                    ) && let Ok(mut server) = connection_state.lock() {
-                                                        server.record_connection_error(
-                                                            error.kind() == std::io::ErrorKind::TimedOut,
-                                                        );
-                                                    }
-                                                },
-                                            );
-                                        });
-                                        if !accept_state.lock().is_ok_and(|server| {
-                                            server.submit_connection_work(work).is_ok()
-                                        }) && let Ok(mut server) = accept_state.lock() {
-                                            server.release_connection();
-                                        }
-                                    }
-                                    Ok(None) => {}
-                                    Err(_) => break,
-                                }
-                            }
-                        })
-                        .map_err(|error| runtime_error(bn_diag::DiagId::WEB_LISTEN, error.to_string(), span))?;
-                    state
-                        .lock()
-                        .map_err(|_| {
-                            runtime_error(
-                                bn_diag::DiagId::SERVER_STATE,
-                                "server state unavailable",
-                                span,
-                            )
-                        })?
-                        .install_listener(listener_handle)
-                        .map_err(|message| {
-                            runtime_error(bn_diag::DiagId::WEB_LISTEN, message, span)
-                        })?;
+                    crate::web::spawn_listener_thread(
+                        &state,
+                        listener,
+                        request_handler,
+                        Some(config),
+                    )
+                    .map_err(|message| runtime_error(bn_diag::DiagId::WEB_LISTEN, message, span))?;
                     Ok(Value::Null)
                 }
                 "Stop" => {

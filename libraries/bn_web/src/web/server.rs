@@ -761,3 +761,100 @@ impl ServerState {
         Ok(())
     }
 }
+
+/// Spawns the background listener thread and attaches it to the server state.
+pub fn spawn_listener_thread(
+    state: &std::sync::Arc<std::sync::Mutex<ServerState>>,
+    listener: bn_core_net::TcpListener,
+    handler: crate::http::Handler,
+    tls_config: Option<std::sync::Arc<rustls::ServerConfig>>,
+) -> Result<(), &'static str> {
+    let accept_state = std::sync::Arc::clone(state);
+    let exit_notice = accept_state
+        .lock()
+        .ok()
+        .map(|server| server.drain_signal().notify_on_drop());
+    let thread_name = if tls_config.is_some() {
+        "bnweb-tls-listener"
+    } else {
+        "bnweb-listener"
+    };
+    let listener_handle = std::thread::Builder::new()
+        .name(thread_name.into())
+        .spawn(move || {
+            let _exit_notice = exit_notice;
+            loop {
+                let stopped = accept_state
+                    .lock()
+                    .map_or(true, |server| server.is_stopping() || server.is_closed());
+                if stopped {
+                    break;
+                }
+                match listener.accept_timeout(std::time::Duration::from_millis(25)) {
+                    Ok(Some(stream)) => {
+                        let admitted = accept_state.lock().is_ok_and(|mut server| {
+                            server.admit_connection().is_ok()
+                                && server.track_connection_socket(&stream)
+                        });
+                        if !admitted {
+                            continue;
+                        }
+                        let Some(http_runtime) = accept_state
+                            .lock()
+                            .ok()
+                            .and_then(|server| server.http_runtime())
+                        else {
+                            if let Ok(mut server) = accept_state.lock() {
+                                server.release_connection();
+                            }
+                            continue;
+                        };
+                        let connection_state = std::sync::Arc::clone(&accept_state);
+                        let connection_handler = std::sync::Arc::clone(&handler);
+                        let tls = tls_config.clone();
+                        let work: ConnectionWork = Box::new(move || {
+                            ServerState::run_connection_worker(&connection_state, || {
+                                let result = if let Some(tls) = &tls {
+                                    crate::http::serve_tls_connection_with_runtime(
+                                        stream,
+                                        std::sync::Arc::clone(&connection_state),
+                                        std::sync::Arc::clone(tls),
+                                        Some(connection_handler),
+                                        &http_runtime,
+                                    )
+                                } else {
+                                    crate::http::serve_connection_with_runtime(
+                                        stream,
+                                        std::sync::Arc::clone(&connection_state),
+                                        Some(connection_handler),
+                                        &http_runtime,
+                                    )
+                                };
+                                if let Err(error) = result
+                                    && let Ok(mut server) = connection_state.lock()
+                                {
+                                    server.record_connection_error(
+                                        error.kind() == std::io::ErrorKind::TimedOut,
+                                    );
+                                }
+                            });
+                        });
+                        if !accept_state
+                            .lock()
+                            .is_ok_and(|server| server.submit_connection_work(work).is_ok())
+                            && let Ok(mut server) = accept_state.lock()
+                        {
+                            server.release_connection();
+                        }
+                    }
+                    Ok(None) => {}
+                    Err(_) => break,
+                }
+            }
+        })
+        .map_err(|_| bn_catalog::text("web", "server.listener_spawn_failed"))?;
+    state
+        .lock()
+        .map_err(|_| bn_catalog::text("web", "server.state_unavailable"))?
+        .install_listener(listener_handle)
+}
