@@ -23,11 +23,12 @@ pub struct QuotaExceeded;
 
 impl std::fmt::Display for QuotaExceeded {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "the process already holds {} sockets, the quota",
-            bn_limits::web_limits().socket_handles_max
-        )
+        let max = bn_limits::web_limits().socket_handles_max.to_string();
+        f.write_str(&bn_catalog::fill(
+            "net",
+            "socket.limit.cause",
+            &[("max", &max)],
+        ))
     }
 }
 
@@ -91,7 +92,6 @@ thread_local! {
 #[derive(Debug)]
 pub struct TcpStream {
     inner: std::net::TcpStream,
-    #[allow(dead_code)]
     permit: SocketPermit,
 }
 
@@ -171,15 +171,17 @@ impl TcpStream {
 #[derive(Debug)]
 pub struct TcpListener {
     inner: std::net::TcpListener,
-    #[allow(dead_code)]
-    permit: SocketPermit,
+    _permit: SocketPermit,
 }
 
 impl TcpListener {
     pub fn try_clone(&self) -> io::Result<Self> {
         let permit = SocketPermit::acquire()?;
         let inner = self.inner.try_clone()?;
-        Ok(Self { inner, permit })
+        Ok(Self {
+            inner,
+            _permit: permit,
+        })
     }
 
     pub fn bind(endpoint: Endpoint) -> io::Result<Self> {
@@ -188,7 +190,10 @@ impl TcpListener {
             endpoint.address().as_std(),
             endpoint.port(),
         ))?;
-        Ok(Self { inner, permit })
+        Ok(Self {
+            inner,
+            _permit: permit,
+        })
     }
 
     pub fn bind_with_backlog(endpoint: Endpoint, backlog: usize) -> io::Result<Self> {
@@ -206,7 +211,7 @@ impl TcpListener {
         socket.listen(i32::try_from(backlog).map_err(|_| io::Error::other("backlog overflow"))?)?;
         Ok(Self {
             inner: socket.into(),
-            permit,
+            _permit: permit,
         })
     }
 
@@ -258,8 +263,7 @@ impl TcpListener {
 #[derive(Debug)]
 pub struct UdpSocket {
     inner: std::net::UdpSocket,
-    #[allow(dead_code)]
-    permit: SocketPermit,
+    _permit: SocketPermit,
 }
 
 #[derive(Debug)]
@@ -273,7 +277,10 @@ impl UdpSocket {
     pub fn try_clone(&self) -> io::Result<Self> {
         let permit = SocketPermit::acquire()?;
         let inner = self.inner.try_clone()?;
-        Ok(Self { inner, permit })
+        Ok(Self {
+            inner,
+            _permit: permit,
+        })
     }
 
     pub fn bind(endpoint: Endpoint) -> io::Result<Self> {
@@ -282,7 +289,10 @@ impl UdpSocket {
             endpoint.address().as_std(),
             endpoint.port(),
         ))?;
-        Ok(Self { inner, permit })
+        Ok(Self {
+            inner,
+            _permit: permit,
+        })
     }
 
     /// Receive timeout; `None` waits without bound.

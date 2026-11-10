@@ -98,14 +98,11 @@ pub fn tcp_listen(endpoints: &[Endpoint], backlog: i128) -> Result<Vec<TcpListen
         .iter()
         .map(|endpoint| {
             TcpListener::bind_with_backlog(*endpoint, backlog).map_err(|error| {
+                let action = format!("listen on {endpoint}");
                 if super::socket::is_quota_error(&error) {
-                    quota_exceeded(OPERATION, format!("listen on {endpoint}"))
+                    quota_exceeded(OPERATION, action)
                 } else {
-                    NetError::new(
-                        OPERATION,
-                        format!("listen on {endpoint}"),
-                        Failure::Io(error),
-                    )
+                    NetError::new(OPERATION, action, Failure::Io(error))
                 }
             })
         })

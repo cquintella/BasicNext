@@ -64,9 +64,9 @@ impl AddressResolver for SystemAddressResolver {
     ) -> Result<Vec<bn_core_net::Address>, String> {
         match bn_core_net::resolve_timeout(host, port, maximum, timeout) {
             Ok(Some(addresses)) => Ok(addresses),
-            Ok(None) => Err("DNS resolution timed out".to_string()),
+            Ok(None) => Err(bn_catalog::text("web", "dns.timeout.message").into()),
             Err(err) if err.kind() == std::io::ErrorKind::QuotaExceeded => {
-                Err("DNS resolution pool limit exceeded".to_string())
+                Err(bn_catalog::text("web", "dns.pool_limit.message").into())
             }
             Err(err) => Err(err.to_string()),
         }

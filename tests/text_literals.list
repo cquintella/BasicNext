@@ -1063,10 +1063,7 @@ crates/bn_host_net/src/lib.rs	identifier	HOST.Net.Reverse
 crates/bn_host_net/src/lib.rs	identifier	HOST.Net.Reverse
 crates/bn_host_net/src/lib.rs	identifier	HOST.Net.TCP
 crates/bn_host_net/src/lib.rs	identifier	HOST.Net.TCPConnect
-crates/bn_host_net/src/lib.rs	identifier	HOST.Net.TCPConnect
 crates/bn_host_net/src/lib.rs	identifier	HOST.Net.TCPListen
-crates/bn_host_net/src/lib.rs	identifier	HOST.Net.TCPListen
-crates/bn_host_net/src/lib.rs	identifier	HOST.Net.TCPListener.Accept
 crates/bn_host_net/src/lib.rs	identifier	HOST.Net.TCPListener.Accept
 crates/bn_host_net/src/lib.rs	identifier	HOST.Net.TCPListener.Close
 crates/bn_host_net/src/lib.rs	identifier	HOST.Net.TCPListener.LocalEndpoint
@@ -1078,7 +1075,6 @@ crates/bn_host_net/src/lib.rs	identifier	HOST.Net.TCPStream.SetTimeouts
 crates/bn_host_net/src/lib.rs	identifier	HOST.Net.TCPStream.ShutdownRead
 crates/bn_host_net/src/lib.rs	identifier	HOST.Net.TCPStream.ShutdownWrite
 crates/bn_host_net/src/lib.rs	identifier	HOST.Net.TCPStream.Write
-crates/bn_host_net/src/lib.rs	identifier	HOST.Net.UDPBind
 crates/bn_host_net/src/lib.rs	identifier	HOST.Net.UDPBind
 crates/bn_host_net/src/lib.rs	identifier	HOST.Net.UDPPacket
 crates/bn_host_net/src/lib.rs	identifier	HOST.Net.UDPPacket
@@ -1133,8 +1129,6 @@ crates/bn_host_net/src/lib.rs	prose	UDPPacket.bytes vector
 crates/bn_host_net/src/lib.rs	prose	UDPPacket.bytes vector
 crates/bn_host_net/src/lib.rs	prose	UDPPacket.source field
 crates/bn_host_net/src/lib.rs	prose	UDPPacket.truncated field
-crates/bn_host_net/src/lib.rs	prose	accept a connection
-crates/bn_host_net/src/lib.rs	prose	connect to {endpoint}
 crates/bn_host_net/src/lib.rs	prose	copy exceeds the buffer
 crates/bn_host_net/src/lib.rs	prose	datagram exceeds the buffer
 crates/bn_host_net/src/lib.rs	prose	host function '{name}' is not available

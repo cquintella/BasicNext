@@ -24,6 +24,7 @@ resolve.worker_lost.cause = the name lookup stopped without an answer
 resolve.workers_unavailable.cause = the name lookup threads could not start
 addresses.empty.cause = the result holds no address; got {index}
 addresses.index.cause = the index must be within 0..{last}; got {index}
+socket.limit.cause = the process already holds {max} sockets, the quota
 
 # Members `bnc` lowers through `bn_rt` (host-net.md, "Addressing and
 # resolution", "TCP"); the LLVM backend matches a call by these names.
