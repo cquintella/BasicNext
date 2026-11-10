@@ -1140,7 +1140,7 @@ fn web_errors_produce_specified_codes() {
          TRUE BNWeb.Response.Write\n\
          TRUE BNWeb.Client.Request\n"
     );
-    let compile = bnc().arg(path).output().expect("run bnc");
+    let compile = bnc().args(["--no-log", path]).output().expect("run bnc");
     assert_eq!(compile.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&compile.stderr);
     assert!(
