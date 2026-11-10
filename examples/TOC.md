@@ -53,6 +53,10 @@ This document provides a comprehensive catalog of all example programs in the `e
 - [levenshtein.bn](levenshtein.bn): Interactive command-line utility for Levenshtein edit distance computation.
 - [edit_distance.bn](edit_distance.bn): Dynamic programming implementation of Levenshtein string metric using heap pointer buffers.
 
+## Games
+
+- [bn_scramble.bn](bn_scramble.bn): ASCII 32x24 cavern shooter in the spirit of Mikro-Gen's ZX81 Scramble (1982). Scrolling ceiling and floor, forward laser, bombs, fuel dumps, launching rockets, UFOs, meteors, and a fortress, with score, ships, and a fuel gauge. `--demo` plays a scripted burst and exits 0; interactive play is one frame per key because `INPUT()` is line-based.
+
 ## Concurrency, Parallelism & Simulations
 
 - [parallel_pi.bn](parallel_pi.bn): Multi-threaded Monte Carlo / numerical estimation of $\pi$ distributing compute across workers.
