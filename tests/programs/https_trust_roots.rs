@@ -5,21 +5,25 @@
 
 //! The HTTPS client trust roots (bnweb.md, "HTTPS client trust roots") on
 //! both backends, through `examples/bnweb/https_private_ca.bn`. The roots
-//! are settled before any name is resolved, so a request to a loopback URL
-//! shows which extra file was chosen without sending a packet: a bad extra
-//! file fails with `HTTP_FAILED` and names the file; accepted roots go on to
-//! the egress refusal of a loopback destination. The handshake itself, with a
-//! server the test CA signed, is `bn_web`'s `tls_roots` test.
+//! are settled before any name is resolved: a bad extra file fails with
+//! `HTTP_FAILED` before sending a packet; accepted roots complete an HTTPS
+//! exchange with a local server whose certificate the extra CA signed.
 
 use super::support::{TestDir, bni, compile_native, run, workspace_root};
+use rustls::pki_types::pem::PemObject as _;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use std::fs;
+use std::io::{Read as _, Write as _};
+use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread::{JoinHandle, spawn};
 use std::time::Duration;
 
 const EXAMPLE: &str = "examples/bnweb/https_private_ca.bn";
 const TEST_CA: &str = "tests/fixtures/tls/test-ca.pem";
-const URL: &str = "https://127.0.0.1:9/";
 const PROCESS_TIMEOUT: Duration = Duration::from_secs(60);
 const CA_VARIABLE: &str = "BN_CA_FILE";
 const IGNORED_VARIABLES: [&str; 2] = ["SSL_CERT_FILE", "SSL_CERT_DIR"];
@@ -28,17 +32,91 @@ const SECONDARY: &str = "bn-ca.pem";
 const TRUST_FAILED: &str = "request failed: TRUE\nTLS trust roots unavailable:";
 const NO_CERTIFICATE: &str = "holds no valid certificate";
 const UNREADABLE: &str = "cannot be read";
-/// What the roots being accepted looks like here: the next check refuses
-/// the loopback destination.
-const ROOTS_ACCEPTED: &str = "private or local destination requires explicit opt-in";
 const NOT_A_CERTIFICATE: &str = "not a certificate\n";
 const HTTP_FAILURE: &str = "request failed: TRUE\n";
-const OTHER_FAILURE: &str = "request failed: FALSE\n";
 
 #[derive(Clone, Copy, Debug)]
 enum Backend {
     Interpreter,
     Native,
+}
+
+struct TestServer {
+    port: u16,
+    stop: Arc<AtomicBool>,
+    handle: Option<JoinHandle<()>>,
+}
+
+impl TestServer {
+    fn start() -> Self {
+        let cert_path = workspace_root().join("tests/fixtures/tls/server.pem");
+        let key_path = workspace_root().join("tests/fixtures/tls/server-key.pem");
+        let chain = CertificateDer::pem_file_iter(&cert_path)
+            .expect("server certs")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("parse certs");
+        let key = PrivateKeyDer::from_pem_file(&key_path).expect("key");
+
+        let provider = Arc::new(rustls::crypto::ring::default_provider());
+        let server_config = rustls::ServerConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()
+            .expect("versions")
+            .with_no_client_auth()
+            .with_single_cert(chain, key)
+            .expect("server config");
+        let server_config = Arc::new(server_config);
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        listener.set_nonblocking(true).expect("nonblocking");
+        let port = listener.local_addr().expect("port").port();
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_clone = Arc::clone(&stop);
+
+        let handle = spawn(move || {
+            while !stop_clone.load(Ordering::Relaxed) {
+                match listener.accept() {
+                    Ok((stream, _)) => {
+                        let _ = stream.set_nonblocking(false);
+                        let config = Arc::clone(&server_config);
+                        spawn(move || {
+                            if let Ok(connection) = rustls::ServerConnection::new(config) {
+                                let mut tls = rustls::StreamOwned::new(connection, stream);
+                                let mut buf = [0u8; 1024];
+                                if let Ok(n) = tls.read(&mut buf) {
+                                    if n > 0 {
+                                        let _ = tls.write_all(
+                                            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
+                                        );
+                                        let _ = tls.flush();
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    Err(ref err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+
+        Self {
+            port,
+            stop,
+            handle: Some(handle),
+        }
+    }
+}
+
+impl Drop for TestServer {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        let _ = TcpStream::connect(("127.0.0.1", self.port));
+        if let Some(h) = self.handle.take() {
+            let _ = h.join();
+        }
+    }
 }
 
 /// A program and the directory "beside the program" means for it: the
@@ -78,8 +156,13 @@ fn program(backend: Backend) -> Program {
 
 /// Runs a fresh program with the given extra files beside it and the given
 /// `BN_CA_FILE`; `SSL_CERT_FILE`/`SSL_CERT_DIR` always name a bad file and
-/// must change nothing. Returns the program's output.
-fn outcome(backend: Backend, beside: &[(&str, bool)], variable: Option<&Path>) -> String {
+/// must change nothing. Returns (success, output).
+fn outcome(
+    backend: Backend,
+    port: u16,
+    beside: &[(&str, bool)],
+    variable: Option<&Path>,
+) -> (bool, String) {
     let mut program = program(backend);
     for (name, valid) in beside {
         let path = program.beside.join(name);
@@ -92,7 +175,8 @@ fn outcome(backend: Backend, beside: &[(&str, bool)], variable: Option<&Path>) -
     let bad = program.beside.join("not-a-ca.pem");
     fs::write(&bad, NOT_A_CERTIFICATE).expect("write");
     let command = &mut program.command;
-    command.arg(URL).env_remove(CA_VARIABLE);
+    let url = format!("https://127.0.0.1:{port}/");
+    command.arg(url).env_remove(CA_VARIABLE);
     for name in IGNORED_VARIABLES {
         command.env(name, &bad);
     }
@@ -100,17 +184,10 @@ fn outcome(backend: Backend, beside: &[(&str, bool)], variable: Option<&Path>) -
         command.env(CA_VARIABLE, path);
     }
     let output = run(command, None, PROCESS_TIMEOUT).expect("run the example");
-    assert!(
-        !output.status.success(),
-        "a loopback request cannot succeed"
-    );
-    String::from_utf8_lossy(&output.stdout).into_owned()
-}
-
-/// Accepted roots: no trust failure, and the next check refuses the loopback
-/// destination (code `EGRESS_DENIED`).
-fn accepted(output: &str) -> bool {
-    output.starts_with(OTHER_FAILURE) && output.contains(ROOTS_ACCEPTED)
+    (
+        output.status.success(),
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+    )
 }
 
 /// Refused roots: `HTTP_FAILED`, naming the file and the reason.
@@ -122,32 +199,50 @@ fn refused(output: &str, file: &str, reason: &str) -> bool {
 }
 
 fn check(backend: Backend) {
+    let server = TestServer::start();
+    let port = server.port;
     let ca = workspace_root().join(TEST_CA);
     let missing = Path::new("/no/such/ca.pem");
+
     // The platform store alone; the SSL_* variables name a bad file in vain.
-    let output = outcome(backend, &[], None);
-    assert!(accepted(&output), "{backend:?}, no extra file: {output}");
-    // bn-cacert.pem beside the program is read, and a bad one fails.
-    let output = outcome(backend, &[(PRIMARY, false)], None);
+    // Certificate is untrusted by the system store, so TLS handshake fails.
+    let (success, output) = outcome(backend, port, &[], None);
     assert!(
-        refused(&output, PRIMARY, NO_CERTIFICATE),
+        !success && output.starts_with(HTTP_FAILURE) && output.contains("TLS handshake failed"),
+        "{backend:?}, no extra file: success={success}, output={output}"
+    );
+
+    // bn-cacert.pem beside the program is read, and a bad one fails.
+    let (success, output) = outcome(backend, port, &[(PRIMARY, false)], None);
+    assert!(
+        !success && refused(&output, PRIMARY, NO_CERTIFICATE),
         "{backend:?}, bad {PRIMARY}: {output}"
     );
+
     // bn-ca.pem is read when bn-cacert.pem is absent.
-    let output = outcome(backend, &[(SECONDARY, false)], None);
+    let (success, output) = outcome(backend, port, &[(SECONDARY, false)], None);
     assert!(
-        refused(&output, SECONDARY, NO_CERTIFICATE),
+        !success && refused(&output, SECONDARY, NO_CERTIFICATE),
         "{backend:?}, bad {SECONDARY}: {output}"
     );
-    // bn-cacert.pem comes first: a good one hides a bad bn-ca.pem.
-    let output = outcome(backend, &[(PRIMARY, true), (SECONDARY, false)], None);
-    assert!(accepted(&output), "{backend:?}, {PRIMARY} first: {output}");
-    // BN_CA_FILE comes before both, and is never skipped.
-    let output = outcome(backend, &[(PRIMARY, false)], Some(&ca));
-    assert!(accepted(&output), "{backend:?}, BN_CA_FILE first: {output}");
-    let output = outcome(backend, &[(PRIMARY, true)], Some(missing));
+
+    // bn-cacert.pem comes first: a good one hides a bad bn-ca.pem and completes exchange.
+    let (success, output) = outcome(backend, port, &[(PRIMARY, true), (SECONDARY, false)], None);
     assert!(
-        refused(&output, "/no/such/ca.pem", UNREADABLE),
+        success && output.contains("status 200"),
+        "{backend:?}, {PRIMARY} first: success={success}, output={output}"
+    );
+
+    // BN_CA_FILE comes before both, and completes exchange.
+    let (success, output) = outcome(backend, port, &[(PRIMARY, false)], Some(&ca));
+    assert!(
+        success && output.contains("status 200"),
+        "{backend:?}, BN_CA_FILE first: success={success}, output={output}"
+    );
+
+    let (success, output) = outcome(backend, port, &[(PRIMARY, true)], Some(missing));
+    assert!(
+        !success && refused(&output, "/no/such/ca.pem", UNREADABLE),
         "{backend:?}, unreadable BN_CA_FILE: {output}"
     );
 }

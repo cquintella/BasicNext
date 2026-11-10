@@ -176,6 +176,7 @@ dependencies = [
  "libc",
  "lsp-types",
  "rustix",
+ "rustls",
  "serde",
  "serde_json",
  "sha2",
