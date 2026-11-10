@@ -787,11 +787,15 @@ impl WebProvider {
                         runtime_error(bn_diag::DiagId::INVALID_OPTIONS, message, span)
                     })?;
                     let endpoint = net_endpoint(&arguments[1], span)?;
-                    let listener =
-                        bn_host_net::net::TcpListener::bind_with_backlog(endpoint, options.backlog)
-                            .map_err(|error| {
-                                runtime_error(bn_diag::DiagId::WEB_LISTEN, error.to_string(), span)
-                            })?;
+                    let listener = match bn_host_net::net::TcpListener::bind_with_backlog(
+                        endpoint,
+                        options.backlog,
+                    ) {
+                        Ok(listener) => listener,
+                        Err(error) => {
+                            return Ok(failed(name, &WebFailure::from_message(&error.to_string())));
+                        }
+                    };
                     let mut state_guard = state.lock().map_err(|_| {
                         runtime_error(
                             bn_diag::DiagId::SERVER_STATE,
@@ -955,11 +959,15 @@ impl WebProvider {
                                 span,
                             )
                         })?;
-                    let listener =
-                        bn_host_net::net::TcpListener::bind_with_backlog(endpoint, options.backlog)
-                            .map_err(|error| {
-                                runtime_error(bn_diag::DiagId::WEB_LISTEN, error.to_string(), span)
-                            })?;
+                    let listener = match bn_host_net::net::TcpListener::bind_with_backlog(
+                        endpoint,
+                        options.backlog,
+                    ) {
+                        Ok(listener) => listener,
+                        Err(error) => {
+                            return Ok(failed(name, &WebFailure::from_message(&error.to_string())));
+                        }
+                    };
                     let mut state_guard = state.lock().map_err(|_| {
                         runtime_error(
                             bn_diag::DiagId::SERVER_STATE,
