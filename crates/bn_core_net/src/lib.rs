@@ -43,7 +43,9 @@ static SOCKET_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[doc(hidden)]
 pub fn socket_test_lock() -> std::sync::MutexGuard<'static, ()> {
-    SOCKET_TEST_LOCK.lock().unwrap()
+    SOCKET_TEST_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 use std::{net::IpAddr, str::FromStr};

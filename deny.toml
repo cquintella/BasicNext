@@ -50,4 +50,7 @@ ignore = [
     "RUSTSEC-2026-0368",
     "RUSTSEC-2026-0369",
     "RUSTSEC-2026-0429",
+    # Local memory leak via crafted mismatched WAL page-size in bundled SQLite <3.54.0 (CVE-2026-119375).
+    # Upgrading requires rusqlite 0.41 / Rust 1.89.
+    "RUSTSEC-2026-0459",
 ]

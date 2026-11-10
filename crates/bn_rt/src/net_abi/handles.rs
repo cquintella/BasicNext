@@ -4,7 +4,7 @@
 //! a socket opened later in the same slot and answers `Net.CLOSED`, as in
 //! `bni`.
 
-use crate::handle_table_abi::{GenerationTable, SLOT_CAPACITY, TAG_MASK};
+use crate::handle_table_abi::{GenerationTable, SLOT_CAPACITY, TAG_MASK_U32};
 use crate::net::{TcpListener, TcpStream, UdpPacket, UdpSocket};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
@@ -25,7 +25,7 @@ struct Sockets(Mutex<GenerationTable<Handle>>);
 impl Default for Sockets {
     fn default() -> Self {
         let raw = NEXT_COPY_TAG.fetch_add(1, Ordering::Relaxed);
-        let tag = (raw % (TAG_MASK as u32 - 1)) + 1;
+        let tag = (raw % (TAG_MASK_U32 - 1)) + 1;
         Self(Mutex::new(GenerationTable::new_tagged(tag)))
     }
 }

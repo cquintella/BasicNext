@@ -34,6 +34,7 @@ impl std::fmt::Display for QuotaExceeded {
 impl std::error::Error for QuotaExceeded {}
 
 #[must_use]
+#[allow(clippy::redundant_closure_for_method_calls)]
 pub fn is_quota_error(error: &io::Error) -> bool {
     error.get_ref().is_some_and(|e| e.is::<QuotaExceeded>())
 }
@@ -59,7 +60,7 @@ impl SocketPermit {
         });
         match result {
             Ok(_) => Ok(Self(())),
-            Err(_) => Err(io::Error::new(io::ErrorKind::Other, QuotaExceeded)),
+            Err(_) => Err(io::Error::other(QuotaExceeded)),
         }
     }
 

@@ -28,6 +28,7 @@ pub const RETIRED_GENERATION: i64 = GENERATION_MASK;
 /// Bits of an id that hold the copy or table tag.
 pub const TAG_BITS: u32 = 24;
 pub const TAG_MASK: i64 = (1 << TAG_BITS) - 1;
+pub const TAG_MASK_U32: u32 = (1 << TAG_BITS) - 1;
 
 struct Slot<T> {
     generation: i64,
@@ -67,7 +68,7 @@ impl<T> GenerationTable<T> {
     #[must_use]
     pub const fn new_tagged(tag: u32) -> Self {
         Self {
-            tag: ((tag as i64) & TAG_MASK) as u32,
+            tag: tag & TAG_MASK_U32,
             slots: Vec::new(),
             free: Vec::new(),
         }
