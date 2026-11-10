@@ -30,6 +30,7 @@ trait AddressResolver {
         host: &str,
         port: u16,
         maximum: usize,
+        timeout: std::time::Duration,
     ) -> Result<Vec<bn_core_net::Address>, String>;
 }
 
@@ -59,8 +60,16 @@ impl AddressResolver for SystemAddressResolver {
         host: &str,
         port: u16,
         maximum: usize,
+        timeout: std::time::Duration,
     ) -> Result<Vec<bn_core_net::Address>, String> {
-        bn_core_net::resolve(host, port, maximum).map_err(|error| error.to_string())
+        match bn_core_net::resolve_timeout(host, port, maximum, timeout) {
+            Ok(Some(addresses)) => Ok(addresses),
+            Ok(None) => Err("DNS resolution timed out".to_string()),
+            Err(err) if err.kind() == std::io::ErrorKind::QuotaExceeded => {
+                Err("DNS resolution pool limit exceeded".to_string())
+            }
+            Err(err) => Err(err.to_string()),
+        }
     }
 }
 
@@ -350,6 +359,7 @@ fn client_request_once(
     if let Ok(address) = host.parse::<std::net::IpAddr>() {
         crate::web::validate_ssrf_destinations(&[address], false).map_err(str::to_owned)?;
     }
+    let deadline = std::time::Duration::from_millis(policy.total_deadline_ms());
     let addresses =
         resolve_validated_addresses_with_policy(host.as_str(), port, resolver, policy, scheme)?;
     if addresses.is_empty() {
@@ -362,15 +372,15 @@ fn client_request_once(
             Ok(addr) => bn_core_net::Endpoint::new(addr, port),
             Err(_) => continue,
         };
-        match bn_core_net::TcpStream::connect(
-            endpoint,
-            std::time::Duration::from_millis(policy.total_deadline_ms()),
-        ) {
+        match bn_core_net::TcpStream::connect(endpoint, deadline) {
             Ok(connected) => {
                 stream = Some(connected);
                 break;
             }
             Err(err) => {
+                if bn_core_net::is_quota_error(&err) {
+                    return Err(err.to_string());
+                }
                 connect_error = Some(err.to_string());
             }
         }
@@ -501,8 +511,14 @@ fn resolve_validated_addresses_with_policy(
     policy: &crate::web::EgressPolicy,
     scheme: &str,
 ) -> Result<Vec<std::net::IpAddr>, String> {
+    let timeout = std::time::Duration::from_millis(policy.total_deadline_ms());
     let addresses = resolver
-        .resolve(host, port, bn_limits::web_limits().resolved_addresses_max)?
+        .resolve(
+            host,
+            port,
+            bn_limits::web_limits().resolved_addresses_max,
+            timeout,
+        )?
         .into_iter()
         .map(bn_core_net::Address::as_std)
         .collect::<Vec<_>>();

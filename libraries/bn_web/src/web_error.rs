@@ -485,13 +485,20 @@ impl WebFailure {
             "response header is not present" => Self::HeaderNotFound(message.into()),
             "redirect limit exceeded" => Self::RedirectLimitExceeded,
             "redirect response missing Location" => Self::MissingRedirectLocation,
-            "HTTP handshake timed out" => Self::HandshakeTimeout,
+            "HTTP handshake timed out" | "DNS resolution timed out" => Self::HandshakeTimeout,
             "URL resolved to no addresses" => Self::NoResolvedAddresses,
             "request dispatch failed" => Self::RequestDispatchFailed,
             "index is outside collection" => Self::IndexOutOfRange {
                 index: -1,
                 count: 0,
             },
+            s if s.contains("quota")
+                || s.contains("socket quota")
+                || s.contains("DNS resolution pool limit exceeded") =>
+            {
+                Self::LimitExceeded(s.into())
+            }
+            s if s.contains("timed out") || s.contains("timeout") => Self::Timeout(s.into()),
             s if s.contains("provider unavailable") => Self::Unavailable(s.into()),
             // Before the egress arm: a CA file path may contain any word.
             s if s.starts_with(&bn_catalog::fill(
