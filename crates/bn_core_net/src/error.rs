@@ -145,6 +145,9 @@ pub(crate) fn checked_timeout(
 
 /// The portable code of an operating-system failure.
 fn io_code(error: &io::Error) -> i32 {
+    if crate::socket::is_quota_error(error) {
+        return net::LIMIT;
+    }
     use io::ErrorKind;
     match error.kind() {
         ErrorKind::TimedOut | ErrorKind::WouldBlock => net::TIMEOUT,

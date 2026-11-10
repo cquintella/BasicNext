@@ -139,16 +139,6 @@ impl NetProvider {
             "HOST.Net.UDPBind" => {
                 require_arity(name, arguments, 1, span)?;
                 let endpoint = net_endpoint(&arguments[0], span)?;
-                if self.tcp_streams.len()
-                    + self.udp_sockets.len()
-                    + self.tcp_listeners.values().map(Vec::len).sum::<usize>()
-                    >= bn_limits::web_limits().socket_handles_max
-                {
-                    return Ok(net_error(&bn_rt::net::quota_exceeded(
-                        "HOST.Net.UDPBind",
-                        format!("bind {endpoint}"),
-                    )));
-                }
                 match bn_rt::net::udp_bind(endpoint) {
                     Ok(socket) => {
                         let id = self.next_udp_socket;
@@ -729,17 +719,6 @@ impl NetProvider {
                     .iter()
                     .map(|endpoint| net_endpoint(endpoint, span))
                     .collect::<Result<Vec<_>, _>>()?;
-                if self.tcp_streams.len()
-                    + self.udp_sockets.len()
-                    + self.tcp_listeners.values().map(Vec::len).sum::<usize>()
-                    + endpoints.len()
-                    > bn_limits::web_limits().socket_handles_max
-                {
-                    return Ok(net_error(&bn_rt::net::quota_exceeded(
-                        "HOST.Net.TCPListen",
-                        "listen",
-                    )));
-                }
                 match bn_rt::net::tcp_listen(&endpoints, backlog) {
                     Ok(listeners) => {
                         let id = self.next_tcp_listener;
@@ -789,16 +768,6 @@ impl NetProvider {
                 require_arity(name, arguments, 2, span)?;
                 let endpoint = net_endpoint(&arguments[0], span)?;
                 let (timeout, _) = integer(&arguments[1], span)?;
-                if self.tcp_streams.len()
-                    + self.udp_sockets.len()
-                    + self.tcp_listeners.values().map(Vec::len).sum::<usize>()
-                    >= bn_limits::web_limits().socket_handles_max
-                {
-                    return Ok(net_error(&bn_rt::net::quota_exceeded(
-                        "HOST.Net.TCPConnect",
-                        format!("connect to {endpoint}"),
-                    )));
-                }
                 match bn_rt::net::tcp_connect(endpoint, timeout) {
                     Ok(stream) => {
                         let id = self.next_tcp_stream;
@@ -982,16 +951,6 @@ impl NetProvider {
                     ));
                 };
                 let (timeout, _) = integer(&arguments[1], span)?;
-                if self.tcp_streams.len()
-                    + self.udp_sockets.len()
-                    + self.tcp_listeners.values().map(Vec::len).sum::<usize>()
-                    >= bn_limits::web_limits().socket_handles_max
-                {
-                    return Ok(net_error(&bn_rt::net::quota_exceeded(
-                        "HOST.Net.TCPListener.Accept",
-                        "accept a connection",
-                    )));
-                }
                 match bn_rt::net::tcp_accept(
                     self.tcp_listeners.get(&id).map(Vec::as_slice),
                     timeout,

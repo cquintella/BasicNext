@@ -4,8 +4,9 @@
 //! a socket opened later in the same slot and answers `Net.CLOSED`, as in
 //! `bni`.
 
-use crate::handle_table_abi::GenerationTable;
+use crate::handle_table_abi::{GenerationTable, SLOT_CAPACITY, TAG_MASK};
 use crate::net::{TcpListener, TcpStream, UdpPacket, UdpSocket};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 pub(super) enum Handle {
@@ -15,10 +16,19 @@ pub(super) enum Handle {
     UdpPacket(UdpPacket),
 }
 
+static NEXT_COPY_TAG: AtomicU32 = AtomicU32::new(1);
+
 /// The sockets of the module copy that runs on this thread (`bn_core_copy`):
 /// a task's close when the task ends.
-#[derive(Default)]
 struct Sockets(Mutex<GenerationTable<Handle>>);
+
+impl Default for Sockets {
+    fn default() -> Self {
+        let raw = NEXT_COPY_TAG.fetch_add(1, Ordering::Relaxed);
+        let tag = (raw % (TAG_MASK as u32 - 1)) + 1;
+        Self(Mutex::new(GenerationTable::new_tagged(tag)))
+    }
+}
 
 fn table() -> Arc<Sockets> {
     bn_core_copy::table::<Sockets>()
@@ -30,9 +40,10 @@ pub(super) fn insert(handle: Handle) -> Result<i64, &'static str> {
         .0
         .lock()
         .map_err(|_| "network handle table poisoned")?;
-    // The quota the interpreter applies too (`bn_limits`).
+    // Process-wide socket quota is tracked in bn_core_net. The table handles
+    // task-local slot indexing and generations, holding any handle up to capacity.
     table
-        .insert(handle, bn_limits::web_limits().socket_handles_max)
+        .insert(handle, SLOT_CAPACITY)
         .ok_or("socket handle quota exceeded")
 }
 
@@ -125,5 +136,23 @@ mod tests {
             );
             let _ = remove(second);
         });
+    }
+
+    #[test]
+    fn udp_packets_do_not_exhaust_socket_quota() {
+        let _lock = crate::network_test_lock();
+        let max = bn_limits::web_limits().socket_handles_max;
+        let endpoint = Endpoint::new(Address::parse("127.0.0.1").expect("loopback"), 0);
+        let mut packets = Vec::new();
+        // Insert more packets than socket_handles_max into the handle table.
+        for _ in 0..(max + 10) {
+            let packet = crate::net::UdpPacket::new(endpoint, vec![1, 2, 3], false);
+            let handle = insert(Handle::UdpPacket(packet)).expect("insert packet");
+            packets.push(handle);
+        }
+        for handle in packets {
+            assert!(with(handle, |_| ()).expect("lookup packet").is_some());
+            assert!(remove(handle).expect("close packet").is_some());
+        }
     }
 }

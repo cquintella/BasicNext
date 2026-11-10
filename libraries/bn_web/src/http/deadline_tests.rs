@@ -51,8 +51,12 @@ fn concurrent_handler_timeout_response(client_delay: Duration) -> Option<String>
     let server_state = Arc::clone(&state);
     let server = std::thread::spawn(move || {
         let (stream, _) = listener.accept().expect("accept concurrent-timeout peer");
-        serve_connection_with_handler(TcpStream::from_std(stream), server_state, Some(handler))
-            .expect("serve concurrent timeout");
+        serve_connection_with_handler(
+            TcpStream::from_std(stream).expect("tcp stream"),
+            server_state,
+            Some(handler),
+        )
+        .expect("serve concurrent timeout");
     });
     let mut client = std::net::TcpStream::connect(endpoint).expect("connect concurrent timeout");
     std::thread::sleep(client_delay);

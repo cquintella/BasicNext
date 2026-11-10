@@ -30,7 +30,9 @@ mod socket;
 mod tcp;
 mod udp;
 
-pub use socket::{TcpListener, TcpStream, UdpPacket, UdpSocket};
+pub use socket::{
+    QuotaExceeded, SocketPermit, TcpListener, TcpStream, UdpPacket, UdpSocket, is_quota_error,
+};
 pub use tcp::{
     listener_endpoint, quota_exceeded, tcp_accept, tcp_connect, tcp_endpoint, tcp_listen, tcp_read,
     tcp_set_timeouts, tcp_shutdown, tcp_write,

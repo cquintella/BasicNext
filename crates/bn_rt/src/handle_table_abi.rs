@@ -11,16 +11,23 @@
 //! another object). One rule for every native resource handle: network
 //! handles, `HOST.Exec` results, resolved address lists.
 
-/// Bits of an id that hold the slot index; the generation is above them.
-const SLOT_BITS: u32 = 32;
-const SLOT_MASK: i64 = (1 << SLOT_BITS) - 1;
+/// Bits of an id that hold the slot index; the generation and tag are above them.
+pub const SLOT_BITS: u32 = 16;
+pub const SLOT_MASK: i64 = (1 << SLOT_BITS) - 1;
 /// Slots an id can name: an index above this would spill into the generation.
-const SLOT_CAPACITY: usize = 1 << SLOT_BITS;
+pub const SLOT_CAPACITY: usize = 1 << SLOT_BITS;
+/// Bits of an id that hold the generation.
+pub const GENERATION_BITS: u32 = 23;
+pub const GENERATION_MASK: i64 = (1 << GENERATION_BITS) - 1;
 /// The first generation of a slot. Never 0, so no valid id is 0.
-const FIRST_GENERATION: i64 = 1;
+pub const FIRST_GENERATION: i64 = 1;
 /// A slot whose generation reaches this value is retired, never reused, so
 /// ids stay positive `i64` values and no generation repeats.
-const RETIRED_GENERATION: i64 = i32::MAX as i64;
+pub const RETIRED_GENERATION: i64 = GENERATION_MASK;
+
+/// Bits of an id that hold the copy or table tag.
+pub const TAG_BITS: u32 = 24;
+pub const TAG_MASK: i64 = (1 << TAG_BITS) - 1;
 
 struct Slot<T> {
     generation: i64,
@@ -28,6 +35,7 @@ struct Slot<T> {
 }
 
 pub struct GenerationTable<T> {
+    tag: u32,
     slots: Vec<Slot<T>>,
     /// Empty slots that are not retired, reused last-in first-out, so an
     /// insert takes constant time however many slots the table has.
@@ -37,6 +45,7 @@ pub struct GenerationTable<T> {
 impl<T> std::fmt::Debug for GenerationTable<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("GenerationTable")
+            .field("tag", &self.tag)
             .field("slots", &self.slots.len())
             .field("free", &self.free.len())
             .finish_non_exhaustive()
@@ -52,21 +61,39 @@ impl<T> Default for GenerationTable<T> {
 impl<T> GenerationTable<T> {
     #[must_use]
     pub const fn new() -> Self {
+        Self::new_tagged(0)
+    }
+
+    #[must_use]
+    pub const fn new_tagged(tag: u32) -> Self {
         Self {
+            tag: ((tag as i64) & TAG_MASK) as u32,
             slots: Vec::new(),
             free: Vec::new(),
         }
     }
 
-    fn pack(index: usize, generation: i64) -> i64 {
-        (generation << SLOT_BITS) | i64::try_from(index).unwrap_or(SLOT_MASK)
+    #[must_use]
+    pub fn pack(index: usize, generation: i64, tag: u32) -> i64 {
+        let tag_part = (i64::from(tag) & TAG_MASK) << (SLOT_BITS + GENERATION_BITS);
+        let gen_part = (generation & GENERATION_MASK) << SLOT_BITS;
+        let slot_part = i64::try_from(index).unwrap_or(SLOT_MASK) & SLOT_MASK;
+        tag_part | gen_part | slot_part
     }
 
-    /// The slot of `id` when its generation is the slot's current one.
+    /// The slot of `id` when its generation is the slot's current one and its tag matches.
     fn slot_of(&self, id: i64) -> Option<usize> {
+        if id <= 0 {
+            return None;
+        }
+        let tag = u32::try_from((id >> (SLOT_BITS + GENERATION_BITS)) & TAG_MASK).ok()?;
+        if tag != self.tag {
+            return None;
+        }
+        let generation = (id >> SLOT_BITS) & GENERATION_MASK;
         let index = usize::try_from(id & SLOT_MASK).ok()?;
-        let generation = id >> SLOT_BITS;
-        (self.slots.get(index)?.generation == generation).then_some(index)
+        let slot = self.slots.get(index)?;
+        (slot.generation == generation).then_some(index)
     }
 
     /// Stores `value` and returns its id; `None` when the table already holds
@@ -75,7 +102,7 @@ impl<T> GenerationTable<T> {
         if let Some(index) = self.free.pop() {
             let slot = &mut self.slots[index];
             slot.value = Some(value);
-            return Some(Self::pack(index, slot.generation));
+            return Some(Self::pack(index, slot.generation, self.tag));
         }
         if self.slots.len() >= max.min(SLOT_CAPACITY) {
             return None;
@@ -84,7 +111,7 @@ impl<T> GenerationTable<T> {
             generation: FIRST_GENERATION,
             value: Some(value),
         });
-        Some(Self::pack(self.slots.len() - 1, FIRST_GENERATION))
+        Some(Self::pack(self.slots.len() - 1, FIRST_GENERATION, self.tag))
     }
 
     /// Takes the value of `id` out and moves its slot's generation on; a
@@ -143,7 +170,7 @@ mod tests {
         assert_eq!(third & super::SLOT_MASK, first & super::SLOT_MASK);
         assert!(table.insert(4, 2).is_none(), "both slots are live");
         table.slots[0].generation = super::RETIRED_GENERATION - 1;
-        let last = GenerationTable::<i32>::pack(0, super::RETIRED_GENERATION - 1);
+        let last = GenerationTable::<i32>::pack(0, super::RETIRED_GENERATION - 1, 0);
         assert_eq!(table.remove(last), Some(3));
         assert!(table.insert(5, 2).is_none(), "a retired slot is not reused");
         assert_eq!(table.get(second), Some(&2));

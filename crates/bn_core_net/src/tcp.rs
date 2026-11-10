@@ -59,12 +59,16 @@ pub fn tcp_connect(endpoint: Endpoint, timeout_ms: i128) -> Result<TcpStream, Ne
     let action = format!("connect to {endpoint}");
     let timeout = checked_timeout(OPERATION, &action, timeout_ms)?;
     TcpStream::connect(endpoint, timeout).map_err(|error| {
-        let failure = if error.kind() == std::io::ErrorKind::TimedOut {
-            Failure::Timeout(u64::try_from(timeout_ms).unwrap_or(0))
+        if super::socket::is_quota_error(&error) {
+            quota_exceeded(OPERATION, action)
         } else {
-            Failure::Io(error)
-        };
-        NetError::new(OPERATION, action, failure)
+            let failure = if error.kind() == std::io::ErrorKind::TimedOut {
+                Failure::Timeout(u64::try_from(timeout_ms).unwrap_or(0))
+            } else {
+                Failure::Io(error)
+            };
+            NetError::new(OPERATION, action, failure)
+        }
     })
 }
 
@@ -94,11 +98,15 @@ pub fn tcp_listen(endpoints: &[Endpoint], backlog: i128) -> Result<Vec<TcpListen
         .iter()
         .map(|endpoint| {
             TcpListener::bind_with_backlog(*endpoint, backlog).map_err(|error| {
-                NetError::new(
-                    OPERATION,
-                    format!("listen on {endpoint}"),
-                    Failure::Io(error),
-                )
+                if super::socket::is_quota_error(&error) {
+                    quota_exceeded(OPERATION, format!("listen on {endpoint}"))
+                } else {
+                    NetError::new(
+                        OPERATION,
+                        format!("listen on {endpoint}"),
+                        Failure::Io(error),
+                    )
+                }
             })
         })
         .collect()
@@ -119,9 +127,13 @@ pub fn tcp_accept(
     let listeners = listeners.ok_or_else(|| closed(OPERATION, action))?;
     let timeout = checked_timeout(OPERATION, action, timeout_ms)?;
     for listener in listeners {
-        let accepted = listener
-            .accept_timeout(timeout)
-            .map_err(|error| NetError::new(OPERATION, action, Failure::Io(error)))?;
+        let accepted = listener.accept_timeout(timeout).map_err(|error| {
+            if super::socket::is_quota_error(&error) {
+                quota_exceeded(OPERATION, action)
+            } else {
+                NetError::new(OPERATION, action, Failure::Io(error))
+            }
+        })?;
         if let Some(stream) = accepted {
             // An accepted stream waits as long as the accept did.
             let _ = stream.set_timeouts(Some(timeout), Some(timeout));

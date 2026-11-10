@@ -59,7 +59,11 @@ fn serves_local_http11_route_over_host_net_stream() {
     let server_state = Arc::clone(&state);
     let server = std::thread::spawn(move || {
         let (stream, _) = listener.accept().expect("accept test connection");
-        serve_connection(TcpStream::from_std(stream), server_state).expect("serve connection");
+        serve_connection(
+            TcpStream::from_std(stream).expect("tcp stream"),
+            server_state,
+        )
+        .expect("serve connection");
     });
     let mut client = std::net::TcpStream::connect(endpoint).expect("connect test server");
     client
@@ -122,8 +126,12 @@ fn projects_callback_response_over_local_http11() {
     let server_state = Arc::clone(&state);
     let server = std::thread::spawn(move || {
         let (stream, _) = listener.accept().expect("accept test connection");
-        serve_connection_with_handler(TcpStream::from_std(stream), server_state, Some(callback))
-            .expect("serve callback connection");
+        serve_connection_with_handler(
+            TcpStream::from_std(stream).expect("tcp stream"),
+            server_state,
+            Some(callback),
+        )
+        .expect("serve callback connection");
     });
     let mut client = std::net::TcpStream::connect(endpoint).expect("connect test server");
     client
@@ -168,8 +176,12 @@ fn serves_cookie_and_session_headers_over_http11() {
     let server_state = Arc::clone(&state);
     let server = std::thread::spawn(move || {
         let (stream, _) = listener.accept().expect("accept test connection");
-        serve_connection_with_handler(TcpStream::from_std(stream), server_state, Some(callback))
-            .expect("serve callback connection");
+        serve_connection_with_handler(
+            TcpStream::from_std(stream).expect("tcp stream"),
+            server_state,
+            Some(callback),
+        )
+        .expect("serve callback connection");
     });
     let mut client = std::net::TcpStream::connect(endpoint).expect("connect test server");
     client
@@ -214,8 +226,12 @@ fn a_handler_without_a_queue_runs_off_the_transport_thread() {
     let server_state = Arc::clone(&state);
     let server = std::thread::spawn(move || {
         let (stream, _) = listener.accept().expect("accept concurrent-handler peer");
-        serve_connection_with_handler(TcpStream::from_std(stream), server_state, Some(handler))
-            .expect("serve concurrent handler");
+        serve_connection_with_handler(
+            TcpStream::from_std(stream).expect("tcp stream"),
+            server_state,
+            Some(handler),
+        )
+        .expect("serve concurrent handler");
     });
     let mut client = std::net::TcpStream::connect(endpoint).expect("connect concurrent handler");
     client
@@ -260,8 +276,12 @@ fn a_request_waits_for_the_serial_turn_until_its_deadline() {
     let server_state = Arc::clone(&state);
     let server = std::thread::spawn(move || {
         let (stream, _) = listener.accept().expect("accept concurrent-overload peer");
-        serve_connection_with_handler(TcpStream::from_std(stream), server_state, Some(handler))
-            .expect("serve concurrent overload");
+        serve_connection_with_handler(
+            TcpStream::from_std(stream).expect("tcp stream"),
+            server_state,
+            Some(handler),
+        )
+        .expect("serve concurrent overload");
     });
     let mut client = std::net::TcpStream::connect(endpoint).expect("connect concurrent overload");
     client
@@ -306,8 +326,12 @@ fn a_failing_handler_maps_to_internal_error() {
     let server_state = Arc::clone(&state);
     let server = std::thread::spawn(move || {
         let (stream, _) = listener.accept().expect("accept concurrent-failure peer");
-        serve_connection_with_handler(TcpStream::from_std(stream), server_state, Some(handler))
-            .expect("serve concurrent failure");
+        serve_connection_with_handler(
+            TcpStream::from_std(stream).expect("tcp stream"),
+            server_state,
+            Some(handler),
+        )
+        .expect("serve concurrent failure");
     });
     let mut client = std::net::TcpStream::connect(endpoint).expect("connect concurrent failure");
     client
@@ -343,8 +367,12 @@ fn callback_response_strips_body_for_head_requests() {
     let server_state = Arc::clone(&state);
     let server = std::thread::spawn(move || {
         let (stream, _) = listener.accept().expect("accept test connection");
-        serve_connection_with_handler(TcpStream::from_std(stream), server_state, Some(callback))
-            .expect("serve callback connection");
+        serve_connection_with_handler(
+            TcpStream::from_std(stream).expect("tcp stream"),
+            server_state,
+            Some(callback),
+        )
+        .expect("serve callback connection");
     });
     let mut client = std::net::TcpStream::connect(endpoint).expect("connect test server");
     client
@@ -372,7 +400,11 @@ fn serves_local_http2_route_over_host_net_stream() {
     let server_state = Arc::clone(&state);
     let server = std::thread::spawn(move || {
         let (stream, _) = listener.accept().expect("accept test connection");
-        serve_connection(TcpStream::from_std(stream), server_state).expect("serve connection");
+        serve_connection(
+            TcpStream::from_std(stream).expect("tcp stream"),
+            server_state,
+        )
+        .expect("serve connection");
     });
     let client = std::thread::spawn(move || {
         let runtime = tokio::runtime::Builder::new_current_thread()
@@ -695,7 +727,7 @@ fn rate_limited_http_request_returns_429_and_retry_after() {
         for _ in 0..2 {
             let (stream, _) = listener.accept().expect("accept rate-limit peer");
             super::serve_connection_with_handler(
-                TcpStream::from_std(stream),
+                TcpStream::from_std(stream).expect("tcp stream"),
                 Arc::clone(&server_state),
                 Some(Arc::clone(&handler)),
             )
@@ -754,7 +786,7 @@ fn overloaded_http_request_returns_503_without_running_handler() {
         let first_handler = Arc::clone(&server_handler);
         let first_worker = std::thread::spawn(move || {
             super::serve_connection_with_handler(
-                TcpStream::from_std(first),
+                TcpStream::from_std(first).expect("tcp stream"),
                 first_state,
                 Some(first_handler),
             )
@@ -762,7 +794,7 @@ fn overloaded_http_request_returns_503_without_running_handler() {
         });
         let (second, _) = listener.accept().expect("accept second overload peer");
         super::serve_connection_with_handler(
-            TcpStream::from_std(second),
+            TcpStream::from_std(second).expect("tcp stream"),
             server_state,
             Some(server_handler),
         )
@@ -829,7 +861,7 @@ fn configured_body_timeout_returns_request_timeout() {
     let server = std::thread::spawn(move || {
         let (stream, _) = listener.accept().expect("accept body-timeout peer");
         super::serve_connection_with_handler(
-            TcpStream::from_std(stream),
+            TcpStream::from_std(stream).expect("tcp stream"),
             state,
             Some(Arc::new(|_, _| Ok(()))),
         )
@@ -876,7 +908,7 @@ fn configured_header_timeout_closes_a_partial_request() {
     let server = std::thread::spawn(move || {
         let (stream, _) = listener.accept().expect("accept header-timeout peer");
         let result = super::serve_connection_with_handler(
-            TcpStream::from_std(stream),
+            TcpStream::from_std(stream).expect("tcp stream"),
             state,
             Some(Arc::new(|_, _| Ok(()))),
         );
@@ -918,7 +950,7 @@ fn configured_tls_handshake_timeout_closes_an_idle_peer() {
     let server = std::thread::spawn(move || {
         let (stream, _) = listener.accept().expect("accept TLS-timeout peer");
         let result = super::serve_tls_connection_with_handler(
-            TcpStream::from_std(stream),
+            TcpStream::from_std(stream).expect("tcp stream"),
             state,
             Arc::new(config),
             None,
@@ -951,7 +983,7 @@ fn configured_connection_deadline_closes_a_stalled_request() {
     let server = std::thread::spawn(move || {
         let (stream, _) = listener.accept().expect("accept connection-timeout peer");
         let result = super::serve_connection_with_handler(
-            TcpStream::from_std(stream),
+            TcpStream::from_std(stream).expect("tcp stream"),
             state,
             Some(Arc::new(|_, _| Ok(()))),
         );
@@ -996,7 +1028,7 @@ fn configured_http2_idle_keep_alive_closes_a_peer_that_ignores_ping() {
     let server = std::thread::spawn(move || {
         let (stream, _) = listener.accept().expect("accept HTTP/2 idle-timeout peer");
         let result = super::serve_connection_with_handler(
-            TcpStream::from_std(stream),
+            TcpStream::from_std(stream).expect("tcp stream"),
             state,
             Some(Arc::new(|_, _| Ok(()))),
         );
@@ -1144,7 +1176,7 @@ fn serves_static_files_with_mime_etag_conditional_and_sanitization() {
         for _ in 0..8 {
             let (stream, _) = listener.accept().expect("accept connection");
             let _ = super::serve_connection_with_handler(
-                TcpStream::from_std(stream),
+                TcpStream::from_std(stream).expect("tcp stream"),
                 Arc::clone(&server_state),
                 Some(Arc::clone(&server_handler)),
             );

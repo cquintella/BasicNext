@@ -43,12 +43,14 @@ fn datagram_length(operation: &'static str, action: &str, length: i128) -> Resul
 /// The endpoint is in use, the operating system refuses it, or another
 /// operating-system failure.
 pub fn udp_bind(endpoint: Endpoint) -> Result<UdpSocket, NetError> {
+    const OPERATION: &str = "HOST.Net.UDPBind";
+    let action = format!("bind {endpoint}");
     UdpSocket::bind(endpoint).map_err(|error| {
-        NetError::new(
-            "HOST.Net.UDPBind",
-            format!("bind {endpoint}"),
-            Failure::Io(error),
-        )
+        if super::socket::is_quota_error(&error) {
+            super::quota_exceeded(OPERATION, action)
+        } else {
+            NetError::new(OPERATION, action, Failure::Io(error))
+        }
     })
 }
 

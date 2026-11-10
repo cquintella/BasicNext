@@ -532,7 +532,7 @@ fn server_stop_cancels_an_admitted_socket_without_sleep() {
         .expect("cancellation listener address");
     let mut client = std::net::TcpStream::connect(endpoint).expect("connect cancellation peer");
     let (accepted, _) = listener.accept().expect("accept cancellation peer");
-    let accepted = bn_core_net::TcpStream::from_std(accepted);
+    let accepted = bn_core_net::TcpStream::from_std(accepted).expect("tcp stream");
     let mut server = ServerState::new();
     server.start().unwrap();
     server.admit_connection().unwrap();
@@ -602,9 +602,12 @@ fn server_stop_cancels_multiple_admitted_sockets() {
     for _ in 0..2 {
         clients
             .push(std::net::TcpStream::connect(endpoint).expect("connect multi-cancellation peer"));
-        accepted.push(bn_core_net::TcpStream::from_std(
-            listener.accept().expect("accept multi-cancellation peer").0,
-        ));
+        accepted.push(
+            bn_core_net::TcpStream::from_std(
+                listener.accept().expect("accept multi-cancellation peer").0,
+            )
+            .expect("tcp stream"),
+        );
     }
     let mut server = ServerState::new();
     server.start().unwrap();
@@ -631,7 +634,7 @@ fn server_stop_drains_a_slow_http_worker() {
     let endpoint = listener.local_addr().expect("slow-worker listener address");
     let mut client = std::net::TcpStream::connect(endpoint).expect("connect slow-worker peer");
     let (accepted, _) = listener.accept().expect("accept slow-worker peer");
-    let accepted = bn_core_net::TcpStream::from_std(accepted);
+    let accepted = bn_core_net::TcpStream::from_std(accepted).expect("tcp stream");
     let state = std::sync::Arc::new(std::sync::Mutex::new(ServerState::new()));
     {
         let mut server = state.lock().unwrap();
