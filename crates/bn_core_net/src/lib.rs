@@ -39,6 +39,13 @@ pub use tcp::{
 };
 pub use udp::{datagram_max, udp_bind, udp_local_endpoint, udp_receive, udp_send_to};
 
+static SOCKET_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[doc(hidden)]
+pub fn socket_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    SOCKET_TEST_LOCK.lock().unwrap()
+}
+
 use std::{net::IpAddr, str::FromStr};
 
 pub use addressing::{parse_address, parse_cidr};

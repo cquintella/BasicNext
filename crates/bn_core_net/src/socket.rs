@@ -360,8 +360,7 @@ impl UdpPacket {
 
 #[cfg(test)]
 pub(crate) fn socket_test_lock() -> std::sync::MutexGuard<'static, ()> {
-    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    LOCK.lock().unwrap()
+    crate::socket_test_lock()
 }
 
 #[cfg(test)]
