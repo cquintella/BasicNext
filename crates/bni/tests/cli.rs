@@ -816,6 +816,67 @@ fn check_icmp_ping_example_exits_zero() {
 }
 
 #[test]
+fn scramble_example_checks_clean_and_demo_exits_zero() {
+    let check = bni()
+        .args(["check", "examples/bn_scramble.bn"])
+        .output()
+        .expect("check scramble example");
+    assert_eq!(check.status.code(), Some(0));
+    let check_err = String::from_utf8_lossy(&check.stderr);
+    assert!(check_err.is_empty(), "scramble check stderr: {check_err}");
+
+    let demo = bni()
+        .args([
+            "run",
+            "examples/bn_scramble.bn",
+            "--",
+            "--demo",
+            "--frames",
+            "32",
+            "--quiet",
+        ])
+        .output()
+        .expect("run scramble demo");
+    assert_eq!(demo.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&demo.stdout),
+        "SCRAMBLE DEMO frames=32 score=230 ships=4 fuel=83 status=RUN result=OK\n"
+    );
+    let demo_err = String::from_utf8_lossy(&demo.stderr);
+    assert!(demo_err.is_empty(), "scramble demo stderr: {demo_err}");
+
+    let shown = bni()
+        .args([
+            "run",
+            "examples/bn_scramble.bn",
+            "--",
+            "--demo",
+            "--frames",
+            "8",
+        ])
+        .output()
+        .expect("run scramble demo frames");
+    assert_eq!(shown.status.code(), Some(0));
+    let board = String::from_utf8_lossy(&shown.stdout);
+    assert!(
+        board.contains("....>"),
+        "playfield missing the ship: {board}"
+    );
+    assert!(
+        board.contains("FUEL ["),
+        "playfield missing the fuel gauge: {board}"
+    );
+    assert!(
+        board.contains("Z1 MISSILES"),
+        "playfield missing the missile zone: {board}"
+    );
+    assert!(
+        board.contains("result=OK"),
+        "shown demo missing result: {board}"
+    );
+}
+
+#[test]
 fn socket_example_help_exits_zero() {
     let output = bni()
         .args(["run", "examples/socket.bn", "--", "--help"])
