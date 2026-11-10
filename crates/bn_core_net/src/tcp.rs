@@ -282,6 +282,7 @@ mod tests {
 
     #[test]
     fn tcp_errors_carry_portable_codes() {
+        let _lock = crate::socket::socket_test_lock();
         let loopback = Address::parse("127.0.0.1").unwrap();
         let listeners = tcp_listen(&[Endpoint::new(loopback, 0)], 8).unwrap();
         let taken = listeners[0].local_endpoint().unwrap();

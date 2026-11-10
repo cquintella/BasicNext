@@ -103,9 +103,10 @@ pub fn serve_connection_with_runtime(
         .remote_endpoint()
         .ok()
         .map(|endpoint| endpoint.address().as_std());
-    let std_stream = stream.into_std();
+    let (std_stream, permit) = stream.into_std();
     std_stream.set_nonblocking(true)?;
     runtime.block_on(async move {
+        let _permit = permit;
         let io = TokioIo::new(tokio::net::TcpStream::from_std(std_stream)?);
         serve_hyper_connection(io, peer, state, handler, false, options).await
     })
@@ -147,9 +148,10 @@ pub fn serve_tls_connection_with_runtime(
         .remote_endpoint()
         .ok()
         .map(|endpoint| endpoint.address().as_std());
-    let std_stream = stream.into_std();
+    let (std_stream, permit) = stream.into_std();
     std_stream.set_nonblocking(true)?;
     runtime.block_on(async move {
+        let _permit = permit;
         let stream = tokio::net::TcpStream::from_std(std_stream)?;
         let stream = tokio::time::timeout(
             std::time::Duration::from_millis(options.tls_handshake_ms),
@@ -378,7 +380,7 @@ fn client_request_once(
             connect_error.unwrap_or_else(|| "failed to connect to allowed destination".to_string())
         );
     };
-    let std_stream = stream.into_std();
+    let (std_stream, permit) = stream.into_std();
     std_stream
         .set_nonblocking(true)
         .map_err(|error| error.to_string())?;
@@ -388,6 +390,7 @@ fn client_request_once(
         .build()
         .map_err(|error| error.to_string())?;
     runtime.block_on(async move {
+        let _permit = permit;
         let stream =
             tokio::net::TcpStream::from_std(std_stream).map_err(|error| error.to_string())?;
         if let Some(config) = tls_config {

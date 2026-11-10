@@ -120,10 +120,10 @@ impl TcpStream {
         Self { inner, permit }
     }
 
-    /// The standard stream, for `BNWeb`'s HTTP layer.
+    /// The standard stream together with its socket permit, for `BNWeb`'s HTTP layer.
     #[must_use]
-    pub fn into_std(self) -> std::net::TcpStream {
-        self.inner
+    pub fn into_std(self) -> (std::net::TcpStream, SocketPermit) {
+        (self.inner, self.permit)
     }
 
     pub fn try_clone(&self) -> io::Result<Self> {
@@ -359,13 +359,16 @@ impl UdpPacket {
 }
 
 #[cfg(test)]
+pub(crate) fn socket_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap()
+}
+
+#[cfg(test)]
 mod tests {
     use super::{SocketPermit, UdpSocket};
     use crate::{Address, Endpoint};
-    use std::sync::Mutex;
     use std::time::Duration;
-
-    static SOCKET_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     fn loopback_socket() -> UdpSocket {
         let socket = UdpSocket::bind(Endpoint::new(
@@ -395,7 +398,7 @@ mod tests {
     /// silently. The packet keeps `maximum` bytes and says it was cut.
     #[test]
     fn a_datagram_larger_than_the_request_is_cut_and_flagged() {
-        let _lock = SOCKET_TEST_LOCK.lock().unwrap();
+        let _lock = super::socket_test_lock();
         let socket = loopback_socket();
         // 8 000 bytes: above any request here, below the loopback send limit of
         // macOS (about 9 KB by default).
@@ -413,7 +416,7 @@ mod tests {
 
     #[test]
     fn a_datagram_that_fits_is_whole_and_not_flagged() {
-        let _lock = SOCKET_TEST_LOCK.lock().unwrap();
+        let _lock = super::socket_test_lock();
         let socket = loopback_socket();
         for (length, maximum) in [(1, 1), (100, 100), (100, 4096)] {
             send_datagram(&socket, length);
@@ -426,7 +429,7 @@ mod tests {
     /// The socket does not keep one datagram's bytes for the next receive.
     #[test]
     fn consecutive_datagrams_do_not_leak_into_each_other() {
-        let _lock = SOCKET_TEST_LOCK.lock().unwrap();
+        let _lock = super::socket_test_lock();
         let socket = loopback_socket();
         send_datagram(&socket, 50);
         assert_eq!(socket.receive(64).expect("first").bytes(), &[7_u8; 50][..]);
@@ -438,11 +441,10 @@ mod tests {
 
     #[test]
     fn socket_quota_is_enforced_across_process_and_released_on_drop() {
-        let _lock = SOCKET_TEST_LOCK.lock().unwrap();
+        let _lock = super::socket_test_lock();
         let max = bn_limits::web_limits().socket_handles_max;
         let mut sockets = Vec::new();
-        let active = SocketPermit::active_count();
-        for _ in 0..(max.saturating_sub(active)) {
+        while SocketPermit::active_count() < max {
             sockets.push(loopback_socket());
         }
         // One more socket must exceed the process quota.
@@ -474,7 +476,7 @@ mod tests {
 
     #[test]
     fn into_std_returns_socket_and_permit_without_releasing_quota() {
-        let _lock = SOCKET_TEST_LOCK.lock().unwrap();
+        let _lock = super::socket_test_lock();
         let listener = super::TcpListener::bind(Endpoint::new(
             Address::parse("127.0.0.1").expect("loopback"),
             0,

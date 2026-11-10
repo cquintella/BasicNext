@@ -143,6 +143,7 @@ mod tests {
 
     #[test]
     fn udp_errors_carry_portable_codes() {
+        let _lock = crate::socket::socket_test_lock();
         let loopback = Address::parse("127.0.0.1").unwrap();
         let socket = udp_bind(Endpoint::new(loopback, 0)).unwrap();
         let taken = socket.local_endpoint().unwrap();
