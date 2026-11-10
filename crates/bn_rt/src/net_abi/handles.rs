@@ -97,4 +97,33 @@ mod tests {
         assert!(with(second, |_| ()).expect("still live").is_some());
         let _ = remove(second);
     }
+
+    #[test]
+    fn a_handle_cannot_be_accessed_or_closed_across_task_copies() {
+        let _lock = crate::network_test_lock();
+        let first = bn_core_copy::run(|| {
+            insert(Handle::UdpSocket(loopback_socket())).expect("insert in first task")
+        });
+        bn_core_copy::run(|| {
+            let second =
+                insert(Handle::UdpSocket(loopback_socket())).expect("insert in second task");
+            assert_ne!(
+                first, second,
+                "handles in different task copies must have different tags"
+            );
+            assert!(
+                with(first, |_| ()).expect("lookup cross-task").is_none(),
+                "cross-task lookup must yield None"
+            );
+            assert!(
+                remove(first).expect("close cross-task").is_none(),
+                "cross-task close must yield None"
+            );
+            assert!(
+                with(second, |_| ()).expect("lookup current").is_some(),
+                "current task handle must still be live"
+            );
+            let _ = remove(second);
+        });
+    }
 }

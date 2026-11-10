@@ -264,6 +264,10 @@ impl UdpPacket {
     }
 }
 
+pub fn is_quota_error(_error: &io::Error) -> bool {
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::UdpSocket;
@@ -334,5 +338,39 @@ mod tests {
         let to = socket.local_endpoint().expect("local endpoint");
         sender.send_to(to, &[1, 2, 3]).expect("send");
         assert_eq!(socket.receive(64).expect("second").bytes(), &[1, 2, 3][..]);
+    }
+
+    #[test]
+    fn socket_quota_is_enforced_across_process_and_released_on_drop() {
+        let max = bn_limits::web_limits().socket_handles_max;
+        let mut sockets = Vec::new();
+        for _ in 0..max {
+            sockets.push(loopback_socket());
+        }
+        // One more socket must exceed the process quota.
+        let overflow = UdpSocket::bind(Endpoint::new(
+            Address::parse("127.0.0.1").expect("loopback"),
+            0,
+        ));
+        assert!(
+            overflow.is_err(),
+            "socket bind beyond quota ({max}) must fail"
+        );
+        let error = overflow.unwrap_err();
+        assert!(
+            super::is_quota_error(&error),
+            "error must be quota error, got: {error:?}"
+        );
+
+        // Dropping one socket allows another to be bound.
+        drop(sockets.pop());
+        let replacement = UdpSocket::bind(Endpoint::new(
+            Address::parse("127.0.0.1").expect("loopback"),
+            0,
+        ));
+        assert!(
+            replacement.is_ok(),
+            "binding must succeed after releasing a socket"
+        );
     }
 }
