@@ -10,7 +10,7 @@
 
 #![cfg(unix)]
 
-use super::support::{TestDir, bni};
+use super::support::{TestDir, bnc, bni};
 use std::fs;
 use std::io::{Read as _, Write as _};
 use std::net::{TcpListener, TcpStream};
@@ -107,6 +107,76 @@ fn a_static_mount_refuses_a_fifo_and_paths_outside_the_read_root() {
         .stderr(Stdio::null())
         .spawn()
         .expect("start bni");
+    let ready = (0..CONNECT_ATTEMPTS).any(|_| {
+        let connected = TcpStream::connect(("127.0.0.1", port)).is_ok();
+        if !connected {
+            std::thread::sleep(CONNECT_PAUSE);
+        }
+        connected
+    });
+    let outcome = std::panic::catch_unwind(|| {
+        assert!(ready, "the server accepted a connection");
+        let fifo_responses: Vec<String> =
+            (0..FIFO_REQUESTS).map(|_| get(port, "/in/pipe")).collect();
+        let public = get(port, "/in/page.txt");
+        let secret = get(port, "/out/page.txt");
+        (fifo_responses, public, secret)
+    });
+    drop(child.stdin.take());
+    let _ = child.wait();
+    let (fifo_responses, public, secret) =
+        outcome.unwrap_or_else(|panic| std::panic::resume_unwind(panic));
+    for response in &fifo_responses {
+        assert!(response.starts_with("HTTP/1.1 404"), "{response}");
+    }
+    assert!(public.starts_with("HTTP/1.1 200"), "{public}");
+    assert!(public.ends_with(PUBLIC), "{public}");
+    assert!(secret.starts_with("HTTP/1.1 403"), "{secret}");
+    assert!(!secret.contains(SECRET), "{secret}");
+}
+
+#[test]
+fn a_static_mount_refuses_a_fifo_and_paths_outside_the_read_root_on_bnc() {
+    let directory = TestDir::new("web-static-policy-bnc").expect("directory");
+    let base = directory.path().canonicalize().expect("canonical base");
+    let inside = base.join("inside");
+    let outside = base.join("outside");
+    fs::create_dir_all(&inside).expect("inside");
+    fs::create_dir_all(&outside).expect("outside");
+    fs::write(inside.join("page.txt"), PUBLIC).expect("public file");
+    fs::write(outside.join("page.txt"), SECRET).expect("secret file");
+    let fifo = std::process::Command::new("mkfifo")
+        .arg(inside.join("pipe"))
+        .status()
+        .expect("run mkfifo");
+    assert!(fifo.success(), "mkfifo");
+    let port = free_port();
+    let source = base.join("static.bn");
+    fs::write(&source, PROGRAM.replace("__PORT__", &port.to_string())).expect("source");
+    let binary = base.join("server");
+    let build = bnc()
+        .current_dir(&base)
+        .args(["--sandbox", "--read-root"])
+        .arg(&inside)
+        .arg(&source)
+        .arg("-o")
+        .arg(&binary)
+        .output()
+        .expect("compile static server");
+    assert!(
+        build.status.success(),
+        "compile error: {}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let mut child = std::process::Command::new(&binary)
+        .current_dir(&base)
+        .arg(&inside)
+        .arg(&outside)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("start bnc");
     let ready = (0..CONNECT_ATTEMPTS).any(|_| {
         let connected = TcpStream::connect(("127.0.0.1", port)).is_ok();
         if !connected {
