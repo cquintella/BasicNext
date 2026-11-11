@@ -151,6 +151,18 @@ pub enum WebFailure {
     ProviderUnavailable(&'static str),
     /// Server internal state mutex is unavailable.
     ServerStateUnavailable,
+
+    // 10: HTTP_STATUS
+    /// Unexpected HTTP status code outside 200..299.
+    HttpStatus(i128),
+
+    // 11: ALREADY_EXISTS
+    /// Destination file already exists and overwrite was not requested.
+    AlreadyExists(String),
+
+    // 12: UNSUPPORTED_ENCODING
+    /// Response body Content-Encoding is not supported.
+    UnsupportedEncoding(String),
 }
 
 impl WebFailure {
@@ -225,6 +237,10 @@ impl WebFailure {
             | Self::ProviderUnavailable(_)
             | Self::ServerStateUnavailable
             | Self::SessionsNotEnabled => web::UNAVAILABLE,
+
+            Self::HttpStatus(_) => web::HTTP_STATUS,
+            Self::AlreadyExists(_) => web::ALREADY_EXISTS,
+            Self::UnsupportedEncoding(_) => web::UNSUPPORTED_ENCODING,
         }
     }
 
@@ -317,6 +333,20 @@ impl WebFailure {
 
             Self::ProviderUnavailable(p) => format!("{p} provider unavailable"),
             Self::ServerStateUnavailable => "server state unavailable".into(),
+
+            Self::HttpStatus(s) => bn_catalog::fill(
+                "web",
+                "transfer.http_status.message",
+                &[("status", &s.to_string())],
+            ),
+            Self::AlreadyExists(p) => {
+                bn_catalog::fill("web", "transfer.already_exists.message", &[("path", p)])
+            }
+            Self::UnsupportedEncoding(e) => bn_catalog::fill(
+                "web",
+                "transfer.unsupported_encoding.message",
+                &[("encoding", e)],
+            ),
         }
     }
 
@@ -438,6 +468,14 @@ impl WebFailure {
                 format!("the {p} provider is not available on this platform or build")
             }
             Self::ServerStateUnavailable => "could not acquire internal server state lock".into(),
+
+            Self::HttpStatus(_) => bn_catalog::text("web", "transfer.http_status.cause").into(),
+            Self::AlreadyExists(_) => {
+                bn_catalog::text("web", "transfer.already_exists.cause").into()
+            }
+            Self::UnsupportedEncoding(_) => {
+                bn_catalog::text("web", "transfer.unsupported_encoding.cause").into()
+            }
         }
     }
 
@@ -522,6 +560,11 @@ impl WebFailure {
             {
                 Self::BodyLimitExceeded(s.into())
             }
+            s if s.contains("exists") => Self::AlreadyExists(s.into()),
+            s if s.contains("encoding") || s.contains("Encoding") => {
+                Self::UnsupportedEncoding(s.into())
+            }
+            s if s.contains("status") || s.contains("Status") => Self::HttpStatus(0),
             s if s.contains("URL")
                 || s.contains("authority")
                 || s.contains("percent escape")
@@ -572,5 +615,36 @@ mod tests {
 
         let unavail = WebFailure::ProviderUnavailable("BNWeb");
         assert_eq!(unavail.code(), web::UNAVAILABLE);
+
+        let status_err = WebFailure::HttpStatus(404);
+        assert_eq!(status_err.code(), web::HTTP_STATUS);
+        assert_eq!(status_err.message(), "unexpected HTTP status 404");
+        assert!(!status_err.cause().is_empty());
+
+        let exists_err = WebFailure::AlreadyExists("/tmp/dest.txt".into());
+        assert_eq!(exists_err.code(), web::ALREADY_EXISTS);
+        assert_eq!(
+            exists_err.message(),
+            "destination file \"/tmp/dest.txt\" already exists"
+        );
+        assert!(!exists_err.cause().is_empty());
+
+        let enc_err = WebFailure::UnsupportedEncoding("zstd".into());
+        assert_eq!(enc_err.code(), web::UNSUPPORTED_ENCODING);
+        assert_eq!(enc_err.message(), "unsupported Content-Encoding \"zstd\"");
+        assert!(!enc_err.cause().is_empty());
+
+        assert_eq!(
+            WebFailure::from_message("unexpected HTTP status").code(),
+            web::HTTP_STATUS
+        );
+        assert_eq!(
+            WebFailure::from_message("file already exists").code(),
+            web::ALREADY_EXISTS
+        );
+        assert_eq!(
+            WebFailure::from_message("unsupported Content-Encoding").code(),
+            web::UNSUPPORTED_ENCODING
+        );
     }
 }

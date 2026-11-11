@@ -233,6 +233,9 @@ pub mod web {
     pub const EGRESS_DENIED: i32 = 7;
     pub const HTTP_FAILED: i32 = 8;
     pub const UNAVAILABLE: i32 = 9;
+    pub const HTTP_STATUS: i32 = 10;
+    pub const ALREADY_EXISTS: i32 = 11;
+    pub const UNSUPPORTED_ENCODING: i32 = 12;
 
     /// Name and value of each constant, as `modules/bn/BNWeb.bn` exports them.
     pub const ALL: &[(&str, i32)] = &[

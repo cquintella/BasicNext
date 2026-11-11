@@ -49,3 +49,11 @@ tls.ca_file_empty.cause = the CA file {path} holds no valid certificate
 tls.no_roots.cause = no trusted CA certificate is available: the system trust store holds none and no extra CA file was given
 tls.trust_failed.message = TLS trust roots unavailable: {cause}
 tls.platform_unreadable.cause = the system trust store cannot be read ({error}) and no extra CA file was given
+
+# Transfers and client failures (bn_web web_error).
+transfer.http_status.message = unexpected HTTP status {status}
+transfer.http_status.cause = the server returned an HTTP status outside the 200..299 success range
+transfer.already_exists.message = destination file "{path}" already exists
+transfer.already_exists.cause = the destination file already exists and overwrite was not requested
+transfer.unsupported_encoding.message = unsupported Content-Encoding "{encoding}"
+transfer.unsupported_encoding.cause = the response body encoding is not supported (only gzip and deflate are supported)

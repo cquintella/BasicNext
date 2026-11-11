@@ -1943,8 +1943,23 @@ fn apply_static_outcome_to_response(
 mod tests {
     #[test]
     fn module_constants_match_the_runtime_codes() {
+        use bn_types::error_codes::web;
         let module = include_str!("../../../modules/bn/BNWeb.bn");
-        for (name, value) in bn_types::error_codes::web::ALL {
+        let codes = [
+            ("INVALID_ARGUMENT", web::INVALID_ARGUMENT),
+            ("NOT_FOUND", web::NOT_FOUND),
+            ("OUT_OF_RANGE", web::OUT_OF_RANGE),
+            ("LIMIT", web::LIMIT),
+            ("CLOSED", web::CLOSED),
+            ("TIMEOUT", web::TIMEOUT),
+            ("EGRESS_DENIED", web::EGRESS_DENIED),
+            ("HTTP_FAILED", web::HTTP_FAILED),
+            ("UNAVAILABLE", web::UNAVAILABLE),
+            ("HTTP_STATUS", web::HTTP_STATUS),
+            ("ALREADY_EXISTS", web::ALREADY_EXISTS),
+            ("UNSUPPORTED_ENCODING", web::UNSUPPORTED_ENCODING),
+        ];
+        for (name, value) in codes {
             let line = format!("EXPORT CONST {name} AS INTEGER = {value}");
             assert!(module.contains(&line), "BNWeb.bn lacks `{line}`");
         }
