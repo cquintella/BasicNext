@@ -297,20 +297,32 @@ pub fn client_request_with_policy(
     client_request_with_resolver_and_policy(method, url, body, &resolver, policy)
 }
 
-fn client_request_with_resolver_and_policy(
+pub fn client_transfer_with_policy(
     method: &str,
     url: &str,
-    body: &str,
+    body: &[u8],
+    extra_headers: &[(String, String)],
+    policy: &crate::web::EgressPolicy,
+) -> Result<crate::web::ClientReply, String> {
+    let resolver = SystemAddressResolver;
+    client_transfer_with_resolver_and_policy(method, url, body, extra_headers, &resolver, policy)
+}
+
+fn client_transfer_with_resolver_and_policy(
+    method: &str,
+    url: &str,
+    body: &[u8],
+    extra_headers: &[(String, String)],
     resolver: &dyn AddressResolver,
     policy: &crate::web::EgressPolicy,
-) -> Result<crate::web::Response, String> {
+) -> Result<crate::web::ClientReply, String> {
     let mut current = url.to_owned();
     for _ in 0..=policy.max_redirects() {
-        let response = client_request_once(method, &current, body, resolver, policy)?;
-        if !(300..=399).contains(&response.status) {
-            return Ok(response);
+        let reply = client_transfer_once(method, &current, body, extra_headers, resolver, policy)?;
+        if !(300..=399).contains(&reply.status) {
+            return Ok(reply);
         }
-        let location = response
+        let location = reply
             .headers
             .iter()
             .find(|(name, _)| name.eq_ignore_ascii_case("location"))
@@ -321,14 +333,40 @@ fn client_request_with_resolver_and_policy(
     Err("redirect limit exceeded".into())
 }
 
-#[allow(clippy::too_many_lines)] // Keep the bounded request policy in one auditable path.
-fn client_request_once(
+fn client_request_with_resolver_and_policy(
     method: &str,
     url: &str,
     body: &str,
     resolver: &dyn AddressResolver,
     policy: &crate::web::EgressPolicy,
 ) -> Result<crate::web::Response, String> {
+    let reply = client_transfer_with_resolver_and_policy(
+        method,
+        url,
+        body.as_bytes(),
+        &[],
+        resolver,
+        policy,
+    )?;
+    let text =
+        String::from_utf8(reply.body).map_err(|_| "response body is not UTF-8".to_string())?;
+    let mut result = crate::web::Response::new();
+    result.status = reply.status;
+    result.headers = reply.headers;
+    result.body = text;
+    result.commit().map_err(str::to_owned)?;
+    Ok(result)
+}
+
+#[allow(clippy::too_many_lines)] // Keep the bounded request policy in one auditable path.
+fn client_transfer_once(
+    method: &str,
+    url: &str,
+    body: &[u8],
+    extra_headers: &[(String, String)],
+    resolver: &dyn AddressResolver,
+    policy: &crate::web::EgressPolicy,
+) -> Result<crate::web::ClientReply, String> {
     if body.len() > bn_limits::web_limits().max_body_bytes {
         return Err("request body exceeds 8 MiB".into());
     }
@@ -347,8 +385,6 @@ fn client_request_once(
     };
     let (host, port) =
         parse_authority_with_default(authority, if scheme == "https" { 443 } else { 80 })?;
-    // The trust roots are settled before any name is resolved or any packet
-    // is sent: a bad CA file is a configuration error, not a network one.
     let tls_config = if scheme == "https" {
         Some(Arc::new(crate::tls::client_config()?))
     } else {
@@ -362,6 +398,7 @@ fn client_request_once(
     }
     let mut connect_error = None;
     let mut stream = None;
+    let mut peer_addr = None;
     for address in &addresses {
         let endpoint = match bn_core_net::Address::parse(&address.to_string()) {
             Ok(addr) => bn_core_net::Endpoint::new(addr, port),
@@ -369,6 +406,7 @@ fn client_request_once(
         };
         match bn_core_net::TcpStream::connect(endpoint, deadline) {
             Ok(connected) => {
+                peer_addr = Some(*address);
                 stream = Some(connected);
                 break;
             }
@@ -394,7 +432,7 @@ fn client_request_once(
         .enable_time()
         .build()
         .map_err(|error| error.to_string())?;
-    runtime.block_on(async move {
+    let mut reply = runtime.block_on(async move {
         let _permit = permit;
         let stream =
             tokio::net::TcpStream::from_std(std_stream).map_err(|error| error.to_string())?;
@@ -406,21 +444,42 @@ fn client_request_once(
                 .connect(server_name, stream)
                 .await
                 .map_err(|error| format!("TLS handshake failed: {error}"))?;
-            perform_http_request(stream, method, authority, target, body, policy).await
+            perform_transfer(
+                stream,
+                method,
+                authority,
+                target,
+                body,
+                extra_headers,
+                policy,
+            )
+            .await
         } else {
-            perform_http_request(stream, method, authority, target, body, policy).await
+            perform_transfer(
+                stream,
+                method,
+                authority,
+                target,
+                body,
+                extra_headers,
+                policy,
+            )
+            .await
         }
-    })
+    })?;
+    reply.peer = peer_addr;
+    Ok(reply)
 }
 
-async fn perform_http_request<I>(
+async fn perform_transfer<I>(
     stream: I,
     method: &str,
     authority: &str,
     target: &str,
-    body: &str,
+    body: &[u8],
+    extra_headers: &[(String, String)],
     policy: &crate::web::EgressPolicy,
-) -> Result<crate::web::Response, String>
+) -> Result<crate::web::ClientReply, String>
 where
     I: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
@@ -435,12 +494,18 @@ where
     tokio::spawn(async move {
         let _ = connection.await;
     });
-    let request = Request::builder()
+    let mut builder = Request::builder()
         .method(method)
         .uri(target)
-        .header("host", authority)
-        .header("content-length", body.len())
-        .body(Full::new(Bytes::copy_from_slice(body.as_bytes())))
+        .header("host", authority);
+    for (k, v) in extra_headers {
+        builder = builder.header(k.as_str(), v.as_str());
+    }
+    if !body.is_empty() {
+        builder = builder.header("content-length", body.len());
+    }
+    let request = builder
+        .body(Full::new(Bytes::copy_from_slice(body)))
         .map_err(|error| error.to_string())?;
     let response = tokio::time::timeout(
         std::time::Duration::from_millis(policy.total_deadline_ms()),
@@ -460,9 +525,6 @@ where
                 .map(|value| (name.as_str().to_owned(), value.to_owned()))
         })
         .collect::<Vec<_>>();
-    if has_unsupported_encoding(&headers) {
-        return Err("compressed responses are unavailable without a bounded decoder".into());
-    }
     let bytes = tokio::time::timeout(
         std::time::Duration::from_millis(policy.total_deadline_ms()),
         response.into_body().collect(),
@@ -474,14 +536,18 @@ where
     if bytes.len() > bn_limits::web_limits().max_response_body_bytes {
         return Err("response body exceeds 8 MiB".into());
     }
-    let text =
-        String::from_utf8(bytes.to_vec()).map_err(|_| "response body is not UTF-8".to_string())?;
-    let mut result = crate::web::Response::new();
-    result.status = status;
-    result.headers = headers;
-    result.body = text;
-    result.commit().map_err(str::to_owned)?;
-    Ok(result)
+    let body_bytes = bytes.to_vec();
+    Ok(crate::web::ClientReply {
+        status,
+        http_version: "HTTP/1.1".into(),
+        body_size: body_bytes.len(),
+        total_ms: 0,
+        connect_ms: 0,
+        headers,
+        body: body_bytes,
+        peer: None,
+        closed: false,
+    })
 }
 
 #[cfg(test)]
@@ -520,12 +586,6 @@ fn resolve_validated_addresses_with_policy(
     policy
         .filter_allowed_addresses(scheme, port, &addresses)
         .map_err(str::to_owned)
-}
-
-fn has_unsupported_encoding(headers: &[(String, String)]) -> bool {
-    headers
-        .iter()
-        .any(|(name, _)| name.eq_ignore_ascii_case("content-encoding"))
 }
 
 fn resolve_redirect(base: &str, location: &str) -> Result<String, String> {

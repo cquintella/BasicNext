@@ -14,7 +14,7 @@ use crate::layout::{handle_result_ty, llvm_type};
 pub(crate) fn is_bnweb_resource_type(module: &Module, ty: &Type) -> bool {
     matches!(ty, Type::ImportedNamed { module: module_id, name }
         if module.bnweb_providers.contains(&bn_ir::ModuleId(module_id.0))
-            && matches!(name.as_str(), "Response" | "Request" | "Server" | "ServerOptions" | "CookieJar" | "SessionStore" | "Scraper" | "ACL" | "Client"))
+            && matches!(name.as_str(), "Response" | "Request" | "Server" | "ServerOptions" | "CookieJar" | "SessionStore" | "Scraper" | "ACL" | "Client" | "ClientReply" | "Headers" | "Query" | "Fields" | "Form"))
 }
 
 /// Identifies supported `BNWeb` methods by module ID and method name.
@@ -90,6 +90,77 @@ pub(crate) fn bnweb_method(module: &Module, name: &str) -> Option<&'static str> 
         "Client.RequestWithPolicy" => Some("client_request_with_policy"),
         "Client.Close" => Some("client_close"),
 
+        "ClientReply.CONSTRUCTOR" => Some("client_reply_constructor"),
+        "ClientReply.Status" => Some("client_reply_status"),
+        "ClientReply.HttpVersion" => Some("client_reply_http_version"),
+        "ClientReply.BodySize" => Some("client_reply_body_size"),
+        "ClientReply.TotalMs" => Some("client_reply_total_ms"),
+        "ClientReply.ConnectMs" => Some("client_reply_connect_ms"),
+        "ClientReply.Header" => Some("client_reply_header"),
+        "ClientReply.HeaderCount" => Some("client_reply_header_count"),
+        "ClientReply.HeaderName" => Some("client_reply_header_name"),
+        "ClientReply.HeaderValue" => Some("client_reply_header_value"),
+        "ClientReply.BodyText" => Some("client_reply_body_text"),
+        "ClientReply.BodyBytes" => Some("client_reply_body_bytes"),
+        "ClientReply.BodyDecodedText" => Some("client_reply_body_decoded_text"),
+        "ClientReply.BodyDecodedBytes" => Some("client_reply_body_decoded_bytes"),
+        "ClientReply.PeerAddress" => Some("client_reply_peer_address"),
+
+        "Headers.CONSTRUCTOR" => Some("headers_constructor"),
+        "Headers.New" => Some("headers_new"),
+        "Headers.Add" => Some("headers_add"),
+        "Headers.Set" => Some("headers_set"),
+        "Headers.Count" => Some("headers_count"),
+        "Headers.Get" => Some("headers_get"),
+
+        "Query.CONSTRUCTOR" => Some("query_constructor"),
+        "Query.New" => Some("query_new"),
+        "Query.Add" => Some("query_add"),
+        "Query.Encode" => Some("query_encode"),
+
+        "Fields.CONSTRUCTOR" => Some("fields_constructor"),
+        "Fields.New" => Some("fields_new"),
+        "Fields.Add" => Some("fields_add"),
+        "Fields.Encode" => Some("fields_encode"),
+
+        "Form.CONSTRUCTOR" => Some("form_constructor"),
+        "Form.New" => Some("form_new"),
+        "Form.AddField" => Some("form_add_field"),
+        "Form.AddFile" => Some("form_add_file"),
+
+        "Client.Get" => Some("client_get"),
+        "Client.GetWithHeaders" => Some("client_get_with_headers"),
+        "Client.GetDecoded" => Some("client_get_decoded"),
+        "Client.GetDecodedWithHeaders" => Some("client_get_decoded_with_headers"),
+        "Client.GetQuery" => Some("client_get_query"),
+        "Client.GetQueryWithHeaders" => Some("client_get_query_with_headers"),
+        "Client.Head" => Some("client_head"),
+        "Client.HeadWithHeaders" => Some("client_head_with_headers"),
+        "Client.Delete" => Some("client_delete"),
+        "Client.DeleteWithHeaders" => Some("client_delete_with_headers"),
+        "Client.Options" => Some("client_options"),
+        "Client.OptionsWithHeaders" => Some("client_options_with_headers"),
+        "Client.Post" => Some("client_post"),
+        "Client.PostWithHeaders" => Some("client_post_with_headers"),
+        "Client.PostBytes" => Some("client_post_bytes"),
+        "Client.PostBytesWithHeaders" => Some("client_post_bytes_with_headers"),
+        "Client.PostFields" => Some("client_post_fields"),
+        "Client.PostFieldsWithHeaders" => Some("client_post_fields_with_headers"),
+        "Client.PostForm" => Some("client_post_form"),
+        "Client.PostFormWithHeaders" => Some("client_post_form_with_headers"),
+        "Client.PostJson" => Some("client_post_json"),
+        "Client.PostJsonWithHeaders" => Some("client_post_json_with_headers"),
+        "Client.Put" => Some("client_put"),
+        "Client.PutWithHeaders" => Some("client_put_with_headers"),
+        "Client.PutBytes" => Some("client_put_bytes"),
+        "Client.PutBytesWithHeaders" => Some("client_put_bytes_with_headers"),
+        "Client.Patch" => Some("client_patch"),
+        "Client.PatchWithHeaders" => Some("client_patch_with_headers"),
+        "Client.PatchBytes" => Some("client_patch_bytes"),
+        "Client.PatchBytesWithHeaders" => Some("client_patch_bytes_with_headers"),
+        "Client.RequestMethod" => Some("client_request_method"),
+        "Client.RequestMethodWithHeaders" => Some("client_request_method_with_headers"),
+
         _ => None,
     }
 }
@@ -112,7 +183,13 @@ pub(crate) fn bnweb_arguments_supported(
         | "server_options_constructor"
         | "cookie_jar_constructor"
         | "acl_constructor"
-        | "client_constructor" => !arguments.is_empty(),
+        | "client_constructor"
+        | "client_reply_constructor"
+        | "headers_constructor"
+        | "query_constructor"
+        | "fields_constructor"
+        | "form_constructor" => !arguments.is_empty(),
+        "headers_new" | "query_new" | "fields_new" | "form_new" => arguments.is_empty(),
         "scraper_constructor" => arguments.len() >= 2,
         "response_status"
         | "response_commit"
@@ -122,7 +199,17 @@ pub(crate) fn bnweb_arguments_supported(
         | "request_target"
         | "cookie_jar_count"
         | "client_close"
-        | "client_new" => arguments.len() == 1,
+        | "client_new"
+        | "client_reply_status"
+        | "client_reply_http_version"
+        | "client_reply_body_size"
+        | "client_reply_total_ms"
+        | "client_reply_connect_ms"
+        | "client_reply_header_count"
+        | "client_reply_peer_address"
+        | "headers_count"
+        | "query_encode"
+        | "fields_encode" => arguments.len() == 1,
         "response_set_status"
         | "response_write"
         | "response_header"
@@ -141,20 +228,68 @@ pub(crate) fn bnweb_arguments_supported(
         | "acl_allow"
         | "acl_deny"
         | "acl_check"
-        | "tls_from_pem" => arguments.len() == 2,
+        | "tls_from_pem"
+        | "client_reply_header"
+        | "client_reply_header_name"
+        | "client_reply_header_value"
+        | "client_reply_body_text"
+        | "client_reply_body_bytes"
+        | "client_reply_body_decoded_text"
+        | "client_reply_body_decoded_bytes"
+        | "headers_get" => arguments.len() == 2,
         "response_set_header"
         | "server_static"
         | "server_start_with_options"
         | "server_start_tls"
         | "server_dispatch"
-        | "server_use_sessions" => arguments.len() == 3,
+        | "server_use_sessions"
+        | "headers_add"
+        | "headers_set"
+        | "query_add"
+        | "fields_add"
+        | "form_add_field"
+        | "client_get"
+        | "client_get_decoded"
+        | "client_head"
+        | "client_delete"
+        | "client_options" => arguments.len() == 3,
         "server_start_tls_with_options"
         | "server_route"
         | "response_clear_cookie"
         | "cookie_jar_get"
-        | "client_request" => arguments.len() == 4,
-        "client_request_with_policy" | "egress_policy_new" => arguments.len() == 5,
-        "response_set_cookie" | "cookie_jar_set" => arguments.len() == 6,
+        | "client_request"
+        | "client_get_with_headers"
+        | "client_get_decoded_with_headers"
+        | "client_get_query"
+        | "client_head_with_headers"
+        | "client_delete_with_headers"
+        | "client_options_with_headers"
+        | "client_post_fields"
+        | "client_post_form"
+        | "client_post_json"
+        | "form_add_file" => arguments.len() == 4,
+        "client_request_with_policy"
+        | "egress_policy_new"
+        | "client_get_query_with_headers"
+        | "client_post"
+        | "client_post_bytes"
+        | "client_post_fields_with_headers"
+        | "client_post_form_with_headers"
+        | "client_post_json_with_headers"
+        | "client_put"
+        | "client_put_bytes"
+        | "client_patch"
+        | "client_patch_bytes" => arguments.len() == 5,
+        "response_set_cookie"
+        | "cookie_jar_set"
+        | "client_post_with_headers"
+        | "client_post_bytes_with_headers"
+        | "client_put_with_headers"
+        | "client_put_bytes_with_headers"
+        | "client_patch_with_headers"
+        | "client_patch_bytes_with_headers"
+        | "client_request_method" => arguments.len() == 6,
+        "client_request_method_with_headers" => arguments.len() == 7,
         "response_set_cookie_with_policy" | "cookie_jar_set_with_policy" => arguments.len() == 9,
         "server_options_new" => arguments.len() == 18,
         _ => false,

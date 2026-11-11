@@ -27,6 +27,7 @@ use bn_rt as _;
 #[cfg(test)]
 use bn_stdlib as _;
 
+pub(crate) mod counted;
 pub mod http;
 #[cfg(test)]
 mod test_support;

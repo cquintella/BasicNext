@@ -14,7 +14,7 @@ use std::collections::HashMap;
 
 /// What a release did.
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum Release<V> {
+pub enum Release<V> {
     /// The handle is unknown or already released.
     Unknown,
     /// Another holder remains; the value stays.
@@ -23,9 +23,10 @@ pub(crate) enum Release<V> {
     Last(V),
 }
 
-pub(crate) struct Counted<V> {
-    pub(crate) values: HashMap<u64, V>,
-    holders: HashMap<u64, usize>,
+#[derive(Debug)]
+pub struct Counted<V> {
+    pub values: HashMap<u64, V>,
+    pub holders: HashMap<u64, usize>,
 }
 
 impl<V> Default for Counted<V> {
@@ -39,13 +40,13 @@ impl<V> Default for Counted<V> {
 
 impl<V> Counted<V> {
     /// Stores `value` under `handle` with one holder.
-    pub(crate) fn insert(&mut self, handle: u64, value: V) {
+    pub fn insert(&mut self, handle: u64, value: V) {
         self.values.insert(handle, value);
         self.holders.insert(handle, 1);
     }
 
     /// Adds a holder; `false` when `handle` is unknown or released.
-    pub(crate) fn retain(&mut self, handle: u64) -> bool {
+    pub fn retain(&mut self, handle: u64) -> bool {
         self.holders
             .get_mut(&handle)
             .map(|count| *count += 1)
@@ -54,7 +55,7 @@ impl<V> Counted<V> {
 
     /// Drops one holder. At zero the value leaves the table in this same
     /// critical section and is returned.
-    pub(crate) fn release(&mut self, handle: u64) -> Release<V> {
+    pub fn release(&mut self, handle: u64) -> Release<V> {
         let Some(count) = self.holders.get_mut(&handle) else {
             return Release::Unknown;
         };

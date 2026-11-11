@@ -20,6 +20,7 @@ enum ProviderKind {
     Data,
     Sqlite,
     Compress,
+    Web,
 }
 
 /// Whether `ty` is a counted library handle, a `KeyPair`, or an alternative
@@ -70,6 +71,8 @@ fn provider_of(module: &Module, module_id: ModuleId) -> Option<ProviderKind> {
         Some(ProviderKind::Sqlite)
     } else if module.bncompress_providers.contains(&module_id) {
         Some(ProviderKind::Compress)
+    } else if module.bnweb_providers.contains(&module_id) {
+        Some(ProviderKind::Web)
     } else {
         None
     }
@@ -136,6 +139,54 @@ fn symbols_of(provider: ProviderKind, name: &str) -> Option<(&'static str, &'sta
             "bn_rt_compress_bytes_release",
         )),
         (ProviderKind::Compress, "ZipArchive") => Some(("bn_rt_zip_retain", "bn_rt_zip_release")),
+        (ProviderKind::Web, "Client") => {
+            Some(("bn_rt_web_client_retain", "bn_rt_web_client_release"))
+        }
+        (ProviderKind::Web, "ClientReply") => Some((
+            "bn_rt_web_client_reply_retain",
+            "bn_rt_web_client_reply_release",
+        )),
+        (ProviderKind::Web, "Headers") => {
+            Some(("bn_rt_web_headers_retain", "bn_rt_web_headers_release"))
+        }
+        (ProviderKind::Web, "Query") => Some(("bn_rt_web_query_retain", "bn_rt_web_query_release")),
+        (ProviderKind::Web, "Fields") => {
+            Some(("bn_rt_web_fields_retain", "bn_rt_web_fields_release"))
+        }
+        (ProviderKind::Web, "Form") => Some(("bn_rt_web_form_retain", "bn_rt_web_form_release")),
+        (ProviderKind::Web, "Response") => {
+            Some(("bn_rt_web_response_retain", "bn_rt_web_response_release"))
+        }
+        (ProviderKind::Web, "Request") => {
+            Some(("bn_rt_web_request_retain", "bn_rt_web_request_release"))
+        }
+        (ProviderKind::Web, "Server") => {
+            Some(("bn_rt_web_server_retain", "bn_rt_web_server_release"))
+        }
+        (ProviderKind::Web, "ServerOptions") => Some((
+            "bn_rt_web_server_options_retain",
+            "bn_rt_web_server_options_release",
+        )),
+        (ProviderKind::Web, "CookieJar") => Some((
+            "bn_rt_web_cookie_jar_retain",
+            "bn_rt_web_cookie_jar_release",
+        )),
+        (ProviderKind::Web, "SessionStore") => Some((
+            "bn_rt_web_session_store_retain",
+            "bn_rt_web_session_store_release",
+        )),
+        (ProviderKind::Web, "Scraper") => {
+            Some(("bn_rt_web_scraper_retain", "bn_rt_web_scraper_release"))
+        }
+        (ProviderKind::Web, "ACL") => Some(("bn_rt_web_acl_retain", "bn_rt_web_acl_release")),
+        (ProviderKind::Web, "EgressPolicy") => Some((
+            "bn_rt_web_egress_policy_retain",
+            "bn_rt_web_egress_policy_release",
+        )),
+        (ProviderKind::Web, "TLSConfig") => Some((
+            "bn_rt_web_tls_config_retain",
+            "bn_rt_web_tls_config_release",
+        )),
         _ => None,
     }
 }

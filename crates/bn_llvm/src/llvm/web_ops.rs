@@ -802,12 +802,37 @@ pub(crate) fn lower_bnweb_call(
             );
         }
 
-        other => unreachable!(
-            "{}",
-            bn_catalog::fill("llvm", "msg.unsupported_bnweb_method", &[("other", &other)])
-        ),
+        "client_reply_constructor" => {
+            let call = I::call(T::I64, "bn_web_client_reply_create", vec![]);
+            text.assign(format!("webh{dest}"), call);
+            let pointer = I::cast(
+                CastOp::IntToPtr,
+                T::I64,
+                O::reg(format!("webh{dest}")),
+                T::Ptr,
+            );
+            text.assign(format!("v{dest}"), pointer);
+        }
+
+        other => {
+            if !web_client_ops::lower_bnweb_client_call(
+                text,
+                destination,
+                method,
+                arguments,
+                analysis,
+            ) {
+                unreachable!(
+                    "{}",
+                    bn_catalog::fill("llvm", "msg.unsupported_bnweb_method", &[("other", &other)])
+                );
+            }
+        }
     }
 }
+
+#[path = "web_client_ops.rs"]
+mod web_client_ops;
 
 #[path = "web_abi.rs"]
 mod web_abi;

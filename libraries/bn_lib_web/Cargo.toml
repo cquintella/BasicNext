@@ -18,6 +18,7 @@ bn_catalog = { path = "../../crates/bn_catalog" }
 bn_core_dispatch = { path = "../bn_core_dispatch" }
 bn_core_log = { path = "../bn_core_log" }
 bn_lib_dispatch = { path = "../bn_lib_dispatch" }
+bn_lib_crypto = { path = "../bn_lib_crypto" }
 bn_lib_log = { path = "../bn_lib_log" }
 bn_web = { path = "../bn_web" }
 rustls = { version = "0.23.43", default-features = false, features = ["ring", "std"] }
@@ -25,6 +26,7 @@ bn_diag = { path = "../../crates/bn_diag" }
 bn_interp = { path = "../../crates/bn_interp" }
 bn_rt = { path = "../../crates/bn_rt" }
 bn_source = { path = "../../crates/bn_source" }
+bn_stdlib = { path = "../bn_stdlib" }
 bn_types = { path = "../../crates/bn_types" }
 bn_value = { path = "../../crates/bn_value" }
 bn_host_net = { path = "../../crates/bn_host_net" }

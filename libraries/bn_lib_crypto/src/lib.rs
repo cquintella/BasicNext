@@ -63,6 +63,13 @@ pub struct CryptoProvider {
     next: u64,
 }
 
+/// Inserts raw bytes into the shared crypto buffer store and returns a `Value::CryptoBytes`.
+#[must_use]
+pub fn insert_crypto_bytes(bytes: Vec<u8>) -> Value {
+    let handle = bn_stdlib::crypto_abi::store(bytes);
+    Value::CryptoBytes(handle)
+}
+
 impl CryptoProvider {
     fn insert(&mut self, bytes: Vec<u8>) -> Value {
         self.next += 1;
@@ -161,7 +168,7 @@ impl CryptoProvider {
                 span,
             ));
         };
-        Ok(self.buffer(*handle, span)?.to_vec())
+        self.buffer_vec(*handle, span)
     }
 
     /// ML-KEM-768 and ML-DSA-65 (FIPS 203 / FIPS 204). Key generation is
@@ -435,7 +442,7 @@ impl CryptoProvider {
                         span,
                     ));
                 };
-                let hex = bn_stdlib::crypto::encode_hex(self.buffer(handle, span)?);
+                let hex = bn_stdlib::crypto::encode_hex(&self.buffer_vec(handle, span)?);
                 Ok(Value::String(shared_string(hex.as_str())))
             }
             "ToBytes" => {
@@ -458,7 +465,7 @@ impl CryptoProvider {
         require_arity(member, arguments, 1, span)?;
         match &arguments[0] {
             Value::CryptoBytes(handle) => {
-                let length = self.buffer(*handle, span)?.len();
+                let length = self.buffer_len(*handle, span)?;
                 Ok(Value::Integer(
                     i128::try_from(length).unwrap_or(i128::MAX),
                     IntegerType::Int32,
@@ -524,7 +531,7 @@ impl CryptoProvider {
     ) -> Result<Value, Diagnostic> {
         require_arity(member, arguments, 2, span)?;
         let a = match &arguments[0] {
-            Value::CryptoBytes(h) => self.buffer(*h, span)?.to_vec(),
+            Value::CryptoBytes(h) => self.buffer_vec(*h, span)?,
             Value::CryptoSecret(h) => self.secret(*h, span)?.to_vec(),
             _ => {
                 return Err(type_mismatch(
@@ -536,7 +543,7 @@ impl CryptoProvider {
             }
         };
         let b = match &arguments[1] {
-            Value::CryptoBytes(h) => self.buffer(*h, span)?.to_vec(),
+            Value::CryptoBytes(h) => self.buffer_vec(*h, span)?,
             Value::CryptoSecret(h) => self.secret(*h, span)?.to_vec(),
             _ => {
                 return Err(type_mismatch(
@@ -969,7 +976,7 @@ impl CryptoProvider {
                 span,
             ));
         };
-        let aad = self.buffer(*aad_handle, span)?.to_vec();
+        let aad = self.buffer_vec(*aad_handle, span)?;
         let include_key_id = matches!(
             record.get(AEAD_OPTS_INCLUDE_KEY_ID_FIELD),
             Some(Value::Boolean(true))
@@ -1007,17 +1014,33 @@ impl CryptoProvider {
         }
     }
 
-    fn buffer(&self, handle: u64, span: Span) -> Result<&[u8], Diagnostic> {
-        self.buffers
-            .get(&handle)
-            .map(|b| b.as_slice())
+    fn buffer_vec(&self, handle: u64, span: Span) -> Result<Vec<u8>, Diagnostic> {
+        if let Some(b) = self.buffers.get(&handle) {
+            return Ok(b.to_vec());
+        }
+        bn_stdlib::crypto_abi::with_buffers(|bufs| bufs.get(&handle).map(|b| b.to_vec()))
             .ok_or_else(|| {
                 runtime_error(
                     bn_diag::DiagId::USE_AFTER_RELEASE,
-                    "BNCrypto.Bytes is invalid",
+                    bn_catalog::text("crypto", "msg.bncrypto_bytes_was_already_released"),
                     span,
                 )
             })
+    }
+
+    fn buffer_len(&self, handle: u64, span: Span) -> Result<usize, Diagnostic> {
+        if let Some(b) = self.buffers.get(&handle) {
+            return Ok(b.len());
+        }
+        bn_stdlib::crypto_abi::with_buffers(|bufs| bufs.get(&handle).map(|b| b.len())).ok_or_else(
+            || {
+                runtime_error(
+                    bn_diag::DiagId::USE_AFTER_RELEASE,
+                    bn_catalog::text("crypto", "msg.bncrypto_bytes_was_already_released"),
+                    span,
+                )
+            },
+        )
     }
 
     fn secret(&self, handle: u64, span: Span) -> Result<&[u8], Diagnostic> {
@@ -2660,17 +2683,20 @@ impl Provider for CryptoProvider {
 
     fn retain(&mut self, value: &Value, span: Span) -> Option<Result<(), Diagnostic>> {
         match value {
-            Value::CryptoBytes(handle) => Some(match self.holders.get_mut(handle) {
-                Some(holders) => {
+            Value::CryptoBytes(handle) => {
+                Some(if let Some(holders) = self.holders.get_mut(handle) {
                     *holders += 1;
                     Ok(())
-                }
-                None => Err(runtime_error(
-                    bn_diag::DiagId::USE_AFTER_RELEASE,
-                    bn_catalog::text("crypto", "msg.bncrypto_bytes_was_already_released"),
-                    span,
-                )),
-            }),
+                } else if bn_stdlib::crypto_abi::bn_rt_crypto_bytes_retain(*handle) == 0 {
+                    Ok(())
+                } else {
+                    Err(runtime_error(
+                        bn_diag::DiagId::USE_AFTER_RELEASE,
+                        bn_catalog::text("crypto", "msg.bncrypto_bytes_was_already_released"),
+                        span,
+                    ))
+                })
+            }
             Value::CryptoKey(handle) => {
                 Some(if let Some(holders) = self.key_holders.get_mut(handle) {
                     *holders += 1;
@@ -2737,6 +2763,8 @@ impl Provider for CryptoProvider {
                             buf.zeroize();
                         }
                     }
+                    Ok(())
+                } else if bn_stdlib::crypto_abi::bn_rt_crypto_bytes_release(*handle) == 0 {
                     Ok(())
                 } else {
                     Err(runtime_error(
@@ -3047,7 +3075,24 @@ mod tests {
     /// backends put in `Error.Code`.
     #[test]
     fn module_constants_match_the_runtime_codes() {
+        use super::{CryptoProvider, insert_crypto_bytes};
+        use bn_interp::provider::Provider;
+        use bn_source::{Position, Revision, SourceId, Span};
         use bn_types::error_codes::crypto;
+        use bn_value::Value;
+
+        const POS: Position = Position {
+            source_id: SourceId::UNKNOWN,
+            revision: Revision::UNKNOWN,
+            offset: 0,
+            line: 0,
+            column: 0,
+        };
+        const SPAN: Span = Span {
+            start: POS,
+            end: POS,
+        };
+
         let module = include_str!("../../../modules/bn/BNCrypto.bn");
         let codes = [
             ("INVALID_ARGUMENT", crypto::INVALID_ARGUMENT),
@@ -3064,5 +3109,28 @@ mod tests {
             let line = format!("EXPORT CONST {name} AS INTEGER = {value}");
             assert!(module.contains(&line), "BNCrypto.bn lacks `{line}`");
         }
+
+        let val = insert_crypto_bytes(b"hello".to_vec());
+        let Value::CryptoBytes(_h) = val else {
+            panic!("expected CryptoBytes");
+        };
+
+        let mut provider = CryptoProvider::default();
+        let len_val = provider
+            .length_of(std::slice::from_ref(&val), "Length", SPAN)
+            .expect("length");
+        match len_val {
+            Value::Integer(5, _) => {}
+            other => panic!("expected 5, got {other:?}"),
+        }
+
+        let eq_val = provider
+            .constant_time_equals(&[val.clone(), val.clone()], "ConstantTimeEquals", SPAN)
+            .expect("constant time equals");
+        assert!(matches!(eq_val, Value::Boolean(true)));
+
+        assert!(provider.retain(&val, SPAN).unwrap().is_ok());
+        assert!(provider.release(&val, SPAN).unwrap().is_ok());
+        assert!(provider.release(&val, SPAN).unwrap().is_ok());
     }
 }

@@ -196,6 +196,11 @@ pub(crate) fn emit_allocate(
             }
             "ACL" => ("bn_web_acl_create", vec![]),
             "Client" => ("bn_web_client_create", vec![(T::I64, O::int(0))]),
+            "ClientReply" => ("bn_web_client_reply_create", vec![]),
+            "Headers" => ("bn_web_headers_create", vec![]),
+            "Query" => ("bn_web_query_create", vec![]),
+            "Fields" => ("bn_web_fields_create", vec![]),
+            "Form" => ("bn_web_form_create", vec![]),
             _ => unreachable!(
                 "{}",
                 bn_catalog::text("llvm", "msg.unhandled_bnweb_resource_allocation")

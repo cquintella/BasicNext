@@ -2349,7 +2349,6 @@ libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto SecretKey method
 libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Bytes is invalid
 libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Bytes is invalid
 libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Bytes is invalid
-libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Bytes is invalid
 libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Bytes or BNCrypto.Secret
 libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Bytes or BNCrypto.Secret
 libraries/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Bytes, BNCrypto.Key, BNCrypto.Secret or BNCrypto.SecretKey
@@ -3208,7 +3207,6 @@ libraries/bn_stdlib/src/stats.rs	identifier	INDEX_OUT_OF_BOUNDS
 libraries/bn_stdlib/src/stats.rs	prose	BNMath reduction received an empty vector
 libraries/bn_stdlib/src/stats.rs	prose	BNMath reduction received an empty vector
 libraries/bn_web/src/http.rs	prose	BNWeb handler
-libraries/bn_web/src/http.rs	prose	compressed responses are unavailable without a bounded decoder
 libraries/bn_web/src/http.rs	prose	connection deadline exceeded
 libraries/bn_web/src/http.rs	prose	failed to connect to allowed destination
 libraries/bn_web/src/http.rs	prose	GET, HEAD

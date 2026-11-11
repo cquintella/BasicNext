@@ -1,5 +1,7 @@
 use std::{collections::HashMap, net::IpAddr};
 
+use crate::web_error::WebFailure;
+
 /// Why `EgressPolicy::new` refused a redirect limit or deadline (both
 /// backends report it as `INVALID_ARGUMENT`).
 pub const EGRESS_POLICY_BOUNDS: &str = "egress policy value is outside the configured bounds";
@@ -677,3 +679,278 @@ mod request_tests;
 mod sessions_tests;
 #[cfg(test)]
 mod tests;
+
+// ---- Client Transfer Types (ClientReply, Headers, Query) -----------------
+
+#[derive(Clone, Debug, Default)]
+pub struct ClientReply {
+    pub status: u16,
+    pub http_version: String,
+    pub body_size: usize,
+    pub total_ms: i64,
+    pub connect_ms: i64,
+    pub headers: Vec<(String, String)>,
+    pub body: Vec<u8>,
+    pub peer: Option<IpAddr>,
+    pub closed: bool,
+}
+
+impl ClientReply {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    #[must_use]
+    pub fn status(&self) -> u16 {
+        self.status
+    }
+
+    #[must_use]
+    pub fn http_version(&self) -> &str {
+        if self.http_version.is_empty() {
+            "HTTP/1.1"
+        } else {
+            &self.http_version
+        }
+    }
+
+    #[must_use]
+    pub fn body_size(&self) -> usize {
+        self.body_size
+    }
+
+    #[must_use]
+    pub fn total_ms(&self) -> i64 {
+        self.total_ms
+    }
+
+    #[must_use]
+    pub fn connect_ms(&self) -> i64 {
+        self.connect_ms
+    }
+
+    #[must_use]
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.as_str())
+    }
+
+    #[must_use]
+    pub fn header_count(&self) -> usize {
+        self.headers.len()
+    }
+
+    #[must_use]
+    pub fn header_name(&self, index: usize) -> Option<&str> {
+        self.headers.get(index).map(|(k, _)| k.as_str())
+    }
+
+    #[must_use]
+    pub fn header_value(&self, index: usize) -> Option<&str> {
+        self.headers.get(index).map(|(_, v)| v.as_str())
+    }
+
+    pub fn body_text(&self, maximum: usize) -> Result<String, WebFailure> {
+        if self.body.len() > maximum {
+            return Err(WebFailure::BodyLimitExceeded(format!(
+                "{}/{}",
+                self.body.len(),
+                maximum
+            )));
+        }
+        String::from_utf8(self.body.clone())
+            .map_err(|_| WebFailure::InvalidArgument("invalid_utf8".into()))
+    }
+
+    pub fn body_bytes(&self, maximum: usize) -> Result<&[u8], WebFailure> {
+        if self.body.len() > maximum {
+            return Err(WebFailure::BodyLimitExceeded(format!(
+                "{}/{}",
+                self.body.len(),
+                maximum
+            )));
+        }
+        Ok(&self.body)
+    }
+
+    pub fn body_decoded_bytes(&self, maximum: usize) -> Result<Vec<u8>, WebFailure> {
+        let encoding = self.header("content-encoding").unwrap_or("").trim();
+        let decoded = if encoding.is_empty() || encoding.eq_ignore_ascii_case("identity") {
+            self.body.clone()
+        } else if encoding.eq_ignore_ascii_case("gzip") {
+            bn_core_compress::gunzip_bounded(&self.body, maximum as u64)
+                .map_err(|_| WebFailure::InvalidArgument("gunzip_failed".into()))?
+        } else if encoding.eq_ignore_ascii_case("deflate") {
+            bn_core_compress::inflate_bounded(&self.body, maximum as u64)
+                .map_err(|_| WebFailure::InvalidArgument("inflate_failed".into()))?
+        } else {
+            return Err(WebFailure::UnsupportedEncoding(encoding.to_owned()));
+        };
+        if decoded.len() > maximum {
+            return Err(WebFailure::BodyLimitExceeded(format!(
+                "{}/{}",
+                decoded.len(),
+                maximum
+            )));
+        }
+        Ok(decoded)
+    }
+
+    pub fn body_decoded_text(&self, maximum: usize) -> Result<String, WebFailure> {
+        let bytes = self.body_decoded_bytes(maximum)?;
+        String::from_utf8(bytes).map_err(|_| WebFailure::InvalidArgument("invalid_utf8".into()))
+    }
+
+    #[must_use]
+    pub fn peer_address(&self) -> Option<IpAddr> {
+        self.peer
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Headers {
+    pub entries: Vec<(String, String)>,
+}
+
+impl Headers {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn add(&mut self, name: String, value: String) {
+        self.entries.push((name, value));
+    }
+
+    pub fn set(&mut self, name: String, value: String) {
+        if let Some((_, v)) = self
+            .entries
+            .iter_mut()
+            .find(|(k, _)| k.eq_ignore_ascii_case(&name))
+        {
+            *v = value;
+        } else {
+            self.entries.push((name, value));
+        }
+    }
+
+    #[must_use]
+    pub fn count(&self) -> usize {
+        self.entries.len()
+    }
+
+    #[must_use]
+    pub fn get(&self, name: &str) -> Option<&str> {
+        self.entries
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.as_str())
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Query {
+    pub entries: Vec<(String, String)>,
+}
+
+impl Query {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn add(&mut self, name: String, value: String) {
+        self.entries.push((name, value));
+    }
+
+    #[must_use]
+    pub fn encode(&self) -> String {
+        let mut out = String::new();
+        for (i, (k, v)) in self.entries.iter().enumerate() {
+            if i > 0 {
+                out.push('&');
+            }
+            out.push_str(&percent_encode(k));
+            out.push('=');
+            out.push_str(&percent_encode(v));
+        }
+        out
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Fields {
+    pub entries: Vec<(String, String)>,
+}
+
+impl Fields {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn add(&mut self, name: String, value: String) {
+        self.entries.push((name, value));
+    }
+
+    #[must_use]
+    pub fn encode(&self) -> String {
+        let mut out = String::new();
+        for (i, (k, v)) in self.entries.iter().enumerate() {
+            if i > 0 {
+                out.push('&');
+            }
+            out.push_str(&percent_encode_mode(k, true));
+            out.push('=');
+            out.push_str(&percent_encode_mode(v, true));
+        }
+        out
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Form {
+    pub fields: Vec<(String, String)>,
+    pub files: Vec<(String, String, String)>,
+}
+
+impl Form {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn add_field(&mut self, name: String, value: String) {
+        self.fields.push((name, value));
+    }
+
+    pub fn add_file(&mut self, name: String, path: String, content_type: String) {
+        self.files.push((name, path, content_type));
+    }
+}
+
+fn percent_encode(input: &str) -> String {
+    percent_encode_mode(input, false)
+}
+
+fn percent_encode_mode(input: &str, space_as_plus: bool) -> String {
+    let mut out = String::new();
+    for b in input.bytes() {
+        match b {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char);
+            }
+            b' ' if space_as_plus => {
+                out.push('+');
+            }
+            _ => {
+                use std::fmt::Write;
+                let _ = write!(out, "%{b:02X}");
+            }
+        }
+    }
+    out
+}

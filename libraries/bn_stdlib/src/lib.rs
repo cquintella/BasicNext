@@ -28,7 +28,8 @@ use std::ffi::c_char;
 pub use bn_rt::*;
 
 pub mod compress_abi;
-pub(crate) mod counted;
+pub mod counted;
+pub use counted::{Counted, Release};
 pub mod crypto;
 pub mod crypto_abi;
 pub mod crypto_asymmetric;

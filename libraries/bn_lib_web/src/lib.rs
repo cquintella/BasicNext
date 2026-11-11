@@ -29,8 +29,22 @@ use bn_web::{http, tls, web_state};
 pub use bn_web::tls_roots::{ProgramDirectory, set_program_directory};
 
 mod access_log;
+mod client_transfer;
 mod request_response;
 mod sessions;
+
+use client_transfer::{arg_err, recv_err};
+
+#[expect(clippy::verbose_file_reads)]
+fn read_form_file(path: &str) -> Vec<u8> {
+    use std::io::Read as _;
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return Vec::new();
+    };
+    let mut bytes = Vec::new();
+    let _ = file.read_to_end(&mut bytes);
+    bytes
+}
 
 use std::collections::HashMap;
 
@@ -86,6 +100,11 @@ pub struct WebProvider {
     request_sessions: HashMap<Handle, crate::web::sessions::RequestSession>,
     /// Logger id kept by each `BNWeb.Client`. Absent means the client does not log.
     clients: HashMap<Handle, u64>,
+    client_replies: HashMap<Handle, crate::web::ClientReply>,
+    headers: HashMap<Handle, crate::web::Headers>,
+    queries: HashMap<Handle, crate::web::Query>,
+    fields: HashMap<Handle, crate::web::Fields>,
+    forms: HashMap<Handle, crate::web::Form>,
 }
 
 impl std::fmt::Debug for WebProvider {
@@ -182,6 +201,11 @@ impl Provider for WebProvider {
         self.responses.remove(&handle);
         self.requests.remove(&handle);
         self.clients.remove(&handle);
+        self.client_replies.remove(&handle);
+        self.headers.remove(&handle);
+        self.queries.remove(&handle);
+        self.fields.remove(&handle);
+        self.forms.remove(&handle);
         self.values.remove(&handle);
         self.request_sessions.remove(&handle);
     }
@@ -380,6 +404,21 @@ impl WebProvider {
         if name.contains(".Response.") {
             return self.web_response_call(core, name, arguments, span);
         }
+        if name.contains(".ClientReply.") {
+            return self.web_client_reply_call(core, name, arguments, span);
+        }
+        if name.contains(".Headers.") {
+            return self.web_headers_call(core, name, arguments, span);
+        }
+        if name.contains(".Query.") {
+            return self.web_query_call(core, name, arguments, span);
+        }
+        if name.contains(".Fields.") {
+            return self.web_fields_call(core, name, arguments, span);
+        }
+        if name.contains(".Form.") {
+            return self.web_form_call(core, name, arguments, span);
+        }
         if name.contains(".Client.") {
             match method {
                 "New" => {
@@ -486,6 +525,717 @@ impl WebProvider {
                         self.clients.remove(handle);
                     }
                     Ok(Value::Null)
+                }
+                "Get" | "GetDecoded" => {
+                    require_arity(name, arguments, 3, span)?;
+                    let (Value::String(url), Value::Integer(max, _)) =
+                        (&arguments[1], &arguments[2])
+                    else {
+                        return Err(arg_err("Arguments", span));
+                    };
+                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let Value::Object { handle, .. } = &arguments[0] else {
+                        return Err(recv_err("Client", span));
+                    };
+                    self.execute_client_transfer(
+                        core,
+                        name,
+                        *handle,
+                        "GET",
+                        url,
+                        &[],
+                        None,
+                        None,
+                        maximum,
+                        span,
+                    )
+                }
+                "GetWithHeaders" | "GetDecodedWithHeaders" => {
+                    require_arity(name, arguments, 4, span)?;
+                    let (
+                        Value::String(url),
+                        Value::Object { handle: h_h, .. },
+                        Value::Integer(max, _),
+                    ) = (&arguments[1], &arguments[2], &arguments[3])
+                    else {
+                        return Err(arg_err("Arguments", span));
+                    };
+                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let Value::Object { handle, .. } = &arguments[0] else {
+                        return Err(recv_err("Client", span));
+                    };
+                    self.execute_client_transfer(
+                        core,
+                        name,
+                        *handle,
+                        "GET",
+                        url,
+                        &[],
+                        None,
+                        Some(*h_h),
+                        maximum,
+                        span,
+                    )
+                }
+                "GetQuery" => {
+                    require_arity(name, arguments, 4, span)?;
+                    let (
+                        Value::String(url),
+                        Value::Object { handle: q_h, .. },
+                        Value::Integer(max, _),
+                    ) = (&arguments[1], &arguments[2], &arguments[3])
+                    else {
+                        return Err(arg_err("Arguments", span));
+                    };
+                    let q_enc = self
+                        .queries
+                        .get(q_h)
+                        .map(bn_web::Query::encode)
+                        .unwrap_or_default();
+                    let full_url = if url.contains('?') {
+                        format!("{url}&{q_enc}")
+                    } else {
+                        format!("{url}?{q_enc}")
+                    };
+                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let Value::Object { handle, .. } = &arguments[0] else {
+                        return Err(recv_err("Client", span));
+                    };
+                    self.execute_client_transfer(
+                        core,
+                        name,
+                        *handle,
+                        "GET",
+                        &full_url,
+                        &[],
+                        None,
+                        None,
+                        maximum,
+                        span,
+                    )
+                }
+                "GetQueryWithHeaders" => {
+                    require_arity(name, arguments, 5, span)?;
+                    let (
+                        Value::String(url),
+                        Value::Object { handle: q_h, .. },
+                        Value::Object { handle: h_h, .. },
+                        Value::Integer(max, _),
+                    ) = (&arguments[1], &arguments[2], &arguments[3], &arguments[4])
+                    else {
+                        return Err(arg_err("Arguments", span));
+                    };
+                    let q_enc = self
+                        .queries
+                        .get(q_h)
+                        .map(bn_web::Query::encode)
+                        .unwrap_or_default();
+                    let full_url = if url.contains('?') {
+                        format!("{url}&{q_enc}")
+                    } else {
+                        format!("{url}?{q_enc}")
+                    };
+                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let Value::Object { handle, .. } = &arguments[0] else {
+                        return Err(recv_err("Client", span));
+                    };
+                    self.execute_client_transfer(
+                        core,
+                        name,
+                        *handle,
+                        "GET",
+                        &full_url,
+                        &[],
+                        None,
+                        Some(*h_h),
+                        maximum,
+                        span,
+                    )
+                }
+                "Head" => {
+                    require_arity(name, arguments, 3, span)?;
+                    let (Value::String(url), Value::Integer(max, _)) =
+                        (&arguments[1], &arguments[2])
+                    else {
+                        return Err(arg_err("Arguments", span));
+                    };
+                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let Value::Object { handle, .. } = &arguments[0] else {
+                        return Err(recv_err("Client", span));
+                    };
+                    self.execute_client_transfer(
+                        core,
+                        name,
+                        *handle,
+                        "HEAD",
+                        url,
+                        &[],
+                        None,
+                        None,
+                        maximum,
+                        span,
+                    )
+                }
+                "HeadWithHeaders" => {
+                    require_arity(name, arguments, 4, span)?;
+                    let (
+                        Value::String(url),
+                        Value::Object { handle: h_h, .. },
+                        Value::Integer(max, _),
+                    ) = (&arguments[1], &arguments[2], &arguments[3])
+                    else {
+                        return Err(arg_err("Arguments", span));
+                    };
+                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let Value::Object { handle, .. } = &arguments[0] else {
+                        return Err(recv_err("Client", span));
+                    };
+                    self.execute_client_transfer(
+                        core,
+                        name,
+                        *handle,
+                        "HEAD",
+                        url,
+                        &[],
+                        None,
+                        Some(*h_h),
+                        maximum,
+                        span,
+                    )
+                }
+                "Delete" => {
+                    require_arity(name, arguments, 3, span)?;
+                    let (Value::String(url), Value::Integer(max, _)) =
+                        (&arguments[1], &arguments[2])
+                    else {
+                        return Err(arg_err("Arguments", span));
+                    };
+                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let Value::Object { handle, .. } = &arguments[0] else {
+                        return Err(recv_err("Client", span));
+                    };
+                    self.execute_client_transfer(
+                        core,
+                        name,
+                        *handle,
+                        "DELETE",
+                        url,
+                        &[],
+                        None,
+                        None,
+                        maximum,
+                        span,
+                    )
+                }
+                "DeleteWithHeaders" => {
+                    require_arity(name, arguments, 4, span)?;
+                    let (
+                        Value::String(url),
+                        Value::Object { handle: h_h, .. },
+                        Value::Integer(max, _),
+                    ) = (&arguments[1], &arguments[2], &arguments[3])
+                    else {
+                        return Err(arg_err("Arguments", span));
+                    };
+                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let Value::Object { handle, .. } = &arguments[0] else {
+                        return Err(recv_err("Client", span));
+                    };
+                    self.execute_client_transfer(
+                        core,
+                        name,
+                        *handle,
+                        "DELETE",
+                        url,
+                        &[],
+                        None,
+                        Some(*h_h),
+                        maximum,
+                        span,
+                    )
+                }
+                "Options" => {
+                    require_arity(name, arguments, 3, span)?;
+                    let (Value::String(url), Value::Integer(max, _)) =
+                        (&arguments[1], &arguments[2])
+                    else {
+                        return Err(arg_err("Arguments", span));
+                    };
+                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let Value::Object { handle, .. } = &arguments[0] else {
+                        return Err(recv_err("Client", span));
+                    };
+                    self.execute_client_transfer(
+                        core,
+                        name,
+                        *handle,
+                        "OPTIONS",
+                        url,
+                        &[],
+                        None,
+                        None,
+                        maximum,
+                        span,
+                    )
+                }
+                "OptionsWithHeaders" => {
+                    require_arity(name, arguments, 4, span)?;
+                    let (
+                        Value::String(url),
+                        Value::Object { handle: h_h, .. },
+                        Value::Integer(max, _),
+                    ) = (&arguments[1], &arguments[2], &arguments[3])
+                    else {
+                        return Err(arg_err("Arguments", span));
+                    };
+                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let Value::Object { handle, .. } = &arguments[0] else {
+                        return Err(recv_err("Client", span));
+                    };
+                    self.execute_client_transfer(
+                        core,
+                        name,
+                        *handle,
+                        "OPTIONS",
+                        url,
+                        &[],
+                        None,
+                        Some(*h_h),
+                        maximum,
+                        span,
+                    )
+                }
+                "Post" | "Put" | "Patch" => {
+                    require_arity(name, arguments, 5, span)?;
+                    let (
+                        Value::String(url),
+                        Value::String(body),
+                        Value::String(ct),
+                        Value::Integer(max, _),
+                    ) = (&arguments[1], &arguments[2], &arguments[3], &arguments[4])
+                    else {
+                        return Err(arg_err("Arguments", span));
+                    };
+                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let Value::Object { handle, .. } = &arguments[0] else {
+                        return Err(recv_err("Client", span));
+                    };
+                    let verb = match method {
+                        "Post" => "POST",
+                        "Put" => "PUT",
+                        _ => "PATCH",
+                    };
+                    self.execute_client_transfer(
+                        core,
+                        name,
+                        *handle,
+                        verb,
+                        url,
+                        body.as_bytes(),
+                        Some(ct),
+                        None,
+                        maximum,
+                        span,
+                    )
+                }
+                "PostWithHeaders" | "PutWithHeaders" | "PatchWithHeaders" => {
+                    require_arity(name, arguments, 6, span)?;
+                    let (
+                        Value::String(url),
+                        Value::String(body),
+                        Value::String(ct),
+                        Value::Object { handle: h_h, .. },
+                        Value::Integer(max, _),
+                    ) = (
+                        &arguments[1],
+                        &arguments[2],
+                        &arguments[3],
+                        &arguments[4],
+                        &arguments[5],
+                    )
+                    else {
+                        return Err(arg_err("Arguments", span));
+                    };
+                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let Value::Object { handle, .. } = &arguments[0] else {
+                        return Err(recv_err("Client", span));
+                    };
+                    let verb = match method {
+                        "PostWithHeaders" => "POST",
+                        "PutWithHeaders" => "PUT",
+                        _ => "PATCH",
+                    };
+                    self.execute_client_transfer(
+                        core,
+                        name,
+                        *handle,
+                        verb,
+                        url,
+                        body.as_bytes(),
+                        Some(ct),
+                        Some(*h_h),
+                        maximum,
+                        span,
+                    )
+                }
+                "PostBytes" | "PutBytes" | "PatchBytes" => {
+                    require_arity(name, arguments, 5, span)?;
+                    let (
+                        Value::String(url),
+                        Value::CryptoBytes(b_h),
+                        Value::String(ct),
+                        Value::Integer(max, _),
+                    ) = (&arguments[1], &arguments[2], &arguments[3], &arguments[4])
+                    else {
+                        return Err(arg_err("Arguments", span));
+                    };
+                    let bytes =
+                        bn_stdlib::crypto_abi::with_buffers(|b| b.get(b_h).map(|buf| buf.to_vec()))
+                            .unwrap_or_default();
+                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let Value::Object { handle, .. } = &arguments[0] else {
+                        return Err(recv_err("Client", span));
+                    };
+                    let verb = match method {
+                        "PostBytes" => "POST",
+                        "PutBytes" => "PUT",
+                        _ => "PATCH",
+                    };
+                    self.execute_client_transfer(
+                        core,
+                        name,
+                        *handle,
+                        verb,
+                        url,
+                        &bytes,
+                        Some(ct),
+                        None,
+                        maximum,
+                        span,
+                    )
+                }
+                "PostBytesWithHeaders" | "PutBytesWithHeaders" | "PatchBytesWithHeaders" => {
+                    require_arity(name, arguments, 6, span)?;
+                    let (
+                        Value::String(url),
+                        Value::CryptoBytes(b_h),
+                        Value::String(ct),
+                        Value::Object { handle: h_h, .. },
+                        Value::Integer(max, _),
+                    ) = (
+                        &arguments[1],
+                        &arguments[2],
+                        &arguments[3],
+                        &arguments[4],
+                        &arguments[5],
+                    )
+                    else {
+                        return Err(arg_err("Arguments", span));
+                    };
+                    let bytes =
+                        bn_stdlib::crypto_abi::with_buffers(|b| b.get(b_h).map(|buf| buf.to_vec()))
+                            .unwrap_or_default();
+                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let Value::Object { handle, .. } = &arguments[0] else {
+                        return Err(recv_err("Client", span));
+                    };
+                    let verb = match method {
+                        "PostBytesWithHeaders" => "POST",
+                        "PutBytesWithHeaders" => "PUT",
+                        _ => "PATCH",
+                    };
+                    self.execute_client_transfer(
+                        core,
+                        name,
+                        *handle,
+                        verb,
+                        url,
+                        &bytes,
+                        Some(ct),
+                        Some(*h_h),
+                        maximum,
+                        span,
+                    )
+                }
+                "PostFields" => {
+                    require_arity(name, arguments, 4, span)?;
+                    let (
+                        Value::String(url),
+                        Value::Object { handle: f_h, .. },
+                        Value::Integer(max, _),
+                    ) = (&arguments[1], &arguments[2], &arguments[3])
+                    else {
+                        return Err(arg_err("Arguments", span));
+                    };
+                    let enc = self
+                        .fields
+                        .get(f_h)
+                        .map(bn_web::Fields::encode)
+                        .unwrap_or_default();
+                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let Value::Object { handle, .. } = &arguments[0] else {
+                        return Err(recv_err("Client", span));
+                    };
+                    self.execute_client_transfer(
+                        core,
+                        name,
+                        *handle,
+                        "POST",
+                        url,
+                        enc.as_bytes(),
+                        Some("application/x-www-form-urlencoded"),
+                        None,
+                        maximum,
+                        span,
+                    )
+                }
+                "PostFieldsWithHeaders" => {
+                    require_arity(name, arguments, 5, span)?;
+                    let (
+                        Value::String(url),
+                        Value::Object { handle: f_h, .. },
+                        Value::Object { handle: h_h, .. },
+                        Value::Integer(max, _),
+                    ) = (&arguments[1], &arguments[2], &arguments[3], &arguments[4])
+                    else {
+                        return Err(arg_err("Arguments", span));
+                    };
+                    let enc = self
+                        .fields
+                        .get(f_h)
+                        .map(bn_web::Fields::encode)
+                        .unwrap_or_default();
+                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let Value::Object { handle, .. } = &arguments[0] else {
+                        return Err(recv_err("Client", span));
+                    };
+                    self.execute_client_transfer(
+                        core,
+                        name,
+                        *handle,
+                        "POST",
+                        url,
+                        enc.as_bytes(),
+                        Some("application/x-www-form-urlencoded"),
+                        Some(*h_h),
+                        maximum,
+                        span,
+                    )
+                }
+                "PostForm" => {
+                    require_arity(name, arguments, 4, span)?;
+                    let (
+                        Value::String(url),
+                        Value::Object { handle: f_h, .. },
+                        Value::Integer(max, _),
+                    ) = (&arguments[1], &arguments[2], &arguments[3])
+                    else {
+                        return Err(arg_err("Arguments", span));
+                    };
+                    let form_data = self.forms.get(f_h).cloned().unwrap_or_default();
+                    let boundary = "----BNWebFormBoundary7MA4YWxkTrZu0gW";
+                    let mut body = Vec::new();
+                    for (k, v) in form_data.fields {
+                        body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n").as_bytes());
+                    }
+                    for (name_f, path, ct) in form_data.files {
+                        let content = read_form_file(&path);
+                        let filename = std::path::Path::new(&path)
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("file");
+                        body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{name_f}\"; filename=\"{filename}\"\r\nContent-Type: {ct}\r\n\r\n").as_bytes());
+                        body.extend_from_slice(&content);
+                        body.extend_from_slice(b"\r\n");
+                    }
+                    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+                    let ct = format!("multipart/form-data;boundary={boundary}");
+                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let Value::Object { handle, .. } = &arguments[0] else {
+                        return Err(recv_err("Client", span));
+                    };
+                    self.execute_client_transfer(
+                        core,
+                        name,
+                        *handle,
+                        "POST",
+                        url,
+                        &body,
+                        Some(&ct),
+                        None,
+                        maximum,
+                        span,
+                    )
+                }
+                "PostFormWithHeaders" => {
+                    require_arity(name, arguments, 5, span)?;
+                    let (
+                        Value::String(url),
+                        Value::Object { handle: f_h, .. },
+                        Value::Object { handle: h_h, .. },
+                        Value::Integer(max, _),
+                    ) = (&arguments[1], &arguments[2], &arguments[3], &arguments[4])
+                    else {
+                        return Err(arg_err("Arguments", span));
+                    };
+                    let form_data = self.forms.get(f_h).cloned().unwrap_or_default();
+                    let boundary = "----BNWebFormBoundary7MA4YWxkTrZu0gW";
+                    let mut body = Vec::new();
+                    for (k, v) in form_data.fields {
+                        body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n").as_bytes());
+                    }
+                    for (name_f, path, ct) in form_data.files {
+                        let content = read_form_file(&path);
+                        let filename = std::path::Path::new(&path)
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("file");
+                        body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{name_f}\"; filename=\"{filename}\"\r\nContent-Type: {ct}\r\n\r\n").as_bytes());
+                        body.extend_from_slice(&content);
+                        body.extend_from_slice(b"\r\n");
+                    }
+                    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+                    let ct = format!("multipart/form-data;boundary={boundary}");
+                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let Value::Object { handle, .. } = &arguments[0] else {
+                        return Err(recv_err("Client", span));
+                    };
+                    self.execute_client_transfer(
+                        core,
+                        name,
+                        *handle,
+                        "POST",
+                        url,
+                        &body,
+                        Some(&ct),
+                        Some(*h_h),
+                        maximum,
+                        span,
+                    )
+                }
+                "PostJson" => {
+                    require_arity(name, arguments, 4, span)?;
+                    let (Value::String(url), Value::String(json), Value::Integer(max, _)) =
+                        (&arguments[1], &arguments[2], &arguments[3])
+                    else {
+                        return Err(arg_err("Arguments", span));
+                    };
+                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let Value::Object { handle, .. } = &arguments[0] else {
+                        return Err(recv_err("Client", span));
+                    };
+                    self.execute_client_transfer(
+                        core,
+                        name,
+                        *handle,
+                        "POST",
+                        url,
+                        json.as_bytes(),
+                        Some("application/json"),
+                        None,
+                        maximum,
+                        span,
+                    )
+                }
+                "PostJsonWithHeaders" => {
+                    require_arity(name, arguments, 5, span)?;
+                    let (
+                        Value::String(url),
+                        Value::String(json),
+                        Value::Object { handle: h_h, .. },
+                        Value::Integer(max, _),
+                    ) = (&arguments[1], &arguments[2], &arguments[3], &arguments[4])
+                    else {
+                        return Err(arg_err("Arguments", span));
+                    };
+                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let Value::Object { handle, .. } = &arguments[0] else {
+                        return Err(recv_err("Client", span));
+                    };
+                    self.execute_client_transfer(
+                        core,
+                        name,
+                        *handle,
+                        "POST",
+                        url,
+                        json.as_bytes(),
+                        Some("application/json"),
+                        Some(*h_h),
+                        maximum,
+                        span,
+                    )
+                }
+                "RequestMethod" => {
+                    require_arity(name, arguments, 6, span)?;
+                    let (
+                        Value::String(verb),
+                        Value::String(url),
+                        Value::String(body),
+                        Value::String(ct),
+                        Value::Integer(max, _),
+                    ) = (
+                        &arguments[1],
+                        &arguments[2],
+                        &arguments[3],
+                        &arguments[4],
+                        &arguments[5],
+                    )
+                    else {
+                        return Err(arg_err("Arguments", span));
+                    };
+                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let Value::Object { handle, .. } = &arguments[0] else {
+                        return Err(recv_err("Client", span));
+                    };
+                    self.execute_client_transfer(
+                        core,
+                        name,
+                        *handle,
+                        verb,
+                        url,
+                        body.as_bytes(),
+                        Some(ct),
+                        None,
+                        maximum,
+                        span,
+                    )
+                }
+                "RequestMethodWithHeaders" => {
+                    require_arity(name, arguments, 7, span)?;
+                    let (
+                        Value::String(verb),
+                        Value::String(url),
+                        Value::String(body),
+                        Value::String(ct),
+                        Value::Object { handle: h_h, .. },
+                        Value::Integer(max, _),
+                    ) = (
+                        &arguments[1],
+                        &arguments[2],
+                        &arguments[3],
+                        &arguments[4],
+                        &arguments[5],
+                        &arguments[6],
+                    )
+                    else {
+                        return Err(arg_err("Arguments", span));
+                    };
+                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let Value::Object { handle, .. } = &arguments[0] else {
+                        return Err(recv_err("Client", span));
+                    };
+                    self.execute_client_transfer(
+                        core,
+                        name,
+                        *handle,
+                        verb,
+                        url,
+                        body.as_bytes(),
+                        Some(ct),
+                        Some(*h_h),
+                        maximum,
+                        span,
+                    )
                 }
                 _ => Ok(failed(name, &WebFailure::ProviderUnavailable("BNWeb"))),
             }

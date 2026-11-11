@@ -323,13 +323,22 @@ pub fn deflate(data: &[u8]) -> Result<Vec<u8>, CompressError> {
         .map_err(|e| CompressError::corrupt("error.compress_failed.message", e.to_string()))
 }
 
+/// Decompresses DEFLATE `data` up to `limit` decompressed bytes.
+///
+/// # Errors
+///
+/// `CORRUPT_DATA` when `data` is not a valid DEFLATE stream, or `LIMIT_EXCEEDED` if output exceeds `limit`.
+pub fn inflate_bounded(data: &[u8], limit: u64) -> Result<Vec<u8>, CompressError> {
+    decode(DeflateDecoder::new(data), limit)
+}
+
 /// Decompresses DEFLATE `data`.
 ///
 /// # Errors
 ///
 /// `CORRUPT_DATA` when `data` is not a valid DEFLATE stream.
 pub fn inflate(data: &[u8]) -> Result<Vec<u8>, CompressError> {
-    decode(DeflateDecoder::new(data), MAX_DECOMPRESSED_BYTES)
+    inflate_bounded(data, MAX_DECOMPRESSED_BYTES)
 }
 
 /// Compresses `data` using standard Gzip.
@@ -345,13 +354,22 @@ pub fn gzip(data: &[u8]) -> Result<Vec<u8>, CompressError> {
         .map_err(|e| CompressError::corrupt("error.compress_failed.message", e.to_string()))
 }
 
+/// Decompresses Gzip `data` up to `limit` decompressed bytes.
+///
+/// # Errors
+///
+/// `CORRUPT_DATA` when `data` is not a valid Gzip stream, or `LIMIT_EXCEEDED` if output exceeds `limit`.
+pub fn gunzip_bounded(data: &[u8], limit: u64) -> Result<Vec<u8>, CompressError> {
+    decode(GzDecoder::new(data), limit)
+}
+
 /// Decompresses Gzip `data`.
 ///
 /// # Errors
 ///
 /// `CORRUPT_DATA` when `data` is not a valid Gzip stream.
 pub fn gunzip(data: &[u8]) -> Result<Vec<u8>, CompressError> {
-    decode(GzDecoder::new(data), MAX_DECOMPRESSED_BYTES)
+    gunzip_bounded(data, MAX_DECOMPRESSED_BYTES)
 }
 
 /// Decodes hexadecimal ASCII into bytes; `None` for odd length or a non-hex digit.

@@ -74,7 +74,7 @@ pub(crate) fn next_handle() -> u64 {
     NEXT.fetch_add(1, Ordering::Relaxed)
 }
 
-pub(crate) fn with_buffers<T>(
+pub fn with_buffers<T>(
     operation: impl FnOnce(&mut HashMap<u64, zeroize::Zeroizing<Vec<u8>>>) -> T,
 ) -> T {
     let buffers = bn_core_copy::table::<Buffers>();
@@ -87,7 +87,7 @@ pub(crate) fn with_buffers<T>(
     )
 }
 
-pub(crate) fn store(bytes: Vec<u8>) -> u64 {
+pub fn store(bytes: Vec<u8>) -> u64 {
     let handle = next_handle();
     bn_core_copy::table::<Buffers>()
         .0
@@ -95,6 +95,18 @@ pub(crate) fn store(bytes: Vec<u8>) -> u64 {
         .unwrap_or_else(PoisonError::into_inner)
         .insert(handle, zeroize::Zeroizing::new(bytes));
     handle
+}
+
+/// Stores raw bytes into the crypto buffer table and returns the handle.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_bytes_store(ptr: *const u8, len: usize) -> u64 {
+    if ptr.is_null() {
+        return 0;
+    }
+    // SAFETY: caller guarantees ptr points to len valid bytes.
+    let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+    store(slice.to_vec())
 }
 
 /// Stores the UTF-8 bytes of `text` and returns the handle. A null pointer or

@@ -484,14 +484,12 @@ fn redirects_resolve_relative_paths_and_reject_fragments() {
 
 #[test]
 fn compressed_responses_are_rejected_without_decoder_limits() {
-    assert!(super::has_unsupported_encoding(&[(
-        "Content-Encoding".into(),
-        "gzip".into()
-    )]));
-    assert!(!super::has_unsupported_encoding(&[(
-        "Content-Type".into(),
-        "text/plain".into()
-    )]));
+    let mut reply = crate::web::ClientReply::new();
+    reply.headers.push(("Content-Encoding".into(), "br".into()));
+    assert!(matches!(
+        reply.body_decoded_bytes(1024),
+        Err(crate::WebFailure::UnsupportedEncoding(_))
+    ));
 }
 
 #[test]

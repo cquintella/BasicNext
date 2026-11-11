@@ -567,12 +567,14 @@ dependencies = [
  "bn_host_net",
  "bn_interp",
  "bn_ir",
+ "bn_lib_crypto",
  "bn_lib_dispatch",
  "bn_lib_log",
  "bn_limits",
  "bn_rt",
  "bn_runtime",
  "bn_source",
+ "bn_stdlib",
  "bn_types",
  "bn_value",
  "bn_web",
@@ -712,6 +714,7 @@ name = "bn_web"
 version = "0.6.14"
 dependencies = [
  "bn_catalog",
+ "bn_core_compress",
  "bn_core_copy",
  "bn_core_dispatch",
  "bn_core_log",
@@ -1157,7 +1160,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1928,15 +1931,15 @@ dependencies = [
 
 [[package]]
 name = "rustix"
-version = "1.1.5"
+version = "1.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "891efababe418670775f199f0d233d84843c227a0949a883ce15b37c78d6629d"
+checksum = "e5e76742e5294153d4dde1207dbec5bdd81eef6fabdc0d2118babadabfd858aa"
 dependencies = [
  "bitflags 2.13.2",
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2225,7 +2228,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
