@@ -43,6 +43,8 @@
     "bn::test/gates::bni_performance::bni_performance_vector_read_is_linear",
     "bn::test/gates::crypto_surface::a_planted_name_fails_and_notation_is_not_a_function",
     "bn::test/gates::crypto_surface::every_function_the_contract_names_is_declared",
+    "bn::test/gates::web_surface::a_planted_name_fails_in_web_surface",
+    "bn::test/gates::web_surface::every_function_the_bnweb_contract_names_is_declared",
     "bn::test/gates::migration_ledger::crate_tests_match_the_ledger",
     "bn::test/gates::migration_ledger::migrated_gate_tests_and_grammar_fixtures_match_the_ledger",
     "bn::test/gates::no_python::the_no_python_gate_finds_a_python_file_and_a_python_call",

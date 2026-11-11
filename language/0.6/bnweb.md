@@ -289,6 +289,59 @@ filters, response commit, HTTP/1.1/2 parity, TLS, limits, timeouts, SSRF,
 sessions, ACL, logging, static non-execution, stop, and cleanup without a public
 Internet dependency.
 
+### Client transfer, verbs, and reply data
+
+High-level HTTP transfers return `ClientReply OR Error` (BDFL decision, 2026-10-28).
+The client separates textual representations from binary payloads: text is UTF-8 `STRING`,
+while binary bodies are `BNCrypto.Bytes`.
+
+`ClientReply` methods:
+- `ClientReply.Status() AS INTEGER`: the HTTP response status code (100..599).
+- `ClientReply.HttpVersion() AS STRING`: protocol version (`"HTTP/1.1"`, `"HTTP/2"`, or `"HTTP/3"`).
+- `ClientReply.BodySize() AS INTEGER`: raw wire body size in bytes before decompression.
+- `ClientReply.TotalMs() AS INTEGER`: total exchange duration in milliseconds.
+- `ClientReply.ConnectMs() AS INTEGER`: time spent establishing the transport connection.
+- `ClientReply.Header(name AS STRING) AS STRING OR Error`: first value of response header, or `Web.NOT_FOUND`.
+- `ClientReply.HeaderCount() AS INTEGER`: total count of response header entries.
+- `ClientReply.HeaderName(index AS INTEGER) AS STRING OR Error`: name of header at index.
+- `ClientReply.HeaderValue(index AS INTEGER) AS STRING OR Error`: value of header at index.
+- `ClientReply.BodyText(maximum AS INTEGER) AS STRING OR Error`: decodes body as strict UTF-8 string up to `maximum` bytes; returns `Web.INVALID_ARGUMENT` if invalid UTF-8 or `Web.LIMIT` if oversized.
+- `ClientReply.BodyBytes(maximum AS INTEGER) AS Crypto.Bytes OR Error`: returns binary payload as `Crypto.Bytes` up to `maximum` bytes.
+- `ClientReply.BodyDecodedText(maximum AS INTEGER) AS STRING OR Error`: decompresses gzip/deflate body and decodes as UTF-8 up to `maximum` bytes.
+- `ClientReply.BodyDecodedBytes(maximum AS INTEGER) AS Crypto.Bytes OR Error`: decompresses gzip/deflate body and returns as `Crypto.Bytes` up to `maximum` bytes.
+- `ClientReply.PeerAddress() AS Net.Address OR Error`: remote socket address.
+
+Request structures:
+- `Headers.New() AS Headers OR Error`, `.Add(name, value)`, `.Set(name, value)`, `.Count()`, `.Get(name)`: collection of request headers.
+- `Query.New() AS Query OR Error`, `.Add(name, value)`, `.Encode()`: query string builder with percent-encoding (`%20` for space).
+- `Fields.New() AS Fields OR Error`, `.Add(name, value)`, `.Encode()`: form field encoder (`application/x-www-form-urlencoded`, `+` for space).
+- `Form.New() AS Form OR Error`, `.AddField(name, value)`, `.AddFile(name, path, contentType)`: multipart form builder.
+
+Configuration:
+- `TLSClientConfig.SystemTrust() AS TLSClientConfig OR Error`: verifies against operating system roots.
+- `TLSClientConfig.Unverified() AS TLSClientConfig OR Error`: disables TLS certificate verification.
+- `TLSClientConfig.WithPin(digest AS Crypto.Bytes) AS TLSClientConfig OR Error`: pins peer SPKI SHA-256 (32 bytes).
+- `TLSClientConfig.AddPin(digest AS Crypto.Bytes) AS TLSClientConfig OR Error`: adds alternative pin.
+- `TLSClientConfig.OnlyTls12() AS TLSClientConfig OR Error`: restricts TLS floor and ceiling to TLS 1.2.
+- `Proxy.Http(url AS STRING) AS Proxy OR Error`: HTTP proxy.
+- `Proxy.HttpBasic(url AS STRING, user AS STRING, password AS STRING) AS Proxy OR Error`: authenticated HTTP proxy.
+- `Proxy.Https(url AS STRING) AS Proxy OR Error`: HTTPS proxy.
+- `Proxy.Socks5(url AS STRING) AS Proxy OR Error`: SOCKS5 proxy with local name resolution.
+- `Proxy.Socks5Hostname(url AS STRING) AS Proxy OR Error`: SOCKS5 proxy with remote name resolution.
+- `RetryPolicy.None() AS RetryPolicy`: default no retry.
+- `RetryPolicy.OnTransport(attempts AS INTEGER, delayMs AS INTEGER) AS RetryPolicy OR Error`: retries transport failures (`TIMEOUT`, `HTTP_FAILED`) for idempotent requests up to 8 attempts.
+- Address families: `Web.ADDRESS_ANY` (0), `Web.ADDRESS_IPV4` (1), `Web.ADDRESS_IPV6` (2).
+
+Client transfer methods:
+- `Client.NewUnverified(logger AS Log.Logger) AS Client OR Error`
+- `Client.UsePolicy(policy AS EgressPolicy) AS VOID OR Error`
+- `Client.UseProxy(proxy AS Proxy) AS VOID OR Error`
+- `Client.UseCookies(jar AS CookieJar) AS VOID OR Error`
+- `Client.UseTLS(config AS TLSClientConfig) AS VOID OR Error`
+- `Client.UseRetry(retry AS RetryPolicy) AS VOID OR Error`
+- `Client.UseAddresses(family AS INTEGER) AS VOID OR Error`
+- HTTP verbs: `Get`, `GetDecoded`, `GetQuery`, `Head`, `Delete`, `Options`, `Post`, `PostBytes`, `PostFields`, `PostForm`, `PostJson`, `Put`, `PutBytes`, `PutFile`, `Patch`, `PatchBytes`, `RequestMethod`, `Download`, `DownloadReplace`, `DownloadResume`, `DownloadDecoded`, and their `*WithHeaders` variants taking `headers AS Headers` before `maximum`.
+
 ## Errors
 
 Every function and method in `BNWeb` that returns `T OR Error` yields an
@@ -306,3 +359,6 @@ Every function and method in `BNWeb` that returns `T OR Error` yields an
 | `Web.EGRESS_DENIED` | 7 | The egress policy denies the destination or the redirect |
 | `Web.HTTP_FAILED` | 8 | An outbound request failed (connection, TLS, protocol); `Cause` carries the Net or TLS reason |
 | `Web.UNAVAILABLE` | 9 | The provider (TLS, session store, scraper, …) is not in this build |
+| `Web.HTTP_STATUS` | 10 | An exchange or download failed because the server returned an unexpected HTTP status code outside 200..299 on a `--fail` style transfer |
+| `Web.ALREADY_EXISTS` | 11 | A download target file exists and overwrite was not requested |
+| `Web.UNSUPPORTED_ENCODING` | 12 | A response body Content-Encoding is not supported (only gzip and deflate are decoded) |

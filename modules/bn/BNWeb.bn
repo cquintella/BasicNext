@@ -3,6 +3,7 @@
 IMPORT HOST.Net AS Net
 IMPORT BNLog AS Log
 IMPORT BNDispatch AS Dispatch
+IMPORT BNCrypto AS Crypto
 
 // Error codes (language/0.6/bnweb.md "Errors").
 EXPORT CONST INVALID_ARGUMENT AS INTEGER = 1
@@ -14,6 +15,14 @@ EXPORT CONST TIMEOUT AS INTEGER = 6
 EXPORT CONST EGRESS_DENIED AS INTEGER = 7
 EXPORT CONST HTTP_FAILED AS INTEGER = 8
 EXPORT CONST UNAVAILABLE AS INTEGER = 9
+EXPORT CONST HTTP_STATUS AS INTEGER = 10
+EXPORT CONST ALREADY_EXISTS AS INTEGER = 11
+EXPORT CONST UNSUPPORTED_ENCODING AS INTEGER = 12
+
+// Address family constants.
+EXPORT CONST ADDRESS_ANY AS INTEGER = 0
+EXPORT CONST ADDRESS_IPV4 AS INTEGER = 1
+EXPORT CONST ADDRESS_IPV6 AS INTEGER = 2
 
 EXPORT CLASS HeaderValues
     PUBLIC FUNCTION CONSTRUCTOR()
@@ -232,17 +241,321 @@ EXPORT CLASS ServerOptions
     END FUNCTION
 END CLASS
 
+EXPORT CLASS ClientReply
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Status() AS INTEGER
+        RETURN 200
+    END FUNCTION
+    PUBLIC FUNCTION HttpVersion() AS STRING
+        RETURN "HTTP/1.1"
+    END FUNCTION
+    PUBLIC FUNCTION BodySize() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION TotalMs() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION ConnectMs() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION Header(name AS STRING) AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION HeaderCount() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION HeaderName(index AS INTEGER) AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION HeaderValue(index AS INTEGER) AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION BodyText(maximum AS INTEGER) AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION BodyBytes(maximum AS INTEGER) AS Crypto.Bytes OR Error
+        RETURN NEW Crypto.Bytes()
+    END FUNCTION
+    PUBLIC FUNCTION BodyDecodedText(maximum AS INTEGER) AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION BodyDecodedBytes(maximum AS INTEGER) AS Crypto.Bytes OR Error
+        RETURN NEW Crypto.Bytes()
+    END FUNCTION
+    PUBLIC FUNCTION PeerAddress() AS Net.Address OR Error
+        RETURN Net.Address.Parse("0.0.0.0")
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS Headers
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC STATIC FUNCTION New() AS Headers OR Error
+        RETURN NEW Headers()
+    END FUNCTION
+    PUBLIC FUNCTION Add(name AS STRING, value AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Set(name AS STRING, value AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Count() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION Get(name AS STRING) AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS Query
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC STATIC FUNCTION New() AS Query OR Error
+        RETURN NEW Query()
+    END FUNCTION
+    PUBLIC FUNCTION Add(name AS STRING, value AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Encode() AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS Fields
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC STATIC FUNCTION New() AS Fields OR Error
+        RETURN NEW Fields()
+    END FUNCTION
+    PUBLIC FUNCTION Add(name AS STRING, value AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Encode() AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS Form
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC STATIC FUNCTION New() AS Form OR Error
+        RETURN NEW Form()
+    END FUNCTION
+    PUBLIC FUNCTION AddField(name AS STRING, value AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION AddFile(name AS STRING, path AS STRING, contentType AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS TLSClientConfig
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC STATIC FUNCTION SystemTrust() AS TLSClientConfig OR Error
+        RETURN NEW TLSClientConfig()
+    END FUNCTION
+    PUBLIC STATIC FUNCTION Unverified() AS TLSClientConfig OR Error
+        RETURN NEW TLSClientConfig()
+    END FUNCTION
+    PUBLIC FUNCTION WithPin(digest AS Crypto.Bytes) AS TLSClientConfig OR Error
+        RETURN NEW TLSClientConfig()
+    END FUNCTION
+    PUBLIC FUNCTION AddPin(digest AS Crypto.Bytes) AS TLSClientConfig OR Error
+        RETURN NEW TLSClientConfig()
+    END FUNCTION
+    PUBLIC STATIC FUNCTION OnlyTls12() AS TLSClientConfig OR Error
+        RETURN NEW TLSClientConfig()
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS Proxy
+    PUBLIC FUNCTION CONSTRUCTOR(url AS STRING)
+    END FUNCTION
+    PUBLIC STATIC FUNCTION Http(url AS STRING) AS Proxy OR Error
+        RETURN NEW Proxy(url)
+    END FUNCTION
+    PUBLIC STATIC FUNCTION HttpBasic(url AS STRING, user AS STRING, password AS STRING) AS Proxy OR Error
+        RETURN NEW Proxy(url)
+    END FUNCTION
+    PUBLIC STATIC FUNCTION Https(url AS STRING) AS Proxy OR Error
+        RETURN NEW Proxy(url)
+    END FUNCTION
+    PUBLIC STATIC FUNCTION Socks5(url AS STRING) AS Proxy OR Error
+        RETURN NEW Proxy(url)
+    END FUNCTION
+    PUBLIC STATIC FUNCTION Socks5Hostname(url AS STRING) AS Proxy OR Error
+        RETURN NEW Proxy(url)
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS RetryPolicy
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC STATIC FUNCTION None() AS RetryPolicy
+        RETURN NEW RetryPolicy()
+    END FUNCTION
+    PUBLIC STATIC FUNCTION OnTransport(attempts AS INTEGER, delayMs AS INTEGER) AS RetryPolicy OR Error
+        RETURN NEW RetryPolicy()
+    END FUNCTION
+END CLASS
+
 EXPORT CLASS Client
     PUBLIC FUNCTION CONSTRUCTOR()
     END FUNCTION
     PUBLIC STATIC FUNCTION New(logger AS Log.Logger) AS Client OR Error
         RETURN NEW Client()
     END FUNCTION
+    PUBLIC STATIC FUNCTION NewUnverified(logger AS Log.Logger) AS Client OR Error
+        RETURN NEW Client()
+    END FUNCTION
+    PUBLIC FUNCTION UsePolicy(policy AS EgressPolicy) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION UseProxy(proxy AS Proxy) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION UseCookies(jar AS CookieJar) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION UseTLS(config AS TLSClientConfig) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION UseRetry(retry AS RetryPolicy) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION UseAddresses(family AS INTEGER) AS VOID OR Error
+        RETURN
+    END FUNCTION
     PUBLIC FUNCTION Request(method AS STRING, url AS STRING, body AS STRING) AS Response OR Error
         RETURN NEW Response()
     END FUNCTION
     PUBLIC FUNCTION RequestWithPolicy(method AS STRING, url AS STRING, body AS STRING, policy AS EgressPolicy) AS Response OR Error
         RETURN NEW Response()
+    END FUNCTION
+    PUBLIC FUNCTION Get(url AS STRING, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION GetWithHeaders(url AS STRING, headers AS Headers, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION GetDecoded(url AS STRING, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION GetDecodedWithHeaders(url AS STRING, headers AS Headers, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION GetQuery(url AS STRING, query AS Query, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION GetQueryWithHeaders(url AS STRING, query AS Query, headers AS Headers, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION Head(url AS STRING, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION HeadWithHeaders(url AS STRING, headers AS Headers, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION Delete(url AS STRING, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION DeleteWithHeaders(url AS STRING, headers AS Headers, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION Options(url AS STRING, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION OptionsWithHeaders(url AS STRING, headers AS Headers, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION Post(url AS STRING, body AS STRING, contentType AS STRING, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION PostWithHeaders(url AS STRING, body AS STRING, contentType AS STRING, headers AS Headers, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION PostBytes(url AS STRING, body AS Crypto.Bytes, contentType AS STRING, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION PostBytesWithHeaders(url AS STRING, body AS Crypto.Bytes, contentType AS STRING, headers AS Headers, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION PostFields(url AS STRING, fields AS Fields, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION PostFieldsWithHeaders(url AS STRING, fields AS Fields, headers AS Headers, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION PostForm(url AS STRING, form AS Form, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION PostFormWithHeaders(url AS STRING, form AS Form, headers AS Headers, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION PostJson(url AS STRING, json AS STRING, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION PostJsonWithHeaders(url AS STRING, json AS STRING, headers AS Headers, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION Put(url AS STRING, body AS STRING, contentType AS STRING, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION PutWithHeaders(url AS STRING, body AS STRING, contentType AS STRING, headers AS Headers, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION PutBytes(url AS STRING, body AS Crypto.Bytes, contentType AS STRING, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION PutBytesWithHeaders(url AS STRING, body AS Crypto.Bytes, contentType AS STRING, headers AS Headers, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION PutFile(url AS STRING, path AS STRING, contentType AS STRING, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION PutFileWithHeaders(url AS STRING, path AS STRING, contentType AS STRING, headers AS Headers, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION Patch(url AS STRING, body AS STRING, contentType AS STRING, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION PatchWithHeaders(url AS STRING, body AS STRING, contentType AS STRING, headers AS Headers, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION PatchBytes(url AS STRING, body AS Crypto.Bytes, contentType AS STRING, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION PatchBytesWithHeaders(url AS STRING, body AS Crypto.Bytes, contentType AS STRING, headers AS Headers, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION RequestMethod(method AS STRING, url AS STRING, body AS STRING, contentType AS STRING, headers AS Headers, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION Download(url AS STRING, path AS STRING, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION DownloadWithHeaders(url AS STRING, path AS STRING, headers AS Headers, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION DownloadReplace(url AS STRING, path AS STRING, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION DownloadReplaceWithHeaders(url AS STRING, path AS STRING, headers AS Headers, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION DownloadResume(url AS STRING, path AS STRING, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION DownloadResumeWithHeaders(url AS STRING, path AS STRING, headers AS Headers, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION DownloadDecoded(url AS STRING, path AS STRING, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
+    END FUNCTION
+    PUBLIC FUNCTION DownloadDecodedWithHeaders(url AS STRING, path AS STRING, headers AS Headers, maximum AS INTEGER) AS ClientReply OR Error
+        RETURN NEW ClientReply()
     END FUNCTION
     PUBLIC FUNCTION Close() AS VOID OR Error
         RETURN
@@ -253,6 +566,18 @@ EXPORT CLASS EgressPolicy
     PUBLIC FUNCTION CONSTRUCTOR(schemes AS STRING, cidrs AS STRING, ports AS STRING, maxRedirects AS INTEGER, totalDeadlineMs AS INTEGER)
     END FUNCTION
     PUBLIC STATIC FUNCTION New(schemes AS STRING, cidrs AS STRING, ports AS STRING, maxRedirects AS INTEGER, totalDeadlineMs AS INTEGER) AS EgressPolicy OR Error
+        RETURN NEW EgressPolicy(schemes, cidrs, ports, maxRedirects, totalDeadlineMs)
+    END FUNCTION
+    PUBLIC STATIC FUNCTION WithConnect(schemes AS STRING, cidrs AS STRING, ports AS STRING, maxRedirects AS INTEGER, totalDeadlineMs AS INTEGER, connectMs AS INTEGER) AS EgressPolicy OR Error
+        RETURN NEW EgressPolicy(schemes, cidrs, ports, maxRedirects, totalDeadlineMs)
+    END FUNCTION
+    PUBLIC STATIC FUNCTION PreserveMethod(schemes AS STRING, cidrs AS STRING, ports AS STRING, maxRedirects AS INTEGER, totalDeadlineMs AS INTEGER) AS EgressPolicy OR Error
+        RETURN NEW EgressPolicy(schemes, cidrs, ports, maxRedirects, totalDeadlineMs)
+    END FUNCTION
+    PUBLIC STATIC FUNCTION WithCrossHostAuthorization(schemes AS STRING, cidrs AS STRING, ports AS STRING, maxRedirects AS INTEGER, totalDeadlineMs AS INTEGER) AS EgressPolicy OR Error
+        RETURN NEW EgressPolicy(schemes, cidrs, ports, maxRedirects, totalDeadlineMs)
+    END FUNCTION
+    PUBLIC STATIC FUNCTION WithStall(schemes AS STRING, cidrs AS STRING, ports AS STRING, maxRedirects AS INTEGER, totalDeadlineMs AS INTEGER, minimumBytesPerSecond AS INTEGER, windowMs AS INTEGER) AS EgressPolicy OR Error
         RETURN NEW EgressPolicy(schemes, cidrs, ports, maxRedirects, totalDeadlineMs)
     END FUNCTION
 END CLASS
