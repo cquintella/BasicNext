@@ -1,0 +1,214 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Calls every served member of BNWeb.Client, ClientReply, Headers, Query,
+// Fields and Form against the local echo server of
+// tests/programs/web_client_tour.rs, and prints one labelled line per call.
+// Arguments: the server base URL, a log file path, a file to upload, the
+// server port.
+IMPORT BNWeb AS Web
+IMPORT BNLog AS Log
+IMPORT BNCrypto AS Crypto
+IMPORT HOST.FileSystem AS FS
+
+CONST LIMIT AS INTEGER = 65536
+
+FUNCTION Show(label AS STRING, reply AS Web.ClientReply OR Error) AS VOID
+    IF reply IS Error THEN
+        PRINT label, "error", reply.Code, reply.Message
+        RETURN
+    END IF
+    LET body AS STRING OR Error = reply.BodyText(LIMIT)
+    IF body IS Error THEN
+        PRINT label, reply.Status(), "body error", body.Code
+    ELSE
+        PRINT label, reply.Status(), body
+    END IF
+END FUNCTION
+
+// Only the status: a HEAD reply has no body, and what a decoded GET returns
+// as its body is not yet specified (Start calls ClientReply.BodyDecoded*).
+FUNCTION ShowStatus(label AS STRING, reply AS Web.ClientReply OR Error) AS VOID
+    IF reply IS Error THEN
+        PRINT label, "error", reply.Code, reply.Message
+    ELSE
+        PRINT label, reply.Status()
+    END IF
+END FUNCTION
+
+FUNCTION Start() AS INTEGER
+    IF LEN(HOST.Args) < 5 THEN
+        PRINT "usage: web_client_tour <base-url> <log-path> <upload-path> <port>"
+        RETURN 2
+    END IF
+    LET base AS STRING = HOST.Args[1]
+
+    LET plain AS Web.Client = NEW Web.Client()
+    PRINT "Client.CONSTRUCTOR", "ok"
+    LET made AS Log.Logger OR Error = Log.Logger.New("tour", "APACHE", HOST.Args[2])
+    IF made IS Error THEN
+        PRINT "logger", "error", made.Message
+        RETURN 1
+    END IF
+    LET logger AS Log.Logger = made
+    LET created AS Web.Client OR Error = Web.Client.New(logger)
+    IF created IS Error THEN
+        PRINT "Client.New", "error", created.Message
+        RETURN 1
+    END IF
+    PRINT "Client.New", "ok"
+    LET client AS Web.Client = created
+
+    // Request structures.
+    LET bare AS Web.Headers = NEW Web.Headers()
+    PRINT "Headers.CONSTRUCTOR", bare.Count()
+    LET madeHeaders AS Web.Headers OR Error = Web.Headers.New()
+    IF madeHeaders IS Error THEN
+        PRINT "Headers.New", "error", madeHeaders.Message
+        RETURN 1
+    END IF
+    LET headers AS Web.Headers = madeHeaders
+    PRINT "Headers.New", headers.Count()
+    PRINT "Headers.Add", headers.Add("X-Tour", "first") IS Error
+    PRINT "Headers.Set", headers.Set("X-Tour", "second") IS Error
+    PRINT "Headers.Count", headers.Count()
+    PRINT "Headers.Get", headers.Get("x-tour")
+
+    LET bareQuery AS Web.Query = NEW Web.Query()
+    PRINT "Query.CONSTRUCTOR", bareQuery.Encode() = ""
+    LET madeQuery AS Web.Query OR Error = Web.Query.New()
+    IF madeQuery IS Error THEN
+        PRINT "Query.New", "error", madeQuery.Message
+        RETURN 1
+    END IF
+    LET query AS Web.Query = madeQuery
+    PRINT "Query.New", "ok"
+    PRINT "Query.Add", query.Add("q", "a b&c") IS Error
+    PRINT "Query.Encode", query.Encode()
+
+    LET bareFields AS Web.Fields = NEW Web.Fields()
+    PRINT "Fields.CONSTRUCTOR", bareFields.Encode() = ""
+    LET madeFields AS Web.Fields OR Error = Web.Fields.New()
+    IF madeFields IS Error THEN
+        PRINT "Fields.New", "error", madeFields.Message
+        RETURN 1
+    END IF
+    LET fields AS Web.Fields = madeFields
+    PRINT "Fields.New", "ok"
+    PRINT "Fields.Add", fields.Add("name", "a b&c") IS Error
+    PRINT "Fields.Encode", fields.Encode()
+
+    LET bareForm AS Web.Form = NEW Web.Form()
+    PRINT "Form.CONSTRUCTOR", "ok"
+    LET madeForm AS Web.Form OR Error = Web.Form.New()
+    IF madeForm IS Error THEN
+        PRINT "Form.New", "error", madeForm.Message
+        RETURN 1
+    END IF
+    LET form AS Web.Form = madeForm
+    PRINT "Form.New", "ok"
+    PRINT "Form.AddField", form.AddField("field", "value") IS Error
+    PRINT "Form.AddFile", form.AddFile("upload", HOST.Args[3], "text/plain") IS Error
+
+    // Reply data.
+    LET first AS Web.ClientReply OR Error = client.Get(base + "/reply", LIMIT)
+    IF first IS Error THEN
+        PRINT "Client.Get", "error", first.Code, first.Message
+        RETURN 1
+    END IF
+    LET reply AS Web.ClientReply = first
+    PRINT "Client.Get", reply.Status()
+    PRINT "ClientReply.Status", reply.Status()
+    PRINT "ClientReply.HttpVersion", reply.HttpVersion()
+    PRINT "ClientReply.BodySize", reply.BodySize()
+    PRINT "ClientReply.TotalMs", reply.TotalMs() >= 0
+    PRINT "ClientReply.ConnectMs", reply.ConnectMs() >= 0
+    PRINT "ClientReply.Header", reply.Header("x-tour-reply")
+    PRINT "ClientReply.HeaderCount", reply.HeaderCount()
+    PRINT "ClientReply.HeaderName", reply.HeaderName(0)
+    PRINT "ClientReply.HeaderValue", reply.HeaderValue(0)
+    PRINT "ClientReply.BodyText", reply.BodyText(LIMIT)
+    LET raw AS Crypto.Bytes OR Error = reply.BodyBytes(LIMIT)
+    IF raw IS Error THEN
+        PRINT "ClientReply.BodyBytes", "error", raw.Code
+    ELSE
+        PRINT "ClientReply.BodyBytes", raw.Length(), raw.ToHex()
+    END IF
+    PRINT "ClientReply.PeerAddress", reply.PeerAddress() IS Error = FALSE
+    LET bareReply AS Web.ClientReply = NEW Web.ClientReply()
+    PRINT "ClientReply.CONSTRUCTOR", bareReply.HeaderCount() >= 0
+
+    LET packed AS Web.ClientReply OR Error = client.Get(base + "/gzip", LIMIT)
+    IF packed IS Error THEN
+        PRINT "ClientReply.BodyDecodedText", "error", packed.Code, packed.Message
+    ELSE
+        PRINT "ClientReply.BodyDecodedText", packed.BodyDecodedText(LIMIT)
+        LET decoded AS Crypto.Bytes OR Error = packed.BodyDecodedBytes(LIMIT)
+        IF decoded IS Error THEN
+            PRINT "ClientReply.BodyDecodedBytes", "error", decoded.Code
+        ELSE
+            PRINT "ClientReply.BodyDecodedBytes", decoded.Length()
+        END IF
+    END IF
+    LET binary AS Web.ClientReply OR Error = client.Get(base + "/bytes", LIMIT)
+    Show("Client.Get binary", binary)
+
+    // Verbs.
+    LET payload AS Crypto.Bytes = Crypto.FromText("tour-bytes")
+    Show("Client.GetWithHeaders", client.GetWithHeaders(base + "/verb", headers, LIMIT))
+    ShowStatus("Client.GetDecoded", client.GetDecoded(base + "/gzip", LIMIT))
+    ShowStatus("Client.GetDecodedWithHeaders", client.GetDecodedWithHeaders(base + "/gzip", headers, LIMIT))
+    Show("Client.GetQuery", client.GetQuery(base + "/verb", query, LIMIT))
+    Show("Client.GetQueryWithHeaders", client.GetQueryWithHeaders(base + "/verb", query, headers, LIMIT))
+    ShowStatus("Client.Head", client.Head(base + "/verb", LIMIT))
+    ShowStatus("Client.HeadWithHeaders", client.HeadWithHeaders(base + "/verb", headers, LIMIT))
+    Show("Client.Delete", client.Delete(base + "/verb", LIMIT))
+    Show("Client.DeleteWithHeaders", client.DeleteWithHeaders(base + "/verb", headers, LIMIT))
+    Show("Client.Options", client.Options(base + "/verb", LIMIT))
+    Show("Client.OptionsWithHeaders", client.OptionsWithHeaders(base + "/verb", headers, LIMIT))
+    Show("Client.Post", client.Post(base + "/verb", "text-body", "text/plain", LIMIT))
+    Show("Client.PostWithHeaders", client.PostWithHeaders(base + "/verb", "text-body", "text/plain", headers, LIMIT))
+    Show("Client.PostBytes", client.PostBytes(base + "/verb", payload, "application/octet-stream", LIMIT))
+    Show("Client.PostBytesWithHeaders", client.PostBytesWithHeaders(base + "/verb", payload, "application/octet-stream", headers, LIMIT))
+    Show("Client.PostFields", client.PostFields(base + "/verb", fields, LIMIT))
+    Show("Client.PostFieldsWithHeaders", client.PostFieldsWithHeaders(base + "/verb", fields, headers, LIMIT))
+    Show("Client.PostForm", client.PostForm(base + "/verb", form, LIMIT))
+    Show("Client.PostFormWithHeaders", client.PostFormWithHeaders(base + "/verb", form, headers, LIMIT))
+    Show("Client.PostJson", client.PostJson(base + "/verb", "{\"a\":1}", LIMIT))
+    Show("Client.PostJsonWithHeaders", client.PostJsonWithHeaders(base + "/verb", "{\"a\":1}", headers, LIMIT))
+    Show("Client.Put", client.Put(base + "/verb", "text-body", "text/plain", LIMIT))
+    Show("Client.PutWithHeaders", client.PutWithHeaders(base + "/verb", "text-body", "text/plain", headers, LIMIT))
+    Show("Client.PutBytes", client.PutBytes(base + "/verb", payload, "application/octet-stream", LIMIT))
+    Show("Client.PutBytesWithHeaders", client.PutBytesWithHeaders(base + "/verb", payload, "application/octet-stream", headers, LIMIT))
+    Show("Client.Patch", client.Patch(base + "/verb", "text-body", "text/plain", LIMIT))
+    Show("Client.PatchWithHeaders", client.PatchWithHeaders(base + "/verb", "text-body", "text/plain", headers, LIMIT))
+    Show("Client.PatchBytes", client.PatchBytes(base + "/verb", payload, "application/octet-stream", LIMIT))
+    Show("Client.PatchBytesWithHeaders", client.PatchBytesWithHeaders(base + "/verb", payload, "application/octet-stream", headers, LIMIT))
+    Show("Client.RequestMethod", client.RequestMethod("PUT", base + "/verb", "text-body", "text/plain", headers, LIMIT))
+
+    // The 0.3 request API.
+    LET old AS Web.Response OR Error = client.Request("GET", base + "/verb", "")
+    IF old IS Error THEN
+        PRINT "Client.Request", "error", old.Code, old.Message
+    ELSE
+        PRINT "Client.Request", old.Status()
+    END IF
+    LET madePolicy AS Web.EgressPolicy OR Error = Web.EgressPolicy.New("http", "127.0.0.0/8", HOST.Args[4], 0, 10000)
+    IF madePolicy IS Error THEN
+        PRINT "Client.RequestWithPolicy", "policy error", madePolicy.Message
+    ELSE
+        LET viaPolicy AS Web.Response OR Error = client.RequestWithPolicy("GET", base + "/verb", "", madePolicy)
+        IF viaPolicy IS Error THEN
+            PRINT "Client.RequestWithPolicy", "error", viaPolicy.Code, viaPolicy.Message
+        ELSE
+            PRINT "Client.RequestWithPolicy", viaPolicy.Status()
+        END IF
+    END IF
+
+    PRINT "Client.Close", client.Close() IS Error
+    PRINT "plain client", plain.Close() IS Error
+    PRINT "bare form", bareForm.AddField("unused", "unused") IS Error
+    RETURN 0
+END FUNCTION

@@ -76,6 +76,8 @@ mod signed_zero;
 mod spec_0_6_5_s13;
 #[path = "programs/struct_vector_literals.rs"]
 mod struct_vector_literals;
+#[path = "programs/web_client_tour.rs"]
+mod web_client_tour;
 #[path = "programs/web_egress_policy_bounds.rs"]
 mod web_egress_policy_bounds;
 #[path = "programs/web_error_fields.rs"]

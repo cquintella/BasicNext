@@ -1,0 +1,72 @@
+Client.CONSTRUCTOR ok
+Client.New ok
+Headers.CONSTRUCTOR 0
+Headers.New 0
+Headers.Add FALSE
+Headers.Set FALSE
+Headers.Count 1
+Headers.Get second
+Query.CONSTRUCTOR TRUE
+Query.New ok
+Query.Add FALSE
+Query.Encode q=a%20b%26c
+Fields.CONSTRUCTOR TRUE
+Fields.New ok
+Fields.Add FALSE
+Fields.Encode name=a+b%26c
+Form.CONSTRUCTOR ok
+Form.New ok
+Form.AddField FALSE
+Form.AddFile FALSE
+Client.Get 200
+ClientReply.Status 200
+ClientReply.HttpVersion HTTP/1.1
+ClientReply.BodySize 10
+ClientReply.TotalMs TRUE
+ClientReply.ConnectMs TRUE
+ClientReply.Header yes
+ClientReply.HeaderCount 4
+ClientReply.HeaderName content-type
+ClientReply.HeaderValue text/plain
+ClientReply.BodyText reply-body
+ClientReply.BodyBytes 10 7265706c792d626f6479
+ClientReply.PeerAddress TRUE
+ClientReply.CONSTRUCTOR TRUE
+ClientReply.BodyDecodedText decoded-tour-text
+ClientReply.BodyDecodedBytes 17
+Client.Get binary 200 body error 1
+Client.GetWithHeaders 200 GET /verb tour=second type=- length=0
+Client.GetDecoded 200
+Client.GetDecodedWithHeaders 200
+Client.GetQuery 200 GET /verb?q=a%20b%26c tour=- type=- length=0
+Client.GetQueryWithHeaders 200 GET /verb?q=a%20b%26c tour=second type=- length=0
+Client.Head 200
+Client.HeadWithHeaders 200
+Client.Delete 200 DELETE /verb tour=- type=- length=0
+Client.DeleteWithHeaders 200 DELETE /verb tour=second type=- length=0
+Client.Options 200 OPTIONS /verb tour=- type=- length=0
+Client.OptionsWithHeaders 200 OPTIONS /verb tour=second type=- length=0
+Client.Post 200 POST /verb tour=- type=text/plain length=9 body=text-body
+Client.PostWithHeaders 200 POST /verb tour=second type=text/plain length=9 body=text-body
+Client.PostBytes 200 POST /verb tour=- type=application/octet-stream length=10 body=tour-bytes
+Client.PostBytesWithHeaders 200 POST /verb tour=second type=application/octet-stream length=10 body=tour-bytes
+Client.PostFields 200 POST /verb tour=- type=application/x-www-form-urlencoded length=12 body=name=a+b%26c
+Client.PostFieldsWithHeaders 200 POST /verb tour=second type=application/x-www-form-urlencoded length=12 body=name=a+b%26c
+Client.PostForm 200 POST /verb tour=- type=multipart/form-data parts=2 file=true
+Client.PostFormWithHeaders 200 POST /verb tour=second type=multipart/form-data parts=2 file=true
+Client.PostJson 200 POST /verb tour=- type=application/json length=7 body={"a":1}
+Client.PostJsonWithHeaders 200 POST /verb tour=second type=application/json length=7 body={"a":1}
+Client.Put 200 PUT /verb tour=- type=text/plain length=9 body=text-body
+Client.PutWithHeaders 200 PUT /verb tour=second type=text/plain length=9 body=text-body
+Client.PutBytes 200 PUT /verb tour=- type=application/octet-stream length=10 body=tour-bytes
+Client.PutBytesWithHeaders 200 PUT /verb tour=second type=application/octet-stream length=10 body=tour-bytes
+Client.Patch 200 PATCH /verb tour=- type=text/plain length=9 body=text-body
+Client.PatchWithHeaders 200 PATCH /verb tour=second type=text/plain length=9 body=text-body
+Client.PatchBytes 200 PATCH /verb tour=- type=application/octet-stream length=10 body=tour-bytes
+Client.PatchBytesWithHeaders 200 PATCH /verb tour=second type=application/octet-stream length=10 body=tour-bytes
+Client.RequestMethod 200 PUT /verb tour=second type=text/plain length=9 body=text-body
+Client.Request 200
+Client.RequestWithPolicy 200
+Client.Close FALSE
+plain client FALSE
+bare form FALSE

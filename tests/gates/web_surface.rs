@@ -398,3 +398,63 @@ fn a_planted_declaration_and_a_served_allow_entry_fail() {
         "the allow file only shrinks"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Reach: every member of the client classes that a backend serves is called by
+// the tour program, which `tests/programs/web_client_tour.rs` runs on both
+// backends. The tour prints one line per call, labelled `Class.Member`.
+
+/// The program that calls the client surface on both backends.
+const TOUR: &str = "tests/host/web_client_tour.bn";
+/// The classes the tour covers.
+const TOUR_CLASSES: [&str; 6] = [
+    "Client",
+    "ClientReply",
+    "Headers",
+    "Query",
+    "Fields",
+    "Form",
+];
+
+/// The served members of the tour classes whose label the tour lacks.
+pub(crate) fn uncalled(served: &BTreeSet<String>, tour: &str) -> Vec<String> {
+    served
+        .iter()
+        .filter(|member| {
+            member
+                .split_once('.')
+                .is_some_and(|(class, _)| TOUR_CLASSES.contains(&class))
+        })
+        .filter(|member| !tour.contains(&format!("\"{member}\"")))
+        .cloned()
+        .collect()
+}
+
+#[test]
+fn every_served_client_member_is_called_by_the_tour() {
+    let module = fs::read_to_string(MODULE).expect("read the BNWeb module");
+    let declared = declared_members(&module);
+    let bni = bni_members(&provider_sources(), &classes_of(&declared));
+    let bnc = bnc_members(&fs::read_to_string(BNC_NAME_MAP).expect("read the native name map"));
+    let served = bni
+        .union(&bnc)
+        .filter(|member| declared.contains(*member))
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let tour = fs::read_to_string(TOUR).expect("read the client tour");
+    assert_eq!(uncalled(&served, &tour), Vec::<String>::new());
+}
+
+#[test]
+fn a_served_member_the_tour_does_not_call_fails() {
+    let served = ["Client.Get", "Client.Post", "Server.Start"]
+        .map(str::to_owned)
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+    let tour = "    Show(\"Client.Get\", client.Get(base, LIMIT))\n";
+    assert_eq!(
+        uncalled(&served, tour),
+        ["Client.Post"],
+        "a member outside the tour classes is not required"
+    );
+}
