@@ -657,8 +657,13 @@ fn bnweb_client_rejects_unsafe_urls_before_transport() {
     let source = r#"IMPORT BNWeb AS Web
 FUNCTION Start() AS VOID
 LET client AS Web.Client = NEW Web.Client()
-LET response AS Web.Response OR Error = client.Request("GET", "http://127.0.0.1/", "")
-PRINT response IS Error
+LET policy AS Web.EgressPolicy OR Error = Web.EgressPolicy.New("http", "10.0.0.0/8", "80", 0, 1000)
+IF policy IS Error THEN
+    PRINT "policy error"
+    RETURN
+END IF
+LET response AS Web.Response OR Error = client.RequestWithPolicy("GET", "http://127.0.0.1/", "", policy)
+PRINT response IS Error AND response.Code = Web.EGRESS_DENIED
 LET malformed AS Web.Response OR Error = client.Request("GET", "not-a-url", "")
 PRINT malformed IS Error
 RELEASE client
