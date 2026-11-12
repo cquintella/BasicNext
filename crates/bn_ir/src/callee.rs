@@ -17,10 +17,7 @@ use bn_source::Span;
 
 use crate::{Constant, Diagnostic, Instruction, Module, ModuleId, invalid_ir};
 
-/// The prefix of a module-qualified callee: `#<module id>.<member>`.
-const MODULE_PREFIX: char = '#';
-/// The prefix of a call that skips dynamic dispatch: `@super:<function>`.
-const SUPER_PREFIX: &str = "@super:";
+use crate::names::{MODULE_PREFIX, SUPER_PREFIX};
 
 /// The index of a function in `Module::functions`.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
@@ -92,9 +89,7 @@ impl CalleeTable {
                 let callee = resolve(module, &functions, name);
                 table.by_name.insert(name.clone(), callee);
             }
-            if let Some((owner, method)) = name.rsplit_once('.')
-                && !owner.starts_with(MODULE_PREFIX)
-            {
+            if let Some((owner, method)) = name.rsplit_once('.') {
                 table
                     .methods
                     .entry(owner.to_owned())

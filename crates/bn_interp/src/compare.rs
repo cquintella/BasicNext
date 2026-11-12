@@ -371,6 +371,12 @@ pub(super) fn is_host_file_type(name: &str) -> bool {
     name == "FS.File" || (name.ends_with(".File") && !name.starts_with('#'))
 }
 
+/// `File.<method>` for a `<alias>.File.<method>` callee on a `Value::File`.
+pub(super) fn host_file_member(name: &str) -> Option<String> {
+    let (_, method) = name.rsplit_once('.')?;
+    is_host_file_method(name).then(|| format!("File.{method}"))
+}
+
 pub(super) fn is_host_file_method(name: &str) -> bool {
     name.rsplit_once('.').is_some_and(|(owner, method)| {
         is_host_file_type(owner)

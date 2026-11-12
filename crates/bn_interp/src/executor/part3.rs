@@ -40,35 +40,38 @@ impl Executor<'_, '_> {
             }
             return Self::host_call(name, &arguments, span);
         }
-        if is_host_file_method(name) {
+        if let Some(member) = host_file_member(name) {
             // `<alias>.File.<method>` on a `Value::File` receiver.
-            let member = format!("File.{}", name.rsplit('.').next().unwrap_or_default());
             return self.host_provider_call("FileSystem", &member, arguments, span);
-        }
-        // A standard module's members are supplied by its provider; the data it
-        // declares (a STRUCT default, a STATIC initializer) is lowered and runs here.
-        if let Some((library, member)) = self.library_callee(name)
-            && !self.function_index.contains_key(name)
-        {
-            return self.call_library(library, member, arguments, span);
         }
         if is_temporal_builtin(name) {
             return temporal_call(name, &arguments, span);
         }
-        let (name, super_call) = name
-            .strip_prefix("@super:")
-            .map_or((name, false), |name| (name, true));
-        let resolved = if super_call {
-            name.to_string()
-        } else {
-            self.dispatch_name(name, &arguments)
+        let not_found = || super::super::name_not_found(name, "function dispatch", span);
+        let callees = std::rc::Rc::clone(self.callees());
+        let index = match callees.callee(name) {
+            // A standard module's members are supplied by its provider; the
+            // data it declares (a STRUCT default, a STATIC initializer) is
+            // lowered and resolves to a function instead.
+            Some(bn_ir::callee::Callee::Library { module, member }) => {
+                let Some(library) = self.module.standard_library_of(*module) else {
+                    return Err(not_found());
+                };
+                return self.call_library(library, member, arguments, span);
+            }
+            Some(bn_ir::callee::Callee::Super(id)) => id.index(),
+            Some(bn_ir::callee::Callee::Function { id, method }) => {
+                self.dispatch_index(&callees, *id, method.as_deref(), &arguments)
+            }
+            Some(bn_ir::callee::Callee::Virtual { method }) => self
+                .receiver_method(&callees, method, &arguments)
+                .ok_or_else(not_found)?
+                .index(),
+            _ => {
+                return Err(not_found());
+            }
         };
-        let index = self
-            .function_index
-            .get(resolved.as_str())
-            .copied()
-            .ok_or_else(|| super::super::name_not_found(&resolved, "function dispatch", span))?;
-        let callee = &self.module.functions[index];
+        let callee = self.module.functions.get(index).ok_or_else(not_found)?;
         if self.stack_base.abs_diff(super::super::stack_address()) > self.stack_budget {
             return Err(super::super::stack_overflow(callee.name.clone(), span));
         }
@@ -90,17 +93,6 @@ impl Executor<'_, '_> {
             }
             Err(error) => Err(error),
         }
-    }
-
-    /// Splits a library callee into (library name, member): `#3.MEAN` →
-    /// (`"BNMath"`, `"MEAN"`) when the IR says module 3 provides `BNMath`.
-    pub(crate) fn library_callee<'n>(&self, name: &'n str) -> Option<(&'static str, &'n str)> {
-        let rest = name.strip_prefix('#')?;
-        let (module, member) = rest.split_once('.')?;
-        let library = self
-            .module
-            .standard_library_of(ModuleId(module.parse().ok()?))?;
-        Some((library, member))
     }
 
     pub(crate) fn call_library(
@@ -200,7 +192,7 @@ impl Executor<'_, '_> {
         type_name: &str,
         span: Span,
     ) -> Option<Result<Value, Diagnostic>> {
-        let (library, class) = self.library_callee(type_name)?;
+        let (library, class) = self.library_type(type_name)?;
         self.library_allocate_in(library, class, span)
     }
 

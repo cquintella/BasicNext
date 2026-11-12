@@ -17,7 +17,7 @@ use bn_runtime::Heap;
 use bn_value::{Handle, Value};
 
 use crate::{
-    ClassInit, Executor, Flow, FramePool, HostEnv, IdSet, Instance, default_span, function_index,
+    ClassInit, Executor, Flow, FramePool, HostEnv, IdSet, Instance, default_span,
     provider::Provider, runtime_error, stack_address, stack_budget,
 };
 
@@ -190,7 +190,7 @@ impl InteractiveSession {
 
         let mut executor = Executor {
             module,
-            function_index: function_index(module),
+            callees: std::cell::OnceCell::new(),
             stack_base: stack_address(),
             stack_budget: stack_budget(),
             input,

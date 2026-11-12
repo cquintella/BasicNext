@@ -60,7 +60,7 @@ pub use {
 };
 
 use allocation::{add_sizes, display_element, pointer_element_default, pointer_element_size};
-use compare::{equals, is_host_file_method, is_host_file_type, is_value, value_matches_type};
+use compare::{equals, host_file_member, is_host_file_type, is_value, value_matches_type};
 use frame_storage::{FramePool, IdMap, IdSet, ValueSlots};
 use helpers::{
     constant_value, default_function_owner, empty_named, find_block, require_arity, set, value,
@@ -389,7 +389,8 @@ impl<'a> OwnershipFrame<'a> {
 
 pub(crate) struct Executor<'a, 'debug> {
     pub(crate) module: &'a Module,
-    pub(crate) function_index: HashMap<&'a str, usize>,
+    /// Every callee of the module, resolved on the first call (`bn_ir::callee`).
+    pub(crate) callees: std::cell::OnceCell<std::rc::Rc<bn_ir::callee::CalleeTable>>,
     pub(crate) stack_base: usize,
     pub(crate) stack_budget: usize,
     pub(crate) input: &'a mut dyn BufRead,
@@ -417,15 +418,6 @@ pub(crate) struct Executor<'a, 'debug> {
     pub(crate) cancel_flag: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
-/// Each function of `module` by name (the first one, as the IR keeps names unique).
-pub(crate) fn function_index(module: &Module) -> HashMap<&str, usize> {
-    let mut index = HashMap::new();
-    for (position, function) in module.functions.iter().enumerate() {
-        index.entry(function.name.as_str()).or_insert(position);
-    }
-    index
-}
-
 impl<'a, 'debug> Executor<'a, 'debug> {
     fn new(
         module: &'a Module,
@@ -438,7 +430,7 @@ impl<'a, 'debug> Executor<'a, 'debug> {
     ) -> Self {
         Self {
             module,
-            function_index: function_index(module),
+            callees: std::cell::OnceCell::new(),
             stack_base: stack_address(),
             stack_budget: stack_budget(),
             input,

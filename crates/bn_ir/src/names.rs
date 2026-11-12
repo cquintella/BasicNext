@@ -54,7 +54,7 @@ pub const SESSION_ENTRY: &str = "__session_entry";
 pub const SUPER_PREFIX: &str = "@super:";
 
 /// Prefix of an imported module namespace (`#<ModuleId>.<Name>`).
-pub(crate) const MODULE_PREFIX: char = '#';
+pub const MODULE_PREFIX: char = '#';
 
 /// Intrinsic callees: names a `Call` may target that have **no** `Function`
 /// body in the module. Every backend must implement each one natively; the

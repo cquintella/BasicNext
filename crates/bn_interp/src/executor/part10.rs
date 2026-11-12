@@ -2,42 +2,54 @@
 use super::*;
 
 impl Executor<'_, '_> {
-    pub(crate) fn dispatch_name(&self, name: &str, arguments: &[Value]) -> String {
-        if matches!(
-            self.module.kind_of(name),
-            Some(
-                bn_ir::FunctionKind::FieldInit
-                    | bn_ir::FunctionKind::Constructor
-                    | bn_ir::FunctionKind::Destructor
-                    | bn_ir::FunctionKind::ReleaseFields
-            )
-        ) {
-            return name.to_string();
-        }
-        let Some(Value::Object { class, .. }) = arguments.first() else {
-            return name.to_string();
+    /// The module's callees, resolved on the first call (`bn_ir::callee`).
+    pub(crate) fn callees(&self) -> &std::rc::Rc<bn_ir::callee::CalleeTable> {
+        self.callees
+            .get_or_init(|| std::rc::Rc::new(bn_ir::callee::CalleeTable::new(self.module)))
+    }
+
+    /// The function a call of `id` runs: for a method, the one the
+    /// receiver's runtime class (or the class a lifecycle call pinned) has.
+    pub(crate) fn dispatch_index(
+        &self,
+        callees: &bn_ir::callee::CalleeTable,
+        id: bn_ir::callee::FunctionId,
+        method: Option<&str>,
+        arguments: &[Value],
+    ) -> usize {
+        method
+            .and_then(|method| self.receiver_method(callees, method, arguments))
+            .map_or(id.index(), bn_ir::callee::FunctionId::index)
+    }
+
+    /// The function `method` names for the object the call receives.
+    pub(crate) fn receiver_method(
+        &self,
+        callees: &bn_ir::callee::CalleeTable,
+        method: &str,
+        arguments: &[Value],
+    ) -> Option<bn_ir::callee::FunctionId> {
+        let Some(Value::Object { handle, class }) = arguments.first() else {
+            return None;
         };
-        let Some(method) = name.rsplit('.').next() else {
-            return name.to_string();
-        };
-        let runtime_class = arguments
-            .first()
-            .and_then(|value| match value {
-                Value::Object { handle, .. } => self
-                    .pinned_dispatch
-                    .iter()
-                    .rev()
-                    .find(|(pinned, _)| pinned == handle)
-                    .map(|(_, class)| class.as_str()),
-                _ => None,
-            })
-            .unwrap_or(&**class);
-        if let Some(resolved) = bn_ir::dispatch::resolve_method(self.module, runtime_class, method)
-        {
-            resolved.to_string()
-        } else {
-            name.to_string()
-        }
+        let runtime_class = self
+            .pinned_dispatch
+            .iter()
+            .rev()
+            .find(|(pinned, _)| pinned == handle)
+            .map_or(&**class, |(_, pinned_class)| pinned_class.as_str());
+        callees.method(self.module, runtime_class, method)
+    }
+
+    /// Splits a library type into (library name, class): `#3.Json` →
+    /// (`"BNJson"`, `"Json"`) when the IR says module 3 provides `BNJson`.
+    pub(crate) fn library_type<'n>(&self, name: &'n str) -> Option<(&'static str, &'n str)> {
+        let rest = name.strip_prefix(bn_ir::names::MODULE_PREFIX)?;
+        let (module, member) = rest.split_once('.')?;
+        let library = self
+            .module
+            .standard_library_of(ModuleId(module.parse().ok()?))?;
+        Some((library, member))
     }
 
     pub fn allocate_heap_object(&mut self, class: &str, span: Span) -> Result<Value, Diagnostic> {
