@@ -41,6 +41,8 @@
     "bn::test/gates::bni_performance::bni_performance_table",
     "bn::test/gates::bni_performance::bni_performance_user_call_is_linear",
     "bn::test/gates::bni_performance::bni_performance_vector_read_is_linear",
+    "bn::test/gates::callee_names::callee_names_are_not_parsed_in_call_dispatch",
+    "bn::test/gates::callee_names::a_planted_name_parse_is_found",
     "bn::test/gates::crypto_surface::a_planted_name_fails_and_notation_is_not_a_function",
     "bn::test/gates::crypto_surface::every_function_the_contract_names_is_declared",
     "bn::test/gates::source_size::a_planted_long_file_fails_in_every_group",

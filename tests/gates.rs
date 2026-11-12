@@ -16,6 +16,8 @@ mod support;
 
 #[path = "gates/bni_performance.rs"]
 mod bni_performance;
+#[path = "gates/callee_names.rs"]
+mod callee_names;
 #[path = "gates/catalog_keys.rs"]
 mod catalog_keys;
 #[path = "gates/crypto_surface.rs"]
