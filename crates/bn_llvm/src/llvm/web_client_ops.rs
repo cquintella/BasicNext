@@ -22,7 +22,7 @@ pub(crate) fn lower_bnweb_client_call(
         "client_reply_status" => {
             let h0 = web_handle(text, dest, 0, arguments[0], analysis);
             let call = I::call(T::I64, "bn_web_client_reply_status", vec![h0]);
-            text.assign(format!("v{dest}"), call);
+            assign_integer(text, dest, call);
         }
 
         "client_reply_http_version" => {
@@ -34,25 +34,25 @@ pub(crate) fn lower_bnweb_client_call(
         "client_reply_body_size" => {
             let h0 = web_handle(text, dest, 0, arguments[0], analysis);
             let call = I::call(T::I64, "bn_web_client_reply_body_size", vec![h0]);
-            text.assign(format!("v{dest}"), call);
+            assign_integer(text, dest, call);
         }
 
         "client_reply_total_ms" => {
             let h0 = web_handle(text, dest, 0, arguments[0], analysis);
             let call = I::call(T::I64, "bn_web_client_reply_total_ms", vec![h0]);
-            text.assign(format!("v{dest}"), call);
+            assign_integer(text, dest, call);
         }
 
         "client_reply_connect_ms" => {
             let h0 = web_handle(text, dest, 0, arguments[0], analysis);
             let call = I::call(T::I64, "bn_web_client_reply_connect_ms", vec![h0]);
-            text.assign(format!("v{dest}"), call);
+            assign_integer(text, dest, call);
         }
 
         "client_reply_header_count" => {
             let h0 = web_handle(text, dest, 0, arguments[0], analysis);
             let call = I::call(T::I64, "bn_web_client_reply_header_count", vec![h0]);
-            text.assign(format!("v{dest}"), call);
+            assign_integer(text, dest, call);
         }
 
         "client_reply_header" => {
@@ -285,7 +285,7 @@ pub(crate) fn lower_bnweb_client_call(
         "headers_count" => {
             let h0 = web_handle(text, dest, 0, arguments[0], analysis);
             let call = I::call(T::I64, "bn_web_headers_count", vec![h0]);
-            text.assign(format!("v{dest}"), call);
+            assign_integer(text, dest, call);
         }
 
         "headers_get" => {
@@ -868,4 +868,17 @@ pub(crate) fn lower_bnweb_client_call(
         _ => return false,
     }
     true
+}
+
+/// Stores the `i64` a `BNWeb` count or measure returns as the `INTEGER`
+/// (`INT32`) the module declares. The provider bounds each of these values
+/// (status codes, header counts, body sizes and durations under their
+/// limits) well inside `INT32`.
+fn assign_integer(text: &mut crate::ir::LlvmModule, dest: u32, call: crate::ir::LlvmInst) {
+    let wide = format!("webwide{dest}");
+    text.assign(&wide, call);
+    text.assign(
+        format!("v{dest}"),
+        I::cast(CastOp::Trunc, T::I64, O::reg(wide), T::I32),
+    );
 }
