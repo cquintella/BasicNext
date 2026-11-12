@@ -46,6 +46,8 @@
     "bn::test/gates::source_size::a_planted_long_file_fails_in_every_group",
     "bn::test/gates::web_surface::a_planted_name_fails_in_web_surface",
     "bn::test/gates::web_surface::every_function_the_bnweb_contract_names_is_declared",
+    "bn::test/gates::web_surface::every_declared_bnweb_member_is_served_by_both_backends",
+    "bn::test/gates::web_surface::a_planted_declaration_and_a_served_allow_entry_fail",
     "bn::test/gates::migration_ledger::crate_tests_match_the_ledger",
     "bn::test/gates::migration_ledger::migrated_gate_tests_and_grammar_fixtures_match_the_ledger",
     "bn::test/gates::no_python::the_no_python_gate_finds_a_python_file_and_a_python_call",

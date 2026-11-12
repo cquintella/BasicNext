@@ -1,0 +1,2 @@
+# BNWeb members declared in modules/bn/BNWeb.bn that a backend does not serve (tests/gates/web_surface.rs).
+# Class.Member<TAB>backend (bni | bnc)<TAB>reason. The list only shrinks: a served member fails until its line is removed.
