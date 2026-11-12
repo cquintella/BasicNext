@@ -1138,7 +1138,7 @@ fn web_errors_produce_specified_codes() {
          TRUE BNWeb.SessionStore.Create\n\
          TRUE BNWeb.Response.Write\n\
          TRUE BNWeb.Response.Write\n\
-         TRUE BNWeb.Client.Request\n"
+         TRUE BNWeb.Client.RequestWithPolicy\n"
     );
     let compile = bnc().args(["--no-log", path]).output().expect("run bnc");
     assert_eq!(compile.status.code(), Some(2));

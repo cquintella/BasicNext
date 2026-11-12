@@ -14,9 +14,9 @@ use std::time::Duration;
 const PROGRAM: &str = "tests/host/web_client_error_fields.bn";
 const PROCESS_TIMEOUT: Duration = Duration::from_secs(60);
 const EXPECTED: &str = "code TRUE\n\
-operation BNWeb.Client.Request\n\
-message private or local destination requires explicit opt-in\n\
-cause private or local destination requires explicit opt-in\n";
+operation BNWeb.Client.RequestWithPolicy\n\
+message destination is outside the egress policy\n\
+cause destination is outside the egress policy\n";
 
 #[test]
 fn a_web_client_error_has_its_four_fields_on_both_backends() {

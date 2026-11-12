@@ -84,8 +84,14 @@ FUNCTION Start() AS INTEGER
         PRINT afterClose.Code = Web.CLOSED, afterClose.Operation
     END IF
 
-    // 7. EGRESS_DENIED
-    LET egressDenied AS Web.Response OR Error = client.Request("GET", "http://127.0.0.1/", "")
+    // 7. EGRESS_DENIED: a policy that allows only 10.0.0.0/8 refuses the
+    // loopback (a client without a policy connects to any destination).
+    LET policy AS Web.EgressPolicy OR Error = Web.EgressPolicy.New("http", "10.0.0.0/8", "80", 0, 1000)
+    IF policy IS Error THEN
+        PRINT "policy error", policy.Code
+        RETURN 1
+    END IF
+    LET egressDenied AS Web.Response OR Error = client.RequestWithPolicy("GET", "http://127.0.0.1/", "", policy)
     IF egressDenied IS Error THEN
         PRINT egressDenied.Code = Web.EGRESS_DENIED, egressDenied.Operation
     END IF
