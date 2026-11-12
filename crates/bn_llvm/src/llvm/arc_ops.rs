@@ -540,7 +540,7 @@ pub(crate) fn holds_references(module: &Module, ty: &Type) -> bool {
 }
 
 #[path = "library_ownership.rs"]
-mod library_ownership;
+pub(crate) mod library_ownership;
 
 /// Whether `ty` contains a STRING buffer the native code counts.
 pub(crate) fn contains_string(module: &Module, ty: &Type) -> bool {

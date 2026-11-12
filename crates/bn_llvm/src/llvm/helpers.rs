@@ -121,19 +121,9 @@ fn is_provider_handle(module: &Module, id: bn_ir::ModuleId, name: &str) -> bool 
             "Queue" | "Ticket" | "Group" | "Barrier" | "Semaphore" | "Mutex"
         )
     } else if module.bnweb_providers.contains(&id) {
-        matches!(
-            name,
-            "SessionStore"
-                | "CookieJar"
-                | "Scraper"
-                | "ACL"
-                | "Client"
-                | "Server"
-                | "EgressPolicy"
-                | "TLSConfig"
-                | "Response"
-                | "Request"
-        )
+        // One list: a `BNWeb` class is an integer handle exactly when it is
+        // a counted handle (its retain and release symbols).
+        crate::arc_ops::library_ownership::is_web_handle(name)
     } else {
         false
     }

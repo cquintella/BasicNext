@@ -352,3 +352,10 @@ fn emit_keypair_alternative(
     text.emit(LlvmInst::Br { dest: done.clone() });
     state.control_flow.label(text, done);
 }
+
+/// Whether a `BNWeb` class is a counted handle: the one list of the web
+/// classes whose values are `u64` handles, read by the ownership emission and
+/// by the representation of `T OR Error` (`helpers::is_integer_handle_type`).
+pub(crate) fn is_web_handle(name: &str) -> bool {
+    symbols_of(ProviderKind::Web, name).is_some()
+}
