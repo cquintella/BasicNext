@@ -49,44 +49,16 @@ impl<'a> Executor<'a, '_> {
                 args,
             });
         }
+        // A plain run (no debugger, tracer or cancel flag) tests none of them
+        // per instruction.
+        let observed = self.is_observed();
         let mut block = function.entry;
         let mut previous_block = None;
         loop {
             let current = find_block(function, block)?;
             for (index, instruction) in current.instructions.iter().enumerate() {
-                if let Some(hook) = self.debug_hook.as_deref_mut() {
-                    hook(&function.name, instruction.span());
-                }
-                if let Some(emitter) = self.emitter.as_deref_mut() {
-                    emitter.check_line_change(instruction.span(), self.call_depth);
-                    emitter.emit(&Event::Statement {
-                        stmt_kind: instruction_kind_name(instruction).to_string(),
-                        depth: self.call_depth,
-                        span: instruction.span(),
-                    });
-                }
-                if let Some(cancel) = &self.cancel_flag
-                    && cancel.load(std::sync::atomic::Ordering::Relaxed)
-                {
-                    return Err(runtime_error(
-                        bn_diag::DiagId::DEBUG_TERMINATED,
-                        bn_catalog::text("frontend", "msg.session_cancelled"),
-                        instruction.span(),
-                    ));
-                }
-                let view = self
-                    .debug_control
-                    .is_some()
-                    .then(|| self.debug_view(function, &symbols, &values));
-                if let (Some(control), Some(view)) = (self.debug_control.as_deref_mut(), view)
-                    && control(&function.name, self.call_depth, instruction.span(), &view)
-                        == DebugDecision::Terminate
-                {
-                    return Err(runtime_error(
-                        bn_diag::DiagId::DEBUG_TERMINATED,
-                        "execution terminated by debugger",
-                        instruction.span(),
-                    ));
+                if observed {
+                    self.observe(function, instruction, &symbols, &values)?;
                 }
                 if let Instruction::Phi {
                     destination,
@@ -269,5 +241,64 @@ fn instruction_kind_name(instruction: &Instruction) -> &'static str {
         Instruction::EnsureClass { .. } => "EnsureClass",
         Instruction::LoadStatic { .. } => "LoadStatic",
         Instruction::StoreStatic { .. } => "StoreStatic",
+    }
+}
+
+impl Executor<'_, '_> {
+    /// Whether a debugger hook, a tracer, a debug controller or a cancel flag
+    /// watches this run.
+    pub(crate) const fn is_observed(&self) -> bool {
+        self.debug_hook.is_some()
+            || self.emitter.is_some()
+            || self.debug_control.is_some()
+            || self.cancel_flag.is_some()
+    }
+
+    /// Reports `instruction` to whoever watches the run, before it executes:
+    /// the debugger hook, the tracer, the cancel flag and the debug
+    /// controller, in that order.
+    #[cold]
+    fn observe(
+        &mut self,
+        function: &Function,
+        instruction: &Instruction,
+        symbols: &IdMap<SymbolId, Value>,
+        values: &ValueSlots,
+    ) -> Result<(), Diagnostic> {
+        if let Some(hook) = self.debug_hook.as_deref_mut() {
+            hook(&function.name, instruction.span());
+        }
+        if let Some(emitter) = self.emitter.as_deref_mut() {
+            emitter.check_line_change(instruction.span(), self.call_depth);
+            emitter.emit(&Event::Statement {
+                stmt_kind: instruction_kind_name(instruction).to_string(),
+                depth: self.call_depth,
+                span: instruction.span(),
+            });
+        }
+        if let Some(cancel) = &self.cancel_flag
+            && cancel.load(std::sync::atomic::Ordering::Relaxed)
+        {
+            return Err(runtime_error(
+                bn_diag::DiagId::DEBUG_TERMINATED,
+                bn_catalog::text("frontend", "msg.session_cancelled"),
+                instruction.span(),
+            ));
+        }
+        let view = self
+            .debug_control
+            .is_some()
+            .then(|| self.debug_view(function, symbols, values));
+        if let (Some(control), Some(view)) = (self.debug_control.as_deref_mut(), view)
+            && control(&function.name, self.call_depth, instruction.span(), &view)
+                == DebugDecision::Terminate
+        {
+            return Err(runtime_error(
+                bn_diag::DiagId::DEBUG_TERMINATED,
+                "execution terminated by debugger",
+                instruction.span(),
+            ));
+        }
+        Ok(())
     }
 }
