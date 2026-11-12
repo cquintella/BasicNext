@@ -1939,7 +1939,15 @@ pub extern "C" fn bn_web_client_request(
     body: *const c_char,
     out_resp_handle: *mut u64,
 ) -> i32 {
-    bn_web_client_request_with_policy(handle, method, url, body, 0, out_resp_handle)
+    client_request(
+        "Client.Request",
+        handle,
+        method,
+        url,
+        body,
+        0,
+        out_resp_handle,
+    )
 }
 
 #[unsafe(no_mangle)]
@@ -1951,9 +1959,31 @@ pub extern "C" fn bn_web_client_request_with_policy(
     policy_handle: u64,
     out_resp_handle: *mut u64,
 ) -> i32 {
+    client_request(
+        "Client.RequestWithPolicy",
+        handle,
+        method,
+        url,
+        body,
+        policy_handle,
+        out_resp_handle,
+    )
+}
+
+/// `Client.Request` and `Client.RequestWithPolicy`: `operation` names the
+/// member the program called, in its `Error`.
+fn client_request(
+    operation: &str,
+    handle: u64,
+    method: *const c_char,
+    url: *const c_char,
+    body: *const c_char,
+    policy_handle: u64,
+    out_resp_handle: *mut u64,
+) -> i32 {
     let (Some(method_str), Some(url_str)) = (string_text(method), string_text(url)) else {
         return record_failure(
-            "Client.Request",
+            operation,
             &WebFailure::InvalidArgument("invalid method or url".into()),
         );
     };
@@ -1999,7 +2029,7 @@ pub extern "C" fn bn_web_client_request_with_policy(
         }
         Err(err) => {
             log_client_access(logger, &method_str, &url_str, 0, 0, started, &[]);
-            record_failure("Client.Request", &WebFailure::from_message(&err))
+            record_failure(operation, &WebFailure::from_message(&err))
         }
     }
 }
