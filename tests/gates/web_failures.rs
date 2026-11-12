@@ -128,3 +128,21 @@ fn a_planted_parse_and_a_planted_limit_are_found() {
     );
     assert_eq!(findings(&sources, names_a_limit), ["planted.rs:3"]);
 }
+
+/// The one place a client URL is split into its parts.
+const CLIENT_URL_MODULE: &str = "libraries/bn_web/src/web/url.rs";
+/// The split that parses a URL by hand.
+const URL_SPLIT: &str = "split_once(\"://\")";
+
+#[test]
+fn client_urls_are_parsed_in_one_place() {
+    let found = findings(&web_sources(), |line| line.contains(URL_SPLIT))
+        .into_iter()
+        .filter(|finding| !finding.starts_with(&format!("{CLIENT_URL_MODULE}:")))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        found,
+        Vec::<String>::new(),
+        "a URL parsed outside ClientUrl"
+    );
+}

@@ -100,3 +100,127 @@ fn client_dns_pool_saturation_returns_web_limit() {
         "DNS pool saturation must map to Web.LIMIT; got {error:?}"
     );
 }
+
+/// A loopback server for one connection: it reads the request, then plays
+/// `script` (wait, then write), and holds the socket open until the test ends.
+/// Each wait is a timed receive on a channel nobody sends on.
+struct StallingServer {
+    port: u16,
+    release: Option<std::sync::mpsc::Sender<()>>,
+    handle: Option<std::thread::JoinHandle<()>>,
+}
+
+impl StallingServer {
+    fn start(script: Vec<(std::time::Duration, Vec<u8>)>, read_request: bool) -> Self {
+        use std::io::{Read as _, Write as _};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("local address").port();
+        let (release, held) = std::sync::mpsc::channel::<()>();
+        let handle = std::thread::spawn(move || {
+            let Ok((mut stream, _)) = listener.accept() else {
+                return;
+            };
+            if read_request {
+                let mut buffer = [0_u8; 4096];
+                let _ = stream.read(&mut buffer);
+            }
+            for (wait, bytes) in script {
+                let _ = held.recv_timeout(wait);
+                if stream.write_all(&bytes).is_err() {
+                    return;
+                }
+                let _ = stream.flush();
+            }
+            // Hold the socket open until the test drops the server.
+            let _ = held.recv();
+        });
+        Self {
+            port,
+            release: Some(release),
+            handle: Some(handle),
+        }
+    }
+}
+
+impl Drop for StallingServer {
+    fn drop(&mut self) {
+        drop(self.release.take());
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+/// The total deadline of the stalling tests, and the most a timed-out call
+/// may take beyond it.
+const CLIENT_DEADLINE_MS: u64 = 600;
+const DEADLINE_SLACK: std::time::Duration = std::time::Duration::from_millis(1500);
+
+/// Runs one GET under a policy that allows the loopback port with a
+/// `CLIENT_DEADLINE_MS` deadline, on its own thread: a call that does not
+/// return within the deadline and its slack is reported, never waited for.
+fn timed_get(scheme: &'static str, port: u16) -> Result<std::time::Duration, String> {
+    let policy = crate::web::EgressPolicy::from_csv(
+        scheme,
+        "127.0.0.0/8",
+        &port.to_string(),
+        0,
+        CLIENT_DEADLINE_MS,
+    )
+    .map_err(|reason| format!("policy: {reason:?}"))?;
+    let (done, finished) = std::sync::mpsc::channel();
+    let started = std::time::Instant::now();
+    std::thread::spawn(move || {
+        let outcome = super::client_transfer_with_policy(
+            "GET",
+            &format!("{scheme}://127.0.0.1:{port}/"),
+            &[],
+            &[],
+            &policy,
+        );
+        let _ = done.send(outcome.map(|_| ()));
+    });
+    let limit = std::time::Duration::from_millis(CLIENT_DEADLINE_MS) + DEADLINE_SLACK;
+    match finished.recv_timeout(limit) {
+        Ok(Err(failure)) if failure.code() == bn_types::error_codes::web::TIMEOUT => {
+            Ok(started.elapsed())
+        }
+        Ok(other) => Err(format!("expected TIMEOUT, got {other:?}")),
+        Err(_) => Err(format!("the call did not return within {limit:?}")),
+    }
+}
+
+fn assert_timed_out(outcome: Result<std::time::Duration, String>) {
+    if let Err(problem) = outcome {
+        panic!("{problem}");
+    }
+}
+
+#[test]
+fn client_deadline_bounds_a_stalled_tls_handshake() {
+    let server = StallingServer::start(Vec::new(), false);
+    assert_timed_out(timed_get("https", server.port));
+}
+
+#[test]
+fn client_deadline_bounds_a_stalled_response_head() {
+    let server = StallingServer::start(Vec::new(), true);
+    assert_timed_out(timed_get("http", server.port));
+}
+
+#[test]
+fn client_deadline_bounds_a_stalled_body() {
+    let head = b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\npartial".to_vec();
+    let server = StallingServer::start(vec![(std::time::Duration::ZERO, head)], true);
+    assert_timed_out(timed_get("http", server.port));
+}
+
+/// Two waits, each well inside the deadline, together past it: one deadline
+/// for the whole exchange, not one per phase.
+#[test]
+fn client_deadline_is_one_for_all_phases() {
+    let wait = std::time::Duration::from_millis(CLIENT_DEADLINE_MS * 2 / 3);
+    let head = b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\n".to_vec();
+    let server = StallingServer::start(vec![(wait, head), (wait, b"done".to_vec())], true);
+    assert_timed_out(timed_get("http", server.port));
+}
