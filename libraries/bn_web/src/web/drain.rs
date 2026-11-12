@@ -8,6 +8,8 @@
 //! while waiting (moved from `bn_lib_web`; both backends use it).
 
 use super::ServerState;
+use super::server::StopPending;
+use crate::web_error::WebFailure;
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -128,13 +130,15 @@ pub fn drain_server(
     state: &std::sync::Arc<std::sync::Mutex<ServerState>>,
     timeout_ms: i128,
     close: bool,
-) -> Result<(), &'static str> {
+) -> Result<(), WebFailure> {
     let timeout = std::time::Duration::from_millis(
-        u64::try_from(timeout_ms).map_err(|_| "stop timeout is outside 1..60000 ms")?,
+        u64::try_from(timeout_ms).map_err(|_| super::server::stop_timeout_outside_bounds())?,
     );
     let deadline = std::time::Instant::now() + timeout;
     let (mut listener, signal) = {
-        let mut server = state.lock().map_err(|_| "server state unavailable")?;
+        let mut server = state
+            .lock()
+            .map_err(|_| WebFailure::ServerStateUnavailable)?;
         server.begin_stop(timeout_ms)?;
         (server.take_listener(), server.drain_signal())
     };
@@ -145,16 +149,18 @@ pub fn drain_server(
                 if let Ok(mut server) = state.lock() {
                     server.mark_failed();
                 }
-                return Err("server listener join failed");
+                return Err(WebFailure::ListenerJoinFailed);
             }
             break;
         }
         if std::time::Instant::now() >= deadline {
-            let mut server = state.lock().map_err(|_| "server state unavailable")?;
-            server
-                .install_listener(handle)
-                .map_err(|_| "server listener is already installed")?;
-            return Err("server listener join timed out");
+            let mut server = state
+                .lock()
+                .map_err(|_| WebFailure::ServerStateUnavailable)?;
+            server.install_listener(handle).map_err(|_| {
+                WebFailure::InvalidArgument("server listener is already installed".into())
+            })?;
+            return Err(WebFailure::ListenerJoinTimeout);
         }
         signal.wait_for_change(seen, deadline);
         listener = Some(handle);
@@ -162,18 +168,20 @@ pub fn drain_server(
     loop {
         let seen = signal.generation();
         let result = {
-            let mut server = state.lock().map_err(|_| "server state unavailable")?;
+            let mut server = state
+                .lock()
+                .map_err(|_| WebFailure::ServerStateUnavailable)?;
             server.finish_stop()
         };
         match result {
             Ok(()) => {
                 let workers_finished = state
                     .lock()
-                    .map_err(|_| "server state unavailable")?
+                    .map_err(|_| WebFailure::ServerStateUnavailable)?
                     .workers_finished();
                 if !workers_finished {
                     if std::time::Instant::now() >= deadline {
-                        return Err("server worker drain timed out");
+                        return Err(WebFailure::WorkerDrainTimeout);
                     }
                     signal.wait_for_change(seen, deadline);
                     continue;
@@ -181,17 +189,17 @@ pub fn drain_server(
                 if close {
                     state
                         .lock()
-                        .map_err(|_| "server state unavailable")?
+                        .map_err(|_| WebFailure::ServerStateUnavailable)?
                         .mark_closed();
                 }
                 return Ok(());
             }
-            Err("server drain timed out with active connections") => {
+            Err(StopPending::Connections) => {
                 if std::time::Instant::now() >= deadline {
-                    return Err("server drain timed out with active connections");
+                    return Err(StopPending::Connections.failure());
                 }
             }
-            Err(message) => return Err(message),
+            Err(pending) => return Err(pending.failure()),
         }
         signal.wait_for_change(seen, deadline);
     }
@@ -201,6 +209,7 @@ pub fn drain_server(
 mod tests {
     use super::drain_server;
     use crate::web::ServerState;
+    use crate::web_error::WebFailure;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
     use std::time::Instant;
@@ -227,7 +236,7 @@ mod tests {
         let started = Instant::now();
         assert_eq!(
             drain_server(&state, 1, false),
-            Err("server drain timed out with active connections")
+            Err(WebFailure::WorkerDrainTimeout)
         );
         assert!(started.elapsed() < std::time::Duration::from_secs(1));
 
@@ -260,7 +269,7 @@ mod tests {
 
         assert_eq!(
             drain_server(&state, 1, false),
-            Err("server listener join timed out")
+            Err(WebFailure::ListenerJoinTimeout)
         );
         release.store(true, Ordering::Release);
         drain_server(&state, 1000, false).unwrap();

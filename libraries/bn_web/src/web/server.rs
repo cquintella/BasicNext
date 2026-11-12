@@ -1,4 +1,5 @@
 use super::{Route, RouteOutcome, dispatch_route, valid_method, valid_route_pattern};
+use crate::web_error::WebFailure;
 
 #[derive(Debug)]
 struct Bucket {
@@ -148,7 +149,7 @@ impl Default for ServerOptions {
 }
 
 impl ServerOptions {
-    pub fn validate(&self) -> Result<(), &'static str> {
+    pub fn validate(&self) -> Result<(), WebFailure> {
         let limits = bn_limits::web_limits();
         if self.active_connections == 0
             || self.active_connections > limits.active_connections_max
@@ -186,7 +187,9 @@ impl ServerOptions {
             || self.rate_limit_key_capacity == 0
             || self.rate_limit_key_capacity > limits.rate_limit_key_capacity
         {
-            return Err("server options are outside the configured bounds");
+            return Err(WebFailure::InvalidArgument(
+                "server options are outside the configured bounds".into(),
+            ));
         }
         Ok(())
     }
@@ -301,9 +304,10 @@ impl ServerState {
             .unwrap_or_else(|| std::sync::Arc::new(super::policy_opener::PolicyFileOpener))
     }
     /// Registers a static file mount point (before `Start`).
-    pub fn add_static(&mut self, prefix: &str, directory: &str) -> Result<(), &'static str> {
+    pub fn add_static(&mut self, prefix: &str, directory: &str) -> Result<(), WebFailure> {
         self.before_start()?;
-        let mount = super::static_files::StaticMount::new(prefix, directory)?;
+        let mount = super::static_files::StaticMount::new(prefix, directory)
+            .map_err(|reason| WebFailure::InvalidArgument(reason.into()))?;
         self.static_mounts.push(mount);
         self.static_mounts
             .sort_by_key(|a| std::cmp::Reverse(a.prefix.len()));
@@ -358,23 +362,23 @@ impl ServerState {
         }
     }
     /// Runs every handler as a task of `queue` (before `Start`).
-    pub fn use_queue(&mut self, queue: bn_core_dispatch::Queue) -> Result<(), &'static str> {
+    pub fn use_queue(&mut self, queue: bn_core_dispatch::Queue) -> Result<(), WebFailure> {
         self.before_start()?;
         self.queue = Some(queue);
         Ok(())
     }
     /// Keeps server sessions (before `Start`).
-    pub fn use_sessions(&mut self, capacity: i128, idle_ms: i128) -> Result<(), &'static str> {
+    pub fn use_sessions(&mut self, capacity: i128, idle_ms: i128) -> Result<(), WebFailure> {
         self.before_start()?;
         self.sessions = Some(super::sessions::SessionTable::new(capacity, idle_ms)?);
         Ok(())
     }
-    fn before_start(&self) -> Result<(), &'static str> {
+    fn before_start(&self) -> Result<(), WebFailure> {
         if self.closed || self.stopping {
-            return Err("server is stopping or closed");
+            return Err(WebFailure::ServerStoppingOrClosed);
         }
         if self.started {
-            return Err("server is already started");
+            return Err(WebFailure::ServerAlreadyStarted);
         }
         Ok(())
     }
@@ -386,12 +390,12 @@ impl ServerState {
     pub fn sessions(&self) -> Option<std::sync::Arc<super::sessions::SessionTable>> {
         self.sessions.clone()
     }
-    pub fn add_route(&mut self, method: String, pattern: String) -> Result<(), &'static str> {
+    pub fn add_route(&mut self, method: String, pattern: String) -> Result<(), WebFailure> {
         if self.closed || self.stopping {
-            return Err("server is stopping or closed");
+            return Err(WebFailure::ServerStoppingOrClosed);
         }
         if !valid_method(&method) || !valid_route_pattern(&pattern) {
-            return Err("invalid route");
+            return Err(WebFailure::InvalidRoute("invalid route".into()));
         }
         self.routes.push(Route {
             method,
@@ -406,15 +410,15 @@ impl ServerState {
             .map(|(route, _)| route.pattern().to_owned())
     }
     #[cfg(test)]
-    pub(crate) fn start(&mut self) -> Result<(), &'static str> {
+    pub(crate) fn start(&mut self) -> Result<(), WebFailure> {
         self.start_with_options(ServerOptions::default())
     }
-    pub fn start_with_options(&mut self, options: ServerOptions) -> Result<(), &'static str> {
+    pub fn start_with_options(&mut self, options: ServerOptions) -> Result<(), WebFailure> {
         if self.closed || self.stopping {
-            return Err("server is stopping or closed");
+            return Err(WebFailure::ServerStoppingOrClosed);
         }
         if self.started {
-            return Err("server is already started");
+            return Err(WebFailure::ServerAlreadyStarted);
         }
         options.validate()?;
         self.options = options;
@@ -422,16 +426,18 @@ impl ServerState {
         self.started = true;
         Ok(())
     }
-    pub fn install_worker_pool(&mut self) -> Result<(), &'static str> {
+    pub fn install_worker_pool(&mut self) -> Result<(), WebFailure> {
         if self.work_sender.is_some() {
-            return Err("server worker pool is already installed");
+            return Err(WebFailure::InvalidArgument(
+                "server worker pool is already installed".into(),
+            ));
         }
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(self.options.worker_count)
             .enable_io()
             .enable_time()
             .build()
-            .map_err(|_| "failed to start server runtime")?;
+            .map_err(|_| WebFailure::InvalidArgument("failed to start server runtime".into()))?;
         let (sender, receiver) = std::sync::mpsc::sync_channel(self.options.pending_work);
         let receiver = std::sync::Arc::new(std::sync::Mutex::new(receiver));
         let mut workers = Vec::with_capacity(self.options.worker_count);
@@ -456,7 +462,9 @@ impl ServerState {
                         }
                     }
                 })
-                .map_err(|_| "failed to start server worker pool")?;
+                .map_err(|_| {
+                    WebFailure::InvalidArgument("failed to start server worker pool".into())
+                })?;
             workers.push(worker);
         }
         self.work_sender = Some(sender);
@@ -657,9 +665,9 @@ impl ServerState {
         self.reap_finished_workers();
         self.connection_workers.is_empty()
     }
-    pub(crate) fn begin_stop(&mut self, timeout_ms: i128) -> Result<(), &'static str> {
+    pub(crate) fn begin_stop(&mut self, timeout_ms: i128) -> Result<(), WebFailure> {
         if !(1..=60_000).contains(&timeout_ms) {
-            return Err("stop timeout is outside 1..60000 ms");
+            return Err(stop_timeout_outside_bounds());
         }
         if self.closed {
             return Ok(());
@@ -674,16 +682,16 @@ impl ServerState {
         self.started = false;
         Ok(())
     }
-    pub(crate) fn finish_stop(&mut self) -> Result<(), &'static str> {
+    pub(crate) fn finish_stop(&mut self) -> Result<(), StopPending> {
         if self.closed {
             return Ok(());
         }
         self.reap_finished_workers();
         if self.active_handler_tasks.running() != 0 {
-            return Err("server drain timed out with active handlers");
+            return Err(StopPending::Handlers);
         }
         if self.active_connections != 0 {
-            return Err("server drain timed out with active connections");
+            return Err(StopPending::Connections);
         }
         Ok(())
     }
@@ -694,12 +702,12 @@ impl ServerState {
         self.closed = true;
     }
     #[cfg(test)]
-    pub(crate) fn stop(&mut self, timeout_ms: i128) -> Result<(), &'static str> {
+    pub(crate) fn stop(&mut self, timeout_ms: i128) -> Result<(), WebFailure> {
         self.begin_stop(timeout_ms)?;
-        self.finish_stop()
+        self.finish_stop().map_err(StopPending::failure)
     }
     #[cfg(test)]
-    pub(crate) fn close(&mut self, timeout_ms: i128) -> Result<(), &'static str> {
+    pub(crate) fn close(&mut self, timeout_ms: i128) -> Result<(), WebFailure> {
         self.stop(timeout_ms)?;
         self.closed = true;
         Ok(())
@@ -768,7 +776,7 @@ pub fn spawn_listener_thread(
     listener: bn_core_net::TcpListener,
     handler: crate::http::Handler,
     tls_config: Option<std::sync::Arc<rustls::ServerConfig>>,
-) -> Result<(), &'static str> {
+) -> Result<(), WebFailure> {
     let accept_state = std::sync::Arc::clone(state);
     let exit_notice = accept_state
         .lock()
@@ -852,9 +860,39 @@ pub fn spawn_listener_thread(
                 }
             }
         })
-        .map_err(|_| bn_catalog::text("web", "server.listener_spawn_failed"))?;
+        .map_err(|_| {
+            WebFailure::InvalidArgument(
+                bn_catalog::text("web", "server.listener_spawn_failed").into(),
+            )
+        })?;
     state
         .lock()
-        .map_err(|_| bn_catalog::text("web", "server.state_unavailable"))?
+        .map_err(|_| WebFailure::ServerStateUnavailable)?
         .install_listener(listener_handle)
+        .map_err(|reason| WebFailure::InvalidArgument(reason.into()))
+}
+
+/// What still runs when a server is asked to finish stopping.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum StopPending {
+    Handlers,
+    Connections,
+}
+
+impl StopPending {
+    /// The failure a program sees when the drain deadline passes with this
+    /// work still running.
+    pub(crate) fn failure(self) -> WebFailure {
+        match self {
+            Self::Handlers => {
+                WebFailure::Timeout("server drain timed out with active handlers".into())
+            }
+            Self::Connections => WebFailure::WorkerDrainTimeout,
+        }
+    }
+}
+
+/// `Server.Stop` and `Close` take a timeout in `1..60000` ms.
+pub(crate) fn stop_timeout_outside_bounds() -> WebFailure {
+    WebFailure::Timeout("stop timeout is outside 1..60000 ms".into())
 }

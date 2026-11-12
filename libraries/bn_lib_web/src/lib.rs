@@ -125,7 +125,7 @@ impl WebProvider {
         method: &str,
         url: &str,
         duration_ms: i64,
-        outcome: &Result<crate::web::Response, String>,
+        outcome: &Result<crate::web::Response, WebFailure>,
     ) {
         let Value::Object { handle, .. } = receiver else {
             return;
@@ -329,17 +329,19 @@ fn bn_server_handler(
             .lock()
             .ok()
             .and_then(|server| server.matched_route_pattern(&request.method, &request.target.path))
-            .ok_or("BNWeb route disappeared")?;
+            .ok_or(WebFailure::RequestDispatchFailed)?;
         let key = format!("{}\n{pattern}", request.method);
-        let handler = handlers.get(&key).ok_or("BNWeb handler is not live")?;
+        let handler = handlers
+            .get(&key)
+            .ok_or(WebFailure::RequestDispatchFailed)?;
         let mut current = crate::web::Response::new();
         current.secure = request.secure;
         for filter in &filters {
             current = execute_callback(&module, &host, filter, request.clone(), current)
-                .map_err(|_| "BNWeb filter failed")?;
+                .map_err(|_| WebFailure::RequestDispatchFailed)?;
         }
         current = execute_callback(&module, &host, handler, request.clone(), current)
-            .map_err(|_| "BNWeb handler failed")?;
+            .map_err(|_| WebFailure::RequestDispatchFailed)?;
         *response = current;
         Ok(())
     })
@@ -466,10 +468,10 @@ impl WebProvider {
                         ));
                     }
                     if let Err(message) = crate::web::validate_client_url(url) {
-                        return Ok(failed(name, &WebFailure::from_message(message)));
+                        return Ok(failed(name, &message));
                     }
                     if let Err(message) = crate::web::bounded_body(body, 8 * 1024 * 1024) {
-                        return Ok(failed(name, &WebFailure::from_message(message)));
+                        return Ok(failed(name, &message));
                     }
                     let policy = if with_policy {
                         let Value::Object { handle, .. } = &arguments[4] else {
@@ -506,7 +508,7 @@ impl WebProvider {
                     let response = match outcome {
                         Ok(response) => response,
                         Err(message) => {
-                            return Ok(failed(name, &WebFailure::from_message(&message)));
+                            return Ok(failed(name, &message));
                         }
                     };
                     let object = core.allocate_object("BNWeb.Response", span)?;
@@ -1314,7 +1316,7 @@ impl WebProvider {
                     let result = state.add_route(method.to_string(), pattern.to_string());
                     drop(state);
                     if let Err(message) = result {
-                        return Ok(failed(name, &WebFailure::from_message(message)));
+                        return Ok(failed(name, &message));
                     }
                     let Value::Function(handler) = &arguments[3] else {
                         unreachable!("route handler was validated above")
@@ -1366,7 +1368,7 @@ impl WebProvider {
                     ));
                     match state.add_static(prefix.as_ref(), directory.as_ref()) {
                         Ok(()) => Ok(Value::Null),
-                        Err(message) => Ok(failed(name, &WebFailure::from_message(message))),
+                        Err(message) => Ok(failed(name, &message)),
                     }
                 }
                 "Status" => {
@@ -1499,7 +1501,7 @@ impl WebProvider {
                         crate::web::ServerOptions::default()
                     };
                     options.validate().map_err(|message| {
-                        runtime_error(bn_diag::DiagId::INVALID_OPTIONS, message, span)
+                        runtime_error(bn_diag::DiagId::INVALID_OPTIONS, message.message(), span)
                     })?;
                     let endpoint = net_endpoint(&arguments[1], span)?;
                     let listener = match bn_host_net::net::TcpListener::bind_with_backlog(
@@ -1508,7 +1510,7 @@ impl WebProvider {
                     ) {
                         Ok(listener) => listener,
                         Err(error) => {
-                            return Ok(failed(name, &WebFailure::from_message(&error.to_string())));
+                            return Ok(failed(name, &bn_web::web_error::listen_failure(&error)));
                         }
                     };
                     let mut state_guard = state.lock().map_err(|_| {
@@ -1521,7 +1523,7 @@ impl WebProvider {
                     let started = state_guard.start_with_options(options);
                     drop(state_guard);
                     if let Err(message) = started {
-                        return Ok(failed(name, &WebFailure::from_message(message)));
+                        return Ok(failed(name, &message));
                     }
                     if let Err(message) = state
                         .lock()
@@ -1534,7 +1536,7 @@ impl WebProvider {
                         })?
                         .install_worker_pool()
                     {
-                        return Ok(failed(name, &WebFailure::from_message(message)));
+                        return Ok(failed(name, &message));
                     }
                     let request_handler = bn_server_handler(
                         core.module().clone(),
@@ -1545,7 +1547,7 @@ impl WebProvider {
                     );
                     crate::web::spawn_listener_thread(&state, listener, request_handler, None)
                         .map_err(|message| {
-                            runtime_error(bn_diag::DiagId::WEB_LISTEN, message, span)
+                            runtime_error(bn_diag::DiagId::WEB_LISTEN, message.message(), span)
                         })?;
                     Ok(Value::Null)
                 }
@@ -1572,7 +1574,7 @@ impl WebProvider {
                         crate::web::ServerOptions::default()
                     };
                     options.validate().map_err(|message| {
-                        runtime_error(bn_diag::DiagId::INVALID_OPTIONS, message, span)
+                        runtime_error(bn_diag::DiagId::INVALID_OPTIONS, message.message(), span)
                     })?;
                     let endpoint = net_endpoint(&arguments[1], span)?;
                     let Value::Object {
@@ -1604,7 +1606,7 @@ impl WebProvider {
                     ) {
                         Ok(listener) => listener,
                         Err(error) => {
-                            return Ok(failed(name, &WebFailure::from_message(&error.to_string())));
+                            return Ok(failed(name, &bn_web::web_error::listen_failure(&error)));
                         }
                     };
                     let mut state_guard = state.lock().map_err(|_| {
@@ -1617,7 +1619,7 @@ impl WebProvider {
                     let started = state_guard.start_with_options(options);
                     drop(state_guard);
                     if let Err(message) = started {
-                        return Ok(failed(name, &WebFailure::from_message(message)));
+                        return Ok(failed(name, &message));
                     }
                     if let Err(message) = state
                         .lock()
@@ -1630,7 +1632,7 @@ impl WebProvider {
                         })?
                         .install_worker_pool()
                     {
-                        return Ok(failed(name, &WebFailure::from_message(message)));
+                        return Ok(failed(name, &message));
                     }
                     let request_handler = bn_server_handler(
                         core.module().clone(),
@@ -1645,17 +1647,16 @@ impl WebProvider {
                         request_handler,
                         Some(config),
                     )
-                    .map_err(|message| runtime_error(bn_diag::DiagId::WEB_LISTEN, message, span))?;
+                    .map_err(|message| {
+                        runtime_error(bn_diag::DiagId::WEB_LISTEN, message.message(), span)
+                    })?;
                     Ok(Value::Null)
                 }
                 "Stop" => {
                     require_arity(name, arguments, 2, span)?;
                     let timeout = integer(&arguments[1], span)?.0;
                     let result = drain_server(&state, timeout, false);
-                    Ok(result.map_or_else(
-                        |message| failed(name, &WebFailure::from_message(message)),
-                        |()| Value::Null,
-                    ))
+                    Ok(result.map_or_else(|message| failed(name, &message), |()| Value::Null))
                 }
                 "Dispatch" => {
                     require_arity(name, arguments, 3, span)?;
@@ -1843,10 +1844,7 @@ impl WebProvider {
                     require_arity(name, arguments, 2, span)?;
                     let timeout = integer(&arguments[1], span)?.0;
                     let result = drain_server(&state, timeout, true);
-                    Ok(result.map_or_else(
-                        |message| failed(name, &WebFailure::from_message(message)),
-                        |()| Value::Null,
-                    ))
+                    Ok(result.map_or_else(|message| failed(name, &message), |()| Value::Null))
                 }
                 _ if is_lifecycle_stub(core.module(), name) => Ok(Value::Null),
                 _ => Ok(failed(name, &WebFailure::ProviderUnavailable("BNWeb"))),
@@ -1878,7 +1876,9 @@ impl WebProvider {
                     capacity,
                     std::time::Duration::from_millis(u64::try_from(idle).unwrap_or(0)),
                 )
-                .map_err(|message| runtime_error(bn_diag::DiagId::SESSION_CONFIG, message, span))?;
+                .map_err(|message| {
+                    runtime_error(bn_diag::DiagId::SESSION_CONFIG, message.message(), span)
+                })?;
                 let object = core.allocate_object("BNWeb.SessionStore", span)?;
                 if let Value::Object { handle, .. } = object {
                     self.session_stores.insert(handle, store);
@@ -1904,7 +1904,9 @@ impl WebProvider {
                     capacity,
                     std::time::Duration::from_millis(u64::try_from(idle).unwrap_or(0)),
                 )
-                .map_err(|message| runtime_error(bn_diag::DiagId::SESSION_CONFIG, message, span))?;
+                .map_err(|message| {
+                    runtime_error(bn_diag::DiagId::SESSION_CONFIG, message.message(), span)
+                })?;
                 self.session_stores.insert(*handle, store);
                 return Ok(Value::Null);
             }
@@ -1927,7 +1929,7 @@ impl WebProvider {
                         ));
                     };
                     Ok(store.create(value).map_or_else(
-                        |message| failed(name, &WebFailure::from_message(&message)),
+                        |message| failed(name, &message),
                         |value| Value::String(shared_string(value)),
                     ))
                 }
@@ -1956,10 +1958,9 @@ impl WebProvider {
                             span,
                         ));
                     };
-                    Ok(store.delete(id).map_or_else(
-                        |message| failed(name, &WebFailure::from_message(&message)),
-                        |()| Value::Null,
-                    ))
+                    Ok(store
+                        .delete(id)
+                        .map_or_else(|message| failed(name, &message), |()| Value::Null))
                 }
                 "Set" => {
                     require_arity(name, arguments, 3, span)?;
@@ -1972,10 +1973,9 @@ impl WebProvider {
                             span,
                         ));
                     };
-                    Ok(store.set(id, value).map_or_else(
-                        |message| failed(name, &WebFailure::from_message(&message)),
-                        |()| Value::Null,
-                    ))
+                    Ok(store
+                        .set(id, value)
+                        .map_or_else(|message| failed(name, &message), |()| Value::Null))
                 }
                 "Rotate" => {
                     require_arity(name, arguments, 3, span)?;
@@ -1989,7 +1989,7 @@ impl WebProvider {
                         ));
                     };
                     Ok(store.rotate(id, value).map_or_else(
-                        |message| failed(name, &WebFailure::from_message(&message)),
+                        |message| failed(name, &message),
                         |value| Value::String(shared_string(value)),
                     ))
                 }
@@ -2012,7 +2012,7 @@ impl WebProvider {
                 let scraper = match crate::web_state::Scraper::parse(html) {
                     Ok(value) => value,
                     Err(message) => {
-                        return Ok(failed(name, &WebFailure::from_message(&message)));
+                        return Ok(failed(name, &message));
                     }
                 };
                 let object = core.allocate_object("BNWeb.Scraper", span)?;
@@ -2040,7 +2040,7 @@ impl WebProvider {
                     ));
                 };
                 let scraper = crate::web_state::Scraper::parse(html).map_err(|message| {
-                    runtime_error(bn_diag::DiagId::SCRAPER_INPUT, message, span)
+                    runtime_error(bn_diag::DiagId::SCRAPER_INPUT, message.message(), span)
                 })?;
                 self.scrapers.insert(*handle, scraper);
                 return Ok(Value::Null);
@@ -2063,7 +2063,7 @@ impl WebProvider {
                     ));
                 };
                 return Ok(scraper.text(selector).map_or_else(
-                    |message| failed(name, &WebFailure::from_message(&message)),
+                    |message| failed(name, &message),
                     |value| Value::String(shared_string(value)),
                 ));
             }
@@ -2130,10 +2130,7 @@ impl WebProvider {
                     } else {
                         acl.deny(&cidr)
                     };
-                    Ok(result.map_or_else(
-                        |message| failed(name, &WebFailure::from_message(&message)),
-                        |()| Value::Null,
-                    ))
+                    Ok(result.map_or_else(|message| failed(name, &message), |()| Value::Null))
                 }
                 "Check" => {
                     require_arity(name, arguments, 2, span)?;
@@ -2230,10 +2227,7 @@ impl WebProvider {
                             p,
                             std::time::Duration::from_millis(u64::try_from(age).unwrap_or(0)),
                         )
-                        .map_or_else(
-                            |message| failed(name, &WebFailure::from_message(&message)),
-                            |()| Value::Null,
-                        ))
+                        .map_or_else(|message| failed(name, &message), |()| Value::Null))
                 }
                 "SetWithPolicy" => {
                     require_arity(name, arguments, 9, span)?;
@@ -2267,7 +2261,7 @@ impl WebProvider {
                         match crate::web_state::cookie_max_age(integer(&arguments[5], span)?.0) {
                             Ok(age) => age,
                             Err(message) => {
-                                return Ok(failed(name, &WebFailure::from_message(message)));
+                                return Ok(failed(name, &message));
                             }
                         };
                     let options = match crate::web_state::CookieOptions::from_policy(
@@ -2275,13 +2269,12 @@ impl WebProvider {
                     ) {
                         Ok(options) => options,
                         Err(message) => {
-                            return Ok(failed(name, &WebFailure::from_message(message)));
+                            return Ok(failed(name, &message));
                         }
                     };
-                    Ok(jar.set_with_options(n, v, d, p, age, options).map_or_else(
-                        |message| failed(name, &WebFailure::from_message(&message)),
-                        |()| Value::Null,
-                    ))
+                    Ok(jar
+                        .set_with_options(n, v, d, p, age, options)
+                        .map_or_else(|message| failed(name, &message), |()| Value::Null))
                 }
                 "Get" => {
                     require_arity(name, arguments, 4, span)?;
@@ -2420,7 +2413,7 @@ impl WebProvider {
                 require_arity(name, arguments, 18, span)?;
                 let options = make_options(0)?;
                 options.validate().map_err(|message| {
-                    runtime_error(bn_diag::DiagId::INVALID_OPTIONS, message, span)
+                    runtime_error(bn_diag::DiagId::INVALID_OPTIONS, message.message(), span)
                 })?;
                 let object = core.allocate_object("BNWeb.ServerOptions", span)?;
                 if let Value::Object { handle, .. } = object {
@@ -2440,7 +2433,7 @@ impl WebProvider {
                     require_arity(name, arguments, 19, span)?;
                     let options = make_options(1)?;
                     options.validate().map_err(|message| {
-                        runtime_error(bn_diag::DiagId::INVALID_OPTIONS, message, span)
+                        runtime_error(bn_diag::DiagId::INVALID_OPTIONS, message.message(), span)
                     })?;
                     self.server_options.insert(*handle, options);
                     Ok(Value::Null)
@@ -2466,7 +2459,7 @@ impl WebProvider {
                 let config = match crate::tls::server_config_from_pem(cert, key) {
                     Ok(config) => config,
                     Err(message) => {
-                        return Ok(failed(name, &WebFailure::from_message(&message)));
+                        return Ok(failed(name, &message));
                     }
                 };
                 let object = core.allocate_object("BNWeb.TLSConfig", span)?;
@@ -2497,7 +2490,7 @@ impl WebProvider {
                 let config = match crate::tls::server_config_from_pem(cert, key) {
                     Ok(config) => config,
                     Err(message) => {
-                        return Ok(failed(name, &WebFailure::from_message(&message)));
+                        return Ok(failed(name, &message));
                     }
                 };
                 self.tls_configs
@@ -2518,7 +2511,7 @@ impl WebProvider {
                 let config = match crate::tls::server_config_from_pem(cert, key) {
                     Ok(config) => config,
                     Err(message) => {
-                        return Ok(failed(name, &WebFailure::from_message(&message)));
+                        return Ok(failed(name, &message));
                     }
                 };
                 self.tls_configs

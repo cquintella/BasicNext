@@ -483,7 +483,7 @@ fn stop_does_not_claim_success_with_an_active_handler() {
     server.begin_stop(1_000).unwrap();
     assert_eq!(
         server.finish_stop(),
-        Err("server drain timed out with active handlers")
+        Err(super::server::StopPending::Handlers)
     );
     server.finish_handler_task();
     server.finish_stop().expect("handler drain completed");
@@ -497,12 +497,12 @@ fn server_stop_does_not_claim_success_before_connections_drain() {
 
     assert_eq!(
         server.stop(1000),
-        Err("server drain timed out with active connections")
+        Err(crate::web_error::WebFailure::WorkerDrainTimeout)
     );
     assert_eq!(server.active_connections(), 1);
     assert_eq!(
         server.close(1000),
-        Err("server drain timed out with active connections")
+        Err(crate::web_error::WebFailure::WorkerDrainTimeout)
     );
 
     server.release_connection();

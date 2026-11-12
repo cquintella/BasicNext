@@ -57,3 +57,27 @@ transfer.already_exists.message = destination file "{path}" already exists
 transfer.already_exists.cause = the destination file already exists and overwrite was not requested
 transfer.unsupported_encoding.message = unsupported Content-Encoding "{encoding}"
 transfer.unsupported_encoding.cause = the response body encoding is not supported (only gzip and deflate are supported)
+
+# Size limits (bn_web WebFailure::TooLarge): the limit is the configured one.
+limit.request_body.message = request body exceeds {limit} bytes
+limit.response_body.message = response body exceeds {limit} bytes
+limit.response_headers.message = response headers exceed {limit} bytes
+limit.query.message = query exceeds {limit} bytes
+limit.body_maximum.message = body limit exceeds {limit} bytes
+limit.tls_material.message = TLS material exceeds {limit} bytes
+limit.cause = the size is bounded by the configured limit of {limit} bytes
+
+# HTTP client failures (bn_web http/client): message of the WebFailure.
+client.request_timeout = HTTP request timed out
+client.body_timeout = HTTP response body timed out
+client.tls_handshake = TLS handshake failed: {error}
+client.url_authority_missing = URL requires an authority
+client.connect_failed = failed to connect to allowed destination
+client.ipv6_authority = invalid IPv6 authority
+client.tls_server_name = invalid TLS server name
+client.url_authority = invalid URL authority
+client.port = invalid port
+client.redirect_location = invalid redirect Location
+client.redirect_base = invalid redirect base
+client.body_not_utf8 = response body is not UTF-8
+client.url_scheme = unsupported URL scheme

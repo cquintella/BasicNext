@@ -56,19 +56,22 @@ fn cookie_policy_and_response_cookies() {
     );
     assert_eq!(
         CookieOptions::from_policy(true, true, "Sometimes"),
-        Err("invalid SameSite policy")
+        Err(crate::web_error::WebFailure::InvalidSameSite)
     );
     assert_eq!(
         CookieOptions::from_policy(false, true, "None"),
-        Err("SameSite=None requires Secure")
+        Err(crate::web_error::WebFailure::SameSiteNoneRequiresSecure)
     );
-    assert_eq!(cookie_max_age(-1), Err("negative cookie age"));
+    assert_eq!(
+        cookie_max_age(-1),
+        Err(crate::web_error::WebFailure::NegativeCookieAge)
+    );
     assert_eq!(cookie_max_age(1500).unwrap().as_millis(), 1500);
 
     let mut cleartext = super::Response::new();
     assert_eq!(
         cleartext.set_cookie("sid", "v", None, "/", None, CookieOptions::default()),
-        Err("Secure cookies cannot be sent over cleartext HTTP")
+        Err(crate::web_error::WebFailure::SecureCookieOverCleartext)
     );
     cleartext.clear_cookie("sid", None, "/").unwrap();
     assert_eq!(

@@ -35,8 +35,8 @@ impl WebProvider {
                     "",
                     std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
                 )
-                .map_err(|message| {
-                    runtime_error(bn_diag::DiagId::REQUEST_INVALID, message, span)
+                .map_err(|failure| {
+                    runtime_error(bn_diag::DiagId::REQUEST_INVALID, failure.message(), span)
                 })?;
                 self.requests.insert(*handle, request);
                 return Ok(Value::Null);
@@ -94,7 +94,7 @@ impl WebProvider {
                     let values = match values {
                         Ok(values) => values,
                         Err(message) => {
-                            return Ok(failed(name, &WebFailure::from_message(message)));
+                            return Ok(failed(name, &message));
                         }
                     };
                     let class = if method == "Headers" {
@@ -116,7 +116,7 @@ impl WebProvider {
                     require_arity(name, arguments, 2, span)?;
                     let maximum = integer(&arguments[1], span)?.0;
                     Ok(request.body(maximum).map_or_else(
-                        |message| failed(name, &WebFailure::from_message(message)),
+                        |message| failed(name, &message),
                         |body| Value::String(body.into()),
                     ))
                 }
@@ -209,10 +209,9 @@ impl WebProvider {
                     let Ok(status) = u16::try_from(status) else {
                         return Ok(failed(name, &WebFailure::InvalidStatus(status)));
                     };
-                    Ok(response.set_status(status).map_or_else(
-                        |message| failed(name, &WebFailure::from_message(message)),
-                        |()| Value::Null,
-                    ))
+                    Ok(response
+                        .set_status(status)
+                        .map_or_else(|message| failed(name, &message), |()| Value::Null))
                 }
                 "SetHeader" => {
                     require_arity(name, arguments, 3, span)?;
@@ -225,10 +224,9 @@ impl WebProvider {
                             span,
                         ));
                     };
-                    Ok(response.set_header(key, value).map_or_else(
-                        |message| failed(name, &WebFailure::from_message(message)),
-                        |()| Value::Null,
-                    ))
+                    Ok(response
+                        .set_header(key, value)
+                        .map_or_else(|message| failed(name, &message), |()| Value::Null))
                 }
                 "Header" => {
                     require_arity(name, arguments, 2, span)?;
@@ -285,7 +283,7 @@ impl WebProvider {
                         ) {
                             Ok(options) => options,
                             Err(message) => {
-                                return Ok(failed(name, &WebFailure::from_message(message)));
+                                return Ok(failed(name, &message));
                             }
                         }
                     } else {
@@ -295,7 +293,7 @@ impl WebProvider {
                         match crate::web_state::cookie_max_age(integer(&arguments[5], span)?.0) {
                             Ok(age) => age,
                             Err(message) => {
-                                return Ok(failed(name, &WebFailure::from_message(message)));
+                                return Ok(failed(name, &message));
                             }
                         };
                     // `maxAgeMs` 0 is a session cookie; an empty domain is host-only.
@@ -303,10 +301,7 @@ impl WebProvider {
                     let domain = (!domain.is_empty()).then_some(domain.as_ref());
                     Ok(response
                         .set_cookie(cookie, value, domain, path, max_age, options)
-                        .map_or_else(
-                            |message| failed(name, &WebFailure::from_message(message)),
-                            |()| Value::Null,
-                        ))
+                        .map_or_else(|message| failed(name, &message), |()| Value::Null))
                 }
                 "ClearCookie" => {
                     require_arity(name, arguments, 4, span)?;
@@ -321,10 +316,9 @@ impl WebProvider {
                         ));
                     };
                     let domain = (!domain.is_empty()).then_some(domain.as_ref());
-                    Ok(response.clear_cookie(cookie, domain, path).map_or_else(
-                        |message| failed(name, &WebFailure::from_message(message)),
-                        |()| Value::Null,
-                    ))
+                    Ok(response
+                        .clear_cookie(cookie, domain, path)
+                        .map_or_else(|message| failed(name, &message), |()| Value::Null))
                 }
                 "Write" => {
                     require_arity(name, arguments, 2, span)?;
@@ -336,17 +330,15 @@ impl WebProvider {
                             span,
                         ));
                     };
-                    Ok(response.write(body).map_or_else(
-                        |message| failed(name, &WebFailure::from_message(message)),
-                        |()| Value::Null,
-                    ))
+                    Ok(response
+                        .write(body)
+                        .map_or_else(|message| failed(name, &message), |()| Value::Null))
                 }
                 "Commit" => {
                     require_arity(name, arguments, 1, span)?;
-                    Ok(response.commit().map_or_else(
-                        |message| failed(name, &WebFailure::from_message(message)),
-                        |()| Value::Null,
-                    ))
+                    Ok(response
+                        .commit()
+                        .map_or_else(|message| failed(name, &message), |()| Value::Null))
                 }
                 "IsCommitted" => {
                     require_arity(name, arguments, 1, span)?;

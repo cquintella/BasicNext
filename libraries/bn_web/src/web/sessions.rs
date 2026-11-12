@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use super::Response;
+use crate::web_error::WebFailure;
 use crate::web_state::{CookieOptions, SystemEntropy, new_session_id};
 
 /// The cookie that names a client's session.
@@ -39,16 +40,16 @@ impl SessionTable {
     /// A table of at most `capacity` sessions (1 to 10,000), each forgotten
     /// after `idle_ms` without a request (1 ms to 30 minutes), as
     /// `SessionStore` bounds them.
-    pub fn new(capacity: i128, idle_ms: i128) -> Result<Arc<Self>, &'static str> {
+    pub fn new(capacity: i128, idle_ms: i128) -> Result<Arc<Self>, WebFailure> {
         let capacity = usize::try_from(capacity)
             .ok()
             .filter(|capacity| (1..=10_000).contains(capacity))
-            .ok_or("invalid session capacity")?;
+            .ok_or(WebFailure::InvalidSessionCapacity)?;
         let idle = u64::try_from(idle_ms)
             .ok()
             .map(Duration::from_millis)
             .filter(|idle| !idle.is_zero() && *idle <= Duration::from_mins(30))
-            .ok_or("invalid session idle timeout")?;
+            .ok_or(WebFailure::InvalidSessionIdleTimeout)?;
         Ok(Arc::new(Self {
             sessions: Mutex::new(HashMap::new()),
             capacity,
@@ -77,9 +78,10 @@ impl SessionTable {
     }
 
     /// A new empty session; a full table forgets the session idle longest.
-    fn create(&self, values: BTreeMap<String, String>) -> Result<String, &'static str> {
-        let id = new_session_id(&SystemEntropy)
-            .map_err(|_| bn_catalog::text("web", "session.entropy_unavailable"))?;
+    fn create(&self, values: BTreeMap<String, String>) -> Result<String, WebFailure> {
+        let id = new_session_id(&SystemEntropy).map_err(|_| {
+            WebFailure::Unavailable(bn_catalog::text("web", "session.entropy_unavailable").into())
+        })?;
         let mut sessions = self.lock();
         sessions.retain(|_, entry| entry.touched.elapsed() < self.idle);
         if sessions.len() >= self.capacity
@@ -103,13 +105,13 @@ impl SessionTable {
     fn with_entry<R>(
         &self,
         id: &str,
-        operation: impl FnOnce(&mut Entry) -> Result<R, &'static str>,
-    ) -> Result<R, &'static str> {
+        operation: impl FnOnce(&mut Entry) -> Result<R, WebFailure>,
+    ) -> Result<R, WebFailure> {
         let mut sessions = self.lock();
         let entry = sessions
             .get_mut(id)
             .filter(|entry| entry.touched.elapsed() < self.idle)
-            .ok_or("session not found")?;
+            .ok_or(WebFailure::SessionNotFound)?;
         entry.touched = Instant::now();
         operation(entry)
     }
@@ -174,7 +176,7 @@ impl RequestSession {
     }
 
     /// The session identifier, creating the session on first use.
-    pub fn id(&self) -> Result<String, &'static str> {
+    pub fn id(&self) -> Result<String, WebFailure> {
         let mut state = self.lock();
         if let Some(id) = state.id.as_ref().filter(|id| self.table.live(id)) {
             return Ok(id.clone());
@@ -192,7 +194,7 @@ impl RequestSession {
     }
 
     /// The value under `key`, if any. Reading never creates a session.
-    pub fn get(&self, key: &str) -> Result<Option<String>, &'static str> {
+    pub fn get(&self, key: &str) -> Result<Option<String>, WebFailure> {
         let Some(id) = self.current() else {
             return Ok(None);
         };
@@ -201,14 +203,14 @@ impl RequestSession {
     }
 
     /// Stores `value` under `key`.
-    pub fn set(&self, key: &str, value: &str) -> Result<(), &'static str> {
+    pub fn set(&self, key: &str, value: &str) -> Result<(), WebFailure> {
         if key.is_empty() || key.len() > KEY_MAX || value.len() > VALUE_MAX {
-            return Err(bn_catalog::text("web", "session.invalid_entry"));
+            return Err(WebFailure::InvalidSessionEntry);
         }
         let id = self.id()?;
         self.table.with_entry(&id, |entry| {
             if !entry.values.contains_key(key) && entry.values.len() >= KEYS_MAX {
-                return Err(bn_catalog::text("web", "session.key_limit"));
+                return Err(WebFailure::SessionKeyLimit);
             }
             entry.values.insert(key.to_owned(), value.to_owned());
             Ok(())
@@ -217,7 +219,7 @@ impl RequestSession {
 
     /// Removes `key`; `Ok(false)` when it was absent. Never creates a
     /// session.
-    pub fn remove(&self, key: &str) -> Result<bool, &'static str> {
+    pub fn remove(&self, key: &str) -> Result<bool, WebFailure> {
         let Some(id) = self.current() else {
             return Ok(false);
         };
@@ -226,7 +228,7 @@ impl RequestSession {
     }
 
     /// A new identifier for the same values (call on login).
-    pub fn rotate(&self) -> Result<String, &'static str> {
+    pub fn rotate(&self) -> Result<String, WebFailure> {
         let old = self.id()?;
         let values = self.table.remove(&old).unwrap_or_default();
         let id = self.table.create(values)?;
@@ -247,7 +249,7 @@ impl RequestSession {
 
     /// Writes the `sid` cookie the handler's session work needs: set for a
     /// new or rotated session, cleared for an ended one; `Secure` over TLS.
-    pub fn apply(&self, response: &mut Response) -> Result<(), &'static str> {
+    pub fn apply(&self, response: &mut Response) -> Result<(), WebFailure> {
         let state = self.lock();
         let options = CookieOptions {
             secure: response.secure,

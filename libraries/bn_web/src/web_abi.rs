@@ -266,7 +266,7 @@ pub extern "C" fn bn_web_response_set_status(handle: u64, status: i64) -> i32 {
     }
     match response.set_status(u16_status) {
         Ok(()) => BN_WEB_OK,
-        Err(err) => record_failure("Response.SetStatus", &WebFailure::from_message(err)),
+        Err(err) => record_failure("Response.SetStatus", &err),
     }
 }
 
@@ -305,7 +305,7 @@ pub extern "C" fn bn_web_response_set_header(
     }
     match response.set_header(&name_str, &val_str) {
         Ok(()) => BN_WEB_OK,
-        Err(err) => record_failure("Response.SetHeader", &WebFailure::from_message(err)),
+        Err(err) => record_failure("Response.SetHeader", &err),
     }
 }
 
@@ -353,7 +353,7 @@ pub extern "C" fn bn_web_response_header(
             unsafe {
                 *out_status = record_failure(
                     "Response.Header",
-                    &WebFailure::from_message("response header is not present"),
+                    &WebFailure::HeaderNotFound("response header is not present".into()),
                 );
             };
         }
@@ -409,12 +409,12 @@ pub extern "C" fn bn_web_response_set_cookie_with_policy(
         match crate::web_state::CookieOptions::from_policy(secure, http_only, &same_site_str) {
             Ok(opt) => opt,
             Err(err) => {
-                return record_failure("Response.SetCookie", &WebFailure::from_message(err));
+                return record_failure("Response.SetCookie", &err);
             }
         };
     let max_age = match crate::web_state::cookie_max_age(max_age_ms.into()) {
         Ok(age) => (!age.is_zero()).then_some(age),
-        Err(err) => return record_failure("Response.SetCookie", &WebFailure::from_message(err)),
+        Err(err) => return record_failure("Response.SetCookie", &err),
     };
     let domain_opt = (!domain_str.is_empty()).then_some(domain_str.as_str());
 
@@ -431,7 +431,7 @@ pub extern "C" fn bn_web_response_set_cookie_with_policy(
     }
     match response.set_cookie(&name_str, &val_str, domain_opt, &path_str, max_age, options) {
         Ok(()) => BN_WEB_OK,
-        Err(err) => record_failure("Response.SetCookie", &WebFailure::from_message(err)),
+        Err(err) => record_failure("Response.SetCookie", &err),
     }
 }
 
@@ -468,7 +468,7 @@ pub extern "C" fn bn_web_response_clear_cookie(
     }
     match response.clear_cookie(&name_str, domain_opt, &path_str) {
         Ok(()) => BN_WEB_OK,
-        Err(err) => record_failure("Response.ClearCookie", &WebFailure::from_message(err)),
+        Err(err) => record_failure("Response.ClearCookie", &err),
     }
 }
 
@@ -488,7 +488,7 @@ pub extern "C" fn bn_web_response_write(handle: u64, body: *const c_char) -> i32
     }
     match response.write(&body_str) {
         Ok(()) => BN_WEB_OK,
-        Err(err) => record_failure("Response.Write", &WebFailure::from_message(err)),
+        Err(err) => record_failure("Response.Write", &err),
     }
 }
 
@@ -507,7 +507,7 @@ pub extern "C" fn bn_web_response_commit(handle: u64) -> i32 {
     }
     match response.commit() {
         Ok(()) => BN_WEB_OK,
-        Err(err) => record_failure("Response.Commit", &WebFailure::from_message(err)),
+        Err(err) => record_failure("Response.Commit", &err),
     }
 }
 
@@ -612,7 +612,7 @@ pub extern "C" fn bn_web_request_header(
             if !out_status.is_null() {
                 // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
                 unsafe {
-                    *out_status = record_failure("Request.Header", &WebFailure::from_message(err));
+                    *out_status = record_failure("Request.Header", &err);
                 };
             }
             std::ptr::null_mut()
@@ -748,7 +748,7 @@ pub extern "C" fn bn_web_request_body(
             if !out_status.is_null() {
                 // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
                 unsafe {
-                    *out_status = record_failure("Request.Body", &WebFailure::from_message(err));
+                    *out_status = record_failure("Request.Body", &err);
                 };
             }
             std::ptr::null_mut()
@@ -818,7 +818,7 @@ pub extern "C" fn bn_web_server_route(
             entry.routes.push((method_str, pattern_str, handler_fn));
             BN_WEB_OK
         }
-        Err(err) => record_failure("Server.Route", &WebFailure::from_message(err)),
+        Err(err) => record_failure("Server.Route", &err),
     }
 }
 
@@ -845,7 +845,7 @@ pub extern "C" fn bn_web_server_static(
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     match state.add_static(&prefix_str, &dir_str) {
         Ok(()) => BN_WEB_OK,
-        Err(err) => record_failure("Server.Static", &WebFailure::from_message(err)),
+        Err(err) => record_failure("Server.Static", &err),
     }
 }
 
@@ -865,7 +865,7 @@ pub extern "C" fn bn_web_server_use_sessions(handle: u64, capacity: i64, idle_ms
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     match state.use_sessions(i128::from(capacity), i128::from(idle_ms)) {
         Ok(()) => BN_WEB_OK,
-        Err(err) => record_failure("Server.UseSessions", &WebFailure::from_message(err)),
+        Err(err) => record_failure("Server.UseSessions", &err),
     }
 }
 
@@ -924,7 +924,7 @@ fn start_server_internal(
     };
 
     if let Err(message) = options.validate() {
-        return record_failure(operation, &WebFailure::from_message(message));
+        return record_failure(operation, &message);
     }
 
     let Some(address_text) = string_text(addr_ptr) else {
@@ -952,7 +952,7 @@ fn start_server_internal(
     let listener = match bn_core_net::TcpListener::bind_with_backlog(endpoint, options.backlog) {
         Ok(listener) => listener,
         Err(error) => {
-            return record_failure(operation, &WebFailure::from_message(&error.to_string()));
+            return record_failure(operation, &crate::web_error::listen_failure(&error));
         }
     };
 
@@ -961,10 +961,10 @@ fn start_server_internal(
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Err(message) = state.start_with_options(options) {
-            return record_failure(operation, &WebFailure::from_message(message));
+            return record_failure(operation, &message);
         }
         if let Err(message) = state.install_worker_pool() {
-            return record_failure(operation, &WebFailure::from_message(message));
+            return record_failure(operation, &message);
         }
     }
 
@@ -1051,7 +1051,7 @@ fn start_server_internal(
     if let Err(message) =
         crate::web::spawn_listener_thread(&state_arc, listener, request_handler, tls_config)
     {
-        return record_failure(operation, &WebFailure::from_message(message));
+        return record_failure(operation, &message);
     }
 
     BN_WEB_OK
@@ -1231,7 +1231,7 @@ pub extern "C" fn bn_web_server_stop(handle: u64, timeout_ms: i64) -> i32 {
     };
     match crate::web::drain_server(&state_arc, i128::from(timeout_ms), false) {
         Ok(()) => BN_WEB_OK,
-        Err(err) => record_failure("Server.Stop", &WebFailure::from_message(err)),
+        Err(err) => record_failure("Server.Stop", &err),
     }
 }
 
@@ -1247,7 +1247,7 @@ pub extern "C" fn bn_web_server_close(handle: u64, timeout_ms: i64) -> i32 {
     };
     match crate::web::drain_server(&state_arc, i128::from(timeout_ms), true) {
         Ok(()) => BN_WEB_OK,
-        Err(err) => record_failure("Server.Close", &WebFailure::from_message(err)),
+        Err(err) => record_failure("Server.Close", &err),
     }
 }
 
@@ -1319,7 +1319,7 @@ pub extern "C" fn bn_web_server_options_new(
     };
 
     if let Err(err) = options.validate() {
-        return record_failure("ServerOptions.New", &WebFailure::from_message(err));
+        return record_failure("ServerOptions.New", &err);
     }
     let handle = alloc_handle();
     let wrapper = table();
@@ -1412,7 +1412,7 @@ pub extern "C" fn bn_web_tls_from_pem(
             }
             BN_WEB_OK
         }
-        Err(err) => record_failure("TLSConfig.FromPEM", &WebFailure::from_message(&err)),
+        Err(err) => record_failure("TLSConfig.FromPEM", &err),
     }
 }
 
@@ -1476,7 +1476,7 @@ pub extern "C" fn bn_web_cookie_jar_set_with_policy(
     let options =
         match crate::web_state::CookieOptions::from_policy(secure, http_only, &same_site_str) {
             Ok(opt) => opt,
-            Err(err) => return record_failure("CookieJar.Set", &WebFailure::from_message(err)),
+            Err(err) => return record_failure("CookieJar.Set", &err),
         };
     let duration = std::time::Duration::from_millis(u64::try_from(max_age_ms.max(0)).unwrap_or(0));
 
@@ -1497,7 +1497,7 @@ pub extern "C" fn bn_web_cookie_jar_set_with_policy(
         options,
     ) {
         Ok(()) => BN_WEB_OK,
-        Err(err) => record_failure("CookieJar.Set", &WebFailure::from_message(&err)),
+        Err(err) => record_failure("CookieJar.Set", &err),
     }
 }
 
@@ -1586,7 +1586,7 @@ pub extern "C" fn bn_web_session_store_new(
             }
             BN_WEB_OK
         }
-        Err(err) => record_failure("SessionStore.New", &WebFailure::from_message(&err)),
+        Err(err) => record_failure("SessionStore.New", &err),
     }
 }
 
@@ -1634,8 +1634,7 @@ pub extern "C" fn bn_web_session_store_create(
             if !out_status.is_null() {
                 // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
                 unsafe {
-                    *out_status =
-                        record_failure("SessionStore.Create", &WebFailure::from_message(&err));
+                    *out_status = record_failure("SessionStore.Create", &err);
                 };
             }
             std::ptr::null_mut()
@@ -1748,7 +1747,7 @@ pub extern "C" fn bn_web_scraper_text(
             if !out_status.is_null() {
                 // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
                 unsafe {
-                    *out_status = record_failure("Scraper.Text", &WebFailure::from_message(&err));
+                    *out_status = record_failure("Scraper.Text", &err);
                 };
             }
             std::ptr::null_mut()
@@ -1783,7 +1782,7 @@ pub extern "C" fn bn_web_acl_allow(handle: u64, net_str_ptr: *const c_char, pref
     };
     match acl.allow(&cidr_text) {
         Ok(()) => BN_WEB_OK,
-        Err(err) => record_failure("ACL.Allow", &WebFailure::from_message(&err)),
+        Err(err) => record_failure("ACL.Allow", &err),
     }
 }
 
@@ -1803,7 +1802,7 @@ pub extern "C" fn bn_web_acl_deny(handle: u64, net_str_ptr: *const c_char, prefi
     };
     match acl.deny(&cidr_text) {
         Ok(()) => BN_WEB_OK,
-        Err(err) => record_failure("ACL.Deny", &WebFailure::from_message(&err)),
+        Err(err) => record_failure("ACL.Deny", &err),
     }
 }
 
@@ -2029,7 +2028,7 @@ fn client_request(
         }
         Err(err) => {
             log_client_access(logger, &method_str, &url_str, 0, 0, started, &[]);
-            record_failure(operation, &WebFailure::from_message(&err))
+            record_failure(operation, &err)
         }
     }
 }
@@ -2040,1556 +2039,12 @@ pub extern "C" fn bn_web_client_close(handle: u64) -> i32 {
     BN_WEB_OK
 }
 
-// ---- ClientReply C ABI ---------------------------------------------------
-
-fn write_status(out_status: *mut i32, status: i32) {
-    if !out_status.is_null() {
-        // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
-        unsafe { *out_status = status };
-    }
-}
-
-fn write_u64(out: *mut u64, value: u64) {
-    if !out.is_null() {
-        // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
-        unsafe { *out = value };
-    }
-}
-
-#[expect(clippy::verbose_file_reads)]
-fn read_form_file(path: &str) -> Vec<u8> {
-    use std::io::Read as _;
-    let Ok(mut file) = std::fs::File::open(path) else {
-        return Vec::new();
-    };
-    let mut bytes = Vec::new();
-    let _ = file.read_to_end(&mut bytes);
-    bytes
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_reply_create() -> u64 {
-    let handle = alloc_handle();
-    table()
-        .lock_table()
-        .client_replies
-        .insert(handle, crate::web::ClientReply::default());
-    handle
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_reply_status(handle: u64) -> i64 {
-    let wrapper = table();
-    let guard = wrapper.lock_table();
-    guard
-        .client_replies
-        .get(&handle)
-        .map_or(0, |r| i64::from(r.status))
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_reply_http_version(handle: u64) -> *mut c_char {
-    let wrapper = table();
-    let guard = wrapper.lock_table();
-    let version = guard
-        .client_replies
-        .get(&handle)
-        .map_or("HTTP/1.1", |r| r.http_version());
-    c_string(version)
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_reply_body_size(handle: u64) -> i64 {
-    let wrapper = table();
-    let guard = wrapper.lock_table();
-    guard
-        .client_replies
-        .get(&handle)
-        .map_or(0, |r| i64::try_from(r.body_size).unwrap_or(i64::MAX))
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_reply_total_ms(handle: u64) -> i64 {
-    let wrapper = table();
-    let guard = wrapper.lock_table();
-    guard.client_replies.get(&handle).map_or(0, |r| r.total_ms)
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_reply_connect_ms(handle: u64) -> i64 {
-    let wrapper = table();
-    let guard = wrapper.lock_table();
-    guard
-        .client_replies
-        .get(&handle)
-        .map_or(0, |r| r.connect_ms)
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_reply_header(
-    handle: u64,
-    name: *const c_char,
-    out_status: *mut i32,
-) -> *mut c_char {
-    let Some(name_str) = string_text(name) else {
-        write_status(out_status, BN_WEB_FAILED);
-        record_failure(
-            "ClientReply.Header",
-            &WebFailure::InvalidArgument("invalid_name".into()),
-        );
-        return std::ptr::null_mut();
-    };
-    let wrapper = table();
-    let guard = wrapper.lock_table();
-    let Some(reply) = guard.client_replies.get(&handle) else {
-        write_status(out_status, BN_WEB_FAILED);
-        record_failure(
-            "ClientReply.Header",
-            &WebFailure::InvalidArgument("invalid_reply".into()),
-        );
-        return std::ptr::null_mut();
-    };
-    if let Some(val) = reply.header(&name_str) {
-        write_status(out_status, BN_WEB_OK);
-        c_string(val)
-    } else {
-        write_status(out_status, BN_WEB_FAILED);
-        record_failure("ClientReply.Header", &WebFailure::HeaderNotFound(name_str));
-        std::ptr::null_mut()
-    }
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_reply_header_count(handle: u64) -> i64 {
-    let wrapper = table();
-    let guard = wrapper.lock_table();
-    guard
-        .client_replies
-        .get(&handle)
-        .map_or(0, |r| i64::try_from(r.header_count()).unwrap_or(0))
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_reply_header_name(
-    handle: u64,
-    index: i64,
-    out_status: *mut i32,
-) -> *mut c_char {
-    let wrapper = table();
-    let guard = wrapper.lock_table();
-    let Some(reply) = guard.client_replies.get(&handle) else {
-        write_status(out_status, BN_WEB_FAILED);
-        return std::ptr::null_mut();
-    };
-    let idx = usize::try_from(index).unwrap_or(usize::MAX);
-    if let Some(name) = reply.header_name(idx) {
-        write_status(out_status, BN_WEB_OK);
-        c_string(name)
-    } else {
-        write_status(out_status, BN_WEB_FAILED);
-        record_failure(
-            "ClientReply.HeaderName",
-            &WebFailure::IndexOutOfRange {
-                index: i128::from(index),
-                count: reply.header_count(),
-            },
-        );
-        std::ptr::null_mut()
-    }
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_reply_header_value(
-    handle: u64,
-    index: i64,
-    out_status: *mut i32,
-) -> *mut c_char {
-    let wrapper = table();
-    let guard = wrapper.lock_table();
-    let Some(reply) = guard.client_replies.get(&handle) else {
-        write_status(out_status, BN_WEB_FAILED);
-        return std::ptr::null_mut();
-    };
-    let idx = usize::try_from(index).unwrap_or(usize::MAX);
-    if let Some(val) = reply.header_value(idx) {
-        write_status(out_status, BN_WEB_OK);
-        c_string(val)
-    } else {
-        write_status(out_status, BN_WEB_FAILED);
-        record_failure(
-            "ClientReply.HeaderValue",
-            &WebFailure::IndexOutOfRange {
-                index: i128::from(index),
-                count: reply.header_count(),
-            },
-        );
-        std::ptr::null_mut()
-    }
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_reply_body_text(
-    handle: u64,
-    maximum: i64,
-    out_status: *mut i32,
-) -> *mut c_char {
-    let wrapper = table();
-    let reply = {
-        let guard = wrapper.lock_table();
-        let Some(r) = guard.client_replies.get(&handle) else {
-            write_status(out_status, BN_WEB_FAILED);
-            return std::ptr::null_mut();
-        };
-        r.clone()
-    };
-    let max = usize::try_from(maximum).unwrap_or(usize::MAX);
-    match reply.body_text(max) {
-        Ok(text) => {
-            write_status(out_status, BN_WEB_OK);
-            c_string(&text)
-        }
-        Err(err) => {
-            write_status(out_status, BN_WEB_FAILED);
-            record_failure("ClientReply.BodyText", &err);
-            std::ptr::null_mut()
-        }
-    }
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_reply_body_bytes(
-    handle: u64,
-    maximum: i64,
-    out_handle: *mut u64,
-) -> i32 {
-    let wrapper = table();
-    let reply = {
-        let guard = wrapper.lock_table();
-        let Some(r) = guard.client_replies.get(&handle) else {
-            return record_failure(
-                "ClientReply.BodyBytes",
-                &WebFailure::InvalidArgument("invalid_reply".into()),
-            );
-        };
-        r.clone()
-    };
-    let max = usize::try_from(maximum).unwrap_or(usize::MAX);
-    match reply.body_bytes(max) {
-        Ok(bytes) => {
-            let byte_handle = bn_stdlib::crypto_abi::store(bytes.to_vec());
-            write_u64(out_handle, byte_handle);
-            BN_WEB_OK
-        }
-        Err(err) => record_failure("ClientReply.BodyBytes", &err),
-    }
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_reply_body_decoded_text(
-    handle: u64,
-    maximum: i64,
-    out_status: *mut i32,
-) -> *mut c_char {
-    let wrapper = table();
-    let reply = {
-        let guard = wrapper.lock_table();
-        let Some(r) = guard.client_replies.get(&handle) else {
-            write_status(out_status, BN_WEB_FAILED);
-            return std::ptr::null_mut();
-        };
-        r.clone()
-    };
-    let max = usize::try_from(maximum).unwrap_or(usize::MAX);
-    match reply.body_decoded_text(max) {
-        Ok(text) => {
-            write_status(out_status, BN_WEB_OK);
-            c_string(&text)
-        }
-        Err(err) => {
-            write_status(out_status, BN_WEB_FAILED);
-            record_failure("ClientReply.BodyDecodedText", &err);
-            std::ptr::null_mut()
-        }
-    }
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_reply_body_decoded_bytes(
-    handle: u64,
-    maximum: i64,
-    out_handle: *mut u64,
-) -> i32 {
-    let wrapper = table();
-    let reply = {
-        let guard = wrapper.lock_table();
-        let Some(r) = guard.client_replies.get(&handle) else {
-            return record_failure(
-                "ClientReply.BodyDecodedBytes",
-                &WebFailure::InvalidArgument("invalid_reply".into()),
-            );
-        };
-        r.clone()
-    };
-    let max = usize::try_from(maximum).unwrap_or(usize::MAX);
-    match reply.body_decoded_bytes(max) {
-        Ok(bytes) => {
-            let byte_handle = bn_stdlib::crypto_abi::store(bytes);
-            write_u64(out_handle, byte_handle);
-            BN_WEB_OK
-        }
-        Err(err) => record_failure("ClientReply.BodyDecodedBytes", &err),
-    }
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_reply_peer_address(
-    handle: u64,
-    out_status: *mut i32,
-) -> *mut c_char {
-    let wrapper = table();
-    let guard = wrapper.lock_table();
-    let Some(reply) = guard.client_replies.get(&handle) else {
-        write_status(out_status, BN_WEB_FAILED);
-        return std::ptr::null_mut();
-    };
-    if let Some(addr) = reply.peer_address() {
-        write_status(out_status, BN_WEB_OK);
-        c_string(&addr.to_string())
-    } else {
-        write_status(out_status, BN_WEB_FAILED);
-        record_failure(
-            "ClientReply.PeerAddress",
-            &WebFailure::NotFound("peer_address_not_found".into()),
-        );
-        std::ptr::null_mut()
-    }
-}
-
-// ---- Headers C ABI -------------------------------------------------------
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_headers_create() -> u64 {
-    let handle = alloc_handle();
-    table()
-        .lock_table()
-        .headers
-        .insert(handle, crate::web::Headers::default());
-    handle
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_headers_new(out_handle: *mut u64) -> i32 {
-    let handle = bn_web_headers_create();
-    write_u64(out_handle, handle);
-    BN_WEB_OK
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_headers_add(handle: u64, name: *const c_char, val: *const c_char) -> i32 {
-    let (Some(name_str), Some(val_str)) = (string_text(name), string_text(val)) else {
-        return record_failure(
-            "Headers.Add",
-            &WebFailure::InvalidArgument("invalid_header".into()),
-        );
-    };
-    let wrapper = table();
-    let mut guard = wrapper.lock_table();
-    let Some(headers) = guard.headers.get_mut(&handle) else {
-        return record_failure(
-            "Headers.Add",
-            &WebFailure::InvalidArgument("invalid_headers_handle".into()),
-        );
-    };
-    headers.add(name_str, val_str);
-    BN_WEB_OK
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_headers_set(handle: u64, name: *const c_char, val: *const c_char) -> i32 {
-    let (Some(name_str), Some(val_str)) = (string_text(name), string_text(val)) else {
-        return record_failure(
-            "Headers.Set",
-            &WebFailure::InvalidArgument("invalid_header".into()),
-        );
-    };
-    let wrapper = table();
-    let mut guard = wrapper.lock_table();
-    let Some(headers) = guard.headers.get_mut(&handle) else {
-        return record_failure(
-            "Headers.Set",
-            &WebFailure::InvalidArgument("invalid_headers_handle".into()),
-        );
-    };
-    headers.set(name_str, val_str);
-    BN_WEB_OK
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_headers_count(handle: u64) -> i64 {
-    let wrapper = table();
-    let guard = wrapper.lock_table();
-    guard
-        .headers
-        .get(&handle)
-        .map_or(0, |h| i64::try_from(h.count()).unwrap_or(0))
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_headers_get(
-    handle: u64,
-    name: *const c_char,
-    out_status: *mut i32,
-) -> *mut c_char {
-    let Some(name_str) = string_text(name) else {
-        write_status(out_status, BN_WEB_FAILED);
-        return std::ptr::null_mut();
-    };
-    let wrapper = table();
-    let guard = wrapper.lock_table();
-    let Some(headers) = guard.headers.get(&handle) else {
-        write_status(out_status, BN_WEB_FAILED);
-        return std::ptr::null_mut();
-    };
-    if let Some(val) = headers.get(&name_str) {
-        write_status(out_status, BN_WEB_OK);
-        c_string(val)
-    } else {
-        write_status(out_status, BN_WEB_FAILED);
-        record_failure("Headers.Get", &WebFailure::HeaderNotFound(name_str));
-        std::ptr::null_mut()
-    }
-}
-
-// ---- Query C ABI ---------------------------------------------------------
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_query_create() -> u64 {
-    let handle = alloc_handle();
-    table()
-        .lock_table()
-        .queries
-        .insert(handle, crate::web::Query::default());
-    handle
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_query_new(out_handle: *mut u64) -> i32 {
-    let handle = bn_web_query_create();
-    write_u64(out_handle, handle);
-    BN_WEB_OK
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_query_add(handle: u64, name: *const c_char, val: *const c_char) -> i32 {
-    let (Some(name_str), Some(val_str)) = (string_text(name), string_text(val)) else {
-        return record_failure(
-            "Query.Add",
-            &WebFailure::InvalidArgument("invalid_query".into()),
-        );
-    };
-    let wrapper = table();
-    let mut guard = wrapper.lock_table();
-    let Some(query) = guard.queries.get_mut(&handle) else {
-        return record_failure(
-            "Query.Add",
-            &WebFailure::InvalidArgument("invalid_query_handle".into()),
-        );
-    };
-    query.add(name_str, val_str);
-    BN_WEB_OK
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_query_encode(handle: u64, out_status: *mut i32) -> *mut c_char {
-    let wrapper = table();
-    let guard = wrapper.lock_table();
-    let Some(query) = guard.queries.get(&handle) else {
-        write_status(out_status, BN_WEB_FAILED);
-        return std::ptr::null_mut();
-    };
-    let enc = query.encode();
-    write_status(out_status, BN_WEB_OK);
-    c_string(&enc)
-}
-
-// ---- Fields C ABI --------------------------------------------------------
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_fields_create() -> u64 {
-    let handle = alloc_handle();
-    table()
-        .lock_table()
-        .fields
-        .insert(handle, crate::web::Fields::default());
-    handle
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_fields_new(out_handle: *mut u64) -> i32 {
-    let handle = bn_web_fields_create();
-    write_u64(out_handle, handle);
-    BN_WEB_OK
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_fields_add(handle: u64, name: *const c_char, val: *const c_char) -> i32 {
-    let (Some(name_str), Some(val_str)) = (string_text(name), string_text(val)) else {
-        return record_failure(
-            "Fields.Add",
-            &WebFailure::InvalidArgument("invalid_field".into()),
-        );
-    };
-    let wrapper = table();
-    let mut guard = wrapper.lock_table();
-    let Some(fields) = guard.fields.get_mut(&handle) else {
-        return record_failure(
-            "Fields.Add",
-            &WebFailure::InvalidArgument("invalid_fields_handle".into()),
-        );
-    };
-    fields.add(name_str, val_str);
-    BN_WEB_OK
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_fields_encode(handle: u64, out_status: *mut i32) -> *mut c_char {
-    let wrapper = table();
-    let guard = wrapper.lock_table();
-    let Some(fields) = guard.fields.get(&handle) else {
-        write_status(out_status, BN_WEB_FAILED);
-        return std::ptr::null_mut();
-    };
-    let enc = fields.encode();
-    write_status(out_status, BN_WEB_OK);
-    c_string(&enc)
-}
-
-// ---- Form C ABI ----------------------------------------------------------
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_form_create() -> u64 {
-    let handle = alloc_handle();
-    table()
-        .lock_table()
-        .forms
-        .insert(handle, crate::web::Form::default());
-    handle
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_form_new(out_handle: *mut u64) -> i32 {
-    let handle = bn_web_form_create();
-    write_u64(out_handle, handle);
-    BN_WEB_OK
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_form_add_field(
-    handle: u64,
-    name: *const c_char,
-    val: *const c_char,
-) -> i32 {
-    let (Some(name_str), Some(val_str)) = (string_text(name), string_text(val)) else {
-        return record_failure(
-            "Form.AddField",
-            &WebFailure::InvalidArgument("invalid_field".into()),
-        );
-    };
-    let wrapper = table();
-    let mut guard = wrapper.lock_table();
-    let Some(form) = guard.forms.get_mut(&handle) else {
-        return record_failure(
-            "Form.AddField",
-            &WebFailure::InvalidArgument("invalid_form_handle".into()),
-        );
-    };
-    form.add_field(name_str, val_str);
-    BN_WEB_OK
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_form_add_file(
-    handle: u64,
-    name: *const c_char,
-    path: *const c_char,
-    content_type: *const c_char,
-) -> i32 {
-    let (Some(name_str), Some(path_str)) = (string_text(name), string_text(path)) else {
-        return record_failure(
-            "Form.AddFile",
-            &WebFailure::InvalidArgument("invalid_file_params".into()),
-        );
-    };
-    let ct_str = string_text(content_type).unwrap_or_else(|| "application/octet-stream".into());
-    let wrapper = table();
-    let mut guard = wrapper.lock_table();
-    let Some(form) = guard.forms.get_mut(&handle) else {
-        return record_failure(
-            "Form.AddFile",
-            &WebFailure::InvalidArgument("invalid_form_handle".into()),
-        );
-    };
-    form.add_file(name_str, path_str, ct_str);
-    BN_WEB_OK
-}
-
-// ---- Client Transfer C ABI -----------------------------------------------
-
-pub(crate) fn do_client_transfer(
-    client_handle: u64,
-    method: &str,
-    url: &str,
-    body: &[u8],
-    content_type: Option<&str>,
-    headers_handle: u64,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let wrapper = table();
-    let (policy, logger, headers_entries) = {
-        let guard = wrapper.lock_table();
-        let logger = guard.clients.get(&client_handle).copied().unwrap_or(0);
-        let policy = crate::web::EgressPolicy::default();
-        let headers_entries = if headers_handle != 0 {
-            guard
-                .headers
-                .get(&headers_handle)
-                .map(|h| h.entries.clone())
-                .unwrap_or_default()
-        } else {
-            Vec::new()
-        };
-        (policy, logger, headers_entries)
-    };
-
-    let mut extra = headers_entries;
-    if let Some(ct) = content_type
-        && !extra
-            .iter()
-            .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
-    {
-        extra.push(("content-type".into(), ct.into()));
-    }
-
-    let started = std::time::Instant::now();
-    match crate::http::client_transfer_with_policy(method, url, body, &extra, &policy) {
-        Ok(reply) => {
-            let reply_handle = alloc_handle();
-            let bytes = i64::try_from(reply.body.len()).unwrap_or(i64::MAX);
-            log_client_access(
-                logger,
-                method,
-                url,
-                i64::from(reply.status),
-                bytes,
-                started,
-                &reply.headers,
-            );
-            let max_usize = usize::try_from(maximum.max(0)).unwrap_or(usize::MAX);
-            if maximum > 0 && reply.body.len() > max_usize {
-                return record_failure(
-                    "Client.Transfer",
-                    &WebFailure::BodyLimitExceeded(format!("{}/{}", reply.body.len(), maximum)),
-                );
-            }
-            let mut guard = wrapper.lock_table();
-            guard.client_replies.insert(reply_handle, reply);
-            write_u64(out_reply, reply_handle);
-            BN_WEB_OK
-        }
-        Err(err) => {
-            log_client_access(logger, method, url, 0, 0, started, &[]);
-            record_failure("Client.Transfer", &WebFailure::from_message(&err))
-        }
-    }
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_get(
-    client_handle: u64,
-    url: *const c_char,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let Some(url_str) = string_text(url) else {
-        return record_failure(
-            "Client.Get",
-            &WebFailure::InvalidArgument("invalid_url".into()),
-        );
-    };
-    do_client_transfer(
-        client_handle,
-        "GET",
-        &url_str,
-        &[],
-        None,
-        0,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_get_with_headers(
-    client_handle: u64,
-    url: *const c_char,
-    headers: u64,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let Some(url_str) = string_text(url) else {
-        return record_failure(
-            "Client.GetWithHeaders",
-            &WebFailure::InvalidArgument("invalid_url".into()),
-        );
-    };
-    do_client_transfer(
-        client_handle,
-        "GET",
-        &url_str,
-        &[],
-        None,
-        headers,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_get_decoded(
-    client_handle: u64,
-    url: *const c_char,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    bn_web_client_get(client_handle, url, maximum, out_reply)
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_get_decoded_with_headers(
-    client_handle: u64,
-    url: *const c_char,
-    headers: u64,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    bn_web_client_get_with_headers(client_handle, url, headers, maximum, out_reply)
-}
-
-fn append_query(url: &str, query_str: &str) -> String {
-    if query_str.is_empty() {
-        return url.to_owned();
-    }
-    if url.contains('?') {
-        format!("{url}&{query_str}")
-    } else {
-        format!("{url}?{query_str}")
-    }
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_get_query(
-    client_handle: u64,
-    url: *const c_char,
-    query: u64,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let Some(url_str) = string_text(url) else {
-        return record_failure(
-            "Client.GetQuery",
-            &WebFailure::InvalidArgument("invalid_url".into()),
-        );
-    };
-    let q_enc = {
-        let wrapper = table();
-        let guard = wrapper.lock_table();
-        guard
-            .queries
-            .get(&query)
-            .map(super::web::Query::encode)
-            .unwrap_or_default()
-    };
-    let full_url = append_query(&url_str, &q_enc);
-    do_client_transfer(
-        client_handle,
-        "GET",
-        &full_url,
-        &[],
-        None,
-        0,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_get_query_with_headers(
-    client_handle: u64,
-    url: *const c_char,
-    query: u64,
-    headers: u64,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let Some(url_str) = string_text(url) else {
-        return record_failure(
-            "Client.GetQueryWithHeaders",
-            &WebFailure::InvalidArgument("invalid_url".into()),
-        );
-    };
-    let q_enc = {
-        let wrapper = table();
-        let guard = wrapper.lock_table();
-        guard
-            .queries
-            .get(&query)
-            .map(super::web::Query::encode)
-            .unwrap_or_default()
-    };
-    let full_url = append_query(&url_str, &q_enc);
-    do_client_transfer(
-        client_handle,
-        "GET",
-        &full_url,
-        &[],
-        None,
-        headers,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_head(
-    client_handle: u64,
-    url: *const c_char,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let Some(url_str) = string_text(url) else {
-        return record_failure(
-            "Client.Head",
-            &WebFailure::InvalidArgument("invalid_url".into()),
-        );
-    };
-    do_client_transfer(
-        client_handle,
-        "HEAD",
-        &url_str,
-        &[],
-        None,
-        0,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_head_with_headers(
-    client_handle: u64,
-    url: *const c_char,
-    headers: u64,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let Some(url_str) = string_text(url) else {
-        return record_failure(
-            "Client.HeadWithHeaders",
-            &WebFailure::InvalidArgument("invalid_url".into()),
-        );
-    };
-    do_client_transfer(
-        client_handle,
-        "HEAD",
-        &url_str,
-        &[],
-        None,
-        headers,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_delete(
-    client_handle: u64,
-    url: *const c_char,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let Some(url_str) = string_text(url) else {
-        return record_failure(
-            "Client.Delete",
-            &WebFailure::InvalidArgument("invalid_url".into()),
-        );
-    };
-    do_client_transfer(
-        client_handle,
-        "DELETE",
-        &url_str,
-        &[],
-        None,
-        0,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_delete_with_headers(
-    client_handle: u64,
-    url: *const c_char,
-    headers: u64,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let Some(url_str) = string_text(url) else {
-        return record_failure(
-            "Client.DeleteWithHeaders",
-            &WebFailure::InvalidArgument("invalid_url".into()),
-        );
-    };
-    do_client_transfer(
-        client_handle,
-        "DELETE",
-        &url_str,
-        &[],
-        None,
-        headers,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_options(
-    client_handle: u64,
-    url: *const c_char,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let Some(url_str) = string_text(url) else {
-        return record_failure(
-            "Client.Options",
-            &WebFailure::InvalidArgument("invalid_url".into()),
-        );
-    };
-    do_client_transfer(
-        client_handle,
-        "OPTIONS",
-        &url_str,
-        &[],
-        None,
-        0,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_options_with_headers(
-    client_handle: u64,
-    url: *const c_char,
-    headers: u64,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let Some(url_str) = string_text(url) else {
-        return record_failure(
-            "Client.OptionsWithHeaders",
-            &WebFailure::InvalidArgument("invalid_url".into()),
-        );
-    };
-    do_client_transfer(
-        client_handle,
-        "OPTIONS",
-        &url_str,
-        &[],
-        None,
-        headers,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_post(
-    client_handle: u64,
-    url: *const c_char,
-    body: *const c_char,
-    content_type: *const c_char,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let (Some(url_str), Some(body_str)) = (string_text(url), string_text(body)) else {
-        return record_failure(
-            "Client.Post",
-            &WebFailure::InvalidArgument("invalid_post".into()),
-        );
-    };
-    let ct = string_text(content_type);
-    do_client_transfer(
-        client_handle,
-        "POST",
-        &url_str,
-        body_str.as_bytes(),
-        ct.as_deref(),
-        0,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_post_with_headers(
-    client_handle: u64,
-    url: *const c_char,
-    body: *const c_char,
-    content_type: *const c_char,
-    headers: u64,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let (Some(url_str), Some(body_str)) = (string_text(url), string_text(body)) else {
-        return record_failure(
-            "Client.PostWithHeaders",
-            &WebFailure::InvalidArgument("invalid_post".into()),
-        );
-    };
-    let ct = string_text(content_type);
-    do_client_transfer(
-        client_handle,
-        "POST",
-        &url_str,
-        body_str.as_bytes(),
-        ct.as_deref(),
-        headers,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_post_bytes(
-    client_handle: u64,
-    url: *const c_char,
-    body_handle: u64,
-    content_type: *const c_char,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let Some(url_str) = string_text(url) else {
-        return record_failure(
-            "Client.PostBytes",
-            &WebFailure::InvalidArgument("invalid_url".into()),
-        );
-    };
-    let bytes =
-        bn_stdlib::crypto_abi::with_buffers(|b| b.get(&body_handle).map(|buf| buf.to_vec()))
-            .unwrap_or_default();
-    let ct = string_text(content_type);
-    do_client_transfer(
-        client_handle,
-        "POST",
-        &url_str,
-        &bytes,
-        ct.as_deref(),
-        0,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_post_bytes_with_headers(
-    client_handle: u64,
-    url: *const c_char,
-    body_handle: u64,
-    content_type: *const c_char,
-    headers: u64,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let Some(url_str) = string_text(url) else {
-        return record_failure(
-            "Client.PostBytesWithHeaders",
-            &WebFailure::InvalidArgument("invalid_url".into()),
-        );
-    };
-    let bytes =
-        bn_stdlib::crypto_abi::with_buffers(|b| b.get(&body_handle).map(|buf| buf.to_vec()))
-            .unwrap_or_default();
-    let ct = string_text(content_type);
-    do_client_transfer(
-        client_handle,
-        "POST",
-        &url_str,
-        &bytes,
-        ct.as_deref(),
-        headers,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_post_fields(
-    client_handle: u64,
-    url: *const c_char,
-    fields: u64,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let Some(url_str) = string_text(url) else {
-        return record_failure(
-            "Client.PostFields",
-            &WebFailure::InvalidArgument("invalid_url".into()),
-        );
-    };
-    let enc = {
-        let wrapper = table();
-        let guard = wrapper.lock_table();
-        guard
-            .fields
-            .get(&fields)
-            .map(super::web::Fields::encode)
-            .unwrap_or_default()
-    };
-    do_client_transfer(
-        client_handle,
-        "POST",
-        &url_str,
-        enc.as_bytes(),
-        Some("application/x-www-form-urlencoded"),
-        0,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_post_fields_with_headers(
-    client_handle: u64,
-    url: *const c_char,
-    fields: u64,
-    headers: u64,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let Some(url_str) = string_text(url) else {
-        return record_failure(
-            "Client.PostFieldsWithHeaders",
-            &WebFailure::InvalidArgument("invalid_url".into()),
-        );
-    };
-    let enc = {
-        let wrapper = table();
-        let guard = wrapper.lock_table();
-        guard
-            .fields
-            .get(&fields)
-            .map(super::web::Fields::encode)
-            .unwrap_or_default()
-    };
-    do_client_transfer(
-        client_handle,
-        "POST",
-        &url_str,
-        enc.as_bytes(),
-        Some("application/x-www-form-urlencoded"),
-        headers,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_post_form(
-    client_handle: u64,
-    url: *const c_char,
-    form: u64,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    bn_web_client_post_form_with_headers(client_handle, url, form, 0, maximum, out_reply)
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_post_form_with_headers(
-    client_handle: u64,
-    url: *const c_char,
-    form: u64,
-    headers: u64,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let Some(url_str) = string_text(url) else {
-        return record_failure(
-            "Client.PostForm",
-            &WebFailure::InvalidArgument("invalid_url".into()),
-        );
-    };
-    let form_data = {
-        let wrapper = table();
-        let guard = wrapper.lock_table();
-        guard.forms.get(&form).cloned().unwrap_or_default()
-    };
-    let boundary = "----BNWebFormBoundary7MA4YWxkTrZu0gW";
-    let mut body = Vec::new();
-    for (k, v) in form_data.fields {
-        body.extend_from_slice(
-            format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n")
-                .as_bytes(),
-        );
-    }
-    for (name, path, ct) in form_data.files {
-        let content = read_form_file(&path);
-        let filename = std::path::Path::new(&path)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("file");
-        body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"; filename=\"{filename}\"\r\nContent-Type: {ct}\r\n\r\n").as_bytes());
-        body.extend_from_slice(&content);
-        body.extend_from_slice(b"\r\n");
-    }
-    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
-    let ct = format!("multipart/form-data;boundary={boundary}");
-    do_client_transfer(
-        client_handle,
-        "POST",
-        &url_str,
-        &body,
-        Some(&ct),
-        headers,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_post_json(
-    client_handle: u64,
-    url: *const c_char,
-    json: *const c_char,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let (Some(url_str), Some(json_str)) = (string_text(url), string_text(json)) else {
-        return record_failure(
-            "Client.PostJson",
-            &WebFailure::InvalidArgument("invalid_post".into()),
-        );
-    };
-    do_client_transfer(
-        client_handle,
-        "POST",
-        &url_str,
-        json_str.as_bytes(),
-        Some("application/json"),
-        0,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_post_json_with_headers(
-    client_handle: u64,
-    url: *const c_char,
-    json: *const c_char,
-    headers: u64,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let (Some(url_str), Some(json_str)) = (string_text(url), string_text(json)) else {
-        return record_failure(
-            "Client.PostJsonWithHeaders",
-            &WebFailure::InvalidArgument("invalid_post".into()),
-        );
-    };
-    do_client_transfer(
-        client_handle,
-        "POST",
-        &url_str,
-        json_str.as_bytes(),
-        Some("application/json"),
-        headers,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_put(
-    client_handle: u64,
-    url: *const c_char,
-    body: *const c_char,
-    content_type: *const c_char,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let (Some(url_str), Some(body_str)) = (string_text(url), string_text(body)) else {
-        return record_failure(
-            "Client.Put",
-            &WebFailure::InvalidArgument("invalid_put".into()),
-        );
-    };
-    let ct = string_text(content_type);
-    do_client_transfer(
-        client_handle,
-        "PUT",
-        &url_str,
-        body_str.as_bytes(),
-        ct.as_deref(),
-        0,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_put_with_headers(
-    client_handle: u64,
-    url: *const c_char,
-    body: *const c_char,
-    content_type: *const c_char,
-    headers: u64,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let (Some(url_str), Some(body_str)) = (string_text(url), string_text(body)) else {
-        return record_failure(
-            "Client.PutWithHeaders",
-            &WebFailure::InvalidArgument("invalid_put".into()),
-        );
-    };
-    let ct = string_text(content_type);
-    do_client_transfer(
-        client_handle,
-        "PUT",
-        &url_str,
-        body_str.as_bytes(),
-        ct.as_deref(),
-        headers,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_put_bytes(
-    client_handle: u64,
-    url: *const c_char,
-    body_handle: u64,
-    content_type: *const c_char,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let Some(url_str) = string_text(url) else {
-        return record_failure(
-            "Client.PutBytes",
-            &WebFailure::InvalidArgument("invalid_url".into()),
-        );
-    };
-    let bytes =
-        bn_stdlib::crypto_abi::with_buffers(|b| b.get(&body_handle).map(|buf| buf.to_vec()))
-            .unwrap_or_default();
-    let ct = string_text(content_type);
-    do_client_transfer(
-        client_handle,
-        "PUT",
-        &url_str,
-        &bytes,
-        ct.as_deref(),
-        0,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_put_bytes_with_headers(
-    client_handle: u64,
-    url: *const c_char,
-    body_handle: u64,
-    content_type: *const c_char,
-    headers: u64,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let Some(url_str) = string_text(url) else {
-        return record_failure(
-            "Client.PutBytesWithHeaders",
-            &WebFailure::InvalidArgument("invalid_url".into()),
-        );
-    };
-    let bytes =
-        bn_stdlib::crypto_abi::with_buffers(|b| b.get(&body_handle).map(|buf| buf.to_vec()))
-            .unwrap_or_default();
-    let ct = string_text(content_type);
-    do_client_transfer(
-        client_handle,
-        "PUT",
-        &url_str,
-        &bytes,
-        ct.as_deref(),
-        headers,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_patch(
-    client_handle: u64,
-    url: *const c_char,
-    body: *const c_char,
-    content_type: *const c_char,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let (Some(url_str), Some(body_str)) = (string_text(url), string_text(body)) else {
-        return record_failure(
-            "Client.Patch",
-            &WebFailure::InvalidArgument("invalid_patch".into()),
-        );
-    };
-    let ct = string_text(content_type);
-    do_client_transfer(
-        client_handle,
-        "PATCH",
-        &url_str,
-        body_str.as_bytes(),
-        ct.as_deref(),
-        0,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_patch_with_headers(
-    client_handle: u64,
-    url: *const c_char,
-    body: *const c_char,
-    content_type: *const c_char,
-    headers: u64,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let (Some(url_str), Some(body_str)) = (string_text(url), string_text(body)) else {
-        return record_failure(
-            "Client.PatchWithHeaders",
-            &WebFailure::InvalidArgument("invalid_patch".into()),
-        );
-    };
-    let ct = string_text(content_type);
-    do_client_transfer(
-        client_handle,
-        "PATCH",
-        &url_str,
-        body_str.as_bytes(),
-        ct.as_deref(),
-        headers,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_patch_bytes(
-    client_handle: u64,
-    url: *const c_char,
-    body_handle: u64,
-    content_type: *const c_char,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let Some(url_str) = string_text(url) else {
-        return record_failure(
-            "Client.PatchBytes",
-            &WebFailure::InvalidArgument("invalid_url".into()),
-        );
-    };
-    let bytes =
-        bn_stdlib::crypto_abi::with_buffers(|b| b.get(&body_handle).map(|buf| buf.to_vec()))
-            .unwrap_or_default();
-    let ct = string_text(content_type);
-    do_client_transfer(
-        client_handle,
-        "PATCH",
-        &url_str,
-        &bytes,
-        ct.as_deref(),
-        0,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_patch_bytes_with_headers(
-    client_handle: u64,
-    url: *const c_char,
-    body_handle: u64,
-    content_type: *const c_char,
-    headers: u64,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let Some(url_str) = string_text(url) else {
-        return record_failure(
-            "Client.PatchBytesWithHeaders",
-            &WebFailure::InvalidArgument("invalid_url".into()),
-        );
-    };
-    let bytes =
-        bn_stdlib::crypto_abi::with_buffers(|b| b.get(&body_handle).map(|buf| buf.to_vec()))
-            .unwrap_or_default();
-    let ct = string_text(content_type);
-    do_client_transfer(
-        client_handle,
-        "PATCH",
-        &url_str,
-        &bytes,
-        ct.as_deref(),
-        headers,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_request_method(
-    client_handle: u64,
-    method: *const c_char,
-    url: *const c_char,
-    body: *const c_char,
-    content_type: *const c_char,
-    headers: u64,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let (Some(method_str), Some(url_str)) = (string_text(method), string_text(url)) else {
-        return record_failure(
-            "Client.RequestMethod",
-            &WebFailure::InvalidArgument("invalid_params".into()),
-        );
-    };
-    let body_str = string_text(body).unwrap_or_default();
-    let ct = string_text(content_type);
-    do_client_transfer(
-        client_handle,
-        &method_str,
-        &url_str,
-        body_str.as_bytes(),
-        ct.as_deref(),
-        headers,
-        maximum,
-        out_reply,
-    )
-}
+#[path = "web_abi/client_bodies.rs"]
+mod client_bodies;
+#[path = "web_abi/client_transfer.rs"]
+mod client_transfer;
+#[path = "web_abi/client_values.rs"]
+mod client_values;
 
 #[cfg(test)]
 mod string_contract_tests {

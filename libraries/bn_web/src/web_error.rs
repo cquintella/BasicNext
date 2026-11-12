@@ -10,6 +10,31 @@
 use bn_types::error_codes::web;
 
 /// Why a `BNWeb` operation failed.
+/// What a size limit bounds, named in the message of [`WebFailure::TooLarge`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SizeLimit {
+    RequestBody,
+    ResponseBody,
+    ResponseHeaders,
+    Query,
+    /// The `maximum` a program passes to a body reader.
+    BodyMaximum,
+    TlsMaterial,
+}
+
+impl SizeLimit {
+    const fn message_key(self) -> &'static str {
+        match self {
+            Self::RequestBody => "limit.request_body.message",
+            Self::ResponseBody => "limit.response_body.message",
+            Self::ResponseHeaders => "limit.response_headers.message",
+            Self::Query => "limit.query.message",
+            Self::BodyMaximum => "limit.body_maximum.message",
+            Self::TlsMaterial => "limit.tls_material.message",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum WebFailure {
     // 1: INVALID_ARGUMENT
@@ -93,6 +118,8 @@ pub enum WebFailure {
     FilterLimitExceeded,
     /// Request or response body exceeded limit.
     BodyLimitExceeded(String),
+    /// A size above its configured limit, in bytes.
+    TooLarge { what: SizeLimit, limit: usize },
     /// Egress redirect limit exceeded.
     RedirectLimitExceeded,
     /// Headers size or count exceeded limit.
@@ -207,6 +234,7 @@ impl WebFailure {
             Self::LimitExceeded(_)
             | Self::FilterLimitExceeded
             | Self::BodyLimitExceeded(_)
+            | Self::TooLarge { .. }
             | Self::RedirectLimitExceeded
             | Self::HeaderLimitExceeded
             | Self::SessionValueTooLarge
@@ -313,6 +341,9 @@ impl WebFailure {
             }
 
             Self::FilterLimitExceeded => "filter limit exceeded".into(),
+            Self::TooLarge { what, limit } => {
+                bn_catalog::fill("web", what.message_key(), &[("limit", &limit.to_string())])
+            }
             Self::RedirectLimitExceeded => "redirect limit exceeded".into(),
             Self::HeaderLimitExceeded => "headers exceed declared limit".into(),
             Self::SessionValueTooLarge => "session value too large".into(),
@@ -332,7 +363,9 @@ impl WebFailure {
             Self::ListenerJoinFailed => "server listener join failed".into(),
 
             Self::ProviderUnavailable(p) => format!("{p} provider unavailable"),
-            Self::ServerStateUnavailable => "server state unavailable".into(),
+            Self::ServerStateUnavailable => {
+                bn_catalog::text("web", "server.state_unavailable").into()
+            }
 
             Self::HttpStatus(s) => bn_catalog::fill(
                 "web",
@@ -432,6 +465,9 @@ impl WebFailure {
             }
 
             Self::FilterLimitExceeded => "a server may register at most 64 filters".into(),
+            Self::TooLarge { limit, .. } => {
+                bn_catalog::fill("web", "limit.cause", &[("limit", &limit.to_string())])
+            }
             Self::RedirectLimitExceeded => {
                 "the request exceeded the maximum number of allowed redirects".into()
             }
@@ -478,104 +514,17 @@ impl WebFailure {
             }
         }
     }
+}
 
-    /// Construct a [`WebFailure`] from a runtime error string.
-    #[must_use]
-    pub fn from_message(message: &str) -> Self {
-        match message {
-            "unsupported HTTP method" => Self::UnsupportedMethod(message.into()),
-            "status must be 100..599" | "invalid response status" => Self::InvalidStatus(0),
-            "filter must be a FUNCTION" => Self::FilterMustBeFunction,
-            "route handler must be a FUNCTION" => Self::RouteHandlerMustBeFunction,
-            "filter limit exceeded" => Self::FilterLimitExceeded,
-            "invalid route" => Self::InvalidRoute(message.into()),
-            "server is already started" => Self::ServerAlreadyStarted,
-            "server is stopping or closed" => Self::ServerStoppingOrClosed,
-            "server is not accepting requests" => Self::ServerNotAccepting,
-            "invalid server options" => Self::InvalidServerOptions,
-            "server listener join timed out" => Self::ListenerJoinTimeout,
-            "server listener join failed" => Self::ListenerJoinFailed,
-            "server worker drain timed out" | "server drain timed out with active connections" => {
-                Self::WorkerDrainTimeout
-            }
-            "server state unavailable" => Self::ServerStateUnavailable,
-            "negative cookie age" => Self::NegativeCookieAge,
-            "invalid SameSite policy" => Self::InvalidSameSite,
-            "SameSite=None requires Secure" => Self::SameSiteNoneRequiresSecure,
-            "Secure cookies cannot be sent over cleartext HTTP" => Self::SecureCookieOverCleartext,
-            "cookie not found" => Self::CookieNotFound,
-            "invalid cookie bounds"
-            | "invalid cookie name"
-            | "invalid cookie value"
-            | "invalid cookie path"
-            | "invalid cookie domain" => Self::InvalidCookieBounds,
-            "invalid session idle timeout" => Self::InvalidSessionIdleTimeout,
-            "invalid session capacity" => Self::InvalidSessionCapacity,
-            "session not found" => Self::SessionNotFound,
-            "session value too large" => Self::SessionValueTooLarge,
-            m if m == bn_catalog::text("web", "session.invalid_entry") => Self::InvalidSessionEntry,
-            m if m == bn_catalog::text("web", "session.key_limit") => Self::SessionKeyLimit,
-            "unsupported selector" => Self::UnsupportedSelector(message.into()),
-            "selector did not match" => Self::SelectorNoMatch,
-            "malformed HTML" => Self::MalformedHtml,
-            "response is already committed or closed" => Self::ResponseCommittedOrClosed,
-            "response is closed" => Self::ResponseClosed,
-            "response header is not present" => Self::HeaderNotFound(message.into()),
-            "redirect limit exceeded" => Self::RedirectLimitExceeded,
-            "redirect response missing Location" => Self::MissingRedirectLocation,
-            "HTTP handshake timed out" => Self::HandshakeTimeout,
-            "URL resolved to no addresses" => Self::NoResolvedAddresses,
-            "request dispatch failed" => Self::RequestDispatchFailed,
-            "index is outside collection" => Self::IndexOutOfRange {
-                index: -1,
-                count: 0,
-            },
-            s if s == bn_catalog::text("web", "dns.timeout.message") => Self::HandshakeTimeout,
-            s if s.contains("quota") || s == bn_catalog::text("web", "dns.pool_limit.message") => {
-                Self::LimitExceeded(s.into())
-            }
-            s if s.contains("timeout") || s.contains("timed") => Self::Timeout(s.into()),
-            s if s.contains("provider unavailable") => Self::Unavailable(s.into()),
-            // Before the egress arm: a CA file path may contain any word.
-            s if s.starts_with(&bn_catalog::fill(
-                "web",
-                "tls.trust_failed.message",
-                &[("cause", &"")],
-            )) =>
-            {
-                Self::HttpFailed(s.into())
-            }
-            s if s.contains("destinations")
-                || s.contains("private or local")
-                || s.contains("egress") =>
-            {
-                Self::EgressDenied(s.into())
-            }
-            s if s.contains("TLS handshake failed") => Self::TlsHandshakeFailed(s.into()),
-            s if s.contains("connect") => Self::ConnectionFailed(s.into()),
-            s if s.contains("exceed")
-                || s.contains("limit")
-                || s.contains("too large")
-                || s.contains("scripts are not allowed") =>
-            {
-                Self::BodyLimitExceeded(s.into())
-            }
-            s if s.contains("exists") => Self::AlreadyExists(s.into()),
-            s if s.contains("encoding") || s.contains("Encoding") => {
-                Self::UnsupportedEncoding(s.into())
-            }
-            s if s.contains("status") || s.contains("Status") => Self::HttpStatus(0),
-            s if s.contains("URL")
-                || s.contains("authority")
-                || s.contains("percent escape")
-                || s.contains("UTF-8 in target") =>
-            {
-                Self::InvalidUrl(s.into())
-            }
-            s if s.contains("header") => Self::InvalidHeader(s.into()),
-            s if s.contains("CIDR") => Self::InvalidCidr(s.into()),
-            other => Self::InvalidArgument(other.into()),
-        }
+/// The failure of binding a server listener. The contract names no code for
+/// it; a socket quota is `LIMIT` and any other refusal keeps the
+/// `INVALID_ARGUMENT` it has always had, with the system's reason.
+#[must_use]
+pub fn listen_failure(error: &std::io::Error) -> WebFailure {
+    if bn_core_net::is_quota_error(error) {
+        WebFailure::LimitExceeded(error.to_string())
+    } else {
+        WebFailure::InvalidArgument(error.to_string())
     }
 }
 
@@ -633,18 +582,5 @@ mod tests {
         assert_eq!(enc_err.code(), web::UNSUPPORTED_ENCODING);
         assert_eq!(enc_err.message(), "unsupported Content-Encoding \"zstd\"");
         assert!(!enc_err.cause().is_empty());
-
-        assert_eq!(
-            WebFailure::from_message("unexpected HTTP status").code(),
-            web::HTTP_STATUS
-        );
-        assert_eq!(
-            WebFailure::from_message("file already exists").code(),
-            web::ALREADY_EXISTS
-        );
-        assert_eq!(
-            WebFailure::from_message("unsupported Content-Encoding").code(),
-            web::UNSUPPORTED_ENCODING
-        );
     }
 }

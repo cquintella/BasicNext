@@ -523,7 +523,7 @@ impl WebProvider {
                 r
             }
             Err(err_msg) => {
-                return Ok(failed(name, &WebFailure::from_message(&err_msg)));
+                return Ok(failed(name, &err_msg));
             }
         };
 

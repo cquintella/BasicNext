@@ -28,19 +28,19 @@ fn sid(response: &Response) -> Option<String> {
 fn session_table_bounds_follow_the_spec() {
     assert_eq!(
         SessionTable::new(0, 1000).err(),
-        Some("invalid session capacity")
+        Some(crate::web_error::WebFailure::InvalidSessionCapacity)
     );
     assert_eq!(
         SessionTable::new(10_001, 1000).err(),
-        Some("invalid session capacity")
+        Some(crate::web_error::WebFailure::InvalidSessionCapacity)
     );
     assert_eq!(
         SessionTable::new(1, 0).err(),
-        Some("invalid session idle timeout")
+        Some(crate::web_error::WebFailure::InvalidSessionIdleTimeout)
     );
     assert_eq!(
         SessionTable::new(1, 1_800_001).err(),
-        Some("invalid session idle timeout")
+        Some(crate::web_error::WebFailure::InvalidSessionIdleTimeout)
     );
     assert!(SessionTable::new(10_000, 1_800_000).is_ok());
 }
@@ -125,14 +125,17 @@ fn rotate_keeps_the_values_and_end_forgets_the_session() {
 fn session_entries_are_bounded() {
     let table = SessionTable::new(16, 60_000).unwrap();
     let session = RequestSession::begin(&table, None);
-    assert_eq!(session.set("", "v"), Err("invalid session entry"));
+    assert_eq!(
+        session.set("", "v"),
+        Err(crate::web_error::WebFailure::InvalidSessionEntry)
+    );
     assert_eq!(
         session.set(&"k".repeat(129), "v"),
-        Err("invalid session entry")
+        Err(crate::web_error::WebFailure::InvalidSessionEntry)
     );
     assert_eq!(
         session.set("k", &"v".repeat(4097)),
-        Err("invalid session entry")
+        Err(crate::web_error::WebFailure::InvalidSessionEntry)
     );
     session.set(&"k".repeat(128), &"v".repeat(4096)).unwrap();
     for key in 1..64 {
@@ -140,7 +143,7 @@ fn session_entries_are_bounded() {
     }
     assert_eq!(
         session.set("one-more", "v"),
-        Err("session key limit exceeded")
+        Err(crate::web_error::WebFailure::SessionKeyLimit)
     );
     session.set("key1", "replaced").unwrap();
     assert_eq!(session.remove("key1"), Ok(true));

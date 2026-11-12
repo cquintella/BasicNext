@@ -51,12 +51,9 @@ impl WebProvider {
         };
         let result = state
             .lock()
-            .map_err(|_| "server state unavailable")
+            .map_err(|_| WebFailure::ServerStateUnavailable)
             .and_then(|mut server| server.use_queue(queue));
-        Ok(result.map_or_else(
-            |message| failed(name, &WebFailure::from_message(message)),
-            |()| Value::Null,
-        ))
+        Ok(result.map_or_else(|message| failed(name, &message), |()| Value::Null))
     }
 
     /// `Server.UseSessions`: the server keeps a session table.
@@ -71,12 +68,9 @@ impl WebProvider {
         let idle = integer(&arguments[2], span)?.0;
         let result = state
             .lock()
-            .map_err(|_| "server state unavailable")
+            .map_err(|_| WebFailure::ServerStateUnavailable)
             .and_then(|mut server| server.use_sessions(capacity, idle));
-        Ok(result.map_or_else(
-            |message| failed(name, &WebFailure::from_message(message)),
-            |()| Value::Null,
-        ))
+        Ok(result.map_or_else(|message| failed(name, &message), |()| Value::Null))
     }
 
     /// Gives an in-process `Server.Dispatch` request the session its `sid`
@@ -171,17 +165,14 @@ impl WebProvider {
                 span,
             )),
         };
-        let done = |result: Result<(), &'static str>| {
-            result.map_or_else(
-                |message| failed(name, &WebFailure::from_message(message)),
-                |()| Value::Null,
-            )
+        let done = |result: Result<(), WebFailure>| {
+            result.map_or_else(|message| failed(name, &message), |()| Value::Null)
         };
         match method {
             "Id" => {
                 require_arity(name, arguments, 1, span)?;
                 Ok(session.id().map_or_else(
-                    |message| failed(name, &WebFailure::from_message(message)),
+                    |message| failed(name, &message),
                     |id| Value::String(shared_string(id)),
                 ))
             }
@@ -190,7 +181,7 @@ impl WebProvider {
                 Ok(match session.get(&key(1)?) {
                     Ok(Some(value)) => Value::String(shared_string(value)),
                     Ok(None) => failed(name, &WebFailure::SessionKeyNotFound),
-                    Err(message) => failed(name, &WebFailure::from_message(message)),
+                    Err(message) => failed(name, &message),
                 })
             }
             "Set" => {
@@ -202,7 +193,7 @@ impl WebProvider {
                 Ok(match session.remove(&key(1)?) {
                     Ok(true) => Value::Null,
                     Ok(false) => failed(name, &WebFailure::SessionKeyNotFound),
-                    Err(message) => failed(name, &WebFailure::from_message(message)),
+                    Err(message) => failed(name, &message),
                 })
             }
             "Rotate" => {

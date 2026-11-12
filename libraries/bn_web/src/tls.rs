@@ -4,31 +4,46 @@ use std::sync::OnceLock;
 /// (`tls_roots`): the platform store plus at most one extra CA file. With no
 /// usable root there is no configuration, and no mode accepts a certificate
 /// the roots do not vouch for.
-pub(crate) fn client_config() -> Result<rustls::ClientConfig, String> {
+pub(crate) fn client_config() -> Result<rustls::ClientConfig, crate::web_error::WebFailure> {
     Ok(rustls::ClientConfig::builder()
         .with_root_certificates(crate::tls_roots::client_roots().map_err(|cause| {
-            bn_catalog::fill("web", "tls.trust_failed.message", &[("cause", &cause)])
+            crate::web_error::WebFailure::HttpFailed(bn_catalog::fill(
+                "web",
+                "tls.trust_failed.message",
+                &[("cause", &cause)],
+            ))
         })?)
         .with_no_client_auth())
 }
+
+/// The largest certificate or private key PEM text a server configuration takes.
+pub const MAX_TLS_MATERIAL_BYTES: usize = 64 * 1024;
 
 /// Builds a bounded Rustls server configuration from PEM text.
 pub fn server_config_from_pem(
     certificate_pem: &str,
     private_key_pem: &str,
-) -> Result<rustls::ServerConfig, String> {
-    if certificate_pem.len() > 64 * 1024 || private_key_pem.len() > 64 * 1024 {
-        return Err("TLS material exceeds 64 KiB".into());
+) -> Result<rustls::ServerConfig, crate::web_error::WebFailure> {
+    use crate::web_error::WebFailure;
+    if certificate_pem.len() > MAX_TLS_MATERIAL_BYTES
+        || private_key_pem.len() > MAX_TLS_MATERIAL_BYTES
+    {
+        return Err(WebFailure::TooLarge {
+            what: crate::web_error::SizeLimit::TlsMaterial,
+            limit: MAX_TLS_MATERIAL_BYTES,
+        });
     }
-    let cert = pem_block(certificate_pem, "CERTIFICATE")?;
-    let key = pem_block(private_key_pem, "PRIVATE KEY")?;
+    let cert = pem_block(certificate_pem, "CERTIFICATE").map_err(WebFailure::InvalidArgument)?;
+    let key = pem_block(private_key_pem, "PRIVATE KEY").map_err(WebFailure::InvalidArgument)?;
     let certs = vec![rustls::pki_types::CertificateDer::from(cert)];
     let key =
         rustls::pki_types::PrivateKeyDer::Pkcs8(rustls::pki_types::PrivatePkcs8KeyDer::from(key));
     let mut config = rustls::ServerConfig::builder()
         .with_no_client_auth()
         .with_single_cert(certs, key)
-        .map_err(|error| format!("invalid TLS certificate or key: {error}"))?;
+        .map_err(|error| {
+            WebFailure::InvalidArgument(format!("invalid TLS certificate or key: {error}"))
+        })?;
     config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
     Ok(config)
 }

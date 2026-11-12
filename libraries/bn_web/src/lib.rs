@@ -38,4 +38,4 @@ pub(crate) mod web_abi;
 pub mod web_error;
 pub mod web_state;
 pub use web::*;
-pub use web_error::WebFailure;
+pub use web_error::{SizeLimit, WebFailure};

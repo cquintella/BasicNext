@@ -100,7 +100,7 @@ impl EgressPolicy {
         scheme: &str,
         port: u16,
         addresses: &[IpAddr],
-    ) -> Result<Vec<IpAddr>, &'static str> {
+    ) -> Result<Vec<IpAddr>, WebFailure> {
         if self
             .schemes
             .as_ref()
@@ -110,10 +110,12 @@ impl EgressPolicy {
                 .as_ref()
                 .is_some_and(|values| !values.contains(&port))
         {
-            return Err("destination is outside the egress policy");
+            return Err(WebFailure::EgressDenied(
+                "destination is outside the egress policy".into(),
+            ));
         }
         if addresses.is_empty() {
-            return Err("URL resolved to no addresses");
+            return Err(WebFailure::NoResolvedAddresses);
         }
         let mut allowed = Vec::new();
         for &address in addresses {
@@ -122,7 +124,9 @@ impl EgressPolicy {
             }
         }
         if allowed.is_empty() {
-            return Err("destination is outside the egress policy");
+            return Err(WebFailure::EgressDenied(
+                "destination is outside the egress policy".into(),
+            ));
         }
         Ok(allowed)
     }
@@ -196,15 +200,16 @@ impl Request {
         headers: Vec<(String, String)>,
         body: &str,
         peer: IpAddr,
-    ) -> Result<Self, &'static str> {
+    ) -> Result<Self, WebFailure> {
         if method.is_empty()
             || method.bytes().any(|byte| {
                 !byte.is_ascii_uppercase() && !byte.is_ascii_digit() && !b"-".contains(&byte)
             })
         {
-            return Err("invalid request method");
+            return Err(WebFailure::InvalidArgument("invalid request method".into()));
         }
-        let target = canonical_target(raw_target)?;
+        let target = canonical_target(raw_target)
+            .map_err(|reason| WebFailure::InvalidArgument(reason.into()))?;
         validate_headers(&headers)?;
         bounded_body(body, bn_limits::web_limits().max_body_bytes as i128)?;
         Ok(Self {
@@ -218,10 +223,10 @@ impl Request {
             session: None,
         })
     }
-    pub fn query(&self, name: &str) -> Result<QueryValues, &'static str> {
+    pub fn query(&self, name: &str) -> Result<QueryValues, WebFailure> {
         QueryValues::from_query(&self.target.query, name)
     }
-    pub fn header(&self, name: &str) -> Result<HeaderValues, &'static str> {
+    pub fn header(&self, name: &str) -> Result<HeaderValues, WebFailure> {
         HeaderValues::from_headers(&self.headers, name)
     }
     /// The value of the route parameter `name` (`:name` in the matched
@@ -259,7 +264,7 @@ impl Request {
     pub fn target(&self) -> &str {
         &self.target.path
     }
-    pub fn body(&self, maximum: i128) -> Result<&str, &'static str> {
+    pub fn body(&self, maximum: i128) -> Result<&str, WebFailure> {
         bounded_body(&self.body, maximum)
     }
     #[must_use]
@@ -323,19 +328,19 @@ impl Response {
             .find(|(key, _)| key.eq_ignore_ascii_case(name))
             .map(|(_, value)| value.as_str())
     }
-    pub fn set_status(&mut self, status: u16) -> Result<(), &'static str> {
+    pub fn set_status(&mut self, status: u16) -> Result<(), WebFailure> {
         if self.committed || self.closed {
-            return Err("response is already committed or closed");
+            return Err(WebFailure::ResponseCommittedOrClosed);
         }
         if !(100..=599).contains(&status) {
-            return Err("invalid response status");
+            return Err(WebFailure::InvalidStatus(i128::from(status)));
         }
         self.status = status;
         Ok(())
     }
-    pub fn set_header(&mut self, name: &str, value: &str) -> Result<(), &'static str> {
+    pub fn set_header(&mut self, name: &str, value: &str) -> Result<(), WebFailure> {
         if self.committed || self.closed {
-            return Err("response is already committed or closed");
+            return Err(WebFailure::ResponseCommittedOrClosed);
         }
         if name.is_empty()
             || name
@@ -343,7 +348,7 @@ impl Response {
                 .any(|byte| byte <= 0x20 || byte == 0x7f || byte == b':')
             || value.bytes().any(|byte| byte < 0x20 || byte == 0x7f)
         {
-            return Err("invalid response header");
+            return Err(WebFailure::InvalidHeader("invalid response header".into()));
         }
         if self
             .headers
@@ -354,7 +359,10 @@ impl Response {
             + value.len()
             > bn_limits::web_limits().max_header_bytes
         {
-            return Err("response headers exceed 64 KiB");
+            return Err(WebFailure::TooLarge {
+                what: crate::web_error::SizeLimit::ResponseHeaders,
+                limit: bn_limits::web_limits().max_header_bytes,
+            });
         }
         self.headers.push((name.to_ascii_lowercase(), value.into()));
         Ok(())
@@ -370,9 +378,9 @@ impl Response {
         path: &str,
         max_age: Option<std::time::Duration>,
         options: crate::web_state::CookieOptions,
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), WebFailure> {
         if options.secure && !self.secure {
-            return Err("Secure cookies cannot be sent over cleartext HTTP");
+            return Err(WebFailure::SecureCookieOverCleartext);
         }
         let cookie_header = options.format_set_cookie(name, value, domain, path, max_age)?;
         self.set_header("set-cookie", &cookie_header)
@@ -384,7 +392,7 @@ impl Response {
         name: &str,
         domain: Option<&str>,
         path: &str,
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), WebFailure> {
         let options = crate::web_state::CookieOptions {
             secure: self.secure,
             ..crate::web_state::CookieOptions::default()
@@ -398,19 +406,23 @@ impl Response {
             options,
         )
     }
-    pub fn write(&mut self, body: &str) -> Result<(), &'static str> {
+    pub fn write(&mut self, body: &str) -> Result<(), WebFailure> {
         if self.committed || self.closed {
-            return Err("response is already committed or closed");
+            return Err(WebFailure::ResponseCommittedOrClosed);
         }
-        if self.body.len() + body.len() > bn_limits::web_limits().max_response_body_bytes {
-            return Err("response body exceeds 8 MiB");
+        let limit = bn_limits::web_limits().max_response_body_bytes;
+        if self.body.len() + body.len() > limit {
+            return Err(WebFailure::TooLarge {
+                what: crate::web_error::SizeLimit::ResponseBody,
+                limit,
+            });
         }
         self.body.push_str(body);
         Ok(())
     }
-    pub fn commit(&mut self) -> Result<(), &'static str> {
+    pub fn commit(&mut self) -> Result<(), WebFailure> {
         if self.closed {
-            return Err("response is closed");
+            return Err(WebFailure::ResponseClosed);
         }
         self.committed = true;
         Ok(())
@@ -422,7 +434,7 @@ impl Response {
     pub fn close(&mut self) {
         self.closed = true;
     }
-    pub(crate) fn finish_for_method(&mut self, method: &str) -> Result<(), &'static str> {
+    pub(crate) fn finish_for_method(&mut self, method: &str) -> Result<(), WebFailure> {
         if method == "HEAD" {
             self.body.clear();
         }
@@ -465,9 +477,13 @@ pub(crate) fn canonical_target(raw: &str) -> Result<Target, &'static str> {
     })
 }
 
-pub(crate) fn query_values(query: &str, name: &str) -> Result<Vec<String>, &'static str> {
-    if query.len() > bn_limits::web_limits().max_target_bytes {
-        return Err("query exceeds 8 KiB");
+pub(crate) fn query_values(query: &str, name: &str) -> Result<Vec<String>, WebFailure> {
+    let limit = bn_limits::web_limits().max_target_bytes;
+    if query.len() > limit {
+        return Err(WebFailure::TooLarge {
+            what: crate::web_error::SizeLimit::Query,
+            limit,
+        });
     }
     let mut values = Vec::new();
     let mut field_count = 0;
@@ -476,15 +492,20 @@ pub(crate) fn query_values(query: &str, name: &str) -> Result<Vec<String>, &'sta
         if pair.len() > bn_limits::web_limits().max_target_bytes
             || field_count > bn_limits::web_limits().max_header_fields
         {
-            return Err("query fields exceed bounds");
+            return Err(WebFailure::LimitExceeded(
+                "query fields exceed bounds".into(),
+            ));
         }
         let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
-        let key = decode_component(key)?;
-        let value = decode_component(value)?;
+        let key = decode_component(key).map_err(|reason| WebFailure::InvalidUrl(reason.into()))?;
+        let value =
+            decode_component(value).map_err(|reason| WebFailure::InvalidUrl(reason.into()))?;
         if key.len() > bn_limits::web_limits().max_target_bytes
             || value.len() > bn_limits::web_limits().max_target_bytes
         {
-            return Err("query key or value exceeds bounds");
+            return Err(WebFailure::LimitExceeded(
+                "query key or value exceeds bounds".into(),
+            ));
         }
         if key == name {
             values.push(value);
@@ -497,7 +518,7 @@ pub(crate) fn query_values(query: &str, name: &str) -> Result<Vec<String>, &'sta
 pub struct QueryValues(Vec<String>);
 
 impl QueryValues {
-    pub(crate) fn from_query(query: &str, name: &str) -> Result<Self, &'static str> {
+    pub(crate) fn from_query(query: &str, name: &str) -> Result<Self, WebFailure> {
         Ok(Self(query_values(query, name)?))
     }
     #[must_use]
@@ -512,14 +533,14 @@ impl QueryValues {
 pub(crate) fn header_values(
     headers: &[(String, String)],
     name: &str,
-) -> Result<Vec<String>, &'static str> {
+) -> Result<Vec<String>, WebFailure> {
     if name.is_empty()
         || name.len() > 128
         || name
             .bytes()
             .any(|byte| byte <= 0x20 || byte == 0x7f || byte == b':')
     {
-        return Err("invalid header name");
+        return Err(WebFailure::InvalidHeader("invalid header name".into()));
     }
     let wanted = name.to_ascii_lowercase();
     Ok(headers
@@ -529,7 +550,7 @@ pub(crate) fn header_values(
         .collect())
 }
 
-fn validate_headers(headers: &[(String, String)]) -> Result<(), &'static str> {
+fn validate_headers(headers: &[(String, String)]) -> Result<(), WebFailure> {
     if headers.len() > bn_limits::web_limits().max_header_fields
         || headers
             .iter()
@@ -537,7 +558,9 @@ fn validate_headers(headers: &[(String, String)]) -> Result<(), &'static str> {
             .sum::<usize>()
             > bn_limits::web_limits().max_header_bytes
     {
-        return Err("request headers exceed bounds");
+        return Err(WebFailure::LimitExceeded(
+            "request headers exceed bounds".into(),
+        ));
     }
     if headers.iter().any(|(name, value)| {
         name.is_empty()
@@ -546,7 +569,7 @@ fn validate_headers(headers: &[(String, String)]) -> Result<(), &'static str> {
                 .any(|byte| byte <= 0x20 || byte == 0x7f || byte == b':')
             || value.bytes().any(|byte| byte < 0x20 || byte == 0x7f)
     }) {
-        return Err("invalid request header");
+        return Err(WebFailure::InvalidHeader("invalid request header".into()));
     }
     Ok(())
 }
@@ -558,7 +581,7 @@ impl HeaderValues {
     pub(crate) fn from_headers(
         headers: &[(String, String)],
         name: &str,
-    ) -> Result<Self, &'static str> {
+    ) -> Result<Self, WebFailure> {
         Ok(Self(header_values(headers, name)?))
     }
     #[must_use]
@@ -570,28 +593,38 @@ impl HeaderValues {
     }
 }
 
-pub fn validate_client_url(url: &str) -> Result<(), &'static str> {
-    let (scheme, rest) = url.split_once("://").ok_or("URL requires an authority")?;
+pub fn validate_client_url(url: &str) -> Result<(), WebFailure> {
+    let invalid = |reason: &str| WebFailure::InvalidUrl(reason.into());
+    let (scheme, rest) = url
+        .split_once("://")
+        .ok_or_else(|| invalid("URL requires an authority"))?;
     if !matches!(scheme, "http" | "https") || rest.is_empty() || rest.contains('#') {
-        return Err("unsupported or ambiguous URL");
+        return Err(invalid("unsupported or ambiguous URL"));
     }
     let authority = rest.split(['/', '?']).next().unwrap_or_default();
     if authority.is_empty()
         || authority.contains('@')
         || authority.bytes().any(|byte| byte < 0x21 || byte == 0x7f)
     {
-        return Err("invalid URL authority");
+        return Err(invalid("invalid URL authority"));
     }
     Ok(())
 }
 
-pub fn bounded_body(body: &str, maximum: i128) -> Result<&str, &'static str> {
-    if maximum < 0 || maximum > bn_limits::web_limits().max_response_body_bytes as i128 {
-        return Err("body limit exceeds 8 MiB");
+pub fn bounded_body(body: &str, maximum: i128) -> Result<&str, WebFailure> {
+    let limit = bn_limits::web_limits().max_response_body_bytes;
+    let too_large = || WebFailure::TooLarge {
+        what: crate::web_error::SizeLimit::BodyMaximum,
+        limit,
+    };
+    let maximum = usize::try_from(maximum).map_err(|_| too_large())?;
+    if maximum > limit {
+        return Err(too_large());
     }
-    let maximum = usize::try_from(maximum).map_err(|_| "body limit is invalid")?;
     if body.len() > maximum {
-        return Err("request body exceeds declared limit");
+        return Err(WebFailure::BodyLimitExceeded(
+            "request body exceeds declared limit".into(),
+        ));
     }
     Ok(body)
 }

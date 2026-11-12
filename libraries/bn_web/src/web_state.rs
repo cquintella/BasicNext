@@ -232,7 +232,7 @@ mod tests {
         assert!(err.is_err());
         assert_eq!(
             err.unwrap_err(),
-            "Secure cookies cannot be sent over cleartext HTTP"
+            crate::web_error::WebFailure::SecureCookieOverCleartext
         );
         assert!(res.headers.is_empty());
 
@@ -322,6 +322,8 @@ use std::collections::HashMap;
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
 
+use crate::web_error::WebFailure;
+
 use ring::rand::{SecureRandom, SystemRandom};
 
 /// The entropy source could not fill the buffer.
@@ -379,19 +381,15 @@ impl CookieOptions {
     /// The policy a program names (`CookieJar.SetWithPolicy`,
     /// `Response.SetCookieWithPolicy`): `sameSite` is `"Strict"`, `"Lax"` or
     /// `"None"`, and `"None"` needs `secure` (RFC 6265bis).
-    pub fn from_policy(
-        secure: bool,
-        http_only: bool,
-        same_site: &str,
-    ) -> Result<Self, &'static str> {
+    pub fn from_policy(secure: bool, http_only: bool, same_site: &str) -> Result<Self, WebFailure> {
         let same_site = match same_site {
             "Strict" => SameSite::Strict,
             "Lax" => SameSite::Lax,
             "None" => SameSite::None,
-            _ => return Err("invalid SameSite policy"),
+            _ => return Err(WebFailure::InvalidSameSite),
         };
         if same_site == SameSite::None && !secure {
-            return Err("SameSite=None requires Secure");
+            return Err(WebFailure::SameSiteNoneRequiresSecure);
         }
         Ok(Self {
             secure,
@@ -406,7 +404,7 @@ impl CookieOptions {
         domain: Option<&str>,
         path: &str,
         max_age: Option<Duration>,
-    ) -> Result<String, &'static str> {
+    ) -> Result<String, WebFailure> {
         use std::fmt::Write;
         if name.is_empty()
             || name.len() > 128
@@ -414,21 +412,21 @@ impl CookieOptions {
                 .bytes()
                 .any(|b| b <= 0x20 || b >= 0x7f || b == b'=' || b == b';')
         {
-            return Err("invalid cookie name");
+            return Err(WebFailure::InvalidCookieBounds);
         }
         if value.len() > 4096
             || value
                 .bytes()
                 .any(|b| (b < 0x20 && b != b'\t') || b == 0x7f || b == b';')
         {
-            return Err("invalid cookie value");
+            return Err(WebFailure::InvalidCookieBounds);
         }
         if path.is_empty()
             || path
                 .bytes()
                 .any(|b| (b < 0x20 && b != b'\t') || b == 0x7f || b == b';')
         {
-            return Err("invalid cookie path");
+            return Err(WebFailure::InvalidCookieBounds);
         }
         let mut out = format!("{name}={value}; Path={path}");
         if let Some(domain) = domain {
@@ -437,7 +435,7 @@ impl CookieOptions {
                     .bytes()
                     .any(|b| (b < 0x20 && b != b'\t') || b == 0x7f || b == b';')
             {
-                return Err("invalid cookie domain");
+                return Err(WebFailure::InvalidCookieBounds);
             }
             out.push_str("; Domain=");
             out.push_str(domain);
@@ -485,7 +483,7 @@ impl CookieJar {
         domain: &str,
         path: &str,
         max_age: Duration,
-    ) -> Result<(), String> {
+    ) -> Result<(), WebFailure> {
         self.set_with_options(name, value, domain, path, max_age, CookieOptions::default())
     }
     pub fn set_with_options(
@@ -496,14 +494,14 @@ impl CookieJar {
         path: &str,
         max_age: Duration,
         options: CookieOptions,
-    ) -> Result<(), String> {
+    ) -> Result<(), WebFailure> {
         if name.is_empty()
             || name.len() > 128
             || value.len() > 4096
             || domain.is_empty()
             || path.is_empty()
         {
-            return Err("invalid cookie bounds".into());
+            return Err(WebFailure::InvalidCookieBounds);
         }
         let key = (name.into(), domain.to_ascii_lowercase(), path.into());
         if max_age.is_zero() {
@@ -566,13 +564,13 @@ pub struct SessionStore {
     idle: Duration,
 }
 impl SessionStore {
-    pub fn new(capacity: i128, idle_ms: Duration) -> Result<Self, String> {
-        let capacity = usize::try_from(capacity).map_err(|_| "invalid session capacity")?;
+    pub fn new(capacity: i128, idle_ms: Duration) -> Result<Self, WebFailure> {
+        let capacity = usize::try_from(capacity).map_err(|_| WebFailure::InvalidSessionCapacity)?;
         if capacity == 0 || capacity > 10_000 {
-            return Err("invalid session capacity".into());
+            return Err(WebFailure::InvalidSessionCapacity);
         }
         if idle_ms.is_zero() || idle_ms > Duration::from_mins(30) {
-            return Err("invalid session idle timeout".into());
+            return Err(WebFailure::InvalidSessionIdleTimeout);
         }
         Ok(Self {
             values: HashMap::new(),
@@ -580,9 +578,9 @@ impl SessionStore {
             idle: idle_ms,
         })
     }
-    pub fn create(&mut self, value: &str) -> Result<String, String> {
+    pub fn create(&mut self, value: &str) -> Result<String, WebFailure> {
         if value.len() > 8192 {
-            return Err("session value too large".into());
+            return Err(WebFailure::SessionValueTooLarge);
         }
         self.values
             .retain(|_, (_, touched)| touched.elapsed() < self.idle);
@@ -610,51 +608,52 @@ impl SessionStore {
             Some(entry.0.clone())
         }
     }
-    pub fn set(&mut self, id: &str, value: &str) -> Result<(), String> {
+    pub fn set(&mut self, id: &str, value: &str) -> Result<(), WebFailure> {
         if value.len() > 8192 {
-            return Err("session value too large".into());
+            return Err(WebFailure::SessionValueTooLarge);
         }
-        let entry = self.values.get_mut(id).ok_or("session not found")?;
+        let entry = self.values.get_mut(id).ok_or(WebFailure::SessionNotFound)?;
         entry.0 = value.into();
         entry.1 = Instant::now();
         Ok(())
     }
-    pub fn rotate(&mut self, id: &str, value: &str) -> Result<String, String> {
+    pub fn rotate(&mut self, id: &str, value: &str) -> Result<String, WebFailure> {
         if self.get(id).is_none() {
-            return Err("session not found".into());
+            return Err(WebFailure::SessionNotFound);
         }
         self.values.remove(id);
         self.create(value)
     }
-    pub fn delete(&mut self, id: &str) -> Result<(), String> {
+    pub fn delete(&mut self, id: &str) -> Result<(), WebFailure> {
         if self.values.remove(id).is_some() {
             Ok(())
         } else {
-            Err("session not found".into())
+            Err(WebFailure::SessionNotFound)
         }
     }
 }
 
-pub(crate) fn new_session_id(provider: &impl EntropyProvider) -> Result<String, String> {
+pub(crate) fn new_session_id(provider: &impl EntropyProvider) -> Result<String, WebFailure> {
     let mut bytes = [0_u8; 16];
-    provider
-        .fill(&mut bytes)
-        .map_err(|EntropyUnavailable| "session entropy provider failed".to_string())?;
+    provider.fill(&mut bytes).map_err(|EntropyUnavailable| {
+        WebFailure::Unavailable("session entropy provider failed".into())
+    })?;
     let mut id = String::with_capacity(33);
     id.push('s');
     for byte in bytes {
         use std::fmt::Write;
-        write!(id, "{byte:02x}").map_err(|_| "session ID encoding failed".to_string())?;
+        write!(id, "{byte:02x}")
+            .map_err(|_| WebFailure::Unavailable("session ID encoding failed".into()))?;
     }
     Ok(id)
 }
 
 /// A cookie lifetime in milliseconds as a `Duration`; a negative one is
 /// refused.
-pub fn cookie_max_age(milliseconds: i128) -> Result<Duration, &'static str> {
+pub fn cookie_max_age(milliseconds: i128) -> Result<Duration, WebFailure> {
     u64::try_from(milliseconds)
         .map(Duration::from_millis)
-        .map_err(|_| "negative cookie age")
+        .map_err(|_| WebFailure::NegativeCookieAge)
 }
 
 pub fn new_request_id(provider: &impl EntropyProvider) -> Result<String, String> {
@@ -693,18 +692,19 @@ impl Acl {
     pub fn new() -> Self {
         Self { rules: Vec::new() }
     }
-    pub fn allow(&mut self, cidr: &str) -> Result<(), String> {
+    pub fn allow(&mut self, cidr: &str) -> Result<(), WebFailure> {
         self.add(cidr, true)
     }
-    pub fn deny(&mut self, cidr: &str) -> Result<(), String> {
+    pub fn deny(&mut self, cidr: &str) -> Result<(), WebFailure> {
         self.add(cidr, false)
     }
-    fn add(&mut self, cidr: &str, allow: bool) -> Result<(), String> {
-        let (address, prefix) = cidr.split_once('/').ok_or("invalid CIDR")?;
-        let network: IpAddr = address.parse().map_err(|_| "invalid CIDR")?;
-        let prefix: u8 = prefix.parse().map_err(|_| "invalid CIDR")?;
+    fn add(&mut self, cidr: &str, allow: bool) -> Result<(), WebFailure> {
+        let invalid = || WebFailure::InvalidCidr("invalid CIDR".into());
+        let (address, prefix) = cidr.split_once('/').ok_or_else(invalid)?;
+        let network: IpAddr = address.parse().map_err(|_| invalid())?;
+        let prefix: u8 = prefix.parse().map_err(|_| invalid())?;
         if (network.is_ipv4() && prefix > 32) || (network.is_ipv6() && prefix > 128) {
-            return Err("invalid CIDR prefix".into());
+            return Err(WebFailure::InvalidCidr("invalid CIDR prefix".into()));
         }
         self.rules.push(Rule {
             network,
@@ -748,21 +748,23 @@ impl Scraper {
             html: String::new(),
         }
     }
-    pub fn parse(html: &str) -> Result<Self, String> {
+    pub fn parse(html: &str) -> Result<Self, WebFailure> {
         if html.len() > 8 * 1024 * 1024 {
-            return Err("scripts are not allowed".into());
+            return Err(WebFailure::BodyLimitExceeded(
+                "scripts are not allowed".into(),
+            ));
         }
         Ok(Self { html: html.into() })
     }
-    pub fn text(&self, selector: &str) -> Result<String, String> {
+    pub fn text(&self, selector: &str) -> Result<String, WebFailure> {
         if selector.eq_ignore_ascii_case("script") || selector.is_empty() {
-            return Err("unsupported selector".into());
+            return Err(WebFailure::UnsupportedSelector(selector.into()));
         }
         if !selector
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
         {
-            return Err("unsupported selector".into());
+            return Err(WebFailure::UnsupportedSelector(selector.into()));
         }
         let mut source = self.html.clone();
         while let Some(start) = source.to_ascii_lowercase().find("<script") {
@@ -775,17 +777,15 @@ impl Scraper {
         let open = format!("<{}", selector.to_ascii_lowercase());
         let close = format!("</{}>", selector.to_ascii_lowercase());
         let lower = source.to_ascii_lowercase();
-        let start = lower
-            .find(&open)
-            .ok_or_else(|| "selector did not match".to_string())?;
+        let start = lower.find(&open).ok_or(WebFailure::SelectorNoMatch)?;
         let content_start = source[start..]
             .find('>')
             .map(|offset| start + offset + 1)
-            .ok_or_else(|| "malformed HTML".to_string())?;
+            .ok_or(WebFailure::MalformedHtml)?;
         let end = lower[content_start..]
             .find(&close)
             .map(|offset| content_start + offset)
-            .ok_or_else(|| "malformed HTML".to_string())?;
+            .ok_or(WebFailure::MalformedHtml)?;
         let source = &source[content_start..end];
         let mut out = String::new();
         let mut in_tag = false;

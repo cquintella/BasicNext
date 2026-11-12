@@ -63,10 +63,7 @@ fn an_idle_drain_uses_almost_no_cpu() {
     let before = thread_cpu_time();
     let result = drain_server(&state, DRAIN_TIMEOUT_MS, false);
     let used = thread_cpu_time().saturating_sub(before);
-    assert_eq!(
-        result,
-        Err("server drain timed out with active connections")
-    );
+    assert_eq!(result, Err(bn_web::WebFailure::WorkerDrainTimeout));
     assert!(
         used < CPU_CEILING,
         "the drain used {used:?} of CPU in {DRAIN_TIMEOUT_MS} ms"

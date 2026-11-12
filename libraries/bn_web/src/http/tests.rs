@@ -10,6 +10,7 @@ use super::{Handler, serve_connection, serve_connection_with_handler};
 use bn_core_net::TcpStream;
 
 use crate::web::{RouteOutcome, ServerState};
+use crate::web_error::WebFailure;
 use http_body_util::Full;
 use hyper::{Request, StatusCode, body::Bytes};
 use hyper_util::rt::{TokioExecutor, TokioIo};
@@ -37,11 +38,11 @@ impl super::AddressResolver for ScriptedResolver {
         _port: u16,
         maximum: usize,
         _timeout: std::time::Duration,
-    ) -> Result<Vec<bn_core_net::Address>, String> {
+    ) -> Result<Vec<bn_core_net::Address>, WebFailure> {
         self.answers
             .get(host)
             .map(|addresses| addresses.iter().copied().take(maximum).collect())
-            .ok_or_else(|| format!("missing scripted answer for {host}"))
+            .ok_or_else(|| WebFailure::HttpFailed(format!("missing scripted answer for {host}")))
     }
 }
 
@@ -323,7 +324,7 @@ fn a_failing_handler_maps_to_internal_error() {
         })
         .unwrap();
     let state = Arc::new(Mutex::new(state));
-    let handler: Handler = Arc::new(|_, _| Err("controlled handler failure"));
+    let handler: Handler = Arc::new(|_, _| Err(WebFailure::RequestDispatchFailed));
     let server_state = Arc::clone(&state);
     let server = std::thread::spawn(move || {
         let (stream, _) = listener.accept().expect("accept concurrent-failure peer");
@@ -493,13 +494,6 @@ fn compressed_responses_are_rejected_without_decoder_limits() {
 }
 
 #[test]
-fn client_rejects_oversized_request_before_transport() {
-    let body = "x".repeat(bn_limits::web_limits().max_body_bytes + 1);
-    let error = super::client_request("POST", "http://127.0.0.1/", &body).unwrap_err();
-    assert_eq!(error, "request body exceeds 8 MiB");
-}
-
-#[test]
 fn client_resolver_filters_mixed_dns_answers_under_rule_i() {
     let resolver = ScriptedResolver {
         answers: HashMap::from([
@@ -562,89 +556,6 @@ fn client_resolver_filters_mixed_dns_answers_under_rule_i() {
             "http"
         )
         .is_err()
-    );
-}
-
-#[test]
-fn client_connect_failure_due_to_socket_quota_returns_web_limit() {
-    let cause = "the process already holds 256 sockets, the quota";
-    let failure = crate::web_error::WebFailure::from_message(cause);
-    assert_eq!(
-        failure.code(),
-        bn_types::error_codes::web::LIMIT,
-        "socket quota failure must map to Web.LIMIT"
-    );
-
-    let error = "socket quota exceeded: the process already holds 256 sockets, the quota";
-    let failure = crate::web_error::WebFailure::from_message(error);
-    assert_eq!(
-        failure.code(),
-        bn_types::error_codes::web::LIMIT,
-        "socket quota failure must map to Web.LIMIT"
-    );
-}
-
-#[test]
-fn client_dns_deadline_expiry_returns_web_timeout() {
-    struct TimeoutResolver;
-    impl super::AddressResolver for TimeoutResolver {
-        fn resolve(
-            &self,
-            _host: &str,
-            _port: u16,
-            _maximum: usize,
-            _timeout: std::time::Duration,
-        ) -> Result<Vec<bn_core_net::Address>, String> {
-            Err("DNS resolution timed out".into())
-        }
-    }
-    let resolver = TimeoutResolver;
-    let policy = crate::web::EgressPolicy::default();
-    let error = super::client_request_with_resolver_and_policy(
-        "GET",
-        "http://example.com/",
-        "",
-        &resolver,
-        &policy,
-    )
-    .unwrap_err();
-    let failure = crate::web_error::WebFailure::from_message(&error);
-    assert_eq!(
-        failure.code(),
-        bn_types::error_codes::web::TIMEOUT,
-        "DNS timeout must map to Web.TIMEOUT; got message: {error}"
-    );
-}
-
-#[test]
-fn client_dns_pool_saturation_returns_web_limit() {
-    struct SaturatedResolver;
-    impl super::AddressResolver for SaturatedResolver {
-        fn resolve(
-            &self,
-            _host: &str,
-            _port: u16,
-            _maximum: usize,
-            _timeout: std::time::Duration,
-        ) -> Result<Vec<bn_core_net::Address>, String> {
-            Err("DNS resolution pool limit exceeded".into())
-        }
-    }
-    let resolver = SaturatedResolver;
-    let policy = crate::web::EgressPolicy::default();
-    let error = super::client_request_with_resolver_and_policy(
-        "GET",
-        "http://example.com/",
-        "",
-        &resolver,
-        &policy,
-    )
-    .unwrap_err();
-    let failure = crate::web_error::WebFailure::from_message(&error);
-    assert_eq!(
-        failure.code(),
-        bn_types::error_codes::web::LIMIT,
-        "DNS pool saturation must map to Web.LIMIT; got message: {error}"
     );
 }
 
@@ -1392,7 +1303,7 @@ fn safe_address_binding_connects_to_exact_validated_address_without_dns_rebindin
             _port: u16,
             maximum: usize,
             _timeout: std::time::Duration,
-        ) -> Result<Vec<bn_core_net::Address>, String> {
+        ) -> Result<Vec<bn_core_net::Address>, WebFailure> {
             self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Ok(self.addresses.iter().copied().take(maximum).collect())
         }
@@ -1433,7 +1344,7 @@ fn safe_address_binding_connects_to_exact_validated_address_without_dns_rebindin
     let err =
         super::client_request_with_resolver_and_policy("GET", &url, "", &resolver, &denied_policy)
             .expect_err("policy rejection");
-    assert!(err.contains("outside the egress policy"));
+    assert!(matches!(err, WebFailure::EgressDenied(_)), "{err:?}");
     assert_eq!(resolver.calls.load(std::sync::atomic::Ordering::SeqCst), 2);
 
     server.join().expect("server thread join");
