@@ -1,2 +1,114 @@
 # BNWeb members declared in modules/bn/BNWeb.bn that a backend does not serve (tests/gates/web_surface.rs).
 # Class.Member<TAB>backend (bni | bnc)<TAB>reason. The list only shrinks: a served member fails until its line is removed.
+Client.Download	bnc	client file transfer declared in 0.6.15; no provider yet
+Client.Download	bni	client file transfer declared in 0.6.15; no provider yet
+Client.DownloadDecoded	bnc	client file transfer declared in 0.6.15; no provider yet
+Client.DownloadDecoded	bni	client file transfer declared in 0.6.15; no provider yet
+Client.DownloadDecodedWithHeaders	bnc	client file transfer declared in 0.6.15; no provider yet
+Client.DownloadDecodedWithHeaders	bni	client file transfer declared in 0.6.15; no provider yet
+Client.DownloadReplace	bnc	client file transfer declared in 0.6.15; no provider yet
+Client.DownloadReplace	bni	client file transfer declared in 0.6.15; no provider yet
+Client.DownloadReplaceWithHeaders	bnc	client file transfer declared in 0.6.15; no provider yet
+Client.DownloadReplaceWithHeaders	bni	client file transfer declared in 0.6.15; no provider yet
+Client.DownloadResume	bnc	client file transfer declared in 0.6.15; no provider yet
+Client.DownloadResume	bni	client file transfer declared in 0.6.15; no provider yet
+Client.DownloadResumeWithHeaders	bnc	client file transfer declared in 0.6.15; no provider yet
+Client.DownloadResumeWithHeaders	bni	client file transfer declared in 0.6.15; no provider yet
+Client.DownloadWithHeaders	bnc	client file transfer declared in 0.6.15; no provider yet
+Client.DownloadWithHeaders	bni	client file transfer declared in 0.6.15; no provider yet
+Client.NewUnverified	bnc	client configuration declared in 0.6.15; no provider yet
+Client.NewUnverified	bni	client configuration declared in 0.6.15; no provider yet
+Client.PutFile	bnc	client file transfer declared in 0.6.15; no provider yet
+Client.PutFile	bni	client file transfer declared in 0.6.15; no provider yet
+Client.PutFileWithHeaders	bnc	client file transfer declared in 0.6.15; no provider yet
+Client.PutFileWithHeaders	bni	client file transfer declared in 0.6.15; no provider yet
+Client.UseAddresses	bnc	client configuration declared in 0.6.15; no provider yet
+Client.UseAddresses	bni	client configuration declared in 0.6.15; no provider yet
+Client.UseCookies	bnc	client configuration declared in 0.6.15; no provider yet
+Client.UseCookies	bni	client configuration declared in 0.6.15; no provider yet
+Client.UsePolicy	bnc	client configuration declared in 0.6.15; no provider yet
+Client.UsePolicy	bni	client configuration declared in 0.6.15; no provider yet
+Client.UseProxy	bnc	client configuration declared in 0.6.15; no provider yet
+Client.UseProxy	bni	client configuration declared in 0.6.15; no provider yet
+Client.UseRetry	bnc	client configuration declared in 0.6.15; no provider yet
+Client.UseRetry	bni	client configuration declared in 0.6.15; no provider yet
+Client.UseTLS	bnc	client configuration declared in 0.6.15; no provider yet
+Client.UseTLS	bni	client configuration declared in 0.6.15; no provider yet
+CookieJar.Delete	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+EgressPolicy.CONSTRUCTOR	bnc	not lowered by the native compiler; EgressPolicy.New is the served constructor
+EgressPolicy.CONSTRUCTOR	bni	NEW EgressPolicy stops with an internal type mismatch; EgressPolicy.New is the served constructor
+EgressPolicy.PreserveMethod	bnc	client policy or TLS option declared in 0.6.15; no provider yet
+EgressPolicy.PreserveMethod	bni	client policy or TLS option declared in 0.6.15; no provider yet
+EgressPolicy.WithConnect	bnc	client policy or TLS option declared in 0.6.15; no provider yet
+EgressPolicy.WithConnect	bni	client policy or TLS option declared in 0.6.15; no provider yet
+EgressPolicy.WithCrossHostAuthorization	bnc	client policy or TLS option declared in 0.6.15; no provider yet
+EgressPolicy.WithCrossHostAuthorization	bni	client policy or TLS option declared in 0.6.15; no provider yet
+EgressPolicy.WithStall	bnc	client policy or TLS option declared in 0.6.15; no provider yet
+EgressPolicy.WithStall	bni	client policy or TLS option declared in 0.6.15; no provider yet
+HeaderValues.CONSTRUCTOR	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+HeaderValues.Count	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+HeaderValues.Get	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Proxy.CONSTRUCTOR	bnc	client policy or TLS option declared in 0.6.15; no provider yet
+Proxy.Http	bnc	client policy or TLS option declared in 0.6.15; no provider yet
+Proxy.Http	bni	client policy or TLS option declared in 0.6.15; no provider yet
+Proxy.HttpBasic	bnc	client policy or TLS option declared in 0.6.15; no provider yet
+Proxy.HttpBasic	bni	client policy or TLS option declared in 0.6.15; no provider yet
+Proxy.Https	bnc	client policy or TLS option declared in 0.6.15; no provider yet
+Proxy.Https	bni	client policy or TLS option declared in 0.6.15; no provider yet
+Proxy.Socks5	bnc	client policy or TLS option declared in 0.6.15; no provider yet
+Proxy.Socks5	bni	client policy or TLS option declared in 0.6.15; no provider yet
+Proxy.Socks5Hostname	bnc	client policy or TLS option declared in 0.6.15; no provider yet
+Proxy.Socks5Hostname	bni	client policy or TLS option declared in 0.6.15; no provider yet
+QueryValues.CONSTRUCTOR	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+QueryValues.Count	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+QueryValues.Get	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Request.EffectiveClientAddress	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Request.Headers	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Request.PeerAddress	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Request.Query	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Request.Session	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+RetryPolicy.CONSTRUCTOR	bnc	client policy or TLS option declared in 0.6.15; no provider yet
+RetryPolicy.None	bnc	client policy or TLS option declared in 0.6.15; no provider yet
+RetryPolicy.None	bni	client policy or TLS option declared in 0.6.15; no provider yet
+RetryPolicy.OnTransport	bnc	client policy or TLS option declared in 0.6.15; no provider yet
+RetryPolicy.OnTransport	bni	client policy or TLS option declared in 0.6.15; no provider yet
+Scraper.Parse	bnc	not lowered by the native compiler (native scraper parse pending)
+Server.AcceptedRequests	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Server.ActiveConnections	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Server.ActiveRequests	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Server.AverageRequestDurationMs	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Server.CompletedRequests	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Server.FailedRequests	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Server.IsReady	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Server.MaxRequestDurationMs	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Server.New	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Server.PendingRequests	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Server.RateLimitedRequests	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Server.RejectedRequests	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Server.Status	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Server.TimedOutRequests	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Server.TotalRequestDurationMs	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Server.UseQueue	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Session.CONSTRUCTOR	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Session.End	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Session.Get	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Session.Id	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Session.Remove	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Session.Rotate	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+Session.Set	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+SessionStore.CONSTRUCTOR	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+SessionStore.Delete	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+SessionStore.Rotate	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+SessionStore.Set	bnc	not lowered by the native compiler; bnc refuses a program that calls it
+TLSClientConfig.AddPin	bnc	client policy or TLS option declared in 0.6.15; no provider yet
+TLSClientConfig.AddPin	bni	client policy or TLS option declared in 0.6.15; no provider yet
+TLSClientConfig.CONSTRUCTOR	bnc	client policy or TLS option declared in 0.6.15; no provider yet
+TLSClientConfig.OnlyTls12	bnc	client policy or TLS option declared in 0.6.15; no provider yet
+TLSClientConfig.OnlyTls12	bni	client policy or TLS option declared in 0.6.15; no provider yet
+TLSClientConfig.SystemTrust	bnc	client policy or TLS option declared in 0.6.15; no provider yet
+TLSClientConfig.SystemTrust	bni	client policy or TLS option declared in 0.6.15; no provider yet
+TLSClientConfig.Unverified	bnc	client policy or TLS option declared in 0.6.15; no provider yet
+TLSClientConfig.Unverified	bni	client policy or TLS option declared in 0.6.15; no provider yet
+TLSClientConfig.WithPin	bnc	client policy or TLS option declared in 0.6.15; no provider yet
+TLSClientConfig.WithPin	bni	client policy or TLS option declared in 0.6.15; no provider yet
+TLSConfig.CONSTRUCTOR	bnc	not lowered by the native compiler; bnc refuses a program that calls it
