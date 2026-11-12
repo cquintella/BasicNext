@@ -24,3 +24,8 @@ operation.fs_is_directory = HOST.FileSystem.IsDirectory
 operation.fs_open_new = HOST.FileSystem.OpenNew
 operation.fs_copy = HOST.FileSystem.Copy
 operation.fs_move = HOST.FileSystem.Move
+
+# IR validation (bn_ir callee).
+ir.callee_unresolved = callee `{name}` names no function or library member
+# The prefix of a HOST capability member: `HOST.<capability>.<member>`.
+callee.host_prefix = HOST.

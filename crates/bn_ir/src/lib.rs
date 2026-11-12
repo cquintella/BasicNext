@@ -17,6 +17,7 @@
 use bn_diag::{DiagId, Diagnostic, Label, LabelStyle};
 use bn_source::Span;
 
+pub mod callee;
 pub mod dispatch;
 pub mod escape;
 mod model;

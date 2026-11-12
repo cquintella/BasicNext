@@ -44,6 +44,7 @@ use upcast::{
 /// definite-assignment invariant.
 pub fn validate(module: &Module) -> Result<(), Diagnostic> {
     validate_class_bases(module)?;
+    crate::callee::validate_callees(module)?;
     ownership::validate_ownership(module)?;
     validate_field_layouts(module)?;
     kinds::validate_function_kinds(module)?;
