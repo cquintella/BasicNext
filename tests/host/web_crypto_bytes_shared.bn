@@ -1,0 +1,21 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// A Crypto.Bytes made by BNWeb and one made by BNCrypto are two values: each
+// reads its own bytes, whichever library made it.
+IMPORT BNWeb AS Web
+IMPORT BNCrypto AS Crypto
+
+FUNCTION Start() AS VOID
+    LET text AS Crypto.Bytes = Crypto.FromText("hello")
+    LET reply AS Web.ClientReply = NEW Web.ClientReply()
+    LET body AS Crypto.Bytes OR Error = reply.BodyBytes(16)
+    IF body IS Error THEN
+        PRINT "body error", body.Code
+    ELSE
+        PRINT "empty body length", body.Length()
+    END IF
+    PRINT "text length", text.Length(), text.ToHex()
+END FUNCTION
