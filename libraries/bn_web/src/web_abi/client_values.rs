@@ -201,8 +201,7 @@ pub extern "C" fn bn_web_client_reply_body_text(
         };
         r.clone()
     };
-    let max = usize::try_from(maximum).unwrap_or(usize::MAX);
-    match reply.body_text(max) {
+    match reply.body_text(maximum) {
         Ok(text) => {
             write_status(out_status, BN_WEB_OK);
             c_string(&text)
@@ -232,8 +231,7 @@ pub extern "C" fn bn_web_client_reply_body_bytes(
         };
         r.clone()
     };
-    let max = usize::try_from(maximum).unwrap_or(usize::MAX);
-    match reply.body_bytes(max) {
+    match reply.body_bytes(maximum) {
         Ok(bytes) => {
             let byte_handle = bn_stdlib::crypto_abi::store(bytes.to_vec());
             write_u64(out_handle, byte_handle);
@@ -258,8 +256,7 @@ pub extern "C" fn bn_web_client_reply_body_decoded_text(
         };
         r.clone()
     };
-    let max = usize::try_from(maximum).unwrap_or(usize::MAX);
-    match reply.body_decoded_text(max) {
+    match reply.body_decoded_text(maximum) {
         Ok(text) => {
             write_status(out_status, BN_WEB_OK);
             c_string(&text)
@@ -289,8 +286,7 @@ pub extern "C" fn bn_web_client_reply_body_decoded_bytes(
         };
         r.clone()
     };
-    let max = usize::try_from(maximum).unwrap_or(usize::MAX);
-    match reply.body_decoded_bytes(max) {
+    match reply.body_decoded_bytes(maximum) {
         Ok(bytes) => {
             let byte_handle = bn_stdlib::crypto_abi::store(bytes);
             write_u64(out_handle, byte_handle);

@@ -35,17 +35,6 @@ mod sessions;
 
 use client_transfer::{arg_err, recv_err};
 
-#[expect(clippy::verbose_file_reads)]
-fn read_form_file(path: &str) -> Vec<u8> {
-    use std::io::Read as _;
-    let Ok(mut file) = std::fs::File::open(path) else {
-        return Vec::new();
-    };
-    let mut bytes = Vec::new();
-    let _ = file.read_to_end(&mut bytes);
-    bytes
-}
-
 use std::collections::HashMap;
 
 use bn_diag::Diagnostic;
@@ -117,58 +106,7 @@ impl std::fmt::Debug for WebProvider {
     }
 }
 
-impl WebProvider {
-    fn record_client_access(
-        &self,
-        core: &mut dyn CoreContext,
-        receiver: &Value,
-        method: &str,
-        url: &str,
-        duration_ms: i64,
-        outcome: &Result<crate::web::Response, WebFailure>,
-    ) {
-        let Value::Object { handle, .. } = receiver else {
-            return;
-        };
-        let Some(logger_id) = self.clients.get(handle).copied() else {
-            return;
-        };
-        let Ok(Some(logger)) = with_log_provider(core, |log| log.core_logger(logger_id)) else {
-            return;
-        };
-        let Ok(logger) = logger.lock() else {
-            return;
-        };
-        let sink = InterpLogSink {
-            host: core.host().clone(),
-        };
-        let (status, bytes, headers) = match outcome {
-            Ok(response) => {
-                let headers = response
-                    .headers
-                    .iter()
-                    .map(|(name, value)| (name.as_str(), value.as_str()))
-                    .collect::<Vec<_>>();
-                (
-                    i64::from(response.status),
-                    i64::try_from(response.body.len()).unwrap_or(i64::MAX),
-                    headers,
-                )
-            }
-            Err(_) => (0, 0, Vec::new()),
-        };
-        access_log::write_client_access(
-            &logger,
-            &sink,
-            method,
-            url,
-            status,
-            bytes,
-            duration_ms,
-            &headers,
-        );
-    }
-}
+impl WebProvider {}
 
 impl Provider for WebProvider {
     fn call(
@@ -458,21 +396,6 @@ impl WebProvider {
                             span,
                         ));
                     };
-                    if !matches!(
-                        method.as_ref(),
-                        "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD"
-                    ) {
-                        return Ok(failed(
-                            name,
-                            &WebFailure::UnsupportedMethod(method.to_string()),
-                        ));
-                    }
-                    if let Err(message) = crate::web::validate_client_url(url) {
-                        return Ok(failed(name, &message));
-                    }
-                    if let Err(message) = crate::web::bounded_body(body, 8 * 1024 * 1024) {
-                        return Ok(failed(name, &message));
-                    }
                     let policy = if with_policy {
                         let Value::Object { handle, .. } = &arguments[4] else {
                             return Err(type_mismatch(
@@ -482,30 +405,28 @@ impl WebProvider {
                                 span,
                             ));
                         };
-                        self.egress_policies.get(handle).ok_or_else(|| {
-                            runtime_error(
-                                bn_diag::DiagId::STALE_HANDLE,
-                                "EgressPolicy handle is not live",
-                                span,
-                            )
-                        })?
+                        // A released policy is refused, never dropped: dropping it
+                        // would connect to any destination.
+                        let Some(policy) = self.egress_policies.get(handle) else {
+                            return Ok(failed(
+                                name,
+                                &WebFailure::InvalidArgument(
+                                    bn_catalog::text("web", "client.policy_not_live").into(),
+                                ),
+                            ));
+                        };
+                        Some(policy)
                     } else {
-                        &crate::web::EgressPolicy::default()
+                        None
                     };
-                    let started = std::time::Instant::now();
-                    let outcome =
-                        crate::http::client_request_with_policy(method, url, body, policy);
-                    let duration_ms =
-                        i64::try_from(started.elapsed().as_millis()).unwrap_or(i64::MAX);
-                    self.record_client_access(
-                        core,
-                        &arguments[0],
-                        method,
-                        url,
-                        duration_ms,
-                        &outcome,
-                    );
-                    let response = match outcome {
+                    let Value::Object { handle: client, .. } = &arguments[0] else {
+                        return Err(recv_err("Client", span));
+                    };
+                    let outcome = crate::web::client::request(method, url, body, policy);
+                    if let Some(access) = &outcome.access {
+                        self.log_client_access(core, *client, method, url, access);
+                    }
+                    let response = match outcome.result {
                         Ok(response) => response,
                         Err(message) => {
                             return Ok(failed(name, &message));
@@ -535,7 +456,7 @@ impl WebProvider {
                     else {
                         return Err(arg_err("Arguments", span));
                     };
-                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let maximum = client_transfer::maximum_of(*max);
                     let Value::Object { handle, .. } = &arguments[0] else {
                         return Err(recv_err("Client", span));
                     };
@@ -562,7 +483,7 @@ impl WebProvider {
                     else {
                         return Err(arg_err("Arguments", span));
                     };
-                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let maximum = client_transfer::maximum_of(*max);
                     let Value::Object { handle, .. } = &arguments[0] else {
                         return Err(recv_err("Client", span));
                     };
@@ -599,7 +520,7 @@ impl WebProvider {
                     } else {
                         format!("{url}?{q_enc}")
                     };
-                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let maximum = client_transfer::maximum_of(*max);
                     let Value::Object { handle, .. } = &arguments[0] else {
                         return Err(recv_err("Client", span));
                     };
@@ -637,7 +558,7 @@ impl WebProvider {
                     } else {
                         format!("{url}?{q_enc}")
                     };
-                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let maximum = client_transfer::maximum_of(*max);
                     let Value::Object { handle, .. } = &arguments[0] else {
                         return Err(recv_err("Client", span));
                     };
@@ -661,7 +582,7 @@ impl WebProvider {
                     else {
                         return Err(arg_err("Arguments", span));
                     };
-                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let maximum = client_transfer::maximum_of(*max);
                     let Value::Object { handle, .. } = &arguments[0] else {
                         return Err(recv_err("Client", span));
                     };
@@ -688,7 +609,7 @@ impl WebProvider {
                     else {
                         return Err(arg_err("Arguments", span));
                     };
-                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let maximum = client_transfer::maximum_of(*max);
                     let Value::Object { handle, .. } = &arguments[0] else {
                         return Err(recv_err("Client", span));
                     };
@@ -712,7 +633,7 @@ impl WebProvider {
                     else {
                         return Err(arg_err("Arguments", span));
                     };
-                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let maximum = client_transfer::maximum_of(*max);
                     let Value::Object { handle, .. } = &arguments[0] else {
                         return Err(recv_err("Client", span));
                     };
@@ -739,7 +660,7 @@ impl WebProvider {
                     else {
                         return Err(arg_err("Arguments", span));
                     };
-                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let maximum = client_transfer::maximum_of(*max);
                     let Value::Object { handle, .. } = &arguments[0] else {
                         return Err(recv_err("Client", span));
                     };
@@ -763,7 +684,7 @@ impl WebProvider {
                     else {
                         return Err(arg_err("Arguments", span));
                     };
-                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let maximum = client_transfer::maximum_of(*max);
                     let Value::Object { handle, .. } = &arguments[0] else {
                         return Err(recv_err("Client", span));
                     };
@@ -790,7 +711,7 @@ impl WebProvider {
                     else {
                         return Err(arg_err("Arguments", span));
                     };
-                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let maximum = client_transfer::maximum_of(*max);
                     let Value::Object { handle, .. } = &arguments[0] else {
                         return Err(recv_err("Client", span));
                     };
@@ -818,7 +739,7 @@ impl WebProvider {
                     else {
                         return Err(arg_err("Arguments", span));
                     };
-                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let maximum = client_transfer::maximum_of(*max);
                     let Value::Object { handle, .. } = &arguments[0] else {
                         return Err(recv_err("Client", span));
                     };
@@ -858,7 +779,7 @@ impl WebProvider {
                     else {
                         return Err(arg_err("Arguments", span));
                     };
-                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let maximum = client_transfer::maximum_of(*max);
                     let Value::Object { handle, .. } = &arguments[0] else {
                         return Err(recv_err("Client", span));
                     };
@@ -894,7 +815,7 @@ impl WebProvider {
                     let bytes =
                         bn_stdlib::crypto_abi::with_buffers(|b| b.get(b_h).map(|buf| buf.to_vec()))
                             .unwrap_or_default();
-                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let maximum = client_transfer::maximum_of(*max);
                     let Value::Object { handle, .. } = &arguments[0] else {
                         return Err(recv_err("Client", span));
                     };
@@ -937,7 +858,7 @@ impl WebProvider {
                     let bytes =
                         bn_stdlib::crypto_abi::with_buffers(|b| b.get(b_h).map(|buf| buf.to_vec()))
                             .unwrap_or_default();
-                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let maximum = client_transfer::maximum_of(*max);
                     let Value::Object { handle, .. } = &arguments[0] else {
                         return Err(recv_err("Client", span));
                     };
@@ -974,7 +895,7 @@ impl WebProvider {
                         .get(f_h)
                         .map(bn_web::Fields::encode)
                         .unwrap_or_default();
-                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let maximum = client_transfer::maximum_of(*max);
                     let Value::Object { handle, .. } = &arguments[0] else {
                         return Err(recv_err("Client", span));
                     };
@@ -1007,7 +928,7 @@ impl WebProvider {
                         .get(f_h)
                         .map(bn_web::Fields::encode)
                         .unwrap_or_default();
-                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let maximum = client_transfer::maximum_of(*max);
                     let Value::Object { handle, .. } = &arguments[0] else {
                         return Err(recv_err("Client", span));
                     };
@@ -1034,25 +955,8 @@ impl WebProvider {
                     else {
                         return Err(arg_err("Arguments", span));
                     };
-                    let form_data = self.forms.get(f_h).cloned().unwrap_or_default();
-                    let boundary = "----BNWebFormBoundary7MA4YWxkTrZu0gW";
-                    let mut body = Vec::new();
-                    for (k, v) in form_data.fields {
-                        body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n").as_bytes());
-                    }
-                    for (name_f, path, ct) in form_data.files {
-                        let content = read_form_file(&path);
-                        let filename = std::path::Path::new(&path)
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("file");
-                        body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{name_f}\"; filename=\"{filename}\"\r\nContent-Type: {ct}\r\n\r\n").as_bytes());
-                        body.extend_from_slice(&content);
-                        body.extend_from_slice(b"\r\n");
-                    }
-                    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
-                    let ct = format!("multipart/form-data;boundary={boundary}");
-                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let (body, ct) = self.forms.get(f_h).cloned().unwrap_or_default().multipart();
+                    let maximum = client_transfer::maximum_of(*max);
                     let Value::Object { handle, .. } = &arguments[0] else {
                         return Err(recv_err("Client", span));
                     };
@@ -1080,25 +984,8 @@ impl WebProvider {
                     else {
                         return Err(arg_err("Arguments", span));
                     };
-                    let form_data = self.forms.get(f_h).cloned().unwrap_or_default();
-                    let boundary = "----BNWebFormBoundary7MA4YWxkTrZu0gW";
-                    let mut body = Vec::new();
-                    for (k, v) in form_data.fields {
-                        body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n").as_bytes());
-                    }
-                    for (name_f, path, ct) in form_data.files {
-                        let content = read_form_file(&path);
-                        let filename = std::path::Path::new(&path)
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("file");
-                        body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{name_f}\"; filename=\"{filename}\"\r\nContent-Type: {ct}\r\n\r\n").as_bytes());
-                        body.extend_from_slice(&content);
-                        body.extend_from_slice(b"\r\n");
-                    }
-                    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
-                    let ct = format!("multipart/form-data;boundary={boundary}");
-                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let (body, ct) = self.forms.get(f_h).cloned().unwrap_or_default().multipart();
+                    let maximum = client_transfer::maximum_of(*max);
                     let Value::Object { handle, .. } = &arguments[0] else {
                         return Err(recv_err("Client", span));
                     };
@@ -1122,7 +1009,7 @@ impl WebProvider {
                     else {
                         return Err(arg_err("Arguments", span));
                     };
-                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let maximum = client_transfer::maximum_of(*max);
                     let Value::Object { handle, .. } = &arguments[0] else {
                         return Err(recv_err("Client", span));
                     };
@@ -1150,7 +1037,7 @@ impl WebProvider {
                     else {
                         return Err(arg_err("Arguments", span));
                     };
-                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let maximum = client_transfer::maximum_of(*max);
                     let Value::Object { handle, .. } = &arguments[0] else {
                         return Err(recv_err("Client", span));
                     };
@@ -1187,7 +1074,7 @@ impl WebProvider {
                     else {
                         return Err(arg_err("Arguments", span));
                     };
-                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
+                    let maximum = client_transfer::maximum_of(*max);
                     let Value::Object { handle, .. } = &arguments[0] else {
                         return Err(recv_err("Client", span));
                     };

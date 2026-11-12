@@ -694,10 +694,12 @@ pub(crate) use routing::{allowed_methods, select_route};
 pub(crate) use routing::{dispatch_route, route_for_request, valid_method, valid_route_pattern};
 mod drain;
 pub use drain::{DrainNotice, DrainSignal, HandlerTasks, drain_server};
+pub mod client;
 pub(crate) mod policy_opener;
 mod server;
 pub mod sessions;
 pub(crate) mod static_files;
+pub use client::{ClientAccess, RequestOutcome, Transfer, TransferOutcome};
 pub use server::{
     ConnectionWork, ServerOptions, ServerState, ServerStats, ServerStatus, spawn_listener_thread,
 };
@@ -786,7 +788,8 @@ impl ClientReply {
         self.headers.get(index).map(|(_, v)| v.as_str())
     }
 
-    pub fn body_text(&self, maximum: usize) -> Result<String, WebFailure> {
+    pub fn body_text(&self, maximum: i64) -> Result<String, WebFailure> {
+        let maximum = client::body_maximum(maximum)?;
         if self.body.len() > maximum {
             return Err(WebFailure::BodyLimitExceeded(format!(
                 "{}/{}",
@@ -798,7 +801,8 @@ impl ClientReply {
             .map_err(|_| WebFailure::InvalidArgument("invalid_utf8".into()))
     }
 
-    pub fn body_bytes(&self, maximum: usize) -> Result<&[u8], WebFailure> {
+    pub fn body_bytes(&self, maximum: i64) -> Result<&[u8], WebFailure> {
+        let maximum = client::body_maximum(maximum)?;
         if self.body.len() > maximum {
             return Err(WebFailure::BodyLimitExceeded(format!(
                 "{}/{}",
@@ -809,7 +813,8 @@ impl ClientReply {
         Ok(&self.body)
     }
 
-    pub fn body_decoded_bytes(&self, maximum: usize) -> Result<Vec<u8>, WebFailure> {
+    pub fn body_decoded_bytes(&self, maximum: i64) -> Result<Vec<u8>, WebFailure> {
+        let maximum = client::body_maximum(maximum)?;
         let encoding = self.header("content-encoding").unwrap_or("").trim();
         let decoded = if encoding.is_empty() || encoding.eq_ignore_ascii_case("identity") {
             self.body.clone()
@@ -832,7 +837,7 @@ impl ClientReply {
         Ok(decoded)
     }
 
-    pub fn body_decoded_text(&self, maximum: usize) -> Result<String, WebFailure> {
+    pub fn body_decoded_text(&self, maximum: i64) -> Result<String, WebFailure> {
         let bytes = self.body_decoded_bytes(maximum)?;
         String::from_utf8(bytes).map_err(|_| WebFailure::InvalidArgument("invalid_utf8".into()))
     }

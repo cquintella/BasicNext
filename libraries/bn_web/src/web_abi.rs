@@ -1893,15 +1893,7 @@ fn header_blob(headers: &[(String, String)]) -> String {
     blob
 }
 
-fn log_client_access(
-    logger: u64,
-    method: &str,
-    url: &str,
-    status: i64,
-    bytes: i64,
-    started: std::time::Instant,
-    headers: &[(String, String)],
-) {
+fn log_client_access(logger: u64, method: &str, url: &str, access: &crate::web::ClientAccess) {
     if logger == 0 {
         return;
     }
@@ -1911,10 +1903,9 @@ fn log_client_access(
     let Ok(url) = std::ffi::CString::new(url) else {
         return;
     };
-    let Ok(headers) = std::ffi::CString::new(header_blob(headers)) else {
+    let Ok(headers) = std::ffi::CString::new(header_blob(&access.headers)) else {
         return;
     };
-    let duration_ms = i64::try_from(started.elapsed().as_millis()).unwrap_or(i64::MAX);
     // SAFETY: the three pointers address the CString buffers above, which outlive this call.
     // `logger` is the handle `Client.New` stored.
     unsafe {
@@ -1922,9 +1913,9 @@ fn log_client_access(
             logger,
             method.as_ptr(),
             url.as_ptr(),
-            status,
-            bytes,
-            duration_ms,
+            access.status,
+            access.bytes,
+            access.duration_ms,
             headers.as_ptr(),
         );
     }
@@ -1987,49 +1978,43 @@ fn client_request(
         );
     };
     let body_str = string_text(body).unwrap_or_default();
-
     let wrapper = table();
     let (policy, logger) = {
         let guard = wrapper.lock_table();
-        let policy = if policy_handle != 0 {
-            guard
-                .egress_policies
-                .get(&policy_handle)
-                .cloned()
-                .unwrap_or_else(crate::web::EgressPolicy::default)
-        } else {
-            crate::web::EgressPolicy::default()
-        };
         let logger = guard.clients.get(&handle).copied().unwrap_or(0);
+        // A policy the program named but released is refused, never dropped:
+        // dropping it would connect to any destination.
+        let policy = match policy_handle {
+            0 => None,
+            handle => match guard.egress_policies.get(&handle) {
+                Some(policy) => Some(policy.clone()),
+                None => {
+                    return record_failure(
+                        operation,
+                        &WebFailure::InvalidArgument(
+                            bn_catalog::text("web", "client.policy_not_live").into(),
+                        ),
+                    );
+                }
+            },
+        };
         (policy, logger)
     };
-
-    let started = std::time::Instant::now();
-    match crate::http::client_request_with_policy(&method_str, &url_str, &body_str, &policy) {
-        Ok(resp) => {
-            let bytes = i64::try_from(resp.body.len()).unwrap_or(i64::MAX);
-            log_client_access(
-                logger,
-                &method_str,
-                &url_str,
-                i64::from(resp.status),
-                bytes,
-                started,
-                &resp.headers,
-            );
+    let outcome = crate::web::client::request(&method_str, &url_str, &body_str, policy.as_ref());
+    if let Some(access) = &outcome.access {
+        log_client_access(logger, &method_str, &url_str, access);
+    }
+    match outcome.result {
+        Ok(response) => {
             let resp_handle = alloc_handle();
-            let mut guard = wrapper.lock_table();
-            guard.responses.insert(resp_handle, resp);
+            wrapper.lock_table().responses.insert(resp_handle, response);
             if !out_resp_handle.is_null() {
                 // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
                 unsafe { *out_resp_handle = resp_handle };
             }
             BN_WEB_OK
         }
-        Err(err) => {
-            log_client_access(logger, &method_str, &url_str, 0, 0, started, &[]);
-            record_failure(operation, &err)
-        }
+        Err(failure) => record_failure(operation, &failure),
     }
 }
 

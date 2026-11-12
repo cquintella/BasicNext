@@ -25,10 +25,10 @@ const CEILINGS: &[(&str, usize)] = &[
     // Entered when the gate reached every `libraries/*/src` (0.6.15).
     ("libraries/bn_core_compress/src/lib.rs", 1012),
     ("libraries/bn_lib_crypto/src/lib.rs", 3136),
-    ("libraries/bn_lib_web/src/lib.rs", 2717),
+    ("libraries/bn_lib_web/src/lib.rs", 2562),
     ("libraries/bn_web/src/http/tests.rs", 1351),
     ("libraries/bn_web/src/web/tests.rs", 1025),
-    ("libraries/bn_web/src/web_abi.rs", 2175),
+    ("libraries/bn_web/src/web_abi.rs", 2160),
 ];
 
 fn rust_sources(directory: &Path, files: &mut Vec<String>) {

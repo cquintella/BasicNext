@@ -155,7 +155,7 @@ impl WebProvider {
                 let Value::Integer(max, _) = arguments[1] else {
                     return Err(arg_err("Integer", span));
                 };
-                let maximum = usize::try_from(max).unwrap_or(usize::MAX);
+                let maximum = maximum_of(max);
                 match reply.body_text(maximum) {
                     Ok(text) => Ok(Value::String(shared_string(text.as_str()))),
                     Err(err) => Ok(failed(name, &err)),
@@ -166,7 +166,7 @@ impl WebProvider {
                 let Value::Integer(max, _) = arguments[1] else {
                     return Err(arg_err("Integer", span));
                 };
-                let maximum = usize::try_from(max).unwrap_or(usize::MAX);
+                let maximum = maximum_of(max);
                 match reply.body_bytes(maximum) {
                     Ok(bytes) => {
                         let val = bn_lib_crypto::insert_crypto_bytes(bytes.to_vec());
@@ -180,7 +180,7 @@ impl WebProvider {
                 let Value::Integer(max, _) = arguments[1] else {
                     return Err(arg_err("Integer", span));
                 };
-                let maximum = usize::try_from(max).unwrap_or(usize::MAX);
+                let maximum = maximum_of(max);
                 match reply.body_decoded_text(maximum) {
                     Ok(text) => Ok(Value::String(shared_string(text.as_str()))),
                     Err(err) => Ok(failed(name, &err)),
@@ -191,7 +191,7 @@ impl WebProvider {
                 let Value::Integer(max, _) = arguments[1] else {
                     return Err(arg_err("Integer", span));
                 };
-                let maximum = usize::try_from(max).unwrap_or(usize::MAX);
+                let maximum = maximum_of(max);
                 match reply.body_decoded_bytes(maximum) {
                     Ok(bytes) => {
                         let val = bn_lib_crypto::insert_crypto_bytes(bytes);
@@ -445,90 +445,79 @@ impl WebProvider {
         body: &[u8],
         content_type: Option<&str>,
         headers_handle: Option<Handle>,
-        maximum: usize,
+        maximum: i64,
         span: Span,
     ) -> Result<Value, Diagnostic> {
-        let policy = crate::web::EgressPolicy::default();
-        let headers_entries = if let Some(h) = headers_handle {
-            self.headers
-                .get(&h)
-                .map(|hd| hd.entries.clone())
-                .unwrap_or_default()
-        } else {
-            Vec::new()
-        };
-
-        let mut extra = headers_entries;
-        if let Some(ct) = content_type {
-            let has_ct = extra
-                .iter()
-                .any(|(k, _)| k.eq_ignore_ascii_case("content-type"));
-            if !has_ct {
-                extra.push(("content-type".into(), ct.into()));
-            }
+        let headers = headers_handle
+            .and_then(|handle| self.headers.get(&handle))
+            .map(|headers| headers.entries.clone())
+            .unwrap_or_default();
+        let outcome = crate::web::Transfer {
+            method,
+            url,
+            body,
+            content_type,
+            headers,
+            maximum,
+            policy: None,
         }
-
-        let started = std::time::Instant::now();
-        let outcome = crate::http::client_transfer_with_policy(method, url, body, &extra, &policy);
-        let duration_ms = i64::try_from(started.elapsed().as_millis()).unwrap_or(i64::MAX);
-
-        let (status, bytes, access_headers) = match &outcome {
-            Ok(r) => {
-                let hdrs = r
-                    .headers
-                    .iter()
-                    .map(|(k, v)| (k.as_str(), v.as_str()))
-                    .collect::<Vec<_>>();
-                (
-                    i64::from(r.status),
-                    i64::try_from(r.body.len()).unwrap_or(i64::MAX),
-                    hdrs,
-                )
+        .run();
+        if let Some(access) = &outcome.access {
+            self.log_client_access(core, client_handle, method, url, access);
+        }
+        match outcome.result {
+            Ok(reply) => {
+                let (handle, obj) = alloc_obj(core, "ClientReply", span)?;
+                self.client_replies.insert(handle, reply);
+                Ok(obj)
             }
-            Err(_) => (0, 0, Vec::new()),
-        };
+            Err(failure) => Ok(failed(name, &failure)),
+        }
+    }
 
-        let maybe_logger = self.clients.get(&client_handle).copied().and_then(|id| {
+    /// Writes one access record of a client transfer through the client's
+    /// `BNLog` logger, when it has one.
+    pub(super) fn log_client_access(
+        &self,
+        core: &mut dyn CoreContext,
+        client_handle: Handle,
+        method: &str,
+        url: &str,
+        access: &crate::web::ClientAccess,
+    ) {
+        let Some(logger) = self.clients.get(&client_handle).copied().and_then(|id| {
             with_log_provider(core, |log| log.core_logger(id))
                 .ok()
                 .flatten()
-        });
-        #[allow(clippy::collapsible_if)]
-        if let Some(logger) = maybe_logger {
-            if let Ok(logger) = logger.lock() {
-                let sink = InterpLogSink {
-                    host: core.host().clone(),
-                };
-                access_log::write_client_access(
-                    &logger,
-                    &sink,
-                    method,
-                    url,
-                    status,
-                    bytes,
-                    duration_ms,
-                    &access_headers,
-                );
-            }
-        }
-
-        let reply = match outcome {
-            Ok(r) => {
-                if maximum > 0 && r.body.len() > maximum {
-                    return Ok(failed(
-                        name,
-                        &WebFailure::BodyLimitExceeded(format!("{}/{}", r.body.len(), maximum)),
-                    ));
-                }
-                r
-            }
-            Err(err_msg) => {
-                return Ok(failed(name, &err_msg));
-            }
+        }) else {
+            return;
         };
-
-        let (handle, obj) = alloc_obj(core, "ClientReply", span)?;
-        self.client_replies.insert(handle, reply);
-        Ok(obj)
+        let Ok(logger) = logger.lock() else {
+            return;
+        };
+        let sink = InterpLogSink {
+            host: core.host().clone(),
+        };
+        let headers = access
+            .headers
+            .iter()
+            .map(|(key, value)| (key.as_str(), value.as_str()))
+            .collect::<Vec<_>>();
+        access_log::write_client_access(
+            &logger,
+            &sink,
+            method,
+            url,
+            access.status,
+            access.bytes,
+            access.duration_ms,
+            &headers,
+        );
     }
+}
+
+/// A program's `maximum` as the provider core takes it: an `INTEGER` outside
+/// `i64` keeps its sign, so the core still refuses a negative one.
+pub(super) fn maximum_of(value: i128) -> i64 {
+    i64::try_from(value).unwrap_or(if value < 0 { i64::MIN } else { i64::MAX })
 }

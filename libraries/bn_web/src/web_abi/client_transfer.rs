@@ -25,61 +25,40 @@ pub(crate) fn do_client_transfer(
     out_reply: *mut u64,
 ) -> i32 {
     let wrapper = table();
-    let (policy, logger, headers_entries) = {
+    let (logger, headers) = {
         let guard = wrapper.lock_table();
         let logger = guard.clients.get(&client_handle).copied().unwrap_or(0);
-        let policy = crate::web::EgressPolicy::default();
-        let headers_entries = if headers_handle != 0 {
-            guard
-                .headers
-                .get(&headers_handle)
-                .map(|h| h.entries.clone())
-                .unwrap_or_default()
-        } else {
-            Vec::new()
-        };
-        (policy, logger, headers_entries)
+        let headers = guard
+            .headers
+            .get(&headers_handle)
+            .map(|headers| headers.entries.clone())
+            .unwrap_or_default();
+        (logger, headers)
     };
-
-    let mut extra = headers_entries;
-    if let Some(ct) = content_type
-        && !extra
-            .iter()
-            .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
-    {
-        extra.push(("content-type".into(), ct.into()));
+    let outcome = crate::web::Transfer {
+        method,
+        url,
+        body,
+        content_type,
+        headers,
+        maximum,
+        policy: None,
     }
-
-    let started = std::time::Instant::now();
-    match crate::http::client_transfer_with_policy(method, url, body, &extra, &policy) {
+    .run();
+    if let Some(access) = &outcome.access {
+        log_client_access(logger, method, url, access);
+    }
+    match outcome.result {
         Ok(reply) => {
             let reply_handle = alloc_handle();
-            let bytes = i64::try_from(reply.body.len()).unwrap_or(i64::MAX);
-            log_client_access(
-                logger,
-                method,
-                url,
-                i64::from(reply.status),
-                bytes,
-                started,
-                &reply.headers,
-            );
-            let max_usize = usize::try_from(maximum.max(0)).unwrap_or(usize::MAX);
-            if maximum > 0 && reply.body.len() > max_usize {
-                return record_failure(
-                    operation,
-                    &WebFailure::BodyLimitExceeded(format!("{}/{}", reply.body.len(), maximum)),
-                );
-            }
-            let mut guard = wrapper.lock_table();
-            guard.client_replies.insert(reply_handle, reply);
+            wrapper
+                .lock_table()
+                .client_replies
+                .insert(reply_handle, reply);
             write_u64(out_reply, reply_handle);
             BN_WEB_OK
         }
-        Err(err) => {
-            log_client_access(logger, method, url, 0, 0, started, &[]);
-            record_failure(operation, &err)
-        }
+        Err(failure) => record_failure(operation, &failure),
     }
 }
 

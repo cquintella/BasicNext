@@ -9,17 +9,6 @@ use super::{WebFailure, c_char, record_failure, string_text, table};
 
 use super::client_transfer::do_client_transfer;
 
-#[expect(clippy::verbose_file_reads)]
-fn read_form_file(path: &str) -> Vec<u8> {
-    use std::io::Read as _;
-    let Ok(mut file) = std::fs::File::open(path) else {
-        return Vec::new();
-    };
-    let mut bytes = Vec::new();
-    let _ = file.read_to_end(&mut bytes);
-    bytes
-}
-
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_web_client_post(
     client_handle: u64,
@@ -272,38 +261,23 @@ fn client_post_form(
             &WebFailure::InvalidArgument("invalid_url".into()),
         );
     };
-    let form_data = {
+    let (body, content_type) = {
         let wrapper = table();
         let guard = wrapper.lock_table();
-        guard.forms.get(&form).cloned().unwrap_or_default()
+        guard
+            .forms
+            .get(&form)
+            .cloned()
+            .unwrap_or_default()
+            .multipart()
     };
-    let boundary = "----BNWebFormBoundary7MA4YWxkTrZu0gW";
-    let mut body = Vec::new();
-    for (k, v) in form_data.fields {
-        body.extend_from_slice(
-            format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n")
-                .as_bytes(),
-        );
-    }
-    for (name, path, ct) in form_data.files {
-        let content = read_form_file(&path);
-        let filename = std::path::Path::new(&path)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("file");
-        body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"; filename=\"{filename}\"\r\nContent-Type: {ct}\r\n\r\n").as_bytes());
-        body.extend_from_slice(&content);
-        body.extend_from_slice(b"\r\n");
-    }
-    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
-    let ct = format!("multipart/form-data;boundary={boundary}");
     do_client_transfer(
         operation,
         client_handle,
         "POST",
         &url_str,
         &body,
-        Some(&ct),
+        Some(&content_type),
         headers,
         maximum,
         out_reply,

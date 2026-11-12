@@ -2720,7 +2720,6 @@ libraries/bn_lib_web/src/lib.rs	prose	cookie policy types
 libraries/bn_lib_web/src/lib.rs	prose	CookieJar handle is not live
 libraries/bn_lib_web/src/lib.rs	prose	CookieJar object
 libraries/bn_lib_web/src/lib.rs	prose	CookieJar receiver
-libraries/bn_lib_web/src/lib.rs	prose	EgressPolicy handle is not live
 libraries/bn_lib_web/src/lib.rs	prose	GET, HEAD
 libraries/bn_lib_web/src/lib.rs	prose	HOST.FileSystem is denied by host policy
 libraries/bn_lib_web/src/lib.rs	prose	HOST.FileSystem is not provided by this host

@@ -81,3 +81,6 @@ client.redirect_location = invalid redirect Location
 client.redirect_base = invalid redirect base
 client.body_not_utf8 = response body is not UTF-8
 client.url_scheme = unsupported URL scheme
+
+client.negative_maximum = maximum must not be negative
+client.policy_not_live = EgressPolicy handle is not live
