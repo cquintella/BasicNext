@@ -282,3 +282,76 @@ fn no_rule_is_written_twice_across_the_backends() {
         stale.join("\n")
     );
 }
+
+/// The `BNWeb` adapters: the interpreter provider and the C ABI of the
+/// native side. They convert handles and values; the transfer rules live in
+/// the provider core (`libraries/bn_web/src/web`, `http`).
+const WEB_ADAPTERS: &[&str] = &[
+    "libraries/bn_lib_web/src",
+    "libraries/bn_web/src/web_abi",
+    "libraries/bn_web/src/web_abi.rs",
+];
+
+/// Marks of a transfer rule written in an adapter: a multipart body, a
+/// header merge, a `maximum` comparison, a form file read, a default policy.
+const WEB_RULE_MARKERS: &[&str] = &[
+    "Content-Disposition",
+    "multipart/form-data",
+    "eq_ignore_ascii_case(\"content-type\")",
+    "maximum > 0",
+    "> maximum",
+    "read_form_file",
+    "EgressPolicy::default()",
+];
+
+/// `path: marker` for every rule marker in the given sources.
+fn web_rules_in(files: &[(String, String)]) -> Vec<String> {
+    files
+        .iter()
+        .flat_map(|(path, text)| {
+            WEB_RULE_MARKERS
+                .iter()
+                .filter(|marker| text.contains(**marker))
+                .map(move |marker| format!("{path}: {marker}"))
+        })
+        .collect()
+}
+
+/// Sources of directories and single files alike.
+fn adapter_sources(entries: &[&str]) -> Vec<(String, String)> {
+    let (files, directories): (Vec<&str>, Vec<&str>) = entries.iter().partition(|entry| {
+        Path::new(entry)
+            .extension()
+            .is_some_and(|extension| extension == "rs")
+    });
+    let mut found = sources(&directories);
+    for file in files {
+        let path = root().join(file);
+        let text = fs::read_to_string(&path).expect("read an adapter source");
+        let end = text.find("#[cfg(test)]\nmod ").unwrap_or(text.len());
+        found.push(((*file).to_owned(), text[..end].to_owned()));
+    }
+    found
+}
+
+#[test]
+fn web_adapters_hold_no_transfer_rule() {
+    let found = web_rules_in(&adapter_sources(WEB_ADAPTERS));
+    assert_eq!(
+        found,
+        Vec::<String>::new(),
+        "a transfer rule in a BNWeb adapter; move it to the provider core"
+    );
+}
+
+#[test]
+fn a_planted_transfer_rule_in_an_adapter_is_found() {
+    let files = vec![(
+        "planted.rs".to_owned(),
+        "let part = \"Content-Disposition: form-data\";\nif body.len() > maximum {}\n".to_owned(),
+    )];
+    assert_eq!(
+        web_rules_in(&files),
+        ["planted.rs: Content-Disposition", "planted.rs: > maximum"]
+    );
+}

@@ -50,6 +50,8 @@
     "bn::test/gates::web_surface::a_served_member_the_tour_does_not_call_fails",
     "bn::test/gates::web_surface::every_declared_bnweb_member_is_served_by_both_backends",
     "bn::test/gates::web_surface::a_planted_declaration_and_a_served_allow_entry_fail",
+    "bn::test/gates::shared_logic::a_planted_transfer_rule_in_an_adapter_is_found",
+    "bn::test/gates::shared_logic::web_adapters_hold_no_transfer_rule",
     "bn::test/gates::web_failures::a_planted_parse_and_a_planted_limit_are_found",
     "bn::test/gates::web_failures::no_web_message_states_a_limit",
     "bn::test/gates::web_failures::web_failures_are_typed_where_they_happen",
