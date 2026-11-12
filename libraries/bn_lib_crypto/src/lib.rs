@@ -41,13 +41,11 @@ use bn_stdlib::crypto_abi::{PrivateKeyEntry, PublicKeyEntry, SecretKeyEntry};
 use bn_stdlib::crypto_policy::CryptoPolicy;
 use bn_value::RecordValue;
 
-/// Interpreter-side owner of `BNCrypto.Bytes` and `BNCrypto.Key` handles. Compiled programs use
-/// the parallel tables in `bn_stdlib::crypto_abi`; neither observes the other, and both
-/// hand out opaque `u64` handles.
+/// Interpreter-side owner of the `BNCrypto` key and secret handles. `BNCrypto.Bytes` live in
+/// the one store of `bn_stdlib::crypto_abi`, shared with `BNWeb` and with compiled programs,
+/// so a handle names the same bytes whichever library made it.
 #[derive(Debug, Default)]
 pub struct CryptoProvider {
-    buffers: HashMap<u64, zeroize::Zeroizing<Vec<u8>>>,
-    holders: HashMap<u64, usize>,
     keys: HashMap<u64, KeyEntry>,
     key_holders: HashMap<u64, usize>,
     secrets: HashMap<u64, zeroize::Zeroizing<Vec<u8>>>,
@@ -71,14 +69,6 @@ pub fn insert_crypto_bytes(bytes: Vec<u8>) -> Value {
 }
 
 impl CryptoProvider {
-    fn insert(&mut self, bytes: Vec<u8>) -> Value {
-        self.next += 1;
-        let handle = self.next;
-        self.buffers.insert(handle, zeroize::Zeroizing::new(bytes));
-        self.holders.insert(handle, 1);
-        Value::CryptoBytes(handle)
-    }
-
     fn insert_secret(&mut self, bytes: Vec<u8>) -> Value {
         self.next += 1;
         let handle = self.next;
@@ -154,7 +144,6 @@ impl CryptoProvider {
 
     /// Reads the `Bytes` operand at `index`, or reports the type mismatch.
     fn bytes_at(
-        &self,
         arguments: &[Value],
         index: usize,
         member: &str,
@@ -168,7 +157,7 @@ impl CryptoProvider {
                 span,
             ));
         };
-        self.buffer_vec(*handle, span)
+        buffer_vec(*handle, span)
     }
 
     /// ML-KEM-768 and ML-DSA-65 (FIPS 203 / FIPS 204). Key generation is
@@ -201,7 +190,7 @@ impl CryptoProvider {
                 match pair {
                     Some((mut public_key, private_key)) => {
                         public_key.extend_from_slice(&private_key);
-                        Ok(self.insert(public_key))
+                        Ok(insert_crypto_bytes(public_key))
                     }
                     None => failure(&CryptoFailure::Seed(if method.starts_with("MlKem") {
                         "BNCrypto.MlKemKeypair"
@@ -212,11 +201,11 @@ impl CryptoProvider {
             }
             "MlKemEncapsulate" => {
                 require_arity(member, arguments, 1, span)?;
-                let public_key = self.bytes_at(arguments, 0, member, span)?;
+                let public_key = Self::bytes_at(arguments, 0, member, span)?;
                 match bn_stdlib::crypto::ml_kem_encapsulate(&public_key) {
                     Some((mut ciphertext, secret)) => {
                         ciphertext.extend_from_slice(&secret);
-                        Ok(self.insert(ciphertext))
+                        Ok(insert_crypto_bytes(ciphertext))
                     }
                     None => failure(&CryptoFailure::EncapsulationKey),
                 }
@@ -236,9 +225,9 @@ impl CryptoProvider {
     ) -> Result<Value, Diagnostic> {
         if method == "MlDsaVerify" {
             require_arity(member, arguments, 3, span)?;
-            let public_key = self.bytes_at(arguments, 0, member, span)?;
-            let message = self.bytes_at(arguments, 1, member, span)?;
-            let signature = self.bytes_at(arguments, 2, member, span)?;
+            let public_key = Self::bytes_at(arguments, 0, member, span)?;
+            let message = Self::bytes_at(arguments, 1, member, span)?;
+            let signature = Self::bytes_at(arguments, 2, member, span)?;
             return Ok(Value::Boolean(bn_stdlib::crypto::ml_dsa_verify(
                 &public_key,
                 &message,
@@ -250,7 +239,7 @@ impl CryptoProvider {
             Ok(material) => material,
             Err(failed) => return failure(&failed),
         };
-        let payload = self.bytes_at(arguments, 1, member, span)?;
+        let payload = Self::bytes_at(arguments, 1, member, span)?;
         let (produced, rejected) = if method == "MlKemDecapsulate" {
             (
                 bn_stdlib::crypto::ml_kem_decapsulate(&key, &payload),
@@ -263,7 +252,7 @@ impl CryptoProvider {
             )
         };
         match produced {
-            Some(bytes) => Ok(self.insert(bytes)),
+            Some(bytes) => Ok(insert_crypto_bytes(bytes)),
             None => failure(&rejected),
         }
     }
@@ -281,9 +270,9 @@ impl CryptoProvider {
         let ed25519 = method.starts_with("Ed25519");
         if method.ends_with("Verify") {
             require_arity(member, arguments, 3, span)?;
-            let public_key = self.bytes_at(arguments, 0, member, span)?;
-            let message = self.bytes_at(arguments, 1, member, span)?;
-            let signature = self.bytes_at(arguments, 2, member, span)?;
+            let public_key = Self::bytes_at(arguments, 0, member, span)?;
+            let message = Self::bytes_at(arguments, 1, member, span)?;
+            let signature = Self::bytes_at(arguments, 2, member, span)?;
             return Ok(Value::Boolean(if ed25519 {
                 bn_stdlib::crypto::ed25519_verify(&public_key, &message, &signature)
             } else {
@@ -303,7 +292,7 @@ impl CryptoProvider {
             }
         } else {
             require_arity(member, arguments, 2, span)?;
-            let message = self.bytes_at(arguments, 1, member, span)?;
+            let message = Self::bytes_at(arguments, 1, member, span)?;
             if ed25519 {
                 bn_stdlib::crypto::ed25519_sign(&key, &message)
             } else {
@@ -311,7 +300,7 @@ impl CryptoProvider {
             }
         };
         match produced {
-            Some(bytes) => Ok(self.insert(bytes)),
+            Some(bytes) => Ok(insert_crypto_bytes(bytes)),
             None => failure(&CryptoFailure::Key(
                 match (ed25519, method.ends_with("Sign")) {
                     (true, true) => "BNCrypto.Ed25519Sign",
@@ -339,8 +328,10 @@ impl CryptoProvider {
                     Ok(material) => material,
                     Err(failed) => return failure(&failed),
                 };
-                let data = self.bytes_at(arguments, 1, member, span)?;
-                Ok(self.insert(bn_stdlib::crypto::hmac_sha256(&key, &data)))
+                let data = Self::bytes_at(arguments, 1, member, span)?;
+                Ok(insert_crypto_bytes(bn_stdlib::crypto::hmac_sha256(
+                    &key, &data,
+                )))
             }
             "VerifyHmacSha256" => {
                 require_arity(member, arguments, 3, span)?;
@@ -348,16 +339,16 @@ impl CryptoProvider {
                     Ok(material) => material,
                     Err(failed) => return failure(&failed),
                 };
-                let data = self.bytes_at(arguments, 1, member, span)?;
-                let tag = self.bytes_at(arguments, 2, member, span)?;
+                let data = Self::bytes_at(arguments, 1, member, span)?;
+                let tag = Self::bytes_at(arguments, 2, member, span)?;
                 Ok(Value::Boolean(bn_stdlib::crypto::hmac_verify(
                     &key, &data, &tag,
                 )))
             }
             _ => {
                 require_arity(member, arguments, 5, span)?;
-                let password = zeroize::Zeroizing::new(self.bytes_at(arguments, 0, member, span)?);
-                let salt = self.bytes_at(arguments, 1, member, span)?;
+                let password = zeroize::Zeroizing::new(Self::bytes_at(arguments, 0, member, span)?);
+                let salt = Self::bytes_at(arguments, 1, member, span)?;
                 let mut costs = [0_u32; 3];
                 for (slot, argument) in costs.iter_mut().zip(&arguments[2..5]) {
                     let Value::Integer(value, _) = argument else {
@@ -385,7 +376,7 @@ impl CryptoProvider {
                         tag_length: 32,
                     },
                 ) {
-                    Some(tag) => Ok(self.insert(tag)),
+                    Some(tag) => Ok(insert_crypto_bytes(tag)),
                     None => failure(&CryptoFailure::Argon2id),
                 }
             }
@@ -419,7 +410,7 @@ impl CryptoProvider {
                 let Value::String(text) = &arguments[0] else {
                     return Err(type_mismatch("STRING", "non-STRING value", member, span));
                 };
-                Ok(self.insert(text.as_bytes().to_vec()))
+                Ok(insert_crypto_bytes(text.as_bytes().to_vec()))
             }
             "FromHex" => {
                 require_arity(member, arguments, 1, span)?;
@@ -427,7 +418,7 @@ impl CryptoProvider {
                     return Err(type_mismatch("STRING", "non-STRING value", member, span));
                 };
                 match bn_stdlib::crypto::decode_hex(text.as_ref()) {
-                    Some(bytes) => Ok(self.insert(bytes)),
+                    Some(bytes) => Ok(insert_crypto_bytes(bytes)),
                     None => failure(&CryptoFailure::Hex(text.to_string())),
                 }
             }
@@ -442,17 +433,17 @@ impl CryptoProvider {
                         span,
                     ));
                 };
-                let hex = bn_stdlib::crypto::encode_hex(&self.buffer_vec(handle, span)?);
+                let hex = bn_stdlib::crypto::encode_hex(&buffer_vec(handle, span)?);
                 Ok(Value::String(shared_string(hex.as_str())))
             }
             "ToBytes" => {
                 require_arity(member, arguments, 1, span)?;
                 let bytes = self.secret_at(arguments, 0, member, span)?;
-                Ok(self.insert(bytes))
+                Ok(insert_crypto_bytes(bytes))
             }
             "ConstantTimeEquals" => self.constant_time_equals(arguments, member, span),
             "NewSecret" | "SecretFromText" => self.new_secret_from_text(arguments, member, span),
-            _ => self.slice(member, arguments, span),
+            _ => Self::slice(member, arguments, span),
         }
     }
 
@@ -465,7 +456,7 @@ impl CryptoProvider {
         require_arity(member, arguments, 1, span)?;
         match &arguments[0] {
             Value::CryptoBytes(handle) => {
-                let length = self.buffer_len(*handle, span)?;
+                let length = buffer_len(*handle, span)?;
                 Ok(Value::Integer(
                     i128::try_from(length).unwrap_or(i128::MAX),
                     IntegerType::Int32,
@@ -531,7 +522,7 @@ impl CryptoProvider {
     ) -> Result<Value, Diagnostic> {
         require_arity(member, arguments, 2, span)?;
         let a = match &arguments[0] {
-            Value::CryptoBytes(h) => self.buffer_vec(*h, span)?,
+            Value::CryptoBytes(h) => buffer_vec(*h, span)?,
             Value::CryptoSecret(h) => self.secret(*h, span)?.to_vec(),
             _ => {
                 return Err(type_mismatch(
@@ -543,7 +534,7 @@ impl CryptoProvider {
             }
         };
         let b = match &arguments[1] {
-            Value::CryptoBytes(h) => self.buffer_vec(*h, span)?,
+            Value::CryptoBytes(h) => buffer_vec(*h, span)?,
             Value::CryptoSecret(h) => self.secret(*h, span)?.to_vec(),
             _ => {
                 return Err(type_mismatch(
@@ -573,14 +564,9 @@ impl CryptoProvider {
     }
 
     /// `Slice(start, length)` of a `Bytes`; out of range is an `Error`.
-    fn slice(
-        &mut self,
-        member: &str,
-        arguments: &[Value],
-        span: Span,
-    ) -> Result<Value, Diagnostic> {
+    fn slice(member: &str, arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
         require_arity(member, arguments, 3, span)?;
-        let bytes = self.bytes_at(arguments, 0, member, span)?;
+        let bytes = Self::bytes_at(arguments, 0, member, span)?;
         let mut bounds = [0_i64; 2];
         for (slot, argument) in bounds.iter_mut().zip(&arguments[1..3]) {
             let Value::Integer(value, _) = argument else {
@@ -595,7 +581,7 @@ impl CryptoProvider {
             .and_then(|(from, count)| Some((from, from.checked_add(count)?)))
             .filter(|(_, end)| *end <= bytes.len());
         match range {
-            Some((from, end)) => Ok(self.insert(bytes[from..end].to_vec())),
+            Some((from, end)) => Ok(insert_crypto_bytes(bytes[from..end].to_vec())),
             // Out of range is an Error, never a short buffer that could
             // pass for a key.
             None => failure(&CryptoFailure::Slice {
@@ -621,9 +607,9 @@ impl CryptoProvider {
             Ok(material) => material,
             Err(failed) => return failure(&failed),
         };
-        let nonce = zeroize::Zeroizing::new(self.bytes_at(arguments, 1, member, span)?);
-        let data = zeroize::Zeroizing::new(self.bytes_at(arguments, 2, member, span)?);
-        let aad = self.bytes_at(arguments, 3, member, span)?;
+        let nonce = zeroize::Zeroizing::new(Self::bytes_at(arguments, 1, member, span)?);
+        let data = zeroize::Zeroizing::new(Self::bytes_at(arguments, 2, member, span)?);
+        let aad = Self::bytes_at(arguments, 3, member, span)?;
         let algorithm = if method.ends_with("AesGcm") {
             bn_stdlib::crypto::Aead::Aes256Gcm
         } else {
@@ -636,7 +622,7 @@ impl CryptoProvider {
             bn_stdlib::crypto::open(algorithm, &key, &nonce, &data, &aad)
         };
         match result {
-            Some(bytes) => Ok(self.insert(bytes)),
+            Some(bytes) => Ok(insert_crypto_bytes(bytes)),
             None => failure(&if sealing {
                 CryptoFailure::Seal(algorithm)
             } else {
@@ -660,7 +646,7 @@ impl CryptoProvider {
                     return Err(type_mismatch("INTEGER", "non-INTEGER value", member, span));
                 };
                 match bn_stdlib::crypto::random_bytes(*length) {
-                    Ok(bytes) => Ok(self.insert(bytes)),
+                    Ok(bytes) => Ok(insert_crypto_bytes(bytes)),
                     Err(err) => failure(&err),
                 }
             }
@@ -678,7 +664,7 @@ impl CryptoProvider {
                     ));
                 };
                 match bn_stdlib::crypto::generate_nonce(alg) {
-                    Ok(nonce) => Ok(self.insert(nonce)),
+                    Ok(nonce) => Ok(insert_crypto_bytes(nonce)),
                     Err(err) => failure(&err),
                 }
             }
@@ -702,7 +688,7 @@ impl CryptoProvider {
             }
             "ImportKey" => {
                 require_arity(member, arguments, 2, span)?;
-                let raw_bytes = self.bytes_at(arguments, 0, member, span)?;
+                let raw_bytes = Self::bytes_at(arguments, 0, member, span)?;
                 let Value::Integer(algorithm, _) = &arguments[1] else {
                     return Err(type_mismatch("INTEGER", "non-INTEGER value", member, span));
                 };
@@ -789,15 +775,15 @@ impl CryptoProvider {
                         Ok(Value::Null)
                     }
                     Value::CryptoBytes(handle) => {
-                        let buf = self.buffers.get_mut(handle).ok_or_else(|| {
-                            runtime_error(
+                        if bn_stdlib::crypto_abi::zeroize_bytes(*handle) {
+                            Ok(Value::Null)
+                        } else {
+                            Err(runtime_error(
                                 bn_diag::DiagId::USE_AFTER_RELEASE,
                                 "BNCrypto.Bytes is invalid",
                                 span,
-                            )
-                        })?;
-                        buf.as_mut_slice().zeroize();
-                        Ok(Value::Null)
+                            ))
+                        }
                     }
                     Value::CryptoSecret(handle) => {
                         let buf = self.secrets.get_mut(handle).ok_or_else(|| {
@@ -902,7 +888,7 @@ impl CryptoProvider {
             }
             "DeriveKey" => {
                 let password = text_at(0)?;
-                let salt = self.bytes_at(arguments, 1, member, span)?;
+                let salt = Self::bytes_at(arguments, 1, member, span)?;
                 match bn_stdlib::crypto_password::bn_derive_key(&password, &salt) {
                     Ok(material) => Ok(self.insert_secret_key(
                         bn_stdlib::crypto_password::derived_key_entry(material, "key.alg.argon2id"),
@@ -959,7 +945,7 @@ impl CryptoProvider {
                 span,
             ));
         };
-        let data = self.bytes_at(arguments, 1, member, span)?;
+        let data = Self::bytes_at(arguments, 1, member, span)?;
         let record = options_record(
             arguments,
             2,
@@ -976,7 +962,7 @@ impl CryptoProvider {
                 span,
             ));
         };
-        let aad = self.buffer_vec(*aad_handle, span)?;
+        let aad = buffer_vec(*aad_handle, span)?;
         let include_key_id = matches!(
             record.get(AEAD_OPTS_INCLUDE_KEY_ID_FIELD),
             Some(Value::Boolean(true))
@@ -1009,38 +995,9 @@ impl CryptoProvider {
             bn_stdlib::crypto_envelope::bn_decrypt_envelope_with(&entry.material, &data, &aad)
         };
         match result {
-            Ok(bytes) => Ok(self.insert(bytes)),
+            Ok(bytes) => Ok(insert_crypto_bytes(bytes)),
             Err(err) => failure(&err),
         }
-    }
-
-    fn buffer_vec(&self, handle: u64, span: Span) -> Result<Vec<u8>, Diagnostic> {
-        if let Some(b) = self.buffers.get(&handle) {
-            return Ok(b.to_vec());
-        }
-        bn_stdlib::crypto_abi::with_buffers(|bufs| bufs.get(&handle).map(|b| b.to_vec()))
-            .ok_or_else(|| {
-                runtime_error(
-                    bn_diag::DiagId::USE_AFTER_RELEASE,
-                    bn_catalog::text("crypto", "msg.bncrypto_bytes_was_already_released"),
-                    span,
-                )
-            })
-    }
-
-    fn buffer_len(&self, handle: u64, span: Span) -> Result<usize, Diagnostic> {
-        if let Some(b) = self.buffers.get(&handle) {
-            return Ok(b.len());
-        }
-        bn_stdlib::crypto_abi::with_buffers(|bufs| bufs.get(&handle).map(|b| b.len())).ok_or_else(
-            || {
-                runtime_error(
-                    bn_diag::DiagId::USE_AFTER_RELEASE,
-                    bn_catalog::text("crypto", "msg.bncrypto_bytes_was_already_released"),
-                    span,
-                )
-            },
-        )
     }
 
     fn secret(&self, handle: u64, span: Span) -> Result<&[u8], Diagnostic> {
@@ -1157,7 +1114,7 @@ impl CryptoProvider {
             }
             "SecretKeyFromBytes" => {
                 require_arity(member, arguments, 2, span)?;
-                let bytes = self.bytes_at(arguments, 0, member, span)?;
+                let bytes = Self::bytes_at(arguments, 0, member, span)?;
                 let Value::String(purpose) = &arguments[1] else {
                     return Err(type_mismatch("STRING", "non-STRING value", member, span));
                 };
@@ -1181,7 +1138,7 @@ impl CryptoProvider {
                     .material
                     .to_vec();
                 match bn_stdlib::crypto::rfc3394_key_wrap(&kek, &key_data) {
-                    Ok(wrapped) => Ok(self.insert(wrapped)),
+                    Ok(wrapped) => Ok(insert_crypto_bytes(wrapped)),
                     Err(f) => failure(&f),
                 }
             }
@@ -1191,7 +1148,7 @@ impl CryptoProvider {
                     .secret_key_at(arguments, 0, member, span)?
                     .material
                     .to_vec();
-                let wrapped = self.bytes_at(arguments, 1, member, span)?;
+                let wrapped = Self::bytes_at(arguments, 1, member, span)?;
                 match bn_stdlib::crypto::rfc3394_key_unwrap(&kek, &wrapped) {
                     Ok(unwrapped) => {
                         let bits = unwrapped.len() * 8;
@@ -1212,7 +1169,7 @@ impl CryptoProvider {
                     .secret_key_at(arguments, 0, member, span)?
                     .material
                     .to_vec();
-                let wrapped = self.bytes_at(arguments, 1, member, span)?;
+                let wrapped = Self::bytes_at(arguments, 1, member, span)?;
                 let Value::Record { record } = &arguments[2] else {
                     return Err(type_mismatch(
                         "Crypto.KeyOptions",
@@ -1276,9 +1233,9 @@ impl CryptoProvider {
                 };
                 if fmt == "HEX" {
                     let hex = bn_stdlib::crypto::encode_hex(&entry.material);
-                    Ok(self.insert(hex.into_bytes()))
+                    Ok(insert_crypto_bytes(hex.into_bytes()))
                 } else {
-                    Ok(self.insert(entry.material.to_vec()))
+                    Ok(insert_crypto_bytes(entry.material.to_vec()))
                 }
             }
             "Encrypt" => {
@@ -1309,15 +1266,15 @@ impl CryptoProvider {
                 if entry.zeroized {
                     return failure(&bn_stdlib::crypto_error::CryptoFailure::ZeroizedKey);
                 }
-                let plain_bytes = self.buffers.get(plain_handle).ok_or_else(|| {
+                let plain_bytes = bn_stdlib::crypto_abi::bytes(*plain_handle).ok_or_else(|| {
                     runtime_error(
                         bn_diag::DiagId::USE_AFTER_RELEASE,
                         "BNCrypto.Bytes is invalid",
                         span,
                     )
                 })?;
-                match bn_stdlib::crypto::bn_encrypt_envelope(&entry.material, plain_bytes) {
-                    Ok(sealed) => Ok(self.insert(sealed)),
+                match bn_stdlib::crypto::bn_encrypt_envelope(&entry.material, &plain_bytes) {
+                    Ok(sealed) => Ok(insert_crypto_bytes(sealed)),
                     Err(f) => failure(&f),
                 }
             }
@@ -1349,15 +1306,16 @@ impl CryptoProvider {
                 if entry.zeroized {
                     return failure(&bn_stdlib::crypto_error::CryptoFailure::ZeroizedKey);
                 }
-                let sealed_bytes = self.buffers.get(sealed_handle).ok_or_else(|| {
-                    runtime_error(
-                        bn_diag::DiagId::USE_AFTER_RELEASE,
-                        "BNCrypto.Bytes is invalid",
-                        span,
-                    )
-                })?;
-                match bn_stdlib::crypto::bn_decrypt_envelope(&entry.material, sealed_bytes) {
-                    Ok(plain) => Ok(self.insert(plain)),
+                let sealed_bytes =
+                    bn_stdlib::crypto_abi::bytes(*sealed_handle).ok_or_else(|| {
+                        runtime_error(
+                            bn_diag::DiagId::USE_AFTER_RELEASE,
+                            "BNCrypto.Bytes is invalid",
+                            span,
+                        )
+                    })?;
+                match bn_stdlib::crypto::bn_decrypt_envelope(&entry.material, &sealed_bytes) {
+                    Ok(plain) => Ok(insert_crypto_bytes(plain)),
                     Err(f) => failure(&f),
                 }
             }
@@ -1514,9 +1472,9 @@ impl CryptoProvider {
         match method {
             "Hash" => {
                 require_arity(member, arguments, 1, span)?;
-                let data = self.bytes_at(arguments, 0, member, span)?;
+                let data = Self::bytes_at(arguments, 0, member, span)?;
                 match bn_stdlib::crypto::bn_hash(&data, bn_stdlib::crypto::HASH_SHA256) {
-                    Ok(digest) => Ok(self.insert(digest)),
+                    Ok(digest) => Ok(insert_crypto_bytes(digest)),
                     Err(err) => failure(&err),
                 }
             }
@@ -1538,20 +1496,20 @@ impl CryptoProvider {
                     std::path::Path::new(path.as_ref()),
                     bn_stdlib::crypto::HASH_SHA256,
                 ) {
-                    Ok(digest) => Ok(self.insert(digest)),
+                    Ok(digest) => Ok(insert_crypto_bytes(digest)),
                     Err(err) => failure(&err),
                 }
             }
             "HashWith" => {
                 require_arity(member, arguments, 2, span)?;
-                let data = self.bytes_at(arguments, 0, member, span)?;
+                let data = Self::bytes_at(arguments, 0, member, span)?;
                 let record = options_record(arguments, 1, "BNCrypto.HashOptions", member, span)?;
                 let alg = options_alg(record, member, span)?;
                 if let Err(err) = options_policy(record, HASH_OPTS_POLICY_FIELD).admits_hash(alg) {
                     return failure(&err);
                 }
                 match bn_stdlib::crypto::bn_hash(&data, alg) {
-                    Ok(digest) => Ok(self.insert(digest)),
+                    Ok(digest) => Ok(insert_crypto_bytes(digest)),
                     Err(err) => failure(&err),
                 }
             }
@@ -1605,7 +1563,7 @@ impl CryptoProvider {
                     ));
                 };
                 if let Some(&stream_id) = self.mac_streams.get(handle) {
-                    let data = self.bytes_at(arguments, 1, member, span)?;
+                    let data = Self::bytes_at(arguments, 1, member, span)?;
                     return match bn_stdlib::crypto::update_mac_stream(stream_id, &data) {
                         Ok(()) => Ok(Value::Null),
                         Err(err) => failure(&err),
@@ -1618,7 +1576,7 @@ impl CryptoProvider {
                         span,
                     ));
                 };
-                let data = self.bytes_at(arguments, 1, member, span)?;
+                let data = Self::bytes_at(arguments, 1, member, span)?;
                 match bn_stdlib::crypto::update_hasher(hasher_id, &data) {
                     Ok(()) => Ok(Value::Null),
                     Err(err) => failure(&err),
@@ -1636,7 +1594,7 @@ impl CryptoProvider {
                 };
                 if let Some(stream_id) = self.mac_streams.remove(handle) {
                     return match bn_stdlib::crypto::finish_mac_stream(stream_id) {
-                        Ok(tag) => Ok(self.insert(tag)),
+                        Ok(tag) => Ok(insert_crypto_bytes(tag)),
                         Err(err) => failure(&err),
                     };
                 }
@@ -1648,7 +1606,7 @@ impl CryptoProvider {
                     ));
                 };
                 match bn_stdlib::crypto::finish_hasher(hasher_id) {
-                    Ok(digest) => Ok(self.insert(digest)),
+                    Ok(digest) => Ok(insert_crypto_bytes(digest)),
                     Err(err) => failure(&err),
                 }
             }
@@ -1669,7 +1627,7 @@ impl CryptoProvider {
                         span,
                     ));
                 };
-                let tag = self.bytes_at(arguments, 1, member, span)?;
+                let tag = Self::bytes_at(arguments, 1, member, span)?;
                 let matches = bn_stdlib::crypto::verify_mac_stream(stream_id, &tag);
                 Ok(Value::Boolean(matches))
             }
@@ -1738,9 +1696,9 @@ impl CryptoProvider {
                     Ok(key) => key,
                     Err(err) => return failure(&err),
                 };
-                let data = self.bytes_at(arguments, 1, member, span)?;
+                let data = Self::bytes_at(arguments, 1, member, span)?;
                 match bn_stdlib::crypto::bn_mac(&key, &data, bn_stdlib::crypto::MAC_HMAC_SHA256) {
-                    Ok(tag) => Ok(self.insert(tag)),
+                    Ok(tag) => Ok(insert_crypto_bytes(tag)),
                     Err(err) => failure(&err),
                 }
             }
@@ -1750,8 +1708,8 @@ impl CryptoProvider {
                     // A zeroized key authenticates nothing (fail-closed).
                     return Ok(Value::Boolean(false));
                 };
-                let data = self.bytes_at(arguments, 1, member, span)?;
-                let tag = self.bytes_at(arguments, 2, member, span)?;
+                let data = Self::bytes_at(arguments, 1, member, span)?;
+                let tag = Self::bytes_at(arguments, 2, member, span)?;
                 let matches = bn_stdlib::crypto::bn_mac_verify(
                     &key,
                     &data,
@@ -1766,13 +1724,13 @@ impl CryptoProvider {
                     Ok(key) => key,
                     Err(err) => return failure(&err),
                 };
-                let data = self.bytes_at(arguments, 1, member, span)?;
+                let data = Self::bytes_at(arguments, 1, member, span)?;
                 let (alg, policy) = mac_alg_and_policy(arguments.get(2), member, span)?;
                 if let Err(err) = policy.admits_mac(alg) {
                     return failure(&err);
                 }
                 match bn_stdlib::crypto::bn_mac(&key, &data, alg) {
-                    Ok(tag) => Ok(self.insert(tag)),
+                    Ok(tag) => Ok(insert_crypto_bytes(tag)),
                     Err(err) => failure(&err),
                 }
             }
@@ -1815,8 +1773,8 @@ impl CryptoProvider {
                     Ok(key) => key,
                     Err(err) => return failure(&err),
                 };
-                let salt = self.bytes_at(arguments, 1, member, span)?;
-                let info = self.bytes_at(arguments, 2, member, span)?;
+                let salt = Self::bytes_at(arguments, 1, member, span)?;
+                let info = Self::bytes_at(arguments, 2, member, span)?;
                 let Value::Integer(len_val, _) = &arguments[3] else {
                     return Err(type_mismatch("INTEGER", "non-INTEGER value", member, span));
                 };
@@ -1870,7 +1828,6 @@ impl CryptoProvider {
     }
 
     fn encoding_op(
-        &mut self,
         method: &str,
         member: &str,
         arguments: &[Value],
@@ -1879,7 +1836,7 @@ impl CryptoProvider {
         match method {
             "ToText" => {
                 require_arity(member, arguments, 1, span)?;
-                let bytes = self.bytes_at(arguments, 0, member, span)?;
+                let bytes = Self::bytes_at(arguments, 0, member, span)?;
                 match bn_stdlib::crypto::bn_bytes_to_text(&bytes) {
                     Ok(s) => Ok(Value::String(shared_string(s.as_str()))),
                     Err(err) => failure(&err),
@@ -1887,7 +1844,7 @@ impl CryptoProvider {
             }
             "ToBase64" => {
                 require_arity(member, arguments, 1, span)?;
-                let bytes = self.bytes_at(arguments, 0, member, span)?;
+                let bytes = Self::bytes_at(arguments, 0, member, span)?;
                 let s = bn_stdlib::crypto::bn_base64_encode(&bytes);
                 Ok(Value::String(shared_string(s.as_str())))
             }
@@ -1897,13 +1854,13 @@ impl CryptoProvider {
                     return Err(type_mismatch("STRING", "non-STRING value", member, span));
                 };
                 match bn_stdlib::crypto::bn_base64_decode(text.as_ref()) {
-                    Ok(bytes) => Ok(self.insert(bytes)),
+                    Ok(bytes) => Ok(insert_crypto_bytes(bytes)),
                     Err(err) => failure(&err),
                 }
             }
             "ToBase64Url" => {
                 require_arity(member, arguments, 1, span)?;
-                let bytes = self.bytes_at(arguments, 0, member, span)?;
+                let bytes = Self::bytes_at(arguments, 0, member, span)?;
                 let s = bn_stdlib::crypto::bn_base64url_encode(&bytes);
                 Ok(Value::String(shared_string(s.as_str())))
             }
@@ -1913,23 +1870,23 @@ impl CryptoProvider {
                     return Err(type_mismatch("STRING", "non-STRING value", member, span));
                 };
                 match bn_stdlib::crypto::bn_base64url_decode(text.as_ref()) {
-                    Ok(bytes) => Ok(self.insert(bytes)),
+                    Ok(bytes) => Ok(insert_crypto_bytes(bytes)),
                     Err(err) => failure(&err),
                 }
             }
             "Concat" => {
                 require_arity(member, arguments, 2, span)?;
-                let a = self.bytes_at(arguments, 0, member, span)?;
-                let b = self.bytes_at(arguments, 1, member, span)?;
+                let a = Self::bytes_at(arguments, 0, member, span)?;
+                let b = Self::bytes_at(arguments, 1, member, span)?;
                 let combined = bn_stdlib::crypto::bn_bytes_concat(&a, &b);
-                Ok(self.insert(combined))
+                Ok(insert_crypto_bytes(combined))
             }
             "ToPem" => {
                 require_arity(member, arguments, 2, span)?;
                 let Value::String(label) = &arguments[0] else {
                     return Err(type_mismatch("STRING", "non-STRING value", member, span));
                 };
-                let der = self.bytes_at(arguments, 1, member, span)?;
+                let der = Self::bytes_at(arguments, 1, member, span)?;
                 let s = bn_stdlib::crypto::bn_pem_encode(label.as_ref(), &der);
                 Ok(Value::String(shared_string(s.as_str())))
             }
@@ -1939,7 +1896,7 @@ impl CryptoProvider {
                     return Err(type_mismatch("STRING", "non-STRING value", member, span));
                 };
                 match bn_stdlib::crypto::bn_pem_decode(pem.as_ref()) {
-                    Ok(bytes) => Ok(self.insert(bytes)),
+                    Ok(bytes) => Ok(insert_crypto_bytes(bytes)),
                     Err(err) => failure(&err),
                 }
             }
@@ -1948,7 +1905,6 @@ impl CryptoProvider {
     }
 
     fn checksum_op(
-        &self,
         fs: &bn_stdlib::FsPolicy,
         method: &str,
         member: &str,
@@ -1958,25 +1914,25 @@ impl CryptoProvider {
         match method {
             "Crc32" => {
                 require_arity(member, arguments, 1, span)?;
-                let bytes = self.bytes_at(arguments, 0, member, span)?;
+                let bytes = Self::bytes_at(arguments, 0, member, span)?;
                 let val = bn_stdlib::crypto::bn_crc32(&bytes);
                 Ok(Value::Integer(i128::from(val), IntegerType::Int64))
             }
             "Crc32c" => {
                 require_arity(member, arguments, 1, span)?;
-                let bytes = self.bytes_at(arguments, 0, member, span)?;
+                let bytes = Self::bytes_at(arguments, 0, member, span)?;
                 let val = bn_stdlib::crypto::bn_crc32c(&bytes);
                 Ok(Value::Integer(i128::from(val), IntegerType::Int64))
             }
             "Adler32" => {
                 require_arity(member, arguments, 1, span)?;
-                let bytes = self.bytes_at(arguments, 0, member, span)?;
+                let bytes = Self::bytes_at(arguments, 0, member, span)?;
                 let val = bn_stdlib::crypto::bn_adler32(&bytes);
                 Ok(Value::Integer(i128::from(val), IntegerType::Int64))
             }
             "XxHash64" => {
                 require_arity(member, arguments, 1, span)?;
-                let bytes = self.bytes_at(arguments, 0, member, span)?;
+                let bytes = Self::bytes_at(arguments, 0, member, span)?;
                 let val = bn_stdlib::crypto::bn_xxhash64(&bytes);
                 Ok(Value::Integer(
                     i128::from(val.cast_signed()),
@@ -2218,9 +2174,9 @@ impl CryptoProvider {
             Ok(material) => material,
             Err(err) => return failure(&err),
         };
-        let message = self.bytes_at(arguments, 1, member, span)?;
+        let message = Self::bytes_at(arguments, 1, member, span)?;
         match bn_stdlib::crypto::bn_sign(&seed, algorithm, &message) {
-            Ok(signature) => Ok(self.insert(signature)),
+            Ok(signature) => Ok(insert_crypto_bytes(signature)),
             Err(err) => failure(&err),
         }
     }
@@ -2247,8 +2203,8 @@ impl CryptoProvider {
                 span,
             ));
         };
-        let message = self.bytes_at(arguments, 1, member, span)?;
-        let signature = self.bytes_at(arguments, 2, member, span)?;
+        let message = Self::bytes_at(arguments, 1, member, span)?;
+        let signature = Self::bytes_at(arguments, 2, member, span)?;
         Ok(Value::Boolean(bn_stdlib::crypto::bn_verify(
             &entry.raw,
             entry.algorithm,
@@ -2273,7 +2229,7 @@ impl CryptoProvider {
             return Err(type_mismatch("STRING", "non-STRING value", member, span));
         };
         match bn_stdlib::crypto::bn_sign_file(fs, &seed, algorithm, path.as_ref()) {
-            Ok(signature) => Ok(self.insert(signature)),
+            Ok(signature) => Ok(insert_crypto_bytes(signature)),
             Err(err) => failure(&err),
         }
     }
@@ -2304,7 +2260,7 @@ impl CryptoProvider {
         let Value::String(path) = &arguments[1] else {
             return Err(type_mismatch("STRING", "non-STRING value", member, span));
         };
-        let signature = self.bytes_at(arguments, 2, member, span)?;
+        let signature = Self::bytes_at(arguments, 2, member, span)?;
         Ok(Value::Boolean(bn_stdlib::crypto::bn_verify_file(
             fs,
             &entry.raw,
@@ -2629,9 +2585,9 @@ impl Provider for CryptoProvider {
                 self.password_op(method, member, &arguments, span)
             }
             "ToText" | "ToBase64" | "FromBase64" | "ToBase64Url" | "FromBase64Url" | "Concat"
-            | "ToPem" | "FromPem" => self.encoding_op(method, member, &arguments, span),
+            | "ToPem" | "FromPem" => Self::encoding_op(method, member, &arguments, span),
             "Crc32" | "Crc32c" | "Adler32" | "XxHash64" | "VerifyFileChecksum" => {
-                self.checksum_op(core.host().filesystem(), method, member, &arguments, span)
+                Self::checksum_op(core.host().filesystem(), method, member, &arguments, span)
             }
             "New" | "NewWith" if member.contains("Hasher") => {
                 self.hash_op(core, method, member, &arguments, span)
@@ -2647,7 +2603,7 @@ impl Provider for CryptoProvider {
     fn allocate(&mut self, class: &str, _span: Span) -> Option<Result<Value, Diagnostic>> {
         let base = class.rsplit('.').next();
         if base == Some("Bytes") {
-            Some(Ok(self.insert(Vec::new())))
+            Some(Ok(insert_crypto_bytes(Vec::new())))
         } else if base == Some("Key") {
             Some(Ok(self.insert_key(0, zeroize::Zeroizing::new(Vec::new()))))
         } else if base == Some("Secret") {
@@ -2683,20 +2639,11 @@ impl Provider for CryptoProvider {
 
     fn retain(&mut self, value: &Value, span: Span) -> Option<Result<(), Diagnostic>> {
         match value {
-            Value::CryptoBytes(handle) => {
-                Some(if let Some(holders) = self.holders.get_mut(handle) {
-                    *holders += 1;
-                    Ok(())
-                } else if bn_stdlib::crypto_abi::bn_rt_crypto_bytes_retain(*handle) == 0 {
-                    Ok(())
-                } else {
-                    Err(runtime_error(
-                        bn_diag::DiagId::USE_AFTER_RELEASE,
-                        bn_catalog::text("crypto", "msg.bncrypto_bytes_was_already_released"),
-                        span,
-                    ))
-                })
-            }
+            Value::CryptoBytes(handle) => Some(if bn_stdlib::crypto_abi::retain_bytes(*handle) {
+                Ok(())
+            } else {
+                Err(released_bytes(span))
+            }),
             Value::CryptoKey(handle) => {
                 Some(if let Some(holders) = self.key_holders.get_mut(handle) {
                     *holders += 1;
@@ -2754,26 +2701,11 @@ impl Provider for CryptoProvider {
 
     fn release(&mut self, value: &Value, span: Span) -> Option<Result<(), Diagnostic>> {
         match value {
-            Value::CryptoBytes(handle) => {
-                Some(if let Some(holders) = self.holders.get_mut(handle) {
-                    *holders -= 1;
-                    if *holders == 0 {
-                        self.holders.remove(handle);
-                        if let Some(mut buf) = self.buffers.remove(handle) {
-                            buf.zeroize();
-                        }
-                    }
-                    Ok(())
-                } else if bn_stdlib::crypto_abi::bn_rt_crypto_bytes_release(*handle) == 0 {
-                    Ok(())
-                } else {
-                    Err(runtime_error(
-                        bn_diag::DiagId::USE_AFTER_RELEASE,
-                        bn_catalog::text("crypto", "msg.bncrypto_bytes_was_already_released"),
-                        span,
-                    ))
-                })
-            }
+            Value::CryptoBytes(handle) => Some(if bn_stdlib::crypto_abi::release_bytes(*handle) {
+                Ok(())
+            } else {
+                Err(released_bytes(span))
+            }),
             Value::CryptoKey(handle) => Some(self.release_crypto_key(*handle, span)),
             Value::CryptoSecret(handle) => {
                 Some(if let Some(holders) = self.secret_holders.get_mut(handle) {
@@ -3067,6 +2999,24 @@ fn password_file_op(
         Ok(()) => Ok(Value::Null),
         Err(err) => failure(&err),
     }
+}
+
+/// The bytes behind a `BNCrypto.Bytes` handle, from the one shared store.
+fn buffer_vec(handle: u64, span: Span) -> Result<Vec<u8>, Diagnostic> {
+    bn_stdlib::crypto_abi::bytes(handle).ok_or_else(|| released_bytes(span))
+}
+
+/// The length of a `BNCrypto.Bytes`, from the one shared store.
+fn buffer_len(handle: u64, span: Span) -> Result<usize, Diagnostic> {
+    bn_stdlib::crypto_abi::bytes_len(handle).ok_or_else(|| released_bytes(span))
+}
+
+fn released_bytes(span: Span) -> Diagnostic {
+    runtime_error(
+        bn_diag::DiagId::USE_AFTER_RELEASE,
+        bn_catalog::text("crypto", "msg.bncrypto_bytes_was_already_released"),
+        span,
+    )
 }
 
 #[cfg(test)]

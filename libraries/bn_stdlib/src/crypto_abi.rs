@@ -30,6 +30,9 @@ pub(crate) const BN_CRYPTO_INVALID_HANDLE: i32 = 2;
 
 use crate::counted::{Counted, Release};
 use crate::crypto::KeyEntry;
+pub use crate::crypto_bytes::{
+    bytes, bytes_len, release_bytes, retain_bytes, store, with_buffers, zeroize_bytes,
+};
 
 #[derive(Default)]
 struct Keys(Mutex<Counted<KeyEntry>>);
@@ -64,37 +67,9 @@ pub(crate) fn get_key_material(handle: u64) -> Result<zeroize::Zeroizing<Vec<u8>
     }
 }
 
-/// The byte buffers of the module copy that runs on this thread
-/// (`bn_core_copy`): a task's are freed when the task ends.
-#[derive(Default)]
-struct Buffers(Mutex<Counted<zeroize::Zeroizing<Vec<u8>>>>);
-
 pub(crate) fn next_handle() -> u64 {
     static NEXT: AtomicU64 = AtomicU64::new(1);
     NEXT.fetch_add(1, Ordering::Relaxed)
-}
-
-pub fn with_buffers<T>(
-    operation: impl FnOnce(&mut HashMap<u64, zeroize::Zeroizing<Vec<u8>>>) -> T,
-) -> T {
-    let buffers = bn_core_copy::table::<Buffers>();
-    operation(
-        &mut buffers
-            .0
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .values,
-    )
-}
-
-pub fn store(bytes: Vec<u8>) -> u64 {
-    let handle = next_handle();
-    bn_core_copy::table::<Buffers>()
-        .0
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .insert(handle, zeroize::Zeroizing::new(bytes));
-    handle
 }
 
 /// Stores raw bytes into the crypto buffer table and returns the handle.
@@ -172,15 +147,7 @@ pub extern "C" fn bn_rt_crypto_bytes_to_hex(handle: u64) -> *mut c_char {
 #[allow(unsafe_code)] // C ABI: opaque handle in, status out.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_bytes_retain(handle: u64) -> i32 {
-    if handle == 0 {
-        return BN_CRYPTO_OK;
-    }
-    let held = bn_core_copy::table::<Buffers>()
-        .0
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .retain(handle);
-    if held {
+    if retain_bytes(handle) {
         BN_CRYPTO_OK
     } else {
         BN_CRYPTO_INVALID_HANDLE
@@ -193,21 +160,10 @@ pub extern "C" fn bn_rt_crypto_bytes_retain(handle: u64) -> i32 {
 #[allow(unsafe_code)] // C ABI: opaque handle in, status out.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_bytes_release(handle: u64) -> i32 {
-    if handle == 0 {
-        return BN_CRYPTO_OK;
-    }
-    let released = bn_core_copy::table::<Buffers>()
-        .0
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .release(handle);
-    match released {
-        Release::Last(mut buf) => {
-            buf.zeroize();
-            BN_CRYPTO_OK
-        }
-        Release::Held => BN_CRYPTO_OK,
-        Release::Unknown => BN_CRYPTO_INVALID_HANDLE,
+    if release_bytes(handle) {
+        BN_CRYPTO_OK
+    } else {
+        BN_CRYPTO_INVALID_HANDLE
     }
 }
 
@@ -215,10 +171,7 @@ pub extern "C" fn bn_rt_crypto_bytes_release(handle: u64) -> i32 {
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_bytes_zeroize(handle: u64) -> i32 {
-    let buffers = bn_core_copy::table::<Buffers>();
-    let mut tables = buffers.0.lock().unwrap_or_else(PoisonError::into_inner);
-    if let Some(buf) = tables.values.get_mut(&handle) {
-        buf.as_mut_slice().zeroize();
+    if zeroize_bytes(handle) {
         BN_CRYPTO_OK
     } else {
         BN_CRYPTO_INVALID_HANDLE

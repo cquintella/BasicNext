@@ -33,6 +33,7 @@ pub use counted::{Counted, Release};
 pub mod crypto;
 pub mod crypto_abi;
 pub mod crypto_asymmetric;
+mod crypto_bytes;
 pub mod crypto_csprng;
 pub mod crypto_encoding;
 pub mod crypto_envelope;
