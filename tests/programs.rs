@@ -86,5 +86,7 @@ mod web_egress_policy_bounds;
 mod web_error_fields;
 #[path = "programs/web_narrowed_handles.rs"]
 mod web_narrowed_handles;
+#[path = "programs/web_refused_connection.rs"]
+mod web_refused_connection;
 #[path = "programs/web_static_policy.rs"]
 mod web_static_policy;

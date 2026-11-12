@@ -44,5 +44,7 @@ mod test_prereqs;
 mod test_support;
 #[path = "gates/text_literals.rs"]
 mod text_literals;
+#[path = "gates/web_failures.rs"]
+mod web_failures;
 #[path = "gates/web_surface.rs"]
 mod web_surface;

@@ -1,0 +1,30 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// A connection the peer refuses is HTTP_FAILED, with the system's reason in
+// Cause, for the transfer API and for the 0.3 request API, on both backends.
+// Argument: a URL whose port nothing listens on.
+IMPORT BNWeb AS Web
+
+FUNCTION Start() AS INTEGER
+    IF LEN(HOST.Args) < 2 THEN
+        PRINT "usage: web_refused_connection <url>"
+        RETURN 2
+    END IF
+    LET client AS Web.Client = NEW Web.Client()
+    LET reply AS Web.ClientReply OR Error = client.Get(HOST.Args[1], 1024)
+    IF reply IS Error THEN
+        PRINT reply.Code = Web.HTTP_FAILED, reply.Operation, LEN(reply.Cause) > 0
+    ELSE
+        PRINT "unexpected reply", reply.Status()
+    END IF
+    LET response AS Web.Response OR Error = client.Request("GET", HOST.Args[1], "")
+    IF response IS Error THEN
+        PRINT response.Code = Web.HTTP_FAILED, response.Operation, LEN(response.Cause) > 0
+    ELSE
+        PRINT "unexpected response", response.Status()
+    END IF
+    RETURN 0
+END FUNCTION
