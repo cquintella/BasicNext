@@ -974,12 +974,6 @@ pub(crate) fn declare_web_abi(text: &mut crate::ir::LlvmModule) {
         Signature {
             name: "bn_web_client_request_method",
             ret: T::I32,
-            params: vec![T::I64, T::Ptr, T::Ptr, T::Ptr, T::Ptr, T::I64, T::Ptr],
-            variadic: false,
-        },
-        Signature {
-            name: "bn_web_client_request_method_with_headers",
-            ret: T::I32,
             params: vec![
                 T::I64,
                 T::Ptr,

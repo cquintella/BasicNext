@@ -159,7 +159,6 @@ pub(crate) fn bnweb_method(module: &Module, name: &str) -> Option<&'static str> 
         "Client.PatchBytes" => Some("client_patch_bytes"),
         "Client.PatchBytesWithHeaders" => Some("client_patch_bytes_with_headers"),
         "Client.RequestMethod" => Some("client_request_method"),
-        "Client.RequestMethodWithHeaders" => Some("client_request_method_with_headers"),
 
         _ => None,
     }
@@ -287,9 +286,8 @@ pub(crate) fn bnweb_arguments_supported(
         | "client_put_with_headers"
         | "client_put_bytes_with_headers"
         | "client_patch_with_headers"
-        | "client_patch_bytes_with_headers"
-        | "client_request_method" => arguments.len() == 6,
-        "client_request_method_with_headers" => arguments.len() == 7,
+        | "client_patch_bytes_with_headers" => arguments.len() == 6,
+        "client_request_method" => arguments.len() == 7,
         "response_set_cookie_with_policy" | "cookie_jar_set_with_policy" => arguments.len() == 9,
         "server_options_new" => arguments.len() == 18,
         _ => false,

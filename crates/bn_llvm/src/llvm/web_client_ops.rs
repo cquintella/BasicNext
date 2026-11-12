@@ -836,35 +836,6 @@ pub(crate) fn lower_bnweb_client_call(
 
         "client_request_method" => {
             let h0 = web_handle(text, dest, 0, arguments[0], analysis);
-            let i5 = web_int64(text, arguments[5], analysis);
-            let out_reg = format!("webout{dest}");
-            text.assign(&out_reg, I::alloca(T::I64));
-            let rc_reg = format!("webrc{dest}");
-            let call = I::call(
-                T::I32,
-                "bn_web_client_request_method",
-                vec![
-                    h0,
-                    ptr_arg(arguments, 1),
-                    ptr_arg(arguments, 2),
-                    ptr_arg(arguments, 3),
-                    ptr_arg(arguments, 4),
-                    i5,
-                    (T::Ptr, O::reg(&out_reg)),
-                ],
-            );
-            text.assign(&rc_reg, call);
-            text.assign(format!("webhval{dest}"), I::load(T::I64, O::reg(&out_reg)));
-            emit_handle_result(
-                text,
-                destination,
-                &O::reg(rc_reg),
-                &O::reg(format!("webhval{dest}")),
-            );
-        }
-
-        "client_request_method_with_headers" => {
-            let h0 = web_handle(text, dest, 0, arguments[0], analysis);
             let h5 = web_handle(text, dest, 5, arguments[5], analysis);
             let i6 = web_int64(text, arguments[6], analysis);
             let out_reg = format!("webout{dest}");
@@ -872,7 +843,7 @@ pub(crate) fn lower_bnweb_client_call(
             let rc_reg = format!("webrc{dest}");
             let call = I::call(
                 T::I32,
-                "bn_web_client_request_method_with_headers",
+                "bn_web_client_request_method",
                 vec![
                     h0,
                     ptr_arg(arguments, 1),

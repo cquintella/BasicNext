@@ -3537,43 +3537,13 @@ pub extern "C" fn bn_web_client_request_method(
     url: *const c_char,
     body: *const c_char,
     content_type: *const c_char,
-    maximum: i64,
-    out_reply: *mut u64,
-) -> i32 {
-    let (Some(method_str), Some(url_str)) = (string_text(method), string_text(url)) else {
-        return record_failure(
-            "Client.RequestMethod",
-            &WebFailure::InvalidArgument("invalid_params".into()),
-        );
-    };
-    let body_str = string_text(body).unwrap_or_default();
-    let ct = string_text(content_type);
-    do_client_transfer(
-        client_handle,
-        &method_str,
-        &url_str,
-        body_str.as_bytes(),
-        ct.as_deref(),
-        0,
-        maximum,
-        out_reply,
-    )
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_web_client_request_method_with_headers(
-    client_handle: u64,
-    method: *const c_char,
-    url: *const c_char,
-    body: *const c_char,
-    content_type: *const c_char,
     headers: u64,
     maximum: i64,
     out_reply: *mut u64,
 ) -> i32 {
     let (Some(method_str), Some(url_str)) = (string_text(method), string_text(url)) else {
         return record_failure(
-            "Client.RequestMethodWithHeaders",
+            "Client.RequestMethod",
             &WebFailure::InvalidArgument("invalid_params".into()),
         );
     };

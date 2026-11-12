@@ -1166,41 +1166,6 @@ impl WebProvider {
                     )
                 }
                 "RequestMethod" => {
-                    require_arity(name, arguments, 6, span)?;
-                    let (
-                        Value::String(verb),
-                        Value::String(url),
-                        Value::String(body),
-                        Value::String(ct),
-                        Value::Integer(max, _),
-                    ) = (
-                        &arguments[1],
-                        &arguments[2],
-                        &arguments[3],
-                        &arguments[4],
-                        &arguments[5],
-                    )
-                    else {
-                        return Err(arg_err("Arguments", span));
-                    };
-                    let maximum = usize::try_from(*max).unwrap_or(usize::MAX);
-                    let Value::Object { handle, .. } = &arguments[0] else {
-                        return Err(recv_err("Client", span));
-                    };
-                    self.execute_client_transfer(
-                        core,
-                        name,
-                        *handle,
-                        verb,
-                        url,
-                        body.as_bytes(),
-                        Some(ct),
-                        None,
-                        maximum,
-                        span,
-                    )
-                }
-                "RequestMethodWithHeaders" => {
                     require_arity(name, arguments, 7, span)?;
                     let (
                         Value::String(verb),
