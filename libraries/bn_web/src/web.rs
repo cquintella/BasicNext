@@ -594,21 +594,7 @@ impl HeaderValues {
 }
 
 pub fn validate_client_url(url: &str) -> Result<(), WebFailure> {
-    let invalid = |reason: &str| WebFailure::InvalidUrl(reason.into());
-    let (scheme, rest) = url
-        .split_once("://")
-        .ok_or_else(|| invalid("URL requires an authority"))?;
-    if !matches!(scheme, "http" | "https") || rest.is_empty() || rest.contains('#') {
-        return Err(invalid("unsupported or ambiguous URL"));
-    }
-    let authority = rest.split(['/', '?']).next().unwrap_or_default();
-    if authority.is_empty()
-        || authority.contains('@')
-        || authority.bytes().any(|byte| byte < 0x21 || byte == 0x7f)
-    {
-        return Err(invalid("invalid URL authority"));
-    }
-    Ok(())
+    url::ClientUrl::parse(url).map(|_| ())
 }
 
 pub fn bounded_body(body: &str, maximum: i128) -> Result<&str, WebFailure> {
@@ -699,6 +685,7 @@ pub(crate) mod policy_opener;
 mod server;
 pub mod sessions;
 pub(crate) mod static_files;
+pub mod url;
 pub use client::{ClientAccess, RequestOutcome, Transfer, TransferOutcome};
 pub use server::{
     ConnectionWork, ServerOptions, ServerState, ServerStats, ServerStatus, spawn_listener_thread,

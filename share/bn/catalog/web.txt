@@ -78,9 +78,11 @@ client.tls_server_name = invalid TLS server name
 client.url_authority = invalid URL authority
 client.port = invalid port
 client.redirect_location = invalid redirect Location
-client.redirect_base = invalid redirect base
 client.body_not_utf8 = response body is not UTF-8
 client.url_scheme = unsupported URL scheme
 
 client.negative_maximum = maximum must not be negative
 client.policy_not_live = EgressPolicy handle is not live
+client.url_ambiguous = unsupported or ambiguous URL
+client.deadline = the request deadline passed
+client.tls_timeout = TLS handshake timed out

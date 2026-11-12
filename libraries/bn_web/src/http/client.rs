@@ -90,6 +90,46 @@ pub fn client_transfer_with_policy(
     client_transfer_with_resolver_and_policy(method, url, body, extra_headers, &resolver, policy)
 }
 
+/// The one deadline of a client request: `totalDeadlineMs` from its start
+/// bounds resolution, connection, TLS, the HTTP handshake, the request and
+/// the body, across every redirect (bnweb.md, Egress policy).
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Deadline(std::time::Instant);
+
+impl Deadline {
+    fn after(milliseconds: u64) -> Self {
+        Self(std::time::Instant::now() + std::time::Duration::from_millis(milliseconds))
+    }
+
+    /// The time left, or `TIMEOUT` once it is gone.
+    fn remaining(self) -> Result<std::time::Duration, WebFailure> {
+        let left = self.0.saturating_duration_since(std::time::Instant::now());
+        if left.is_zero() {
+            Err(WebFailure::Timeout(
+                bn_catalog::text("web", "client.deadline").into(),
+            ))
+        } else {
+            Ok(left)
+        }
+    }
+
+    /// `future` within the time left; `timed_out` names the step that ran
+    /// past it.
+    async fn within<T>(
+        self,
+        future: impl std::future::Future<Output = T>,
+        timed_out: impl FnOnce() -> WebFailure,
+    ) -> Result<T, WebFailure> {
+        tokio::time::timeout(self.remaining()?, future)
+            .await
+            .map_err(|_| timed_out())
+    }
+}
+
+fn timeout_of(key: &str) -> impl FnOnce() -> WebFailure + '_ {
+    move || WebFailure::Timeout(bn_catalog::text("web", key).into())
+}
+
 pub(super) fn client_transfer_with_resolver_and_policy(
     method: &str,
     url: &str,
@@ -98,9 +138,18 @@ pub(super) fn client_transfer_with_resolver_and_policy(
     resolver: &dyn AddressResolver,
     policy: &crate::web::EgressPolicy,
 ) -> Result<crate::web::ClientReply, WebFailure> {
-    let mut current = url.to_owned();
+    let deadline = Deadline::after(policy.total_deadline_ms());
+    let mut current = crate::web::url::ClientUrl::parse(url)?;
     for _ in 0..=policy.max_redirects() {
-        let reply = client_transfer_once(method, &current, body, extra_headers, resolver, policy)?;
+        let reply = client_transfer_once(
+            method,
+            &current,
+            body,
+            extra_headers,
+            resolver,
+            policy,
+            deadline,
+        )?;
         if !(300..=399).contains(&reply.status) {
             return Ok(reply);
         }
@@ -110,7 +159,7 @@ pub(super) fn client_transfer_with_resolver_and_policy(
             .find(|(name, _)| name.eq_ignore_ascii_case("location"))
             .map(|(_, value)| value.clone())
             .ok_or(WebFailure::MissingRedirectLocation)?;
-        current = resolve_redirect(&current, &location)?;
+        current = current.resolve(&location)?;
     }
     Err(WebFailure::RedirectLimitExceeded)
 }
@@ -141,14 +190,15 @@ pub(super) fn client_request_with_resolver_and_policy(
     Ok(result)
 }
 
-#[allow(clippy::too_many_lines)] // Keep the bounded request policy in one auditable path.
+/// One exchange with the destination of `url`, under `deadline`.
 pub(super) fn client_transfer_once(
     method: &str,
-    url: &str,
+    url: &crate::web::url::ClientUrl,
     body: &[u8],
     extra_headers: &[(String, String)],
     resolver: &dyn AddressResolver,
     policy: &crate::web::EgressPolicy,
+    deadline: Deadline,
 ) -> Result<crate::web::ClientReply, WebFailure> {
     let body_limit = bn_limits::web_limits().max_body_bytes;
     if body.len() > body_limit {
@@ -157,62 +207,22 @@ pub(super) fn client_transfer_once(
             limit: body_limit,
         });
     }
-    let (scheme, rest) = url.split_once("://").ok_or_else(|| {
-        WebFailure::InvalidUrl(bn_catalog::text("web", "client.url_authority_missing").into())
-    })?;
-    if scheme != "http" && scheme != "https" {
-        return Err(WebFailure::InvalidUrl(
-            bn_catalog::text("web", "client.url_scheme").into(),
-        ));
-    }
-    let authority_end = rest.find(['/', '?']).unwrap_or(rest.len());
-    let authority = &rest[..authority_end];
-    let target = if authority_end == rest.len() {
-        "/"
-    } else {
-        &rest[authority_end..]
+    let tls_config = match url.scheme() {
+        crate::web::url::Scheme::Https => Some(Arc::new(crate::tls::client_config()?)),
+        crate::web::url::Scheme::Http => None,
     };
-    let (host, port) =
-        parse_authority_with_default(authority, if scheme == "https" { 443 } else { 80 })?;
-    let tls_config = if scheme == "https" {
-        Some(Arc::new(crate::tls::client_config()?))
-    } else {
-        None
-    };
-    let deadline = std::time::Duration::from_millis(policy.total_deadline_ms());
-    let addresses =
-        resolve_validated_addresses_with_policy(host.as_str(), port, resolver, policy, scheme)?;
+    let addresses = resolve_allowed_addresses(
+        url.host(),
+        url.port(),
+        resolver,
+        policy,
+        url.scheme().as_str(),
+        deadline.remaining()?,
+    )?;
     if addresses.is_empty() {
         return Err(WebFailure::NoResolvedAddresses);
     }
-    let mut connect_error = None;
-    let mut stream = None;
-    let mut peer_addr = None;
-    for address in &addresses {
-        let endpoint = match bn_core_net::Address::parse(&address.to_string()) {
-            Ok(addr) => bn_core_net::Endpoint::new(addr, port),
-            Err(_) => continue,
-        };
-        match bn_core_net::TcpStream::connect(endpoint, deadline) {
-            Ok(connected) => {
-                peer_addr = Some(*address);
-                stream = Some(connected);
-                break;
-            }
-            Err(err) => {
-                let failure = connect_failure(&err);
-                if failure.code() == bn_types::error_codes::web::LIMIT {
-                    return Err(failure);
-                }
-                connect_error = Some(failure);
-            }
-        }
-    }
-    let Some(stream) = stream else {
-        return Err(connect_error.unwrap_or_else(|| {
-            WebFailure::ConnectionFailed(bn_catalog::text("web", "client.connect_failed").into())
-        }));
-    };
+    let (stream, peer) = connect_first(&addresses, url.port(), deadline)?;
     let (std_stream, permit) = stream.into_std();
     std_stream
         .set_nonblocking(true)
@@ -226,130 +236,151 @@ pub(super) fn client_transfer_once(
         let _permit = permit;
         let stream = tokio::net::TcpStream::from_std(std_stream)
             .map_err(|error| WebFailure::HttpFailed(error.to_string()))?;
-        if let Some(config) = tls_config {
-            let connector = TlsConnector::from(config);
-            let server_name =
-                rustls::pki_types::ServerName::try_from(host.clone()).map_err(|_| {
-                    WebFailure::InvalidUrl(bn_catalog::text("web", "client.tls_server_name").into())
-                })?;
-            let stream = connector
-                .connect(server_name, stream)
-                .await
-                .map_err(|error| {
-                    WebFailure::TlsHandshakeFailed(bn_catalog::fill(
-                        "web",
-                        "client.tls_handshake",
-                        &[("error", &error.to_string())],
-                    ))
-                })?;
-            perform_transfer(
-                stream,
-                method,
-                authority,
-                target,
-                body,
-                extra_headers,
-                policy,
+        let exchange = Exchange {
+            method,
+            url,
+            body,
+            extra_headers,
+            deadline,
+        };
+        let Some(config) = tls_config else {
+            return exchange.perform(stream).await;
+        };
+        let server_name =
+            rustls::pki_types::ServerName::try_from(url.host().to_owned()).map_err(|_| {
+                WebFailure::InvalidUrl(bn_catalog::text("web", "client.tls_server_name").into())
+            })?;
+        let stream = deadline
+            .within(
+                TlsConnector::from(config).connect(server_name, stream),
+                timeout_of("client.tls_timeout"),
             )
-            .await
-        } else {
-            perform_transfer(
-                stream,
-                method,
-                authority,
-                target,
-                body,
-                extra_headers,
-                policy,
-            )
-            .await
-        }
+            .await?
+            .map_err(|error| {
+                WebFailure::TlsHandshakeFailed(bn_catalog::fill(
+                    "web",
+                    "client.tls_handshake",
+                    &[("error", &error.to_string())],
+                ))
+            })?;
+        exchange.perform(stream).await
     })?;
-    reply.peer = peer_addr;
+    reply.peer = Some(peer);
     Ok(reply)
 }
 
-pub(super) async fn perform_transfer<I>(
-    stream: I,
-    method: &str,
-    authority: &str,
-    target: &str,
-    body: &[u8],
-    extra_headers: &[(String, String)],
-    policy: &crate::web::EgressPolicy,
-) -> Result<crate::web::ClientReply, WebFailure>
-where
-    I: AsyncRead + AsyncWrite + Unpin + Send + 'static,
-{
-    let io = TokioIo::new(stream);
-    let (mut sender, connection) = tokio::time::timeout(
-        std::time::Duration::from_millis(policy.total_deadline_ms()),
-        hyper::client::conn::http1::handshake(io),
-    )
-    .await
-    .map_err(|_| WebFailure::HandshakeTimeout)?
-    .map_err(|error| WebFailure::HttpFailed(error.to_string()))?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
-    let mut builder = Request::builder()
-        .method(method)
-        .uri(target)
-        .header("host", authority);
-    for (k, v) in extra_headers {
-        builder = builder.header(k.as_str(), v.as_str());
+/// The first allowed address that accepts a connection before `deadline`.
+fn connect_first(
+    addresses: &[std::net::IpAddr],
+    port: u16,
+    deadline: Deadline,
+) -> Result<(bn_core_net::TcpStream, std::net::IpAddr), WebFailure> {
+    let mut connect_error = None;
+    for address in addresses {
+        let Ok(parsed) = bn_core_net::Address::parse(&address.to_string()) else {
+            continue;
+        };
+        let endpoint = bn_core_net::Endpoint::new(parsed, port);
+        match bn_core_net::TcpStream::connect(endpoint, deadline.remaining()?) {
+            Ok(connected) => return Ok((connected, *address)),
+            Err(err) => {
+                let failure = connect_failure(&err);
+                if failure.code() == bn_types::error_codes::web::LIMIT {
+                    return Err(failure);
+                }
+                connect_error = Some(failure);
+            }
+        }
     }
-    if !body.is_empty() {
-        builder = builder.header("content-length", body.len());
-    }
-    let request = builder
-        .body(Full::new(Bytes::copy_from_slice(body)))
-        .map_err(|error| WebFailure::InvalidHeader(error.to_string()))?;
-    let response = tokio::time::timeout(
-        std::time::Duration::from_millis(policy.total_deadline_ms()),
-        sender.send_request(request),
-    )
-    .await
-    .map_err(|_| WebFailure::Timeout(bn_catalog::text("web", "client.request_timeout").into()))?
-    .map_err(|error| WebFailure::HttpFailed(error.to_string()))?;
-    let status = response.status().as_u16();
-    let headers = response
-        .headers()
-        .iter()
-        .filter_map(|(name, value)| {
-            value
-                .to_str()
-                .ok()
-                .map(|value| (name.as_str().to_owned(), value.to_owned()))
-        })
-        .collect::<Vec<_>>();
-    let bytes = tokio::time::timeout(
-        std::time::Duration::from_millis(policy.total_deadline_ms()),
-        response.into_body().collect(),
-    )
-    .await
-    .map_err(|_| WebFailure::Timeout(bn_catalog::text("web", "client.body_timeout").into()))?
-    .map_err(|error| WebFailure::HttpFailed(error.to_string()))?
-    .to_bytes();
-    let body_limit = bn_limits::web_limits().max_response_body_bytes;
-    if bytes.len() > body_limit {
-        return Err(WebFailure::TooLarge {
-            what: crate::web_error::SizeLimit::ResponseBody,
-            limit: body_limit,
+    Err(connect_error.unwrap_or_else(|| {
+        WebFailure::ConnectionFailed(bn_catalog::text("web", "client.connect_failed").into())
+    }))
+}
+
+/// One HTTP/1.1 exchange on a connected stream.
+struct Exchange<'a> {
+    method: &'a str,
+    url: &'a crate::web::url::ClientUrl,
+    body: &'a [u8],
+    extra_headers: &'a [(String, String)],
+    deadline: Deadline,
+}
+
+impl Exchange<'_> {
+    async fn perform<I>(self, stream: I) -> Result<crate::web::ClientReply, WebFailure>
+    where
+        I: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    {
+        let deadline = self.deadline;
+        let (mut sender, connection) = deadline
+            .within(
+                hyper::client::conn::http1::handshake(TokioIo::new(stream)),
+                || WebFailure::HandshakeTimeout,
+            )
+            .await?
+            .map_err(|error| WebFailure::HttpFailed(error.to_string()))?;
+        tokio::spawn(async move {
+            let _ = connection.await;
         });
+        let mut builder = Request::builder()
+            .method(self.method)
+            .uri(self.url.target())
+            .header("host", self.url.authority());
+        for (name, value) in self.extra_headers {
+            builder = builder.header(name.as_str(), value.as_str());
+        }
+        if !self.body.is_empty() {
+            builder = builder.header("content-length", self.body.len());
+        }
+        let request = builder
+            .body(Full::new(Bytes::copy_from_slice(self.body)))
+            .map_err(|error| WebFailure::InvalidHeader(error.to_string()))?;
+        let response = deadline
+            .within(
+                sender.send_request(request),
+                timeout_of("client.request_timeout"),
+            )
+            .await?
+            .map_err(|error| WebFailure::HttpFailed(error.to_string()))?;
+        let status = response.status().as_u16();
+        let headers = response
+            .headers()
+            .iter()
+            .filter_map(|(name, value)| {
+                value
+                    .to_str()
+                    .ok()
+                    .map(|value| (name.as_str().to_owned(), value.to_owned()))
+            })
+            .collect::<Vec<_>>();
+        let bytes = deadline
+            .within(
+                response.into_body().collect(),
+                timeout_of("client.body_timeout"),
+            )
+            .await?
+            .map_err(|error| WebFailure::HttpFailed(error.to_string()))?
+            .to_bytes();
+        let body_limit = bn_limits::web_limits().max_response_body_bytes;
+        if bytes.len() > body_limit {
+            return Err(WebFailure::TooLarge {
+                what: crate::web_error::SizeLimit::ResponseBody,
+                limit: body_limit,
+            });
+        }
+        let body_bytes = bytes.to_vec();
+        Ok(crate::web::ClientReply {
+            status,
+            http_version: "HTTP/1.1".into(),
+            body_size: body_bytes.len(),
+            total_ms: 0,
+            connect_ms: 0,
+            headers,
+            body: body_bytes,
+            peer: None,
+            closed: false,
+        })
     }
-    let body_bytes = bytes.to_vec();
-    Ok(crate::web::ClientReply {
-        status,
-        http_version: "HTTP/1.1".into(),
-        body_size: body_bytes.len(),
-        total_ms: 0,
-        connect_ms: 0,
-        headers,
-        body: body_bytes,
-        peer: None,
-        closed: false,
-    })
 }
 
 #[cfg(test)]
@@ -358,15 +389,12 @@ pub(super) fn resolve_validated_addresses(
     port: u16,
     resolver: &dyn AddressResolver,
 ) -> Result<Vec<std::net::IpAddr>, WebFailure> {
-    resolve_validated_addresses_with_policy(
-        host,
-        port,
-        resolver,
-        &crate::web::EgressPolicy::default(),
-        "http",
-    )
+    let policy = crate::web::EgressPolicy::default();
+    let timeout = std::time::Duration::from_millis(policy.total_deadline_ms());
+    resolve_allowed_addresses(host, port, resolver, &policy, "http", timeout)
 }
 
+#[cfg(test)]
 pub(super) fn resolve_validated_addresses_with_policy(
     host: &str,
     port: u16,
@@ -375,6 +403,18 @@ pub(super) fn resolve_validated_addresses_with_policy(
     scheme: &str,
 ) -> Result<Vec<std::net::IpAddr>, WebFailure> {
     let timeout = std::time::Duration::from_millis(policy.total_deadline_ms());
+    resolve_allowed_addresses(host, port, resolver, policy, scheme, timeout)
+}
+
+/// The resolved addresses of `host` the policy allows, resolved within `timeout`.
+pub(super) fn resolve_allowed_addresses(
+    host: &str,
+    port: u16,
+    resolver: &dyn AddressResolver,
+    policy: &crate::web::EgressPolicy,
+    scheme: &str,
+    timeout: std::time::Duration,
+) -> Result<Vec<std::net::IpAddr>, WebFailure> {
     let addresses = resolver
         .resolve(
             host,
@@ -388,78 +428,16 @@ pub(super) fn resolve_validated_addresses_with_policy(
     policy.filter_allowed_addresses(scheme, port, &addresses)
 }
 
+#[cfg(test)]
 pub(super) fn resolve_redirect(base: &str, location: &str) -> Result<String, WebFailure> {
-    if location.contains('#') || location.contains('\n') || location.contains('\r') {
-        return Err(WebFailure::InvalidUrl(
-            bn_catalog::text("web", "client.redirect_location").into(),
-        ));
-    }
-    if location.starts_with("http://") || location.starts_with("https://") {
-        crate::web::validate_client_url(location)?;
-        return Ok(location.to_owned());
-    }
-    let (scheme, rest) = base.split_once("://").ok_or_else(|| {
-        WebFailure::InvalidUrl(bn_catalog::text("web", "client.redirect_base").into())
-    })?;
-    let authority_end = rest.find(['/', '?']).unwrap_or(rest.len());
-    let authority = &rest[..authority_end];
-    let path = if location.starts_with('/') {
-        location.to_owned()
-    } else if location.starts_with('?') {
-        let base_path = rest[authority_end..].split('?').next().unwrap_or("/");
-        format!("{base_path}{location}")
-    } else {
-        let base_path = rest[authority_end..].split('?').next().unwrap_or("/");
-        let directory = base_path
-            .rsplit_once('/')
-            .map_or("/", |(directory, _)| directory);
-        format!("{directory}/{location}")
-    };
-    let resolved = format!("{scheme}://{authority}{path}");
-    crate::web::validate_client_url(&resolved)?;
-    Ok(resolved)
+    Ok(crate::web::url::ClientUrl::parse(base)?
+        .resolve(location)?
+        .to_string())
 }
 
 #[cfg(test)]
 pub(super) fn parse_authority(authority: &str) -> Result<(String, u16), WebFailure> {
-    parse_authority_with_default(authority, 80)
-}
-
-pub(super) fn parse_authority_with_default(
-    authority: &str,
-    default_port: u16,
-) -> Result<(String, u16), WebFailure> {
-    let invalid = |reason: &str| WebFailure::InvalidUrl(reason.into());
-    if authority.is_empty() || authority.contains('@') {
-        return Err(invalid(bn_catalog::text("web", "client.url_authority")));
-    }
-    if let Some(host) = authority.strip_prefix('[') {
-        let close = host
-            .find(']')
-            .ok_or_else(|| invalid(bn_catalog::text("web", "client.ipv6_authority")))?;
-        let address = &host[..close];
-        let port = match host.get(close + 1..).filter(|suffix| !suffix.is_empty()) {
-            None => default_port,
-            Some(suffix) => suffix
-                .strip_prefix(':')
-                .ok_or_else(|| invalid(bn_catalog::text("web", "client.ipv6_authority")))?
-                .parse()
-                .map_err(|_| invalid(bn_catalog::text("web", "client.port")))?,
-        };
-        return Ok((address.to_owned(), port));
-    }
-    let default_port = default_port.to_string();
-    let (host, port) = authority
-        .rsplit_once(':')
-        .unwrap_or((authority, default_port.as_str()));
-    if host.is_empty() {
-        return Err(invalid(bn_catalog::text("web", "client.url_authority")));
-    }
-    Ok((
-        host.to_owned(),
-        port.parse()
-            .map_err(|_| invalid(bn_catalog::text("web", "client.port")))?,
-    ))
+    crate::web::url::parse_authority(authority, 80)
 }
 
 /// The failure of one outbound connection attempt: a process socket quota is

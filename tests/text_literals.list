@@ -3383,7 +3383,6 @@ libraries/bn_web/src/web.rs	prose	invalid request header
 libraries/bn_web/src/web.rs	prose	invalid request method
 libraries/bn_web/src/web.rs	prose	invalid request target
 libraries/bn_web/src/web.rs	prose	invalid response header
-libraries/bn_web/src/web.rs	prose	invalid URL authority
 libraries/bn_web/src/web.rs	prose	invalid UTF-8 in target
 libraries/bn_web/src/web.rs	prose	malformed percent escape
 libraries/bn_web/src/web.rs	prose	malformed percent escape
@@ -3393,8 +3392,6 @@ libraries/bn_web/src/web.rs	prose	query key or value exceeds bounds
 libraries/bn_web/src/web.rs	prose	request body exceeds declared limit
 libraries/bn_web/src/web.rs	prose	request headers exceed bounds
 libraries/bn_web/src/web.rs	prose	request target must be an origin-form path
-libraries/bn_web/src/web.rs	prose	unsupported or ambiguous URL
-libraries/bn_web/src/web.rs	prose	URL requires an authority
 libraries/bn_web/src/web/drain.rs	prose	server listener is already installed
 libraries/bn_web/src/web/policy_opener.rs	prose	file could not be read
 libraries/bn_web/src/web/server.rs	prose	failed to start server runtime
