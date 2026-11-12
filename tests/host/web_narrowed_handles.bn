@@ -1,0 +1,43 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// A BNWeb handle that arrives as T OR Error is the same handle after the
+// narrowing: ServerOptions from ServerOptions.New and Headers from
+// Headers.New are used on both backends.
+IMPORT BNWeb AS Web
+IMPORT HOST.Net AS Net
+
+FUNCTION Start() AS VOID
+    LET made AS Web.Headers OR Error = Web.Headers.New()
+    IF made IS Error THEN
+        PRINT "headers error", made.Code
+        RETURN
+    END IF
+    LET headers AS Web.Headers = made
+    PRINT "headers add", headers.Add("X-Tour", "first") IS Error, headers.Count()
+    LET address AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+    IF address IS Error THEN
+        PRINT "address error"
+        RETURN
+    END IF
+    LET endpoint AS Net.Endpoint OR Error = Net.Endpoint.Create(address, 0)
+    IF endpoint IS Error THEN
+        PRINT "endpoint error"
+        RETURN
+    END IF
+    LET options AS Web.ServerOptions OR Error = Web.ServerOptions.New(1, 128, 1, 1, 65536, 100, 8192, 8388608, 5000, 5000, 30000, 60000, 120000, 5000, 10, 10, 10000, FALSE)
+    IF options IS Error THEN
+        PRINT "options error", options.Code
+        RETURN
+    END IF
+    LET server AS Web.Server = NEW Web.Server()
+    LET started AS VOID OR Error = server.StartWithOptions(endpoint, options)
+    IF started IS Error THEN
+        PRINT "start error", started.Code, started.Message
+        RETURN
+    END IF
+    PRINT "started", "TRUE"
+    PRINT "stopped", server.Stop(1000) IS Error = FALSE
+END FUNCTION

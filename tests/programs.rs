@@ -84,5 +84,7 @@ mod web_crypto_bytes;
 mod web_egress_policy_bounds;
 #[path = "programs/web_error_fields.rs"]
 mod web_error_fields;
+#[path = "programs/web_narrowed_handles.rs"]
+mod web_narrowed_handles;
 #[path = "programs/web_static_policy.rs"]
 mod web_static_policy;
