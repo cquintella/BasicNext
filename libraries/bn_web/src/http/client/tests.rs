@@ -145,6 +145,9 @@ impl StallingServer {
 impl Drop for StallingServer {
     fn drop(&mut self) {
         drop(self.release.take());
+        // A client that never connected leaves the server in `accept`: one
+        // connection wakes it, so a failed test fails instead of hanging.
+        let _ = std::net::TcpStream::connect(("127.0.0.1", self.port));
         if let Some(handle) = self.handle.take() {
             let _ = handle.join();
         }
