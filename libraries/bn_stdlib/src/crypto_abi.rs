@@ -72,18 +72,6 @@ pub(crate) fn next_handle() -> u64 {
     NEXT.fetch_add(1, Ordering::Relaxed)
 }
 
-/// Stores raw bytes into the crypto buffer table and returns the handle.
-#[allow(unsafe_code)]
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_crypto_bytes_store(ptr: *const u8, len: usize) -> u64 {
-    if ptr.is_null() {
-        return 0;
-    }
-    // SAFETY: caller guarantees ptr points to len valid bytes.
-    let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
-    store(slice.to_vec())
-}
-
 /// Stores the UTF-8 bytes of `text` and returns the handle. A null pointer or
 /// an argument that is not a BN STRING is refused and returns no
 /// handle (0), so a later use of it is `USE_AFTER_RELEASE`.
