@@ -1,0 +1,16 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Five million iterations of an add and a remainder: the per-iteration cost
+// of the interpreter's instruction loop (tests/gates/bni_performance.rs).
+FUNCTION Start() AS VOID
+    LET total AS INT64 = 0
+    LET i AS INT64 = 0
+    WHILE i < 5000000
+        total += i % 7
+        i += 1
+    END WHILE
+    PRINT total
+END FUNCTION

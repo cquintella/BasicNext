@@ -79,3 +79,49 @@ fn bni_performance_user_call_is_linear() {
         "tests/bench/user_call_400000.bn",
     );
 }
+
+/// The per-iteration program of the instruction-loop budget.
+const LOOP_ADD: &str = "tests/bench/loop_add.bn";
+/// Median wall-clock budget of `LOOP_ADD` on the reference host (an Apple
+/// M-series laptop, release build): 5 000 000 iterations at 300 ns each.
+/// At `ae7c41d` it took 1 390 ms; with the observer-free loop, 1 210 ms.
+const LOOP_ADD_BUDGET_MS: f64 = 1500.0;
+
+#[test]
+#[ignore = "wall-clock measurement; run in release (module doc)"]
+fn bni_performance_loop_add_stays_within_budget() {
+    let median = median_milliseconds(LOOP_ADD);
+    assert!(
+        median <= LOOP_ADD_BUDGET_MS,
+        "{LOOP_ADD}: {median:.1} ms, budget {LOOP_ADD_BUDGET_MS} ms"
+    );
+}
+
+/// The watchers a run may have; the loop over a block's instructions reads
+/// none of them, so a plain run pays nothing for the debugger and the tracer.
+const OBSERVERS: [&str; 4] = [
+    "self.debug_hook",
+    "self.emitter",
+    "self.cancel_flag",
+    "self.debug_control",
+];
+const INSTRUCTION_LOOP: &str = "crates/bn_interp/src/executor/part1.rs";
+
+/// The text of the loop over a block's instructions in `source`.
+fn instruction_loop(source: &str) -> Option<&str> {
+    let start = source.find("for (index, instruction) in current.instructions")?;
+    let end = start + source[start..].find("match &current.terminator")?;
+    Some(&source[start..end])
+}
+
+#[test]
+fn bni_performance_instruction_loop_reads_no_observer() {
+    let source = std::fs::read_to_string(workspace_root().join(INSTRUCTION_LOOP))
+        .expect("read the instruction loop");
+    let body = instruction_loop(&source).expect("the instruction loop");
+    let read = OBSERVERS
+        .iter()
+        .filter(|observer| body.contains(**observer))
+        .collect::<Vec<_>>();
+    assert!(read.is_empty(), "the instruction loop reads {read:?}");
+}
