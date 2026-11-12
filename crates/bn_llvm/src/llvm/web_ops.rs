@@ -795,11 +795,9 @@ pub(crate) fn lower_bnweb_call(
 
         "client_close" => {
             let h0 = web_handle(text, dest, 0, arguments[0], analysis);
-            text.emit(I::call(T::Void, "bn_web_client_close", vec![h0]));
-            text.assign(
-                format!("v{dest}"),
-                I::cast(CastOp::BitCast, T::Ptr, O::null(), T::Ptr),
-            );
+            let rc_reg = format!("webrc{dest}");
+            text.assign(&rc_reg, I::call(T::I32, "bn_web_client_close", vec![h0]));
+            emit_void_result(text, destination, &O::reg(rc_reg));
         }
 
         "client_reply_constructor" => {
